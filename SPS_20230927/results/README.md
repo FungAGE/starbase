@@ -1,0 +1,1 @@
+ - Could be usful to store some data written from app.
