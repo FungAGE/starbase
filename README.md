@@ -1,4 +1,4 @@
-# `starbase` :rocket: - Database and Toolkit for Exploration of Starship Elements :dna: in Fungi :mushroom:
+# `starbase` :rocket: <br/> Database and Toolkit for Exploration of Starship Elements :dna: in Fungi :mushroom:
 
 ## Structure
 
