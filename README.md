@@ -1,5 +1,12 @@
 # `starbase` - Database of Starship Elements in Fungi :flying_saucer: :dna: :rocket: :mushroom:
 
+## Structure
+
+- This repo is for:
+  - code and files created by code
+- This repo is not for:
+  - database and other backend stuff
+
 ## Made Using the Following Resources/People
 
 ### Database frame work
