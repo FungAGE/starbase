@@ -1,4 +1,4 @@
-# `starbase` - Database of Starship Elements in Fungi :flying_saucer: :dna: :rocket: :mushroom:
+# `starbase` :rocket: - Database and Toolkit for Exploration of Starship Elements :dna: in Fungi :mushroom:
 
 ## Structure
 
