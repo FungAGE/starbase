@@ -1,0 +1,26 @@
+<head>
+  <link
+    rel="stylesheet"
+    href="https://maxcdn.bootstrapcdn.com/bootstrap/5.3.2/css/bootstrap.min.css"
+    integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7"
+    crossorigin="anonymous"
+  />
+</head>
+<body>
+  <div id="blast-multiple-alignments"></div>
+  <div id="blast-alignments-table"></div>
+  <div id="blast-single-alignment"></div>
+  <script type="text/javascript" src="js/html2canvas.js"></script>
+  <script type="text/javascript" src="js/blaster.js"></script>
+  <script type="text/javascript">
+    var alignments =
+      "/home/adrian/Systematics/Starship_Database/starbase/tmp/output.xml"
+    var blasterjs = require("biojs-vis-blasterjs")
+    var instance = new blasterjs({
+      string: alignments,
+      multipleAlignments: "blast-multiple-alignments",
+      alignmentsTable: "blast-alignments-table",
+      singleAlignment: "blast-single-alignment",
+    })
+  </script>
+</body>
