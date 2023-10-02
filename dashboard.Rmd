@@ -1,0 +1,202 @@
+---
+title: "starbase"
+output: 
+  flexdashboard::flex_dashboard:
+    theme:
+      bg: "#101010"
+      fg: "#FDF7F7" 
+      primary: "#ED79F9"
+      base_font:
+        google: Prompt
+      code_font:
+        google: JetBrains Mono
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(htmltools)
+library(tidyverse)
+library(XML)
+library(DT)
+library(shinythemes)
+
+# Install thematic and un-comment for themed static plots (i.e., ggplot2)
+# thematic::thematic_rmd()
+```
+
+```{r global, include=FALSE}
+# load data in 'global' chunk so it can be shared by all users of the dashboard
+```
+
+
+Home
+=====================================  
+
+### Welcome to `starbase`
+
+> Starships are active eukaryotic transposable elements mobilized by a new family of tyrosine recombinases
+
+- Andrew S Urquhart, Aaron A Vogan, Donald M Gardiner, Alexander Idnurm PNAS https://doi.org/10.1073/pnas.2214521120
+
+
+BLAST/HMMER Search of Starship Elements {data-orientation=columns}
+=====================================
+Column {.sidebar}
+-------------------------------------
+
+```{r}
+textAreaInput('query', 'Input sequence:', value = "", placeholder = "", width = "600px", height="200px")
+# choice should be limited to 1) whole starship or 2) just a gene sequence
+# if 2) then choose what gene or unknown
+selectInput("input_type", "What is the input sequence?", choices=c("starship","gene"), width="120px")
+# BUG: where db_type when choice = gene is not overwritten from default db_type when choice = starship
+conditionalPanel(
+  condition = "input.input_type == 'gene'",
+  selectInput("db_type", "Select a gene model:", selected = character(0), multiple = TRUE, choices = c("tyr", "freB", "nlr", "DUF3723","plp"), width="120px")
+)
+conditionalPanel(
+  condition = "input.input_type == 'starship'",
+  selectInput("db_type", "Which database do you want to search?",selected = character(0), multiple = FALSE,choices = c("curated", "starfish"), width="120px"),
+  selectInput("search_ship_genes", "Search for genes in starship sequence?",choices = c("No", "Yes"), width="120px")
+)
+div(style="display:inline-block",selectInput("eval", "e-value:", choices=c(1,0.001,1e-4,1e-5,1e-10), width="120px"))
+actionButton("blast", "Search")
+```
+
+Column
+-------------------------------------
+```{r}
+blastresults <- reactive({
+  # separate lists of starship and gene databases with sub lists of nucl and prot databases
+  # TODO: add starship protein databases and gene hmm to folder
+  db_list <- list(starship=list(curated =
+                                  list(nucl = "/home/adrian/Systematics/Starship_Database/blastdb/concatenated.fa",
+                                       prot = "/home/adrian/Systematics/Starship_Database/blastdb/concatenated.faa"),
+                                starfish =
+                                  list(nucl = "/home/adrian/Systematics/Starship_Database/blastdb/mycodb.final.starships.headers.fna",
+                                       prot = "/home/adrian/Systematics/Starship_Database/blastdb/mycodb.final.starships.headers.faa")),
+                  gene=list(tyr = list(prot = "/home/adrian/Systematics/Starship_Database/blastdb/YRsuperfamRefs.faa",
+                                       nucl = ""),
+                            freB = list(prot = "",
+                                        nucl = ""),
+                            nlr = list(prot = "",
+                                       nucl = ""),
+                            DUF3723 = list(prot = "",
+                                           nucl = ""),
+                            plp = list(prot = "",
+                                       nucl = "")))
+
+  # gather input and set up temp file
+  query <- input$query
+  tmp_fasta <- "tmp/fasta.fa"
+
+  # this makes sure the fasta is formatted properly
+  # removes whitespace at the beginning of lines before testing for header
+  if (!startsWith(gsub("^\\s+", "", query, perl = TRUE), ">")){
+    query<-cat(">Query",query,sep = "\n")
+  }
+
+  # function to clean the query sequence: first remove non-letter characters, then ambiguous characters, then guess if query is nucl or protein
+  clean_lines <- function(lines) {
+    cleaned_lines <- NULL
+    na_count <- 0
+    for (line in lines) {
+      if (grepl("^>",trimws(line))) {
+        header <- line
+        # header<-str_split(line,"\n",simplify=TRUE)[1]
+        cleaned_lines <- str_c(cleaned_lines, header,"\n")
+      } else {
+        # Remove non-letter characters using gsub
+        cleaned_line <- gsub("[NXnx]", "", gsub("[^A-Za-z]", "", line))
+        na_count<-na_count+sum(table(unlist(strsplit(cleaned_line, "")))[c("N","X","n","x")],na.rm=TRUE)
+        cleaned_lines <- str_c(cleaned_lines, cleaned_line)
+      }
+    }
+    cleaned_seq<-str_split(cleaned_lines,"\n",simplify=TRUE)[2]
+
+    # count characters for deciding type later
+    nucl_count<-sum(table(unlist(strsplit(cleaned_seq, "")))[c("a","A","t","T","g","G","c","C")],na.rm=TRUE)
+    prot_count<-sum(table(unlist(strsplit(cleaned_seq, "")))[c(letters,LETTERS)],na.rm=TRUE)
+
+    # guess nucl or protein
+    if(prot_count >= (0.9 * str_length(cleaned_seq)+na_count)){
+      query_type<-"prot"
+      print("Query is protein sequence")
+    } else {
+      query_type<-"nucl"
+      print("Query is nucleotide sequence")
+    }
+    writeLines(cleaned_lines, tmp_fasta)
+    return(list("header"=header,"query_type"=query_type))
+  }
+
+  query_list <- clean_lines(query)
+
+  # force the right database to be used
+  # and calls the BLAST/HMMER
+  db<-db_list[[input$input_type]][[input$db_type]][[query_list$query_type]]
+
+  # select correct BLAST/HMMER program
+  if(input$input_type == "gene" | input$search_ship_genes == "Yes") {
+    if(query_list$query_type=="nucl") {
+      hmmer_program <- "jackhmmer"
+    } else {
+      hmmer_program <- "phmmer"
+    }
+    if(input$input_type == "starship" & input$search_ship_genes == "Yes" ) {
+      gene_list <- names(db_list[["gene"]])
+    } else {
+      gene_list <- input$db_type
+    }
+    hmmer_list<-NULL
+    for(gene in gene_list) {
+      hmmer_cmd <- paste(hmmer_program,"--domtblout tmp/hmmer.out","--cpu 4","--domE",input$eval,tmp_fasta,db,sep=" ")
+      system(hmmer_cmd, intern = FALSE)
+    }
+    # TODO: combine results from multiple genes into list before parser
+    system("python bin/hmm.py -i tmp/hmmer.out",ignore.stdout = TRUE, ignore.stderr = TRUE)
+    read_csv("tmp/hmmer-parsed.csv",show_col_types = FALSE) %>% select(-1)
+  } else if(input$input_type == "starship" & input$search_ship_genes == "No" ) {
+    if(query_list$query_type=="nucl") {
+      blast_program <- "blastn"
+    } else {
+      blast_program <- "blastp"
+    }
+    # TODO: should be separated by results from different genes?
+    # TODO: split with conditional statements for HMMER, BLAST, or both
+    system(paste0(blast_program," -query ",tmp_fasta," -db ",db," -evalue ",input$eval," -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
+      xmlParse() %>%
+      xpathApply(.,'//Iteration',function(row){
+        query_ID <- getNodeSet(row, 'Iteration_query-def') %>% sapply(., xmlValue)
+        hit_IDs <- getNodeSet(row, 'Iteration_hits//Hit//Hit_id') %>% sapply(., xmlValue)
+        hit_length <- getNodeSet(row, 'Iteration_hits//Hit//Hit_len') %>% sapply(., xmlValue)
+        bitscore <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_bit-score') %>% sapply(., xmlValue)
+        eval <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_evalue') %>% sapply(., xmlValue)
+        bind_rows(query_ID,hit_IDs,hit_length,bitscore,eval)
+      }) %>%
+      lapply(.,function(y){as.data.frame((y),stringsAsFactors=FALSE)}) %>%
+      bind_rows()
+    }
+  }) %>%
+  bindEvent(input$blast)
+
+output$tbl = renderDT(blastresults()) 
+```
+
+```{r}
+DTOutput('tbl')
+```
+
+Explore Starships {data-orientation=rows}
+=====================================     
+   
+Row
+-------------------------------------
+
+### Captain Phylogeny
+```{r}
+readRDS("RDS/captain-tree-wtable.RDS")
+```
+
