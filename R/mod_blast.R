@@ -1,10 +1,54 @@
+#' blast UI Function
+#'
+#' @description A shiny Module.
+#'
+#' @param id,input,output,session Internal parameters for {shiny}.
+#'
+#' @noRd 
+#'
+#' @importFrom shiny NS tagList 
+
 library(tidyverse)
-library(reticulate)
 library(XML)
 library(DT)
 
-server <- function(input, output, session){
-
+mod_blast_ui <- function(id){
+  ns <- NS(id)
+  tagList(
+          h1("BLAST/HMMER Searches"),
+          # input block
+          textAreaInput('query', 'Input sequence:', value = "", placeholder = "", width = "600px", height="200px"),
+          # choice should be limited to 1) whole starship or 2) just a gene sequence
+          # if 2) then choose what gene or unknown
+          selectInput("input_type", "What is the input sequence?", choices=c("starship","gene"), width="120px"),
+          # BUG: where db_type when choice = gene is not overwritten from default db_type when choice = starship
+          conditionalPanel(
+            condition = "input.input_type == 'gene'",
+            selectInput("db_type", "Select a gene model:", selected = character(0), multiple = TRUE, choices = c("tyr", "freB", "nlr", "DUF3723","plp"), width="120px")
+          ),
+          conditionalPanel(
+            condition = "input.input_type == 'starship'",
+            selectInput("db_type", "Which database do you want to search?",selected = character(0), multiple = FALSE,choices = c("curated", "starfish"), width="120px"),
+            selectInput("search_ship_genes", "Search for genes in starship sequence?",choices = c("No", "Yes"), width="120px")
+          ),
+          div(style="display:inline-block",
+              selectInput("eval", "e-value:", choices=c(1,0.001,1e-4,1e-5,1e-10), width="120px")),
+          actionButton("blast", "Search"),
+          
+          # Basic results output
+          h4("Results"),
+          DTOutput('tbl'),
+          p("Alignment:", tableOutput("clicked") ),
+          verbatimTextOutput("alignment")
+    )
+}
+    
+#' blast Server Functions
+#'
+#' @noRd 
+mod_blast_server <- function(id){
+  moduleServer( id, function(input, output, session){
+    ns <- session$ns
   # example
   # dat<-read_csv("tmp/hmmer-parsed.csv",show_col_types = FALSE) %>% select(-1)
   # print(class(dat))
@@ -95,11 +139,11 @@ server <- function(input, output, session){
       }
       hmmer_list<-NULL
       for(gene in gene_list) {
-        hmmer_cmd <- paste(hmmer_program,"--domtblout tmp/hmmer.out","--cpu 4","--domE",input$eval,tmp_fasta,db,sep=" ")
+        hmmer_cmd <- paste(hmmer_program,"-A tmp/alignment.sto --domtblout tmp/hmmer.out","--cpu 4","--domE",input$eval,tmp_fasta,db,sep=" ")
         system(hmmer_cmd, intern = FALSE)
       }
       # TODO: combine results from multiple genes into list before parser
-      system("python bin/hmm.py -i tmp/hmmer.out")
+      system("python bin/hmm.py -i tmp/hmmer.out -a tmp/alignment.sto")
       read_csv("tmp/hmmer-parsed.csv",show_col_types = FALSE) %>% select(-1)
     } else if(input$input_type == "starship" & input$search_ship_genes == "No" ) {
       if(query_list$query_type=="nucl") {
@@ -117,7 +161,10 @@ server <- function(input, output, session){
           hit_length <- getNodeSet(row, 'Iteration_hits//Hit//Hit_len') %>% sapply(., xmlValue)
           bitscore <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_bit-score') %>% sapply(., xmlValue)
           eval <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_evalue') %>% sapply(., xmlValue)
-          bind_rows(query_ID,hit_IDs,hit_length,bitscore,eval)
+          top <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_qseq') %>% sapply(., xmlValue)
+          mid <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_midline') %>% sapply(., xmlValue)
+          bottom <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_hseq') %>% sapply(., xmlValue)
+          bind_cols("query_ID"=query_ID,"hit_IDs"=hit_IDs,"hit_length"=hit_length,"bitscore"=bitscore,"eval"=eval,"top"=top,"mid"=mid,"bottom"=bottom)
         }) %>%
         lapply(.,function(y){as.data.frame((y),stringsAsFactors=FALSE)}) %>%
         bind_rows()
@@ -125,49 +172,49 @@ server <- function(input, output, session){
     }) %>%
     bindEvent(input$blast)
   
-  output$tbl = renderDT(blastresults()) 
+  output$tbl = blastresults() %>% select(-top,-mid,-bottom)
   
-  #this chunk gets the alignemnt information from a clicked row
-  # output$clicked <- renderTable({
-  #   if(is.null(input$blastResults_rows_selected)){}
-  #   else{
-  #     xmltop = xmlRoot(blastresults())
-  #     clicked = input$blastResults_rows_selected
-  #     tableout<- data.frame(parsedresults()[clicked,])
-  #     
-  #     tableout <- t(tableout)
-  #     names(tableout) <- c("")
-  #     rownames(tableout) <- c("Query ID","Hit ID", "Length", "Bit Score", "e-value")
-  #     colnames(tableout) <- NULL
-  #     data.frame(tableout)
-  #   }
-  # },rownames =T,colnames =F)
-  # 
-  # #this chunk makes the alignments for clicked rows
-  # output$alignment <- renderText({
-  #   if(is.null(input$blastResults_rows_selected)){}
-  #   else{
-  #     xmltop = xmlRoot(blastresults())
-  #     
-  #     clicked = input$blastResults_rows_selected
-  #     
-  #     #loop over the xml to get the alignments
-  #     align <- xpathApply(blastresults(), '//Iteration',function(row){
-  #       top <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_qseq') %>% sapply(., xmlValue)
-  #       mid <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_midline') %>% sapply(., xmlValue)
-  #       bottom <- getNodeSet(row, 'Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_hseq') %>% sapply(., xmlValue)
-  #       rbind(top,mid,bottom)
-  #     })
-  #     
-  #     #split the alignments every 40 carachters to get a "wrapped look"
-  #     alignx <- do.call("cbind", align)
-  #     splits <- strsplit(gsub("(.{40})", "\\1,", alignx[1:3,clicked]),",")
-  #     
-  #     #paste them together with returns '\n' on the breaks
-  #     split_out <- lapply(1:length(splits[[1]]),function(i){
-  #       rbind(paste0("Q-",splits[[1]][i],"\n"),paste0("M-",splits[[2]][i],"\n"),paste0("H-",splits[[3]][i],"\n"))
-  #     })
-  #     unlist(split_out)
-  #   }
-  # })
-}
+  # this chunk gets the alignment information from a clicked row
+  output$clicked <- renderTable({
+    if(is.null(input$blastResults_rows_selected)){}
+    else{
+      read_csv("tmp/hmmer-parsed.csv",show_col_types = FALSE) %>% select(-1)
+      
+      # xmltop = xmlRoot(blastresults())
+      clicked = input$blastResults_rows_selected
+      tableout<- data.frame(parsedresults()[clicked,])
+
+      tableout <- t(tableout)
+      names(tableout) <- c("")
+      rownames(tableout) <- c("Query ID","Hit ID", "Length", "Bit Score", "e-value")
+      colnames(tableout) <- NULL
+      data.frame(tableout)
+    }
+  },rownames =T,colnames =F)
+
+  #this chunk makes the alignments for clicked rows
+  output$alignment <- renderText({
+    if(is.null(input$blastResults_rows_selected)){}
+    else{
+      clicked = input$blastResults_rows_selected
+
+      #loop over the xml to get the alignments
+      align <- blastresults() %>%
+        select(-top,-mid,-bottom) %>%
+        t()
+   
+         #split the alignments every 40 carachters to get a "wrapped look"
+      alignx <- do.call("cbind", align)
+      splits <- strsplit(gsub("(.{40})", "\\1,", alignx[1:3,clicked]),",")
+      
+      #paste them together with returns '\n' on the breaks
+      split_out <- lapply(1:length(splits[[1]]),function(i){
+        rbind(paste0("Q-",splits[[1]][i],"\n"),paste0("M-",splits[[2]][i],"\n"),paste0("H-",splits[[3]][i],"\n"))
+      })
+      unlist(split_out)
+    }
+  }
+  )
+  }
+  )
+  }

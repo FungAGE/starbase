@@ -106,7 +106,7 @@ interactive_plot  <- girafe(
   )
 )
 
-saveRDS(interactive_plot,file="RDS/captain-tree.rds")
+saveRDS(interactive_plot,file="RDS/captain-tree.RDS")
 
 # TODO: to make it easier, use the `SharedData` object to subset other data to make plots/tables
 # Wrap data frame in SharedData

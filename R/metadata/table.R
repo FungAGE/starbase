@@ -21,4 +21,6 @@ dat.html<-datatable(dat, options = list(), class = "display",
     selection = c("multiple", "single", "none"), extensions = list(),
     plugins = NULL, editable = FALSE)
 
+saveRDS(dat.html,file="RDS/metadata-table.RDS")
+
 htmlwidgets::saveWidget(dat.html, "table.html")

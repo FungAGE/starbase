@@ -9,19 +9,66 @@
 #' @importFrom shiny NS tagList 
 
 library(shiny)
-library(shinipsum)
-library(DT)
+library(shinydashboard)
+library(shinydashboardPlus)
 
 mod_dashboard_ui <- function(id){
   ns <- NS(id)
-  tagList(
-    h2("A Random DT"),
-    DTOutput("data_table"),
-    h2("A Random Plot"),
-    plotOutput("plot"),
-    h2("A Random Text"),
-    tableOutput("text")
-  )
+    tagList(
+        # Your application UI logic
+        # includeMarkdown("dashboard.Rmd")
+
+        dashboardPage(
+          options = list(sidebarExpandOnHover = TRUE),
+          header = dashboardHeader(title="starbase"),
+          sidebar = dashboardSidebar(minified = FALSE, collapsed = TRUE,
+            sidebarMenu(
+              menuItem("Welcome to starbase", tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
+                startExpanded = TRUE),
+              menuItem("Explore Starships", tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
+                startExpanded = FALSE),
+              menuItem("BLAST/HMMER Searches", tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
+                startExpanded = FALSE),
+              menuItem("starfish", icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
+                startExpanded = FALSE),
+              menuItem("Submit Starships to starbase", tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
+                startExpanded = FALSE),
+              id = NULL, .list = NULL)
+
+          ),
+          body = dashboardBody(
+                      tabItems(
+                        tabItem(tabName = "home",
+                          mod_home_ui("home_1")
+                        ),
+                        tabItem(tabName = "explore",
+                          mod_explore_ui("explore_1")                        
+                        ),
+                        tabItem(tabName = "blast",
+                          mod_blast_ui("blast_1")
+                        ),
+                        tabItem(tabName = "starfish",
+                          mod_starfish_ui("starfish_1")
+                        ),
+                        tabItem(tabName = "submit",
+                          mod_submit_ui("submit_1")
+                        )                                                
+                      )
+
+          ),
+          controlbar = dashboardControlbar(),
+          title = "starbase home")
+      )
 }
     
 #' dashboard Server Functions
@@ -31,15 +78,11 @@ mod_dashboard_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
     function(input, output, session) {
-      output$data_table <- DT::renderDT({
-        random_DT(5, 5)
-      })
-      output$plot <- renderPlot({
-        random_ggplot()
-      })
-      output$text <- renderText({
-        random_text(nwords = 50)
-      })
+      mod_home_server("home_1")
+      mod_explore_server("explore_1")
+      mod_blast_server("blast_1")
+      mod_starfish_server("starfish_1")
+      mod_submit_server("submit_1")
     }
   })
 }
