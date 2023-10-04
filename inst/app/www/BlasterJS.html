@@ -1,26 +1,37 @@
-<head>
-  <link
-    rel="stylesheet"
-    href="https://maxcdn.bootstrapcdn.com/bootstrap/5.3.2/css/bootstrap.min.css"
-    integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7"
-    crossorigin="anonymous"
-  />
-</head>
+
 <body>
-  <div id="blast-multiple-alignments"></div>
-  <div id="blast-alignments-table"></div>
-  <div id="blast-single-alignment"></div>
-  <script type="text/javascript" src="js/html2canvas.js"></script>
-  <script type="text/javascript" src="js/blaster.js"></script>
-  <script type="text/javascript">
-    var alignments =
-      "/home/adrian/Systematics/Starship_Database/starbase/tmp/output.xml"
-    var blasterjs = require("biojs-vis-blasterjs")
-    var instance = new blasterjs({
-      string: alignments,
-      multipleAlignments: "blast-multiple-alignments",
-      alignmentsTable: "blast-alignments-table",
-      singleAlignment: "blast-single-alignment",
-    })
-  </script>
+    <!-- File input element -->
+    <input type="file" id="fileInput" accept=".txt">
+
+    <!-- Visualization container elements -->
+    <div id="blast-multiple-alignments"></div>
+    <div id="blast-alignments-table"></div>
+    <div id="blast-single-alignment"></div>
+    <script type="text/javascript" src="js/html2canvas.js"></script>
+    <script type="text/javascript" src="js/blaster.min.js"></script>
+    <script type="text/javascript">
+
+        $(document).ready(function(){
+            // Add an event listener to the file input element
+            $("#fileInput").on("change", function(event){
+                var file = event.target.files[0];
+                if (file) {
+                    // Read the contents of the selected file
+                    var reader = new FileReader();
+                    reader.onload = function(e){
+                        var fileContents = e.target.result;
+                        
+                        // Assuming you have the 'blasterjs' module available
+                        var instance = new blasterjs({
+                            string: fileContents,
+                            multipleAlignments: "blast-multiple-alignments",
+                            alignmentsTable: "blast-alignments-table",
+                            singleAlignment: "blast-single-alignment"
+                        });
+                    };
+                    reader.readAsText("tmp/blast.out");
+                }
+            });
+        });
+    </script>
 </body>
