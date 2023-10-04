@@ -61,12 +61,17 @@ add_module(name = "blast_viz")
 add_module(name = "shoot")
 add_module(name = "genome_browser")
 add_module(name = "dotplot")
+add_module(name = "user")
+add_module(name = "sql")
+add_module(name = "db_update")
 
 add_js_file( "script" )
 add_js_handler( "handlers" )
 add_css_file( "custom" )
 
-# create lorem-ipsum app
+golem::add_html_template("BlasterJS")
+
+7# create lorem-ipsum app
 
 # This function will read all the scripts in the R/ folder and 
 # try to guess required dependencies
@@ -77,7 +82,8 @@ att_from_rscripts()
 # tell shiny to log all reactivity
 reactlogReset()
 reactlog_enable()
-
+# or
+options(shiny.reactlog=TRUE)
 pkgload::load_all()
 golem::run_dev()
 

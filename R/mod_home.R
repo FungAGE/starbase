@@ -11,9 +11,8 @@ mod_home_ui <- function(id){
   ns <- NS(id)
   dashboardBody(
     fluidRow(
-      box(div(
-        h1("Welcome to starbase"),
-        p("Starships are active eukaryotic transposable elements mobilized by a new family of tyrosine recombinases"))),
+      box(icon=img(src="www/favicon.ico"),
+        p("starbase: Database and tools for exploring large eukaryotic transposable elements in Fungi")),
       box(div(
         img(src = "img/starship-summary.png",
             width = "75%",
