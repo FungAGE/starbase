@@ -9,7 +9,7 @@ library(htmlwidgets)
 library(crosstalk)
 library(DT)
 
-nexus_tree<-"/home/adrian/Systematics/Starship_Database/Starships/starships/starfish/phylo/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
+nexus_tree<-"/home/adrian/Systematics/Starship_Database/Starships/ships/starfish/phylo/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
 
 # Read the Newick tree using the read.tree function
 tree <- treeio::read.nexus(nexus_tree)
@@ -20,14 +20,18 @@ p<-ggtree(tree)
 
 # load taxonomic info
 tax<-full_join(read_tsv("/home/adrian/Systematics/Starship_Database/MTDB/mycodb2899.ome2species.txt",col_names=c("code","species")),
-               read_csv("/home/adrian/Systematics/Starship_Database/Starships/starships/manual-annotations/Starships.csv") %>% rename_all(tolower))
+               read_csv("/home/adrian/Systematics/Starship_Database/Starships/ships/manual-annotations/Starships.csv") %>% rename_all(tolower))
+
 # info on the groups we care about
-families<-c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606)
+family_nodes<-c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606)
+families<-read_tsv("/home/adrian/Systematics/Starship_Database/Starships/family/family-names.tsv") %>%
+  rename("groups"="oldFamilyID")
 
 group_df<-data.frame(parent=c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606,2424,2425,2426,2442,2444,1477,1479,1487,1640,1227,1803),
-  groups=c("superfam01-1","superfam01-2","superfam01-3","superfam01-4","superfam01-5","superfam02-1","superfam02-2","superfam02-3","superfam03-1","superfam03-2","superfam03-3","superfam03-4","superfam03-5",
+  groups=c("fam1-1","fam1-2","fam1-3","fam1-4","fam1-5","fam2-1","fam2-2","fam2-3","fam3-1","fam3-2","fam3-3","fam3-4","fam3-5",
   "extra group","extra group","extra group","extra group","extra group","extra group","extra group","extra group","extra group","extra group","extra group"),
-  custom.fill=c("#8dd3c7","#ededa8","#adabc4","#33a02c","#fb8072","#80b1d3","#b3de69","#b0b0b0","#fdb45a","#fccde5","#ffed6f","#bc80bd","#ccebc5","black","black","black","black","black","black","black","black","black","black","black"))
+  custom.fill=c("#8dd3c7","#ededa8","#adabc4","#33a02c","#fb8072","#80b1d3","#b3de69","#b0b0b0","#fdb45a","#fccde5","#ffed6f","#bc80bd","#ccebc5","black","black","black","black","black","black","black","black","black","black","black")) %>%
+  left_join(families)
 
 # create a annotated plot first
 # layer data will be pulled out later to make interactive rects
@@ -58,14 +62,14 @@ p1<-p %<+% group_df +
   geom_hilight(type="rect",node=1227) + 
   geom_hilight(type="rect",node=1803)
 
-tree_dat<-p$data %>% filter(parent %in% families) %>%
+tree_dat<-p$data %>% filter(parent %in% family_nodes) %>%
     left_join(group_df) %>%
     group_by(parent) %>%
-  mutate(parentlab=ifelse(parent%in%families,parent,NA)) %>% 
+  mutate(parentlab=ifelse(parent%in%family_nodes,parent,NA)) %>% 
   ungroup()
 
 # hilights start at layer #3
-highlighted_tree_dat<-map(3:(length(families)+2),~{layer_data(p1,.x)}) %>% list_rbind()
+highlighted_tree_dat<-map(3:(length(family_nodes)+2),~{layer_data(p1,.x)}) %>% list_rbind()
 
 tree_dat<-tree_dat %>% 
     left_join(highlighted_tree_dat,by=c("parent"="clade_root_node"))
@@ -85,7 +89,7 @@ inter.tree.p<-p +
     alpha=0.5) + 
     scale_fill_manual(values=group_df$custom.fill)+
     guides(size="none",fill="none")
-    # scale_fill_manual(values=group_df$custom.fill, guide=guide_legend_interactive(title="Starship Families"))
+    # scale_fill_manual(values=group_df$custom.fill, guide=guide_legend_interactive(title="Starship family_nodes"))
     # theme(legend.position="right")
     # geom_text(data=tree_dat,aes(x = x, y = y, label = groups), size = 5,nudge_x=5)
 
@@ -113,7 +117,10 @@ saveRDS(interactive_plot,file="RDS/captain-tree.RDS")
 sd <- SharedData$new(tree_dat)
 
 # Use SharedData like a dataframe with Crosstalk-enabled widgets
-row1 <- div(h2("Select a superfamily to subset:"),filter_checkbox("groups","", sd, ~groups,inline=TRUE))
+row1 <- div(h2("Select a family to subset:"),
+            datatable(sd$data() %>% distinct(groups,clade,newFamilyID,familyName,`type element reference`,notes))
+            # filter_checkbox("groups","", sd, ~groups,inline=TRUE)
+            )
 
 row2 <- div(
   class = "row",
@@ -147,7 +154,7 @@ row2 <- div(
   ),
   div(
     class = "col-md-6",
-        datatable(sd,#selection=list(mode = 'multiple', selected = c(4,10), target ='column'),
+        datatable(sd %>% select(),#selection=list(mode = 'multiple', selected = c(4,10), target ='column'),
         extensions="Scroller", style="bootstrap", class="compact", width="100%",options=list(deferRender=TRUE, scrollY=300, scroller=TRUE)
               )
 
@@ -191,7 +198,7 @@ save_html(html=comb_widget,file="/home/adrian/Systematics/Starship_Database/sequ
 #          select(-groups)
 
 # make subtrees
-for(i in families){
+for(i in family_nodes){
   # Wrap data frame in SharedData
   sub_sd <- SharedData$new(tree_dat %>% filter(groups==i))
 
@@ -237,7 +244,7 @@ for(i in families){
 # subsetted tree
 #############
 
-sub.p<-ggtree(tree_subset(tree,node=families,levels_back=0))+
+sub.p<-ggtree(tree_subset(tree,node=family_nodes,levels_back=0))+
   geom_tiplab(align=T,size=2)+
   geom_treescale()+
 # list tips to keep

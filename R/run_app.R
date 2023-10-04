@@ -9,7 +9,7 @@
 #' @importFrom golem with_golem_options
 run_app <- function(
   onStart = NULL,
-  options = list(),
+  options = list(shiny.maxRequestSize = 10 * 1024^2),
   enableBookmarking = NULL,
   uiPattern = "/",
   ...

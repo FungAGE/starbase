@@ -6,7 +6,7 @@
 \usage{
 run_app(
   onStart = NULL,
-  options = list(),
+  options = list(shiny.maxRequestSize = 10 * 1024^2),
   enableBookmarking = NULL,
   uiPattern = "/",
   ...

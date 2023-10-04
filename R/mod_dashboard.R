@@ -21,11 +21,11 @@ mod_dashboard_ui <- function(id){
         dashboardPage(
           options = list(sidebarExpandOnHover = TRUE),
           header = dashboardHeader(title="starbase"),
-          sidebar = dashboardSidebar(minified = FALSE, collapsed = TRUE,
+          sidebar = dashboardSidebar(minified = FALSE, collapsed = FALSE,
             sidebarMenu(
               menuItem("Welcome to starbase", tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
+                expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
                 startExpanded = TRUE),
               menuItem("Explore Starships", tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
@@ -43,6 +43,12 @@ mod_dashboard_ui <- function(id){
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
                 startExpanded = FALSE),
+              menuItem("Sign in", tabName = "user", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                       href = NULL, newtab = FALSE, selected = NULL,
+                       expandedName = as.character(gsub("[[:space:]]", "", "Sign in")),
+                       startExpanded = FALSE,
+                       menuSubItem("Update starbase Entries", tabName = "db_update")
+                       ),
               id = NULL, .list = NULL)
 
           ),
@@ -56,19 +62,26 @@ mod_dashboard_ui <- function(id){
                         ),
                         tabItem(tabName = "blast",
                           mod_blast_ui("blast_1")
+                          # mod_blast_viz_ui("blast_viz_1")
                         ),
                         tabItem(tabName = "starfish",
                           mod_starfish_ui("starfish_1")
                         ),
                         tabItem(tabName = "submit",
                           mod_submit_ui("submit_1")
-                        )                                                
+                        ),
+                        tabItem(tabName = "user",
+                          mod_user_ui("user_1")
+                        ),
+                        tabItem(tabName = "db_update",
+                          mod_db_update_ui("db_update_1")
+                        )
                       )
+                    )
 
           ),
           controlbar = dashboardControlbar(),
           title = "starbase home")
-      )
 }
     
 #' dashboard Server Functions
@@ -81,8 +94,10 @@ mod_dashboard_server <- function(id){
       mod_home_server("home_1")
       mod_explore_server("explore_1")
       mod_blast_server("blast_1")
+      # mod_blast_viz_server("blast_viz_1")
       mod_starfish_server("starfish_1")
       mod_submit_server("submit_1")
+      mod_user_server("user_1")
     }
   })
 }

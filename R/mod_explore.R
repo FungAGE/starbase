@@ -9,13 +9,23 @@
 #' @importFrom shiny NS tagList 
 mod_explore_ui <- function(id){
   ns <- NS(id)
-  families<-c("superfam01-1","superfam01-2","superfam01-3","superfam01-4","superfam01-5","superfam02-1","superfam02-2","superfam02-3","superfam03-1","superfam03-2","superfam03-3","superfam03-4","superfam03-5")
+            
   fluidRow(div(
-    h1("Captain Phylogeny"),
-    box(mod_phylogeny_ui("phylogeny_1")),
-    box(mod_metadata_ui("metadata_1"))
-  )
-  )
+    box(title="Captain Phylogeny",mod_phylogeny_ui("phylogeny_1")),
+    box(title="Represented Species",mod_metadata_ui("metadata_1"))
+  ))
+  fluidRow(box(title="Families",
+               read_tsv("/home/adrian/Systematics/Starship_Database/Starships/family/family-names.tsv") %>%
+                 select(-notes) %>%
+                 datatable(options = list(), class = "display",
+                           callback = JS("return table;"), #rownames, colnames, container,
+                           caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,
+                           style = "auto", width = NULL, height = NULL, elementId = NULL,
+                           fillContainer = getOption("DT.fillContainer", NULL),
+                           autoHideNavigation = getOption("DT.autoHideNavigation", NULL),
+                           selection = c("multiple", "single", "none"), extensions = list(),
+                           plugins = NULL, editable = FALSE)
+  ))
 }
     
 #' explore Server Functions
