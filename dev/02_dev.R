@@ -1,12 +1,3 @@
-# Building a Prod-Ready, Robust Shiny Application.
-#
-# README: each step of the dev files is optional, and you don't have to
-# fill every dev scripts before getting started.
-# 01_start.R should be filled at start.
-# 02_dev.R should be used to keep track of your development during the project.
-# 03_deploy.R should be used once you need to deploy your app.
-#
-#
 ###################################
 #### CURRENT FILE: DEV SCRIPT #####
 ###################################
@@ -20,8 +11,22 @@ attachment::att_amend_desc()
 
 ## Add modules ----
 ## Create a module infrastructure in R/
-golem::add_module(name = "name_of_module1", with_test = TRUE) # Name of the module
-golem::add_module(name = "name_of_module2", with_test = TRUE) # Name of the module
+# Creating a module skeleton
+golem::add_module(name = "dashboard") 
+golem::add_module(name = "home")
+golem::add_module(name = "explore")
+golem::add_module(name = "metadata")
+golem::add_module(name = "phylogeny")
+golem::add_module(name = "starfish")
+golem::add_module(name = "submit")
+golem::add_module(name = "blast") 
+golem::add_module(name = "blast_viz")
+golem::add_module(name = "shoot")
+golem::add_module(name = "genome_browser")
+golem::add_module(name = "dotplot")
+golem::add_module(name = "user")
+golem::add_module(name = "sql")
+golem::add_module(name = "db_update")
 
 ## Add helper functions ----
 ## Creates fct_* and utils_*
@@ -34,6 +39,8 @@ golem::add_js_file("script")
 golem::add_js_handler("handlers")
 golem::add_css_file("custom")
 golem::add_sass_file("custom")
+
+golem::add_html_template("BlasterJS")
 
 ## Add internal datasets ----
 ## If you have data in your package

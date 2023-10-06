@@ -9,7 +9,7 @@
 #' @importFrom shiny NS tagList 
 mod_metadata_ui <- function(id){
   ns <- NS(id)
-    readRDS("RDS/metadata-table.RDS")
+  renderDT(readRDS("RDS/metadata-table.RDS"))
     # DTOutput("tbl")
 }
     
