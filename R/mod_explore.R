@@ -35,6 +35,6 @@ mod_explore_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
     mod_phylogeny_server("phylogeny_1")
-    mod_metadata_server("metadata_1")
+    # mod_metadata_server("metadata_1")
   })
 }

@@ -27,25 +27,24 @@ mod_blast_ui <- function(id) {
     # BUG: where db_type when choice = gene is not overwritten from default db_type when choice = starship
     conditionalPanel(
       condition = "input.input_type == 'gene'",
-      selectInput(ns("db_type"), "Select a gene model:", selected = character(0), multiple = TRUE, choices = c("tyr", "freB", "nlr", "DUF3723", "plp"), width = "120px")
-    ,ns = ns),
+      selectInput(ns("gene_type"), "Select a gene model:", selected = character(0), multiple = TRUE, choices = c("tyr", "freB", "nlr", "DUF3723", "plp"), width = "120px"),
+      ns = ns),
     conditionalPanel(
       condition = "input.input_type == 'starship'",
       selectInput(ns("db_type"), "Which database do you want to search?", selected = character(0), multiple = FALSE, choices = c("curated", "starfish"), width = "120px"),
-      selectInput(ns("search_ship_genes"), "Search for genes in starship sequence?", choices = c("No", "Yes"), width = "120px")
-      ,ns = ns),
+      selectInput(ns("search_ship_genes"), "Search for genes in starship sequence?", choices = c("No", "Yes"), width = "120px"),
+      ns = ns),
     div(
       style = "display:inline-block",
       selectInput(ns("eval"), "e-value:", choices = c(1, 0.001, 1e-4, 1e-5, 1e-10), width = "120px")
     ),
     actionButton(ns("blast"), "Search"),
-    # actionButton(ns("test_blast"), "Test BLAST"),
-    
+
     # Basic results output
     h4("Results"),
-    DTOutput("tbl"),
-    p("Alignment:", tableOutput("clicked")),
-    verbatimTextOutput("alignment"),
+    DT::DTOutput(ns("tbl"))
+    # p("Alignment:", tableOutput("clicked")),
+    # verbatimTextOutput("alignment"),
   )
 }
 
@@ -55,8 +54,8 @@ mod_blast_ui <- function(id) {
 
 mod_blast_server <- function(id) {
   moduleServer(id, function(input, output, session) {
-    ns <- NS(id)
-      observeEvent(input$blast,{
+    # ns <- session$ns
+      blastresults<-eventReactive(input$blast,{
         # separate lists of starship and gene databases with sub lists of nucl and prot databases
         # TODO: add starship protein databases and gene hmm to folder
         db_list <- list(
@@ -95,157 +94,173 @@ mod_blast_server <- function(id) {
             )
           )
         )
-  
+
         # gather input and set up temp file
-        if(is_null(input$query_file)) {
-          query <- input$query
-        } else {
-          file<-read_file(x)
-          if(sum(grepl("\n",file))==0){
-            stop("Problem with fasta file format")
-          }
-          query <- cat(file,sep="\n")
-        }
-  
-        tmp_fasta <- "tmp/fasta.fa"
-  
-        # this makes sure the fasta is formatted properly
-        # removes whitespace at the beginning of lines before testing for header
-        if (!startsWith(gsub("^\\s+", "", query, perl = TRUE), ">")) {
-          query <- cat(">Query", query, sep = "\n")
-        }
-  
-        # function to clean the query sequence: first remove non-letter characters, then ambiguous characters, then guess if query is nucl or protein
-        clean_lines <- function(lines) {
-          cleaned_lines <- NULL
-          na_count <- 0
-          for (line in lines) {
-            if (grepl("^>", trimws(line))) {
-              header <- line
-              # header<-str_split(line,"\n",simplify=TRUE)[1]
-              cleaned_lines <- str_c(cleaned_lines, header, "\n")
-            } else {
-              # Remove non-letter characters using gsub
-              cleaned_line <- gsub("[NXnx]", "", gsub("[^A-Za-z]", "", line))
-              na_count <- na_count + sum(table(unlist(strsplit(cleaned_line, "")))[c("N", "X", "n", "x")], na.rm = TRUE)
-              cleaned_lines <- str_c(cleaned_lines, cleaned_line)
-            }
-          }
-          cleaned_seq <- str_split(cleaned_lines, "\n", simplify = TRUE)[2]
-  
-          # count characters for deciding type later
-          nucl_count <- sum(table(unlist(strsplit(cleaned_seq, "")))[c("a", "A", "t", "T", "g", "G", "c", "C")], na.rm = TRUE)
-          prot_count <- sum(table(unlist(strsplit(cleaned_seq, "")))[c(letters, LETTERS)], na.rm = TRUE)
-  
-          # guess nucl or protein
-          if (prot_count >= (0.9 * str_length(cleaned_seq) + na_count)) {
-            query_type <- "prot"
-            print("Query is protein sequence")
+        tmp_fasta <- "tmp/queryfile"
+        
+        # TODO: add better error catching for format of query sequence/file here      
+        
+        # gather input and set up temp file
+        # validate(need(input$query_file || input$query, message = TRUE))
+        
+        withProgress(message = "Performing BLAST/HMMER Search...", {
+          if(is_null(input$query_file)) {
+            query <- input$query
           } else {
-            query_type <- "nucl"
-            print("Query is nucleotide sequence")
+            query<-read_file(input$query_file)
           }
-          writeLines(cleaned_lines, tmp_fasta)
-          return(list("header" = header, "query_type" = query_type))
-        }
-  
-        query_list <- clean_lines(query)
-  
-        # force the right database to be used
-        # and calls the BLAST/HMMER
-        db <- db_list[[input$input_type]][[input$db_type]][[query_list$query_type]]
-  
-        # select correct BLAST/HMMER program
-        if (input$input_type == "gene" | input$search_ship_genes == "Yes") {
-          if (query_list$query_type == "nucl") {
-            hmmer_program <- "jackhmmer"
-          } else {
-            hmmer_program <- "phmmer"
-          }
-          if (input$input_type == "starship" & input$search_ship_genes == "Yes") {
-            gene_list <- names(db_list[["gene"]])
-          } else {
-            gene_list <- input$db_type
-          }
-          hmmer_list <- NULL
-          for (gene in gene_list) {
-            hmmer_cmd <- paste(hmmer_program, "-A tmp/alignment.sto --domtblout tmp/hmmer.out", "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
-            system(hmmer_cmd, intern = FALSE)
-          }
-          # TODO: combine results from multiple genes into list before parser
-          system("python bin/hmm.py -i tmp/hmmer.out -a tmp/alignment.sto")
-          blastresults<-read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE) %>% select(-1)
-        } else if (input$input_type == "starship" & input$search_ship_genes == "No") {
-          if (query_list$query_type == "nucl") {
-            blast_program <- "blastn"
-          } else {
-            blast_program <- "blastp"
-          }
-          # TODO: should be separated by results from different genes?
-          # TODO: split with conditional statements for HMMER, BLAST, or both
-          blastresults<-system(paste0(blast_program, " -query ", tmp_fasta, " -db ", db, " -evalue ", input$eval, " -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
-            xmlParse() %>%
-            xpathApply(., "//Iteration", function(row) {
-              query_ID <- getNodeSet(row, "Iteration_query-def") %>% sapply(., xmlValue)
-              hit_IDs <- getNodeSet(row, "Iteration_hits//Hit//Hit_id") %>% sapply(., xmlValue)
-              hit_length <- getNodeSet(row, "Iteration_hits//Hit//Hit_len") %>% sapply(., xmlValue)
-              bitscore <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_bit-score") %>% sapply(., xmlValue)
-              eval <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_evalue") %>% sapply(., xmlValue)
-              top <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_qseq") %>% sapply(., xmlValue)
-              mid <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_midline") %>% sapply(., xmlValue)
-              bottom <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_hseq") %>% sapply(., xmlValue)
-              bind_cols("query_ID" = query_ID, "hit_IDs" = hit_IDs, "hit_length" = hit_length, "bitscore" = bitscore, "eval" = eval, "top" = top, "mid" = mid, "bottom" = bottom)
-            }) %>%
-            lapply(., function(y) {
-              as.data.frame((y), stringsAsFactors = FALSE)
-            }) %>%
-            bind_rows()
-        }
-      })
+        
+          # function to clean the query sequence: first remove non-letter characters, then ambiguous characters, then guess if query is nucl or protein
+          clean_lines <- function(query) {
+            cleaned_seq <- NULL
+            na_count <- 0
+            na_char <- c("N", "X", "n", "x" ,"*")
+            nucl_char <- c("a", "A", "t", "T", "g", "G", "c", "C")
+            prot_char <- c(letters, LETTERS)
+            prot_char <- prot_char[!prot_char %in% c(na_char,nucl_char)]
+            
+            query_lines<-str_split(query,"\n",simplify = T)
+            
+            for(line in query_lines) {
+              if(str_length(line)>1) {
+                if (grepl("^>", trimws(line))) {
+                  header <- gsub("^>","",trimws(line))
+                  # header<-str_split(line,"\n",simplify=TRUE)[1]
+                  # cleaned_seq <- str_c(cleaned_seq, header, "\n")
+                } else {
+                  # Remove non-letter characters using gsub
+                  cleaned_line <- gsub(paste0(na_char,collapse = "|"), "",fixed = T, gsub("[^A-Za-z]", "", trimws(line)))
+                  na_count <- na_count + sum(table(unlist(strsplit(cleaned_line, "")))[na_char], na.rm = TRUE)
+                  cleaned_seq <- str_c(cleaned_seq, cleaned_line)
+                }
+              }}
     
-    output$tbl <- blastresults %>% select(-top, -mid, -bottom)
+            # count characters for deciding type later
+            nucl_count <- sum(table(unlist(strsplit(cleaned_seq, "")))[nucl_char], na.rm = TRUE)
+            prot_count <- sum(table(unlist(strsplit(cleaned_seq, "")))[prot_char], na.rm = TRUE)
+    
+            # guess nucl or protein
+            if (prot_count >= (0.1 * str_length(cleaned_seq))) {
+              query_type <- "prot"
+              print("Query is protein sequence")
+            } else {
+              query_type <- "nucl"
+              print("Query is nucleotide sequence")
+            }
+            return(list("header" = header, "query_type" = query_type,"query"=cleaned_seq))
+          }
+    
+          query_list <- clean_lines(query)
+          
+          writeLines(str_c(str_c(">",query_list$header,sep=""),query_list$query,sep="\n"),tmp_fasta)
+          
+          # force the right database to be used
+          # and calls the BLAST/HMMER
+          if(input$input_type == "starship") {
+            print(input$input_type)
+            print(input$db_type)
+            print(query_list$query_type)
+            db <- db_list[[input$input_type]][[input$db_type]][[query_list$query_type]]
+          } else {
+            db <- db_list[[input$input_type]][[input$gene_type]][[query_list$query_type]]
+          }
+    
+          # select correct BLAST/HMMER program
+          if (input$input_type == "gene" | input$search_ship_genes == "Yes") {
+            if (query_list$query_type == "nucl") {
+              hmmer_program <- "jackhmmer"
+            } else {
+              hmmer_program <- "phmmer"
+            }
+            if (input$input_type == "starship" & input$search_ship_genes == "Yes") {
+              gene_list <- names(db_list[["gene"]])
+            } else {
+              gene_list <- input$gene_type
+            }
+            hmmer_list <- NULL
+            for (gene in gene_list) {
+              hmmer_cmd <- paste(hmmer_program, "-A tmp/alignment.sto --domtblout tmp/hmmer.out", "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
+              system(hmmer_cmd, intern = FALSE)
+            }
+            # TODO: combine results from multiple genes into list before parser
+            system("python bin/hmm.py -i tmp/hmmer.out -a tmp/alignment.sto")
+            read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE) %>% select(-1)
+          } else if (input$input_type == "starship" & input$search_ship_genes == "No") {
+            if (query_list$query_type == "nucl") {
+              blast_program <- "blastn"
+            } else {
+              blast_program <- "blastp"
+            }
+            # TODO: should be separated by results from different genes?
+            # TODO: split with conditional statements for HMMER, BLAST, or both
+            system(paste0(blast_program, " -query ", tmp_fasta, " -db ", db, " -evalue ", input$eval, " -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
+              xmlParse() %>%
+              xpathApply(., "//Iteration", function(row) {
+                query_ID <- getNodeSet(row, "Iteration_query-def") %>% sapply(., xmlValue)
+                hit_IDs <- getNodeSet(row, "Iteration_hits//Hit//Hit_id") %>% sapply(., xmlValue)
+                hit_length <- getNodeSet(row, "Iteration_hits//Hit//Hit_len") %>% sapply(., xmlValue)
+                bitscore <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_bit-score") %>% sapply(., xmlValue)
+                eval <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_evalue") %>% sapply(., xmlValue)
+                top <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_qseq") %>% sapply(., xmlValue)
+                mid <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_midline") %>% sapply(., xmlValue)
+                bottom <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_hseq") %>% sapply(., xmlValue)
+                bind_cols("query_ID" = query_ID, "hit_IDs" = hit_IDs, "hit_length" = hit_length, "bitscore" = bitscore, "eval" = eval, "top" = top, "mid" = mid, "bottom" = bottom)
+              }) %>%
+              lapply(., function(y) {
+                as.data.frame((y), stringsAsFactors = FALSE)
+              }) %>%
+              bind_rows()
+          }
+        })
+        cat("BLAST done!")
+      })
+
+      parsedresults<- reactive({
+        results <-  as.data.frame(blastresults(),stringsAsFactors=FALSE)
+        })
+      
+      output$tbl <- renderDT({
+        blastresults() %>% dplyr::select(-top, -mid, -bottom)
+      })
 
     # this chunk gets the alignment information from a clicked row
-    output$clicked <- renderTable(
-      {
-        if (is.null(input$blastResults_rows_selected)) {} else {
-          read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE) %>% select(-1)
-
-          # xmltop = xmlRoot(blastresults)
-          clicked <- input$blastResults_rows_selected
-          tableout <- blastresults[clicked, ] %>% select(-c("top","mid","bottom"))
-
-          tableout <- t(tableout)
-          names(tableout) <- c("")
-          rownames(tableout) <- c("Query ID", "Hit ID", "Length", "Bit Score", "e-value")
-          colnames(tableout) <- NULL
-          data.frame(tableout)
-        }
-      },
-      rownames = T,
-      colnames = F
-    )
-
-    # this chunk makes the alignments for clicked rows
-    output$alignment <- renderText({
-      if (is.null(input$blastResults_rows_selected)) {} else {
-        clicked <- input$blastResults_rows_selected
-
-        # loop over the xml to get the alignments
-        align <- blastresults %>%
-          select(-top, -mid, -bottom) %>%
-          t()
-
-        # split the alignments every 40 carachters to get a "wrapped look"
-        alignx <- do.call("cbind", align)
-        splits <- strsplit(gsub("(.{40})", "\\1,", alignx[1:3, clicked]), ",")
-
-        # paste them together with returns '\n' on the breaks
-        split_out <- lapply(1:length(splits[[1]]), function(i) {
-          rbind(paste0("Q-", splits[[1]][i], "\n"), paste0("M-", splits[[2]][i], "\n"), paste0("H-", splits[[3]][i], "\n"))
-        })
-        unlist(split_out)
-      }
-    })
+    # output$clicked <- renderTable(
+    #   {
+    #     if (is.null(input$blastResults_rows_selected)) {} else {
+    #       read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE) %>% select(-1)
+    # 
+    #       clicked <- input$blastResults_rows_selected
+    #       tableout <- parsedresults() %>% select(-top, -mid, -bottom) %>% slice(1) %>% t()
+    #       names(tableout) <- c("")
+    #       rownames(tableout) <- c("Query ID", "Hit ID", "Length", "Bit Score", "e-value")
+    #       colnames(tableout) <- NULL
+    #       data.frame(tableout)
+    #     }
+    #   },
+    #   rownames = T,
+    #   colnames = F
+    # )
+    # 
+    # # this chunk makes the alignments for clicked rows
+    # output$alignment <- renderText({
+    #   if (is.null(input$blastResults_rows_selected)) {} else {
+    #     clicked <- input$blastResults_rows_selected
+    # 
+    #     # loop over the xml to get the alignments
+    #     align <- blastresults() %>% slice(1) %>%
+    #       select(top, mid, bottom) %>%
+    #       t()
+    # 
+    #     # split the alignments every 40 carachters to get a "wrapped look"
+    #     alignx <- do.call("cbind", align)
+    #     splits <- strsplit(gsub("(.{40})", "\\1,", alignx[1:3, clicked]), ",")
+    # 
+    #     # paste them together with returns '\n' on the breaks
+    #     split_out <- lapply(1:length(splits[[1]]), function(i) {
+    #       rbind(paste0("Q-", splits[[1]][i], "\n"), paste0("M-", splits[[2]][i], "\n"), paste0("H-", splits[[3]][i], "\n"))
+    #     })
+    #     unlist(split_out)
+    #   }
+    # })
   })
 }
