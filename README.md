@@ -17,6 +17,9 @@
 
 ## Made Using the Following Resources/People
 
+### [starfish](https://github.com/egluckthaler/starfish)
+- [Example of shiny front-end for nextflow](https://github.com/angelovangel/nextflow-fastp-shiny)
+
 ### Database frame work
 
 ### BLAST-server
