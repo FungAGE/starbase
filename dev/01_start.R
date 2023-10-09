@@ -5,9 +5,29 @@
 golem::create_golem(path = "./",overwrite=TRUE,package_name="starbase",with_git=TRUE)
 
 # add dependencies
-# use_package("pkg.you.want.to.add")
+golem::use_recommended_deps()
+usethis::use_package("tidyverse")
+usethis::use_package("XML")
+usethis::use_package("DT")
+usethis::use_package("RColorBrewer")
+usethis::use_package("shiny")
+usethis::use_package("plotly")
+usethis::use_package("reactlog")
+usethis::use_package("shinydashboard")
+usethis::use_package("shinydashboardPlus")
+usethis::use_package("DBI")
+usethis::use_package("htmltools")
+usethis::use_package("htmlwidgets")
+usethis::use_package("crosstalk")
+usethis::use_package("Biostrings")
+usethis::use_package("msaR")
+usethis::use_package("ggtree")
+usethis::use_package("ggiraph")
+usethis::use_package("treeio")
+usethis::use_package("stringi")
+usethis::use_package("JBrowseR")
+
 # use_recommended_tests()
-# use_recommended_deps()
 
 golem::install_dev_deps()
 
