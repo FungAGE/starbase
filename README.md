@@ -25,13 +25,15 @@
 - [GitHub - systemPipeR/SPblast: Workflow Template](https://github.com/systemPipeR/SPblast)
 
 ### Alignments
-
 - [Multiple Sequence Alignment for R Shiny • msaR](https://zachcp.github.io/msaR/)
+
+#### Dotplots
+- [dotPlotly](https://github.com/tpoorten/dotPlotly)
 
 ### Genome Browser
 
-- JBrowseR
-
+- [JBrowseR](https://gmod.github.io/JBrowseR/)
+  - https://github.com/mmollina/viewpoly
 ### Taxonomy and Phylogenies
 
 - phylocanvas

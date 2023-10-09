@@ -5,9 +5,29 @@ Authors@R: person('Adrian', 'Forsythe', email = 'adrian.e.forsythe@gmail.com', r
 Description: PKG_DESC.
 License: MIT + file LICENSE
 Imports: 
+    attempt,
+    Biostrings,
     config (>= 0.3.2),
+    crosstalk,
+    DBI,
+    DT,
+    ggiraph,
+    ggtree,
+    glue,
     golem (>= 0.4.1),
-    shiny (>= 1.7.5)
+    htmltools,
+    htmlwidgets,
+    JBrowseR,
+    msaR,
+    plotly,
+    RColorBrewer,
+    reactlog,
+    shiny (>= 1.7.5),
+    shinydashboard,
+    shinydashboardPlus,
+    stringi,
+    treeio,
+    XML
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3

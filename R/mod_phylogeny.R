@@ -6,19 +6,10 @@
 #'
 #' @noRd 
 #'
+#' @import tidyverse ggtree ggiraph treeio stringi htmltools htmlwidgets crosstalk DT 
 #' @importFrom shiny NS tagList 
 
 # Load required packages
-library(tidyverse)
-library(ggtree)
-library(ggiraph)
-library(treeio)
-library(stringi)
-library(htmltools)
-library(htmlwidgets)
-library(crosstalk)
-library(DT)
-
 mod_phylogeny_ui <- function(id){
   ns <- NS(id)
   tagList(

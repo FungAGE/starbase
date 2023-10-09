@@ -2,13 +2,8 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny
+#' @import shiny shinydashboard shinydashboardPlus shinythemes
 #' @noRd
-
-library(shiny)
-library(shinydashboard)
-library(shinydashboardPlus)
-library(shinythemes)
 
 app_ui <- function(request) {
     tagList(
@@ -36,6 +31,10 @@ app_ui <- function(request) {
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
                 startExpanded = FALSE),
+              menuItem("Starship Browser", tabName = "browse", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                       href = NULL, newtab = FALSE, selected = NULL,
+                       expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
+                       startExpanded = FALSE),
               menuItem("starfish", icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
@@ -62,9 +61,11 @@ app_ui <- function(request) {
                           mod_explore_ui("explore_1")                        
                         ),
                         tabItem(tabName = "blast",
-                          mod_blast_ui("blast_1")
+                          mod_blast_ui("blast_1"),
                           # mod_blast_viz_ui("blast_viz_1")
                         ),
+                        tabItem(tabName = "browse",
+                          mod_genome_browser_ui("genome_browser_1")),
                         tabItem(tabName = "starfish",
                           mod_starfish_ui("starfish_1")
                         ),
