@@ -13,54 +13,56 @@ mod_blast_ui <- function(id) {
   ns <- NS(id)
   dashboardBody(
     fluidRow(
-    # input block
-    box(
-      title = "BLAST/HMMER Searches",
-      solidHeader = FALSE,
-      collapsible = TRUE,
-      width=NULL,
-      # TODO: add logic to only accept one query type
-      tagList(
-        textAreaInput(ns("query"), "Paste your sequence here:", value = "", width = "600px", height = "200px", placeholder = "Paste any string of nucleotide or protein sequence here"),
-        fileInput(ns("query_file"), "Upload a fasta file", width = "100px"),
+      # input block
+      box(
+        title = "BLAST/HMMER Searches",
+        solidHeader = FALSE,
+        collapsible = TRUE,
+        width = NULL,
+        # TODO: add logic to only accept one query type
+        tagList(
+          textAreaInput(ns("query"), "Paste your sequence here:", value = "", width = "600px", height = "200px", placeholder = "Paste any string of nucleotide or protein sequence here"),
+          fileInput(ns("query_file"), "Upload a fasta file", width = "100px"),
 
-        # choice should be limited to 1) whole starship or 2) just a gene sequence
-        # if 2) then choose what gene or unknown
-        selectInput(ns("input_type"), "What is the input sequence?", choices = c("starship", "gene"), width = "120px"),
-        # BUG: where db_type when choice = gene is not overwritten from default db_type when choice = starship
-        conditionalPanel(
-          condition = "input.input_type == 'gene'",
-          selectInput(ns("gene_type"), "Select a gene model:", selected = character(0), multiple = TRUE, choices = c("tyr", "freB", "nlr", "DUF3723", "plp"), width = "120px"),
-          ns = ns
-        ),
-        conditionalPanel(
-          condition = "input.input_type == 'starship'",
-          selectInput(ns("db_type"), "Which database do you want to search?", selected = character(0), multiple = FALSE, choices = c("curated", "starfish"), width = "120px"),
-          selectInput(ns("search_ship_genes"), "Search for genes in starship sequence?", choices = c("No", "Yes"), width = "120px"),
-          ns = ns
-        ),
-        div(
-          style = "display:inline-block",
-          selectInput(ns("eval"), "e-value:", choices = c(1, 0.001, 1e-4, 1e-5, 1e-10), width = "120px")
-        ),
-        actionButton(ns("blast"), "Search")
+          # choice should be limited to 1) whole starship or 2) just a gene sequence
+          # if 2) then choose what gene or unknown
+          selectInput(ns("input_type"), "What is the input sequence?", choices = c("starship", "gene"), width = "120px"),
+          # BUG: where db_type when choice = gene is not overwritten from default db_type when choice = starship
+          conditionalPanel(
+            condition = "input.input_type == 'gene'",
+            selectInput(ns("gene_type"), "Select a gene model:", selected = character(0), multiple = TRUE, choices = c("tyr", "freB", "nlr", "DUF3723", "plp"), width = "120px"),
+            ns = ns
+          ),
+          conditionalPanel(
+            condition = "input.input_type == 'starship'",
+            selectInput(ns("db_type"), "Which database do you want to search?", selected = character(0), multiple = FALSE, choices = c("curated", "starfish"), width = "120px"),
+            selectInput(ns("search_ship_genes"), "Search for genes in starship sequence?", choices = c("No", "Yes"), width = "120px"),
+            ns = ns
+          ),
+          div(
+            style = "display:inline-block",
+            selectInput(ns("eval"), "e-value:", choices = c(1, 0.001, 1e-4, 1e-5, 1e-10), width = "120px")
+          ),
+          actionButton(ns("blast"), "Search")
+        )
       )
-    )),
+    ),
 
     # Basic results output
     fluidRow(
       box(
-      title = "Results",
-      width = NULL,
-      status = "success",
-      closable = FALSE,
-      solidHeader = FALSE,
-      collapsible = TRUE,
-      DT::DTOutput(ns("tbl")),
-      p("Alignment:", tableOutput(ns("clicked"))),
-      verbatimTextOutput(ns("alignment"))
+        title = "Results",
+        width = NULL,
+        status = "success",
+        closable = FALSE,
+        solidHeader = FALSE,
+        collapsible = TRUE,
+        DT::DTOutput(ns("tbl")),
+        p("Alignment:", tableOutput(ns("clicked"))),
+        verbatimTextOutput(ns("alignment"))
+      )
     )
-  ))
+  )
 }
 
 #' blast Server Functions
@@ -121,7 +123,7 @@ mod_blast_server <- function(id) {
       if (is_null(input$query_file)) {
         query <- input$query
       } else {
-        query <- read_file(input$query_file,show_col_types = FALSE)
+        query <- read_file(input$query_file, show_col_types = FALSE)
       }
 
       # function to clean the query sequence: first remove non-letter characters, then ambiguous characters, then guess if query is nucl or protein
@@ -169,14 +171,10 @@ mod_blast_server <- function(id) {
 
       writeLines(str_c(str_c(">", query_list$header, sep = ""), query_list$query, sep = "\n"), tmp_fasta)
 
+      # select correct BLAST/HMMER program
       # force the right database to be used
       # and calls the BLAST/HMMER
-      if (input$input_type == "starship") {
-        db <- db_list[[input$input_type]][[input$db_type]][[query_list$query_type]]
-      } else {
-        db <- db_list[[input$input_type]][[input$gene_type]][[query_list$query_type]]
-      }
-      # select correct BLAST/HMMER program
+
       if (input$input_type == "gene" | input$search_ship_genes == "Yes") {
         if (query_list$query_type == "nucl") {
           hmmer_program <- "jackhmmer"
@@ -188,16 +186,20 @@ mod_blast_server <- function(id) {
         } else {
           gene_list <- input$gene_type
         }
-        hmmer_list <- NULL
-        for (gene in gene_list) {
-          hmmer_cmd <- paste(hmmer_program, "-A tmp/alignment.sto --domtblout tmp/hmmer.out", "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
-          system(hmmer_cmd, intern = FALSE)
-        }
-        # TODO: combine results from multiple genes into list before parser
         withProgress(message = "Performing HMMER search of carge genes in database...", {
-          system("python bin/hmm.py -i tmp/hmmer.out -a tmp/alignment.sto")
-          # TODO: have parser print to  terminal so that we don't have to load from an intermediate file every time
-          read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE) %>% select(-1)
+          hmmer_list <- NULL
+          for (gene in gene_list) {
+            db <- db_list[[input$input_type]][[gene]][[query_list$query_type]]
+            hmmer_cmd <- paste(hmmer_program, "-o tmp/hmmer.out", "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
+            system(hmmer_cmd, intern = FALSE)
+            # TODO: have parser print to  terminal so that we don't have to load from an intermediate file every time?
+            system("python bin/hmm.py -i tmp/hmmer.out -o tmp/hmmer.parsed.out")
+            # combine results from multiple genes
+            hmmer_list <- read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE, col_names = c("Query", "Subject", "Query Sequence", "Subject Sequence", "evalue")) %>%
+              mutate(Gene = gene) %>%
+              bind_rows(hmmer_list)
+          }
+          hmmer_list
         })
       } else if (input$input_type == "starship" & input$search_ship_genes == "No") {
         if (query_list$query_type == "nucl") {
@@ -205,6 +207,7 @@ mod_blast_server <- function(id) {
         } else {
           blast_program <- "blastp"
         }
+        db <- db_list[[input$input_type]][[input$db_type]][[query_list$query_type]]
         # TODO: should be separated by results from different genes?
         # TODO: split with conditional statements for HMMER, BLAST, or both
         withProgress(message = "Performing BLAST search of Starship elements in database...", {
@@ -235,7 +238,7 @@ mod_blast_server <- function(id) {
           }) %>% bind_rows()
         } else if (input$input_type == "gene" | input$search_ship_genes == "Yes") {
           # TODO: iterate over genes here
-          read_csv("tmp/hmmer-parsed.csv",col_names = c("X1", "query_ID", "hit_IDs", "hit_length", "bitscore", "eval"),show_col_types = FALSE) %>% select(-X1)
+          read_csv("tmp/hmmer-parsed.csv", col_names = c("X1", "query_ID", "hit_IDs", "hit_length", "bitscore", "eval"), show_col_types = FALSE) %>% select(-X1)
         }
       }
     })
