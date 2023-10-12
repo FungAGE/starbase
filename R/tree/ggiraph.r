@@ -154,14 +154,14 @@ row2 <- div(
   ),
   div(
     class = "col-md-6",
-        datatable(sd %>% select(),#selection=list(mode = 'multiple', selected = c(4,10), target ='column'),
+        datatable(sd %>% dplyr::select(),#selection=list(mode = 'multiple', selected = c(4,10), target ='column'),
         extensions="Scroller", style="bootstrap", class="compact", width="100%",options=list(deferRender=TRUE, scrollY=300, scroller=TRUE)
               )
 
     # datatable(sd$data() %>% 
     #             mutate(label=str_split(label,"_",simplify=TRUE)[1]) %>%
     #             left_join(tax,by=c("label"="code")) %>% 
-    #             select(label,species), 
+    #             dplyr::select(label,species), 
     #           extensions="Scroller", style="bootstrap", class="compact", width="100%",options=list(deferRender=TRUE, scrollY=300, scroller=TRUE) # TODO: instead use `selection` here
     #           )
   )
@@ -195,7 +195,7 @@ save_html(html=comb_widget,file="/home/adrian/Systematics/Starship_Database/sequ
 #   mutate(label=ifelse(is.na(label),groups,label),
 #          label=ifelse(label=="extra group",node,label),
 #          isTip=ifelse(!is.na(label),TRUE,FALSE)) %>% 
-#          select(-groups)
+#          dplyr::select(-groups)
 
 # make subtrees
 for(i in family_nodes){
@@ -254,7 +254,7 @@ keep.tips<-p2$data %>% filter(!is.na(x) & !is.na(y) & isTip == "TRUE") %>% pull(
 ggtree(ape::keep.tip(tip=keep.tips, phy=tree))
 
 # Create your ggtree plot
-p3<-p2 %<+% (group_df %>% mutate(groups=ifelse(groups=="extra group",node,groups)) %>% select(groups)) +
+p3<-p2 %<+% (group_df %>% mutate(groups=ifelse(groups=="extra group",node,groups)) %>% dplyr::select(groups)) +
   geom_point()+
   geom_tiplab()+
   geom_treescale()+

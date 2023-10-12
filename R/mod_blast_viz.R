@@ -10,8 +10,6 @@
 
 # TODO: use Biostrings here and then link to modules for making alignments, circos, dot plots, and jbrowse
 
-library(shinyjs)
-
 mod_blast_viz_ui <- function(id){
   ns <- NS(id)
   tagList(

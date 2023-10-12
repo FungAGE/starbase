@@ -9,9 +9,9 @@ hephaestus_promer <- read.table(file = "/home/aaronvogan/Documents/Grants/ERC202
 names(hephaestus_promer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "PER_SIM", "PER_STP", "TOT_LEN1", "TOT_LEN2", "FRM1", "FRM2", "TAG1", "TAG2")
 
 hephaestus_promer <- hephaestus_promer %>% mutate(position = seq(1, by = 1, length.out = n()))
-hpros <- hephaestus_promer %>% select(S1, S2, position) # Split table into reference coordinates
+hpros <- hephaestus_promer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(hpros) <- c("Seq1", "Seq2", "Position")
-hproe <- hephaestus_promer %>% select(E1, E2, position) # Split table into reference coordinates
+hproe <- hephaestus_promer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(hproe) <- c("Seq1", "Seq2", "Position")
 hpro <- rbind(hpros, hproe)
 
@@ -19,9 +19,9 @@ Voyager_MvB <- read.table(file = "/home/aaronvogan/Documents/Grants/ERC2023/Voya
 names(Voyager_MvB) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Voyager_MvB <- Voyager_MvB %>% mutate(position = seq(1, by = 1, length.out = n()))
-VMBnucs <- Voyager_MvB %>% select(S1, S2, position) # Split table into reference coordinates
+VMBnucs <- Voyager_MvB %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(VMBnucs) <- c("Seq1", "Seq2", "Position")
-VMBnuce <- Voyager_MvB %>% select(E1, E2, position) # Split table into reference coordinates
+VMBnuce <- Voyager_MvB %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(VMBnuce) <- c("Seq1", "Seq2", "Position")
 VMBnuc <- rbind(VMBnucs, VMBnuce)
 
@@ -29,9 +29,9 @@ Voyager_MvL <- read.table(file = "/home/aaronvogan/Documents/Grants/ERC2023/Voya
 names(Voyager_MvL) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Voyager_MvL <- Voyager_MvL %>% mutate(position = seq(1, by = 1, length.out = n()))
-VMLnucs <- Voyager_MvL %>% select(S1, S2, position) # Split table into reference coordinates
+VMLnucs <- Voyager_MvL %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(VMLnucs) <- c("Seq1", "Seq2", "Position")
-VMLnuce <- Voyager_MvL %>% select(E1, E2, position) # Split table into reference coordinates
+VMLnuce <- Voyager_MvL %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(VMLnuce) <- c("Seq1", "Seq2", "Position")
 VMLnuc <- rbind(VMLnucs, VMLnuce)
 
@@ -39,9 +39,9 @@ Voyager_MvB_pro <- read.table(file = "/home/aaronvogan/Documents/Grants/ERC2023/
 names(Voyager_MvB_pro) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "PER_SIM", "PER_STP", "TOT_LEN1", "TOT_LEN2", "FRM1", "FRM2", "TAG1", "TAG2")
 
 Voyager_MvB_pro <- Voyager_MvB_pro %>% mutate(position = seq(1, by = 1, length.out = n()))
-VMBpros <- Voyager_MvB_pro %>% select(S1, S2, position) # Split table into reference coordinates
+VMBpros <- Voyager_MvB_pro %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(VMBpros) <- c("Seq1", "Seq2", "Position")
-VMBproe <- Voyager_MvB_pro %>% select(E1, E2, position) # Split table into reference coordinates
+VMBproe <- Voyager_MvB_pro %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(VMBproe) <- c("Seq1", "Seq2", "Position")
 VMBpro <- rbind(VMBpros, VMBproe)
 
@@ -49,9 +49,9 @@ Voyager_MvL_pro <- read.table(file = "/home/aaronvogan/Documents/Grants/ERC2023/
 names(Voyager_MvL_pro) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "PER_SIM", "PER_STP", "TOT_LEN1", "TOT_LEN2", "FRM1", "FRM2", "TAG1", "TAG2")
 
 Voyager_MvL_pro <- Voyager_MvL_pro %>% mutate(position = seq(1, by = 1, length.out = n()))
-VMLpros <- Voyager_MvL_pro %>% select(S1, S2, position) # Split table into reference coordinates
+VMLpros <- Voyager_MvL_pro %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(VMLpros) <- c("Seq1", "Seq2", "Position")
-VMLproe <- Voyager_MvL_pro %>% select(E1, E2, position) # Split table into reference coordinates
+VMLproe <- Voyager_MvL_pro %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(VMLproe) <- c("Seq1", "Seq2", "Position")
 VMLpro <- rbind(VMLpros, VMLproe)
 
@@ -66,9 +66,9 @@ hephaestus_nucmer <- read.table(file = "/home/aaronvogan/Documents/Grants/ERC202
 names(hephaestus_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 hephaestus_nucmer <- hephaestus_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-hnucs <- hephaestus_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+hnucs <- hephaestus_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(hnucs) <- c("Seq1", "Seq2", "Position")
-hnuce <- hephaestus_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+hnuce <- hephaestus_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(hnuce) <- c("Seq1", "Seq2", "Position")
 hnuc <- rbind(hnucs, hnuce)
 
@@ -106,9 +106,9 @@ Pvar_nucmer <- read.table(file = "/home/aaronvogan/Starships/Dotplots/Ships/Pvar
 names(Pvar_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Pvar_nucmer <- Pvar_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-Pvarnucs <- Pvar_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+Pvarnucs <- Pvar_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(Pvarnucs) <- c("Seq1", "Seq2", "Position")
-Pvarnuce <- Pvar_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+Pvarnuce <- Pvar_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(Pvarnuce) <- c("Seq1", "Seq2", "Position")
 Pvarnuc <- rbind(Pvarnucs, Pvarnuce)
 
@@ -144,9 +144,9 @@ Fvir_nucmer <- read.table(file = "/home/aaronvogan/Starships/Dotplots/Ships/Fusv
 names(Fvir_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Fvir_nucmer <- Fvir_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-Fvirnucs <- Fvir_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+Fvirnucs <- Fvir_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(Fvirnucs) <- c("Seq1", "Seq2", "Position")
-Fvirnuce <- Fvir_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+Fvirnuce <- Fvir_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(Fvirnuce) <- c("Seq1", "Seq2", "Position")
 Fvirnuc <- rbind(Fvirnucs, Fvirnuce)
 
@@ -166,9 +166,9 @@ Afum_nucmer <- read.table(file = "/home/aaronvogan/Starships/Dotplots/Ships/Aspf
 names(Afum_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Afum_nucmer <- Afum_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-Afumnucs <- Afum_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+Afumnucs <- Afum_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(Afumnucs) <- c("Seq1", "Seq2", "Position")
-Afumnuce <- Afum_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+Afumnuce <- Afum_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(Afumnuce) <- c("Seq1", "Seq2", "Position")
 Afumnuc <- rbind(Afumnucs, Afumnuce)
 
@@ -206,9 +206,9 @@ Aasp_nucmer <- read.table(file = "/home/aaronvogan/Starships/Dotplots/Ships/Aspa
 names(Aasp_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Aasp_nucmer <- Aasp_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-Aaspnucs <- Aasp_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+Aaspnucs <- Aasp_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(Aaspnucs) <- c("Seq1", "Seq2", "Position")
-Aaspnuce <- Aasp_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+Aaspnuce <- Aasp_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(Aaspnuce) <- c("Seq1", "Seq2", "Position")
 Aaspnuc <- rbind(Aaspnucs, Aaspnuce)
 
@@ -228,9 +228,9 @@ Foxy_nucmer <- read.table(file = "/home/aaronvogan/Starships/Dotplots/Ships/Fuso
 names(Foxy_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Foxy_nucmer <- Foxy_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-Foxynucs <- Foxy_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+Foxynucs <- Foxy_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(Foxynucs) <- c("Seq1", "Seq2", "Position")
-Foxynuce <- Foxy_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+Foxynuce <- Foxy_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(Foxynuce) <- c("Seq1", "Seq2", "Position")
 Foxynuc <- rbind(Foxynucs, Foxynuce)
 
@@ -271,9 +271,9 @@ Afla_nucmer <- read.table(file = "/home/aaronvogan/Starships/Dotplots/Ships/Afla
 names(Afla_nucmer) <- c("S1", "E1", "S2", "E2", "LEN1", "LEN2", "PER_IDY", "TOT_LEN1", "TOT_LEN2", "TAG1", "TAG2")
 
 Afla_nucmer <- Afla_nucmer %>% mutate(position = seq(1, by = 1, length.out = n()))
-Aflanucs <- Afla_nucmer %>% select(S1, S2, position) # Split table into reference coordinates
+Aflanucs <- Afla_nucmer %>% dplyr::select(S1, S2, position) # Split table into reference coordinates
 names(Aflanucs) <- c("Seq1", "Seq2", "Position")
-Aflanuce <- Afla_nucmer %>% select(E1, E2, position) # Split table into reference coordinates
+Aflanuce <- Afla_nucmer %>% dplyr::select(E1, E2, position) # Split table into reference coordinates
 names(Aflanuce) <- c("Seq1", "Seq2", "Position")
 Aflanuc <- rbind(Aflanucs, Aflanuce)
 

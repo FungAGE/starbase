@@ -6,7 +6,6 @@
 #'
 #' @noRd 
 #'
-#' @import shinydashboard shinydashboardPlus shinythemes
 #' @importFrom shiny NS tagList 
 #' 
 

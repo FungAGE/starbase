@@ -6,6 +6,7 @@
 #'
 #' @noRd 
 #'
+#' @importFrom readr read_tsv
 #' @importFrom shiny NS tagList 
 mod_explore_ui <- function(id){
   ns <- NS(id)
@@ -16,7 +17,7 @@ mod_explore_ui <- function(id){
   ))
   fluidRow(box(title="Families",
                read_tsv("/home/adrian/Systematics/Starship_Database/Starships/family/family-names.tsv") %>%
-                 select(-notes) %>%
+                 dplyr::select(-notes) %>%
                  datatable(options = list(), class = "display",
                            callback = JS("return table;"), #rownames, colnames, container,
                            caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,
