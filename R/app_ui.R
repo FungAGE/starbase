@@ -2,19 +2,20 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard shinydashboardPlus shinythemes
+#' @import shiny shinydashboard shinydashboardPlus
 #' @noRd
 
 app_ui <- function(request) {
     tagList(
         # Leave this function for adding external resources
       golem_add_external_resources(),
-      fluidPage(theme = shinytheme("cerulean"),
+      fluidPage(
             tagList(
         # Your application UI logic
         # includeMarkdown("dashboard.Rmd")
 
         dashboardPage(
+          skin="blue",
           options = list(sidebarExpandOnHover = TRUE),
           header = dashboardHeader(title="starbase"),
           sidebar = dashboardSidebar(minified = FALSE, collapsed = FALSE,

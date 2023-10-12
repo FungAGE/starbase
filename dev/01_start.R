@@ -27,8 +27,7 @@ usethis::use_package("treeio")
 usethis::use_package("stringi")
 usethis::use_package("JBrowseR")
 
-# use_recommended_tests()
-
+## Install the required dev dependencies ----
 golem::install_dev_deps()
 
 ########################################
@@ -57,9 +56,6 @@ golem::fill_desc(
 
 ## Set {golem} options ----
 golem::set_golem_options()
-
-## Install the required dev dependencies ----
-golem::install_dev_deps()
 
 usethis::use_mit_license()  
 usethis::use_readme_rmd(open = FALSE)

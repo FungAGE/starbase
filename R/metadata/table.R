@@ -10,7 +10,7 @@ dat<-read_tsv("/home/adrian/Systematics/Starship_Database/MTDB/starships.db",col
   separate(taxonomy,sep=": ",into=c("rank","name")) %>%
   pivot_wider(id_cols=c("ome","genus","species","strain","version","source","biosample","assembly_acc","acquisition_date","published","fna","faa","gff3"),names_from="rank",values_from="name") %>%
   relocate("kingdom","clade","phylum","subphylum","class","subclass","order","suborder","family","subfamily","genus","species") %>%
-  select(-c(kingdom:subfamily))
+  dplyr::select(-c(kingdom:subfamily))
 
 dat.html<-datatable(dat, options = list(), class = "display",
     callback = JS("return table;"), #rownames, colnames, container,

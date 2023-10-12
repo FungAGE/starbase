@@ -238,7 +238,7 @@ mod_blast_server <- function(id) {
           }) %>% bind_rows()
         } else if (input$input_type == "gene" | input$search_ship_genes == "Yes") {
           # TODO: iterate over genes here
-          read_csv("tmp/hmmer-parsed.csv", col_names = c("X1", "query_ID", "hit_IDs", "hit_length", "bitscore", "eval"), show_col_types = FALSE) %>% select(-X1)
+          read_csv("tmp/hmmer-parsed.csv", col_names = c("X1", "query_ID", "hit_IDs", "hit_length", "bitscore", "eval"), show_col_types = FALSE) %>% dplyr::select(-X1)
         }
       }
     })
