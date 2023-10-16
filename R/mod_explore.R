@@ -6,6 +6,7 @@
 #'
 #' @noRd 
 #'
+#' @importFrom readr read_tsv
 #' @importFrom shiny NS tagList 
 mod_explore_ui <- function(id){
   ns <- NS(id)
@@ -15,8 +16,8 @@ mod_explore_ui <- function(id){
     box(title="Represented Species",mod_metadata_ui("metadata_1"))
   ))
   fluidRow(box(title="Families",
-               read_tsv("/home/adrian/Systematics/Starship_Database/Starships/family/family-names.tsv") %>%
-                 select(-notes) %>%
+               read_tsv("Starships/family/family-names.tsv") %>%
+                 dplyr::select(-notes) %>%
                  datatable(options = list(), class = "display",
                            callback = JS("return table;"), #rownames, colnames, container,
                            caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,
@@ -35,6 +36,6 @@ mod_explore_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
     mod_phylogeny_server("phylogeny_1")
-    mod_metadata_server("metadata_1")
+    # mod_metadata_server("metadata_1")
   })
 }

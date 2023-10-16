@@ -10,8 +10,6 @@
 
 # TODO: use Biostrings here and then link to modules for making alignments, circos, dot plots, and jbrowse
 
-library(shinyjs)
-
 mod_blast_viz_ui <- function(id){
   ns <- NS(id)
   tagList(
@@ -35,7 +33,7 @@ golem_add_external_resources <- function() {
   add_resource_path( 'js', app_sys('app/www/js'))
   tagList(
     tags$head(
-      favicon(),
+      favicon(ext="png"),
       bundle_resources(
         path = app_sys("app/www"),
         app_title = "starbase"
