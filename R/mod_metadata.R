@@ -19,7 +19,7 @@ mod_metadata_ui <- function(id){
 mod_metadata_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
-    mydb <- dbConnect(RSQLite::SQLite(), "/home/adrian/Systematics/Starship_Database/SQL/starbase.sqlite")
+    mydb <- dbConnect(RSQLite::SQLite(), "SQL/starbase.sqlite")
     output$tbl<-
       dbGetQuery(mydb, 'SELECT * FROM starbase') %>%
         distinct(ome,genus,species,strain) %>%

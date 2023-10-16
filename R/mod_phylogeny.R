@@ -6,7 +6,7 @@
 #'
 #' @noRd 
 #'
-#' @import tidyverse ggtree ggiraph treeio stringi htmltools htmlwidgets crosstalk DT 
+#' @import tidyverse ggiraph stringi htmltools htmlwidgets crosstalk DT 
 #' @importFrom shiny NS tagList 
 
 # Load required packages

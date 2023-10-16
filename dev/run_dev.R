@@ -5,7 +5,10 @@ options(golem.app.prod = FALSE) # TRUE = production mode, FALSE = development mo
 options(shiny.autoreload = TRUE)
 
 # Comment this if you don't want the app to be served on a random port
-options(shiny.port = httpuv::randomPort())
+# options(shiny.port = httpuv::randomPort())
+
+# for bioc repos
+options(repos = BiocManager::repositories())
 
 # tell shiny to log all reactivity
 options(shiny.reactlog=TRUE)
@@ -16,6 +19,9 @@ rm(list=ls(all.names = TRUE))
 
 # Document and reload your package
 golem::document_and_reload()
+
+golem::add_shinyappsio_file()
+# golem::add_shinyserver_file()
 
 # Run the application
 run_app()

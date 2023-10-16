@@ -4,8 +4,9 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
+#' @importFrom  shinyjs inlineCSS
 #' @importFrom shiny NS tagList htmlOutput
-#' @importFrom htmltools renderTags
+#' @importFrom htmltools renderTags 
 #' 
 #' @noRd
 
