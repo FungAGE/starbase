@@ -9,7 +9,7 @@
 #' @importFrom shiny NS tagList 
 mod_metadata_ui <- function(id){
   ns <- NS(id)
-    readRDS("RDS/metadata-table.RDS")
+  renderDT(readRDS("RDS/metadata-table.RDS"))
     # DTOutput("tbl")
 }
     
@@ -19,7 +19,7 @@ mod_metadata_ui <- function(id){
 mod_metadata_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
-    mydb <- dbConnect(RSQLite::SQLite(), "/home/adrian/Systematics/Starship_Database/SQL/starbase.sqlite")
+    mydb <- dbConnect(RSQLite::SQLite(), "SQL/starbase.sqlite")
     output$tbl<-
       dbGetQuery(mydb, 'SELECT * FROM starbase') %>%
         distinct(ome,genus,species,strain) %>%
