@@ -33,7 +33,7 @@ golem_add_external_resources <- function() {
   add_resource_path( 'js', app_sys('app/www/js'))
   tagList(
     tags$head(
-      favicon(),
+      favicon(ext="png"),
       bundle_resources(
         path = app_sys("app/www"),
         app_title = "starbase"

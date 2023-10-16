@@ -79,18 +79,18 @@ mod_blast_server <- function(id) {
         starship = list(
           curated =
             list(
-              nucl = "/home/adrian/Systematics/Starship_Database/blastdb/concatenated.fa",
+              nucl = "blastdb/concatenated.fa",
               prot = ""
             ),
           starfish =
             list(
-              nucl = "/home/adrian/Systematics/Starship_Database/blastdb/mycodb.final.starships.headers.fna",
+              nucl = "blastdb/mycodb.final.starships.headers.fna",
               prot = ""
             )
         ),
         gene = list(
           tyr = list(
-            prot = "/home/adrian/Systematics/Starship_Database/blastdb/YRsuperfamRefs.faa",
+            prot = "blastdb/YRsuperfamRefs.faa",
             nucl = ""
           ),
           freB = list(
@@ -120,7 +120,7 @@ mod_blast_server <- function(id) {
       # gather input and set up temp file
       # validate(need(input$query_file || input$query, message = TRUE))
 
-      if (is_null(input$query_file)) {
+      if (is.null(input$query_file)) {
         query <- input$query
       } else {
         query <- read_file(input$query_file, show_col_types = FALSE)

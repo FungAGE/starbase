@@ -21,11 +21,15 @@ usethis::use_package("htmlwidgets")
 usethis::use_package("crosstalk")
 usethis::use_package("Biostrings")
 usethis::use_package("msaR")
-usethis::use_package("ggtree")
 usethis::use_package("ggiraph")
-usethis::use_package("treeio")
 usethis::use_package("stringi")
 usethis::use_package("JBrowseR")
+usethis::use_package('readr')
+usethis::use_package('shinyjs')
+usethis::use_package('tidyverse')
+
+# issue with these bioconductor packages:
+# renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings"))
 
 ## Install the required dev dependencies ----
 golem::install_dev_deps()
@@ -65,10 +69,9 @@ usethis::use_git()
 ## Init Testing Infrastructure ----
 ## Create a template for tests
 golem::use_recommended_tests()
-golem::use_recommended_deps()
 
 ## Favicon ----
-golem::use_favicon( path = "hex-starbase.png")
+golem::use_favicon( path = "inst/app/www/favicon.png")
 
 ## Add helper functions ----
 golem::use_utils_ui(with_test = TRUE)

@@ -16,7 +16,7 @@ mod_explore_ui <- function(id){
     box(title="Represented Species",mod_metadata_ui("metadata_1"))
   ))
   fluidRow(box(title="Families",
-               read_tsv("/home/adrian/Systematics/Starship_Database/Starships/family/family-names.tsv") %>%
+               read_tsv("Starships/family/family-names.tsv") %>%
                  dplyr::select(-notes) %>%
                  datatable(options = list(), class = "display",
                            callback = JS("return table;"), #rownames, colnames, container,

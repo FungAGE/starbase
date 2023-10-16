@@ -54,3 +54,11 @@ rsconnect/
 tmp/
 .Rproj.user
 .Rdata
+
+MTDB/**
+SQL/**
+Starships/**
+blastdb/**
+inst/doc
+/doc/
+/Meta/

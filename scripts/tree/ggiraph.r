@@ -9,7 +9,7 @@ library(htmlwidgets)
 library(crosstalk)
 library(DT)
 
-nexus_tree<-"/home/adrian/Systematics/Starship_Database/Starships/ships/starfish/phylo/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
+nexus_tree<-"Starships/ships/starfish/phylo/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
 
 # Read the Newick tree using the read.tree function
 tree <- treeio::read.nexus(nexus_tree)
@@ -19,12 +19,12 @@ tree$tip.label<-gsub("'","",tree$tip.label)
 p<-ggtree(tree)
 
 # load taxonomic info
-tax<-full_join(read_tsv("/home/adrian/Systematics/Starship_Database/MTDB/mycodb2899.ome2species.txt",col_names=c("code","species")),
-               read_csv("/home/adrian/Systematics/Starship_Database/Starships/ships/manual-annotations/Starships.csv") %>% rename_all(tolower))
+tax<-full_join(read_tsv("MTDB/mycodb2899.ome2species.txt",col_names=c("code","species")),
+               read_csv("Starships/ships/manual-annotations/Starships.csv") %>% rename_all(tolower))
 
 # info on the groups we care about
 family_nodes<-c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606)
-families<-read_tsv("/home/adrian/Systematics/Starship_Database/Starships/family/family-names.tsv",show_col_types = FALSE) %>%
+families<-read_tsv("Starships/family/family-names.tsv",show_col_types = FALSE) %>%
   rename("groups"="oldFamilyID")
 
 group_df<-data.frame(parent=c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606,2424,2425,2426,2442,2444,1477,1479,1487,1640,1227,1803),
@@ -175,10 +175,10 @@ bscols(div(class="container",row1,row2)) %>%
   saveRDS("RDS/captain-tree-wtable.RDS")
 
 # Save the interactive plot as an HTML file
-save_html(html=comb_widget,file="/home/adrian/Systematics/Starship_Database/sequenceserver/public/trees/captain-tree.html")
+save_html(html=comb_widget,file="sequenceserver/public/trees/captain-tree.html")
 
 # replace headers
-# headers<-read_tsv("/home/adrian/Systematics/Starship_Database/tree/headers.tsv",col_names=NULL) %>% 
+# headers<-read_tsv("tree/headers.tsv",col_names=NULL) %>% 
 #   rename("label"="X3") %>%
 #   mutate(X1=stringi::stri_extract_first_regex(X1,"^([^_]*)"),
 #   label=gsub("_R_|_\\d+$","",label))
@@ -232,10 +232,10 @@ for(i in family_nodes){
   htmltools::renderTags() 
 
   # Save the interactive plot as an HTML file
-  save_html(html=comb_sub_widget,file=paste0("/home/adrian/Systematics/Starship_Database/sequenceserver/public/trees/",group_df[group_df$parent==i,]$groups,".html"))
+  save_html(html=comb_sub_widget,file=paste0("sequenceserver/public/trees/",group_df[group_df$parent==i,]$groups,".html"))
 
   # htmlwidgets::saveWidget(interactive_sub_plot, 
-  #   file=paste0("/home/adrian/Systematics/Starship_Database/sequenceserver/public/trees/",group_df[group_df$parent==i,]$groups,".html"),
+  #   file=paste0("sequenceserver/public/trees/",group_df[group_df$parent==i,]$groups,".html"),
   #   title=paste0("Phylogeny of ",group_df[group_df$parent==i,]$groups," Captain Genes"))
 
 }

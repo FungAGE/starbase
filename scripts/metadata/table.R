@@ -4,7 +4,7 @@ library(htmlwidgets)
 library(crosstalk)
 library(DT)
 
-dat<-read_tsv("/home/adrian/Systematics/Starship_Database/MTDB/starships.db",col_names=c("ome","genus","species","strain","taxonomy","version","source","biosample","assembly_acc","acquisition_date","published","fna","faa","gff3")) %>%
+dat<-read_tsv("MTDB/starships.db",col_names=c("ome","genus","species","strain","taxonomy","version","source","biosample","assembly_acc","acquisition_date","published","fna","faa","gff3")) %>%
   separate_rows(taxonomy,sep=",") %>%
   mutate(taxonomy=gsub(c("\\{|\\}|\\'"),"",trimws(taxonomy))) %>%
   separate(taxonomy,sep=": ",into=c("rank","name")) %>%
