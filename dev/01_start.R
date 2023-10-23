@@ -27,6 +27,8 @@ usethis::use_package("JBrowseR")
 usethis::use_package('readr')
 usethis::use_package('shinyjs')
 usethis::use_package('tidyverse')
+usethis::use_package("covrpage")
+usethis::use_package("spelling")
 
 # issue with these bioconductor packages:
 # renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings"))

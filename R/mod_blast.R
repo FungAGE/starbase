@@ -6,7 +6,8 @@
 #'
 #' @noRd
 #'
-#' @import XML
+#' @import XML tidyverse stringr dplyr
+#' @importFrom readr read_csv
 #' @importFrom shiny NS tagList
 
 mod_blast_ui <- function(id) {

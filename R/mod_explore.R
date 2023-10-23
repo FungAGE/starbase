@@ -12,6 +12,7 @@ mod_explore_ui <- function(id){
   ns <- NS(id)
             
   fluidRow(div(
+    box(title="Starship Diversity",mod_diversity_ui("diversity_1")),
     box(title="Captain Phylogeny",mod_phylogeny_ui("phylogeny_1")),
     box(title="Represented Species",mod_metadata_ui("metadata_1"))
   ))
@@ -35,7 +36,8 @@ mod_explore_ui <- function(id){
 mod_explore_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
+    mod_diversity_server("diversity_1")
     mod_phylogeny_server("phylogeny_1")
-    # mod_metadata_server("metadata_1")
+    mod_metadata_server("metadata_1")
   })
 }

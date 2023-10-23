@@ -283,4 +283,4 @@ interactive_plot  <- girafe(
 )
 
 # Save the interactive plot as an HTML file
-htmlwidgets::saveWidget(interactive_plot, "ggiraph.html",title="Starship Database Phylogeny")
+htmlwidgets::saveWidget(interactive_plot, "html/ggiraph.html",title="Starship Database Phylogeny")
