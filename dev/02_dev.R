@@ -44,6 +44,7 @@ golem::add_js_handler("handlers")
 golem::add_css_file("custom")
 golem::add_sass_file("custom")
 
+# add html templates
 golem::add_html_template("BlasterJS")
 
 ## Add internal datasets ----

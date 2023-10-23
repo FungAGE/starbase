@@ -10,7 +10,9 @@
 mod_diversity_ui <- function(id){
   ns <- NS(id)
   tagList(
- 
+    img(src = "img/heat_tree.png",
+    width = "100%",
+    style = "background-color: black;")
   )
 }
     
@@ -20,7 +22,6 @@ mod_diversity_ui <- function(id){
 mod_diversity_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
-    readRDS("RDS/heat_tree.rds")
   })
 }
     
