@@ -9,6 +9,9 @@
 ## install.packages('attachment') # if needed.
 attachment::att_amend_desc()
 
+# for bioc repos
+options(repos = BiocManager::repositories())
+
 ## Add modules ----
 ## Create a module infrastructure in R/
 # Creating a module skeleton
@@ -27,6 +30,7 @@ golem::add_module(name = "dotplot")
 golem::add_module(name = "user")
 golem::add_module(name = "sql")
 golem::add_module(name = "db_update")
+golem::add_module((name = "diversity"))
 
 ## Add helper functions ----
 ## Creates fct_* and utils_*

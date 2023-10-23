@@ -1,41 +1,42 @@
 Package: starbase
 Title: STARBASE
 Version: 0.0.0.9000
-Authors@R: person('Adrian', 'Forsythe', email = 'adrian.e.forsythe@gmail.com', role = c('cre', 'aut'))
+Authors@R: 
+    person("Adrian", "Forsythe", , "adrian.e.forsythe@gmail.com", role = c("cre", "aut"))
 Description: PKG_DESC.
 License: MIT + file LICENSE
+URL: https://github.com/FungAGE/starbase
+BugReports: https://github.com/FungAGE/starbase/issues
 Imports: 
-    attempt,
-    Biostrings,
     config (>= 0.3.2),
     crosstalk,
     DBI,
+    dplyr,
     DT,
     ggiraph,
-    glue,
     golem (>= 0.4.1),
     htmltools,
     htmlwidgets,
+    httpuv,
     JBrowseR,
-    msaR,
-    pkgload,
-    plotly,
-    RColorBrewer,
-    reactlog,
     readr,
+    RSQLite,
     shiny (>= 1.7.5),
     shinydashboard,
     shinydashboardPlus,
     shinyjs,
     stringi,
+    stringr,
     tidyverse,
+    tools,
     XML
+Suggests: 
+    knitr,
+    rmarkdown,
+    spelling,
+    testthat
+VignetteBuilder: 
+    knitr
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
-URL: https://github.com/FungAGE/starbase
-BugReports: https://github.com/FungAGE/starbase/issues
-Suggests: 
-    knitr,
-    rmarkdown
-VignetteBuilder: knitr

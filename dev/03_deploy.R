@@ -15,6 +15,10 @@ devtools::check()
 ## sent to CRAN, or to a package manager
 devtools::build()
 
+## Docker ----
+# with dependances:
+golem::add_dockerfile_with_renv(host = ,extra_sysreqs = c("ncbi-blast+","hmmer","python","python3-biopython"))
+
 ## RStudio ----
 ## If you want to deploy on RStudio related platforms
 # golem::add_rstudioconnect_file()
