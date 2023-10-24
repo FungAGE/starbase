@@ -1,10 +1,8 @@
+remotes::install_local("/home/adrian/Systematics/bin/metacoder",force=TRUE)
+
 library(tidyverse)
-library(taxa)
-library(taxize)
 library(metacoder)
 library(ggiraph)
-
-source("bin/heat_tree_function.R")
 
 dat<-read_tsv("MTDB/joined_ships.tsv") %>%
   # distinct(checksum,.keep_all=TRUE) %>%
@@ -23,7 +21,7 @@ missing_tax <- dat %>%
   filter(is.na(phylum)|is.na(class)|is.na(order)|is.na(family)) %>%
   distinct(taxid,genus,species,.keep_all=T) %>%
   mutate(tax=paste(genus,species))
-# 
+
 # map(missing_tax$tax,~{
 #   x<-system(paste0("echo 'Coccidioides immitis' | /usr/local/bin/taxonkit name2taxid | /usr/local/bin/taxonkit lineage -i 2 -r -R"),intern = TRUE) 
 #   y<-x%>% read.csv(text=.,sep="\t",header = F)
@@ -33,15 +31,16 @@ missing_tax <- dat %>%
 # })
 
 # create taxmap object
-obj<-dat %>% select(-taxid) %>% parse_tax_data(., class_cols = 2:8,
-                    named_by_rank = TRUE)
+obj<-dat %>% select(-taxid) %>% 
+    parse_tax_data(., class_cols = 2:8,
+                   named_by_rank = TRUE)
 
 # Each number will produce a slightly different result for some layouts
 set.seed(2) 
 
 p<-obj %>%
   # filter_taxa(grepl(pattern = "^[a-zA-Z]+$", taxon_names)) %>% # remove "odd" taxa
-  custom_heat_tree(
+  heat_tree(
     node_label = ifelse(taxon_ranks == "species", "", taxon_names),
     node_label_color = "black",
     node_size = n_obs,
@@ -52,7 +51,8 @@ p<-obj %>%
     node_size_axis_label = "",
     node_color_axis_label = "")
 
-ggsave(plot=p,file=app_sys("app/img/heat_tree.png"))
+# save as png/svg
+ggsave(plot=p,file="img/heat_tree.png")
 
 interactive_plot  <- girafe(
   ggobj = p, width_svg = 15,
