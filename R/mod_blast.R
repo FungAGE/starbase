@@ -6,7 +6,7 @@
 #'
 #' @noRd
 #'
-#' @import XML tidyverse stringr dplyr
+#' @import XML tidyverse stringr dplyr DT
 #' @importFrom readr read_csv
 #' @importFrom shiny NS tagList
 
@@ -36,7 +36,6 @@ mod_blast_ui <- function(id) {
           ),
           conditionalPanel(
             condition = "input.input_type == 'starship'",
-            selectInput(ns("db_type"), "Which database do you want to search?", selected = character(0), multiple = FALSE, choices = c("curated", "starfish"), width = "120px"),
             selectInput(ns("search_ship_genes"), "Search for genes in starship sequence?", choices = c("No", "Yes"), width = "120px"),
             ns = ns
           ),
@@ -49,6 +48,7 @@ mod_blast_ui <- function(id) {
       )
     ),
 
+    # TODO: should be separated by results from different genes?
     # Basic results output
     fluidRow(
       box(
@@ -75,19 +75,14 @@ mod_blast_server <- function(id) {
     # ns <- session$ns
     blastresults <- eventReactive(input$blast, {
       # separate lists of starship and gene databases with sub lists of nucl and prot databases
+
       # TODO: add starship protein databases and gene hmm to folder
+      # TODO: add profiles for other cargo genes?
+
       db_list <- list(
         starship = list(
-          curated =
-            list(
-              nucl = "blastdb/concatenated.fa",
-              prot = ""
-            ),
-          starfish =
-            list(
-              nucl = "blastdb/mycodb.final.starships.headers.fna",
-              prot = ""
-            )
+          nucl = "blastdb/concatenated.fa",
+          prot = ""
         ),
         gene = list(
           tyr = list(
@@ -114,7 +109,7 @@ mod_blast_server <- function(id) {
       )
 
       # gather input and set up temp file
-      tmp_fasta <- "tmp/queryfile"
+      tmp_fasta <- tempfile(fileext = ".fa")
 
       # TODO: add better error catching for format of query sequence/file here
 
@@ -182,35 +177,38 @@ mod_blast_server <- function(id) {
         } else {
           hmmer_program <- "phmmer"
         }
-        if (input$input_type == "starship" & input$search_ship_genes == "Yes") {
-          gene_list <- names(db_list[["gene"]])
-        } else {
+        if (!is.null(input$gene_type)) {
           gene_list <- input$gene_type
+        } else {
+          gene_list <- names(db_list[["gene"]])
         }
-        withProgress(message = "Performing HMMER search of carge genes in database...", {
+
+        withProgress(message = "Performing HMMER search of cargo genes in database...", {
           hmmer_list <- NULL
           for (gene in gene_list) {
             db <- db_list[[input$input_type]][[gene]][[query_list$query_type]]
-            hmmer_cmd <- paste(hmmer_program, "-o tmp/hmmer.out", "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
+            tmp_hmmer <- tempfile(fileext = ".hmmer")
+            tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
+            hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
             system(hmmer_cmd, intern = FALSE)
             # TODO: have parser print to  terminal so that we don't have to load from an intermediate file every time?
-            system("python bin/hmm.py -i tmp/hmmer.out -o tmp/hmmer.parsed.out")
+            system(paste0("python bin/hmm.py -i ", tmp_hmmer, "-o ", tmp_hmmer_parsed))
             # combine results from multiple genes
-            hmmer_list <- read_csv("tmp/hmmer-parsed.csv", show_col_types = FALSE, col_names = c("Query", "Subject", "Query Sequence", "Subject Sequence", "evalue")) %>%
+            hmmer_list <- read_csv(tmp_hmmer_parsed, show_col_types = FALSE, col_names = c("Query", "Subject", "Query Sequence", "Subject Sequence", "evalue")) %>%
               mutate(Gene = gene) %>%
               bind_rows(hmmer_list)
           }
           hmmer_list
         })
-      } else if (input$input_type == "starship" & input$search_ship_genes == "No") {
+      }
+
+      if (input$input_type == "starship") {
         if (query_list$query_type == "nucl") {
           blast_program <- "blastn"
         } else {
           blast_program <- "blastp"
         }
-        db <- db_list[[input$input_type]][[input$db_type]][[query_list$query_type]]
-        # TODO: should be separated by results from different genes?
-        # TODO: split with conditional statements for HMMER, BLAST, or both
+        db <- db_list[[input$input_type]][[query_list$query_type]]
         withProgress(message = "Performing BLAST search of Starship elements in database...", {
           system(paste0(blast_program, " -query ", tmp_fasta, " -db ", db, " -evalue ", input$eval, " -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
             xmlParse()
@@ -295,7 +293,7 @@ mod_blast_server <- function(id) {
 
         # split the alignments every 40 carachters to get a "wrapped look"
         alignx <- do.call("cbind", align)
-        splits <- strsplit(gsub("(.{40})", "\\1,", alignx[1:3, clicked]), ",")
+        splits <- strsplit(gsub("(.{60})", "\\1,", alignx[1:3, clicked]), ",")
 
         # paste them together with returns '\n' on the breaks
         split_out <- lapply(1:length(splits[[1]]), function(i) {

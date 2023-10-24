@@ -19,6 +19,7 @@ Imports:
     htmlwidgets,
     httpuv,
     JBrowseR,
+    metacoder,
     readr,
     RSQLite,
     shiny (>= 1.7.5),
@@ -27,6 +28,8 @@ Imports:
     shinyjs,
     stringi,
     stringr,
+    taxa,
+    taxize,
     tidyverse,
     tools,
     XML
