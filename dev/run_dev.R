@@ -15,6 +15,9 @@ options(shiny.port = 5858)
 # or choose a random port
 # options(shiny.port = httpuv::randomPort())
 
+options(shiny.launch.browser = FALSE)
+# options(quiet = TRUE)
+
 # tell shiny to log all reactivity
 options(shiny.reactlog=TRUE)
 
