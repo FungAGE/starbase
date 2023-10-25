@@ -30,7 +30,9 @@ golem::add_module(name = "dotplot")
 golem::add_module(name = "user")
 golem::add_module(name = "sql")
 golem::add_module(name = "db_update")
-golem::add_module((name = "diversity"))
+golem::add_module(name = "diversity")
+golem::add_module(name = "blast_syn_viz")
+golem::add_module(name = "dotplot_syn")
 
 ## Add helper functions ----
 ## Creates fct_* and utils_*
