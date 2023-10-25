@@ -11,7 +11,7 @@ options(shiny.host = "0.0.0.0")
 
 # port
 # can assume any value that you want (just assure to avoid to select ports used by other services like ssh or http)
-options(shiny.port = 3838)
+options(shiny.port = 5858)
 # or choose a random port
 # options(shiny.port = httpuv::randomPort())
 

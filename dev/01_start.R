@@ -29,6 +29,13 @@ usethis::use_package("readr")
 usethis::use_package("covrpage")
 usethis::use_package("spelling")
 
+usethis::use_package("bslib")
+usethis::use_package("shinyWidgets")
+usethis::use_package("shinyalert")
+usethis::use_package("colourpicker")
+usethis::use_package("waiter")
+usethis::use_package("vroom")
+
 # issue with these bioconductor packages:
 # renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings"))
 
