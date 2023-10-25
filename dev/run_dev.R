@@ -4,11 +4,19 @@ options(golem.app.prod = FALSE) # TRUE = production mode, FALSE = development mo
 # options(shiny.testmode = TRUE)
 options(shiny.autoreload = TRUE)
 
-# Comment this if you don't want the app to be served on a random port
+# host address
+# options(shiny.host = strsplit(system('hostname -I',intern=T)," ")[[1]][2])
+# accept any connection (not just from localhost)
+options(shiny.host = "0.0.0.0")
+
+# port
+# can assume any value that you want (just assure to avoid to select ports used by other services like ssh or http)
+options(shiny.port = 5858)
+# or choose a random port
 # options(shiny.port = httpuv::randomPort())
 
-# for bioc repos
-options(repos = BiocManager::repositories())
+options(shiny.launch.browser = FALSE)
+# options(quiet = TRUE)
 
 # tell shiny to log all reactivity
 options(shiny.reactlog=TRUE)
@@ -20,8 +28,5 @@ rm(list=ls(all.names = TRUE))
 # Document and reload your package
 golem::document_and_reload()
 
-golem::add_shinyappsio_file()
-# golem::add_shinyserver_file()
-
 # Run the application
-run_app()
+starbase::run_app()

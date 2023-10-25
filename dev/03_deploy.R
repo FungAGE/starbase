@@ -15,6 +15,10 @@ devtools::check()
 ## sent to CRAN, or to a package manager
 devtools::build()
 
+## Docker ----
+# with dependances:
+golem::add_dockerfile_with_renv(host = ,extra_sysreqs = c("ncbi-blast+","hmmer","python","python3-biopython"))
+
 ## RStudio ----
 ## If you want to deploy on RStudio related platforms
 # golem::add_rstudioconnect_file()
@@ -28,7 +32,7 @@ remotes::install_local("starbase_0.0.0.9000.tar.gz")
 ## If you want to deploy via a generic Dockerfile
 # golem::add_dockerfile_with_renv()
 
-## If you want to deploy to ShinyProxy
+# If you want to deploy to ShinyProxy
 # golem::add_dockerfile_with_renv_shinyproxy()
 
 # Deploy to Posit Connect or ShinyApps.io
