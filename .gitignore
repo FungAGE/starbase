@@ -62,3 +62,4 @@ blastdb/**
 inst/doc
 /doc/
 /Meta/
+*.gz

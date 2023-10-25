@@ -36,8 +36,7 @@ mod_genome_browser_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # TODO: make sure fasta headers match gff
-    # TODO: make coordinates in gff relative to the element, rather than the chr. Use columns 4 and 5 in `mycodb.final.starships.feat` to correct. and remember, gff is 1-indexed
+    # TODO: add code for zipping/indexing
     path.fa <- "tmp/browser/aspcla3_s00849.fa.gz"
     path.gff <- "tmp/browser/aspcla3.gff.gz"
     g.chr <- "aspcla3_DS026990.1"
