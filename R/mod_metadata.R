@@ -27,7 +27,7 @@ mod_metadata_ui <- function(id){
     )
   ))
 
-  readr::read_tsv("MTDB/joined_ships.tsv") %>%
+  joined_ships %>%
       dplyr::select(ome,kingdom,phylum,subphylum,class,subclass,order,family,genus,species,taxid,starship_class,code,size,tsd,atir,spok,ars,other,hgt) %>%
       DT::datatable(options = list(), class = "display",rownames = FALSE,container = sketch,
                 callback = JS("return table;"), #rownames, colnames, container,
@@ -62,7 +62,7 @@ mod_metadata_server <- function(id){
   #   ))
   # 
   #   output$meta_table<-DT::renderDT({
-  #     readr::read_tsv("MTDB/joined_ships.tsv") %>% 
+  #     joined_ships %>% 
   #       dpylr::select(ome,kingdom,phylum,subphylum,class,subclass,order,family,genus,species,taxid,starship_class,code,size,tsd,atir,spok,ars,other,hgt) %>%
   #       DT::datatable(options = list(), class = "display",rownames = FALSE,container = sketch,
   #                 callback = JS("return table;"), #rownames, colnames, container,
