@@ -41,8 +41,6 @@ golem::add_utils("helpers", with_test = TRUE)
 
 ## External resources
 ## Creates .js and .css files at inst/app/www
-golem::add_js_file("script")
-golem::add_js_handler("handlers")
 golem::add_css_file("custom")
 golem::add_sass_file("custom")
 
@@ -50,8 +48,12 @@ golem::add_sass_file("custom")
 golem::add_html_template("BlasterJS")
 
 ## Add internal datasets ----
-## If you have data in your package
-# usethis::use_data_raw(name = "my_dataset", open = FALSE)
+# TODO: incorporate database scripts into `raw_data`?
+usethis::use_data_raw( name = "joined_ships", open = FALSE )
+usethis::use_data_raw( name = "ships_with_anno", open = FALSE )
+usethis::use_data_raw( name = "fna_list", open = FALSE )
+usethis::use_data_raw( name = "gff_list", open = FALSE )
+usethis::use_data_raw( name = "taxa_list", open = FALSE )
 
 ## Tests ----
 ## Add one line by test you want to create

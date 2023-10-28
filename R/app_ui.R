@@ -2,15 +2,15 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard shinydashboardPlus
+#' @import shiny shinydashboard shinydashboardPlus bslib
 #' @noRd
 
 app_ui <- function(request) {
     tagList(
-        # Leave this function for adding external resources
+      # Leave this function for adding external resources
       golem_add_external_resources(),
       fluidPage(
-            tagList(
+        tagList(
         # Your application UI logic
         # includeMarkdown("dashboard.Rmd")
 
