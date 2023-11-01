@@ -10,14 +10,10 @@
 
 # TODO: use Biostrings here and then link to modules for making alignments, circos, dot plots, and jbrowse
 
-mod_blast_viz_ui <- function(request) {
-  # ns <- NS(id)
-  tagList(
-    golem_add_external_resources(),
-    fluidPage(
-      h1("blasteR: A shiny app using the wonderful `BlasterJS` component"),
-      shiny::htmlTemplate(app_sys("app/www/BlasterJS.html"))
-    )
+mod_blast_viz_ui <- function(id) {
+  ns <- NS(id)
+  dashboardBody(
+    includeHTML(app_sys("html/kablammo.html"))
   )
 }
 
@@ -28,9 +24,6 @@ mod_blast_viz_ui <- function(request) {
 mod_blast_viz_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
-    # output$html_output <- renderUI({
-    #   includeHTML(app_sys("www/BlasterJS.html"))
-    # })
     }
   )
 }

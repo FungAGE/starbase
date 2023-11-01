@@ -19,6 +19,7 @@ golem::add_module(name = "dashboard")
 golem::add_module(name = "home")
 golem::add_module(name = "explore")
 golem::add_module(name = "metadata")
+golem::add_module(name = "wiki")
 golem::add_module(name = "phylogeny")
 golem::add_module(name = "starfish")
 golem::add_module(name = "submit")
@@ -46,6 +47,7 @@ golem::add_sass_file("custom")
 
 # add html templates
 golem::add_html_template("BlasterJS")
+golem::add_html_template("kablammo")
 
 ## Add internal datasets ----
 # TODO: incorporate database scripts into `raw_data`?

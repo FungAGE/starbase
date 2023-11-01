@@ -24,18 +24,22 @@ app_ui <- function(request) {
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
                 startExpanded = TRUE),
+              menuItem("Wiki", tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                       href = NULL, newtab = FALSE, selected = NULL,
+                       expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
+                       startExpanded = TRUE),
               menuItem("BLAST/HMMER Searches", tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
                 startExpanded = FALSE),
+              # menuItem("Viz BLAST Results", tabName = "blastviz", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+              #    href = NULL, newtab = FALSE, selected = NULL,
+              #    expandedName = as.character(gsub("[[:space:]]", "", "Viz BLAST Results")),
+              #    startExpanded = FALSE),
               menuItem("Explore Starships", tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
                 startExpanded = FALSE),
-              # menuItem("Starship Browser", tabName = "browse", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-              #   href = NULL, newtab = FALSE, selected = NULL,
-              #   expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
-              #   startExpanded = FALSE),
               menuItem("Starship Synteny", tabName = "synteny", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
@@ -61,16 +65,18 @@ app_ui <- function(request) {
                         tabItem(tabName = "home",
                           mod_home_ui("home_1")
                         ),
-                        tabItem(tabName = "blast",
-                          mod_blast_ui("blast_1"),
-                          mod_blast_viz_ui("blast_viz_1")
+                        tabItem(tabName = "wiki",
+                                mod_wiki_ui("wiki_1")
                         ),
+                        tabItem(tabName = "blast",
+                          mod_blast_ui("blast_1")
+                        ),
+                        # tabItem(tabName = "blastviz",
+                        #   mod_blast_viz_ui("blast_viz_1")
+                        # ),
                         tabItem(tabName = "explore",
                           mod_explore_ui("explore_1")                        
                         ),
-                        # tabItem(tabName = "browse",
-                        #   mod_genome_browser_ui("genome_browser_1")
-                        # ),
                         tabItem(tabName = "synteny",
                           mod_blast_syn_viz_ui("blast_syn_viz_1")
                         ),

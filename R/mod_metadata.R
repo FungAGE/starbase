@@ -12,23 +12,24 @@ mod_metadata_ui <- function(id){
   ns <- NS(id)
   # DT::DTOutput(ns("meta_table"))
   
+  table_dat<-joined_ships %>%
+    dplyr::select(ome,genus,species,starship_family,starship_navis,starship_haplotype,size,dr,tir,checksum)
+  
   # a custom table container
   sketch = htmltools::withTags(table(
     class = 'display',
     thead(
       tr(
-        th(colspan = 11, 'Taxonomic Information'),
-        th(colspan = 9, 'Starship Information')
+        th(colspan = 3, 'Taxonomic Information'),
+        th(colspan = 7, 'Starship Information')
       ),
       tr(
-        # lapply(rep(c('Length', 'Width'), 2), th)
-        th("ome"),th("kingdom"),th("phylum"),th("subphylum"),th("class"),th("subclass"),th("order"),th("family"),th("genus"),th("species"),th("taxid"),th("starship_class"),th("code"),th("size"),th("tsd"),th("atir"),th("spok"),th("ars"),th("other"),th("hgt")
-      )
+        lapply(colnames(table_dat), th)
+        )
     )
   ))
 
-  joined_ships %>%
-      dplyr::select(ome,kingdom,phylum,subphylum,class,subclass,order,family,genus,species,taxid,starship_class,code,size,tsd,atir,spok,ars,other,hgt) %>%
+  table_dat %>%
       DT::datatable(options = list(), class = "display",rownames = FALSE,container = sketch,
                 callback = JS("return table;"), #rownames, colnames, container,
                 caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,

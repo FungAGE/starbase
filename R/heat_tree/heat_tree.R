@@ -70,7 +70,7 @@ interactive_plot  <- girafe(
 
 
 # Save the interactive plot as an HTML file
-htmlwidgets::saveWidget(interactive_plot, "html/heat_tree.html",title="Starship Database Diversity")
+htmlwidgets::saveWidget(interactive_plot, app_sys("html/heat_tree.html"),title="Starship Database Diversity")
 
 
 saveRDS(p,"RDS/heat_tree.rds")
