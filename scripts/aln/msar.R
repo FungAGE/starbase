@@ -10,10 +10,10 @@ proteins <- ape::read.FASTA(prot, type="AA")
 # not the vignette static output
 prot.html<-msaR(proteins, menu=F, overviewbox = F,  colorscheme = "clustal")
 
-htmlwidgets::saveWidget(prot.html, "captain.prot.html")
+htmlwidgets::saveWidget(prot.html, app_sys("captain.prot.html"))
 
 nuc<-"shoot/YRsuperfamRefs/tree/YRsuperfamRefs.mafft.fa"
 
 # display the MSA.
 nuc.html<-msaR(nuc, menu=F, overviewbox = T)
-htmlwidgets::saveWidget(nuc.html, "captain.nuc.html")
+htmlwidgets::saveWidget(nuc.html, app_sys("captain.nuc.html"))

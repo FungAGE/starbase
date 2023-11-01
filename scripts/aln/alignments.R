@@ -12,7 +12,7 @@ aln %>%
   saveRDS("RDS/YRsuperfamRefs.mafft.faa.RDS")
   
 aln %>%
-  htmlwidgets::saveWidget(file="html/YRsuperfamRefs.mafft.faa.html")
+  htmlwidgets::saveWidget(file=app_sys("html/YRsuperfamRefs.mafft.faa.html"))
 
 # example of integrating this with shiny:
 # shiny output binding for a widget named 'foo'
