@@ -24,6 +24,10 @@ app_ui <- function(request) {
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
                 startExpanded = TRUE),
+              menuItem("Test worker", tabName = "worker", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                       href = NULL, newtab = FALSE, selected = NULL,
+                       expandedName = as.character(gsub("[[:space:]]", "", "Test Worker")),
+                       startExpanded = TRUE),              
               menuItem("Wiki", tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                        href = NULL, newtab = FALSE, selected = NULL,
                        expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
@@ -65,6 +69,8 @@ app_ui <- function(request) {
                         tabItem(tabName = "home",
                           mod_home_ui("home_1")
                         ),
+                        tabItem(tabName = "worker",
+                          mod_worker_test_ui("worker_test_1")),
                         tabItem(tabName = "wiki",
                                 mod_wiki_ui("wiki_1")
                         ),

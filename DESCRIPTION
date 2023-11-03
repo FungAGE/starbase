@@ -26,6 +26,7 @@ Imports:
     readr,
     RSQLite,
     shiny (>= 1.7.5),
+    shiny.worker,
     shinyalert,
     shinydashboard,
     shinydashboardPlus,
