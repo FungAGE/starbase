@@ -13,7 +13,7 @@
 mod_phylogeny_ui <- function(id){
   ns <- NS(id)
   tagList(
-    readRDS(file="RDS/captain-tree.RDS")
+    readRDS(file="data/captain-tree.RDS")
   )
 }
     

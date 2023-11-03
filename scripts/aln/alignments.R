@@ -9,7 +9,7 @@ aln<-readAAMultipleAlignment("../Starships/genes/cap_tyr/alignments/YRsuperfamRe
   msaR(., seqlogo = T,menu=F, overviewbox = F,  colorscheme = "clustal")
 
 aln %>%
-  saveRDS("RDS/YRsuperfamRefs.mafft.faa.RDS")
+  saveRDS("data/YRsuperfamRefs.mafft.faa.RDS")
   
 aln %>%
   htmlwidgets::saveWidget(file=app_sys("html/YRsuperfamRefs.mafft.faa.html"))

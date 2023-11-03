@@ -110,7 +110,7 @@ interactive_plot  <- girafe(
   )
 )
 
-saveRDS(interactive_plot,file="RDS/captain-tree.RDS")
+saveRDS(interactive_plot,file="data/captain-tree.RDS")
 
 # TODO: to make it easier, use the `SharedData` object to subset other data to make plots/tables
 # Wrap data frame in SharedData
@@ -172,7 +172,7 @@ comb_widget<-bscols(div(class="container",row1,row2)) %>%
 
 # save as RDS
 bscols(div(class="container",row1,row2)) %>% 
-  saveRDS("RDS/captain-tree-wtable.RDS")
+  saveRDS("data/captain-tree-wtable.RDS")
 
 # Save the interactive plot as an HTML file
 save_html(html=comb_widget,file="sequenceserver/public/trees/captain-tree.html")
