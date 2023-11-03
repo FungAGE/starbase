@@ -47,7 +47,7 @@ rsconnect::deployApp(
     "R/",
     "inst/",
     "tmp/",
-    "RDS/",
+    "data/",
     "Starships/",
     "blastdb/",
     "bin/",
