@@ -1,1 +1,3 @@
-﻿fileName,name,contentUrl,encodingFormat
+fileName,name,contentUrl,encodingFormat
+joined_ships.csv,joined_ships,NA,csv
+ships_with_anno.csv,ships_with_anno,NA,csv

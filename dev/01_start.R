@@ -37,6 +37,8 @@ usethis::use_package("colourpicker")
 usethis::use_package("waiter")
 usethis::use_package("vroom")
 
+devtools::install_github('jbryer/DTedit')
+
 # issue with these bioconductor packages:
 # renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings"))
 
