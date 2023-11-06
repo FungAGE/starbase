@@ -17,7 +17,7 @@ mod_home_ui <- function(id) {
     div(
       fluidRow(
         style = "padding-bottom: 15px;",
-        column(width = 1, img(src = "www/favicon.png", width = "100%")),
+        column(width = 1, img(src = "img/favicon.png", width = "100%")),
         column(width = 3, h2("starbase: Database and tools for exploring large eukaryotic transposable elements in Fungi"))
       )
     ),
