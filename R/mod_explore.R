@@ -11,34 +11,27 @@
 mod_explore_ui <- function(id) {
   ns <- NS(id)
   dashboardBody(
-    fluidPage(
+    fluidPage(title = "Explore the starbase",
+      
       fluidRow(
-        column(width = 6, box(title = paste("Total number of Starships in Database:", n_distinct(joined_ships$starshipID)))),
-        column(width = 6, box(title = paste("Total number of Represented Species:", n_distinct(paste(joined_ships$genus, joined_ships$species)))))
-      ),
-      fluidRow(
-        column(
-          width = 6,
-          box(
-            title = "Starship Diversity",
-            img(
-              src = "img/heat_tree.png",
-              width = "100%",
-              style = "background-color: black;"
-            )
-          )
-        ),
-        column(width = 6, box(
-          title = "Captain Phylogeny",
-          readRDS(file = "data/captain-tree.RDS")
-        ))
-      ),
-      fluidRow(box(
-        title = "Represented Species",
-        DT::DTOutput(ns("meta_table"))
-      ))
+               box(
+                 title = "Starship Diversity",width=NULL,
+                 valueBoxOutput(ns("total_species")),valueBoxOutput(ns("total_ships")),
+                 img(
+                   src = "img/heat_tree.png",
+                   width = "75%",
+                   style = "background-color: black;"
+                 )
+               )),
+      fluidRow(column(width=6,
+               box(
+                 title = "Captain Phylogeny",width=NULL,
+                 readRDS(file = "data/captain-tree.RDS"))),
+      column(width=6,box(
+        title = "Represented Species",width=NULL,
+        DT::DTOutput(ns("meta_table")))))
+      )
     )
-  )
 }
 
 #' explore Server Functions
@@ -64,7 +57,7 @@ mod_explore_server <- function(id) {
       )
     ))
 
-    output$meta_table <- renderDataTable({
+    output$meta_table <- renderDT({
       table_dat %>%
         DT::datatable(
           options = list(), class = "display", rownames = FALSE, container = sketch,
@@ -78,6 +71,21 @@ mod_explore_server <- function(id) {
         )
     })
 
+    output$total_ships <- renderValueBox({
+    valueBox(
+      value = nrow(table_dat),
+      subtitle = "Total number of Starships in Database",
+      icon = icon("area-chart")
+    )
+    })
+    
+    output$total_species<-renderValueBox({
+      valueBox(
+      value = n_distinct(paste(table_dat$genus, table_dat$species)),
+      subtitle = "Total number of Represented Species",
+      icon = icon("area-chart")
+    )})
+    
     #   # a custom table container
     #   sketch = htmltools::withTags(table(
     #     class = 'display',

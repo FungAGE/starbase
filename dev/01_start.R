@@ -82,7 +82,7 @@ usethis::use_git()
 golem::use_recommended_tests()
 
 ## Favicon ----
-golem::use_favicon( path = "inst/app/www/favicon.png")
+golem::use_favicon( path = "inst/app/img/favicon.png")
 
 ## Add helper functions ----
 golem::use_utils_ui(with_test = TRUE)
