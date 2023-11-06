@@ -4,22 +4,19 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
-#' @importFrom shiny NS tagList 
-mod_submit_ui <- function(id){
+#' @importFrom shiny NS tagList
+mod_submit_ui <- function(id) {
   ns <- NS(id)
-  tagList(
- 
-  )
+  tagList()
 }
-    
+
 #' submit Server Functions
 #'
-#' @noRd 
-mod_submit_server <- function(id){
-  moduleServer( id, function(input, output, session){
+#' @noRd
+mod_submit_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
     ns <- session$ns
- 
   })
 }

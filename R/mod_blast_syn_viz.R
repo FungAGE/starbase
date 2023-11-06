@@ -15,62 +15,83 @@ mod_blast_syn_viz_ui <- function(id) {
   ns <- NS(id)
 
   ## Altered label of colourInput
-  colourInput <- function (inputId, label, value = "white", showColour = c("both",
-      "text", "background"), palette = c("square", "limited"),
-      allowedCols = NULL, allowTransparent = FALSE, returnName = FALSE,
-      closeOnClick = FALSE)
-  {
-      showColour <- match.arg(showColour)
-      palette <- match.arg(palette)
-      value <- restoreInput(id = inputId, default = value)
-      shiny::addResourcePath("colourpicker-binding", system.file("srcjs",
-          package = "colourpicker"))
-      shiny::addResourcePath("colourpicker-lib", system.file("www",
-          "shared", "colourpicker", package = "colourpicker"))
-      deps <- list(htmltools::htmlDependency("colourpicker-binding",
-          "0.1.0", c(href = "colourpicker-binding"), script = "input_binding_colour.js"),
-          htmltools::htmlDependency("colourpicker-lib", "0.1.0",
-              c(href = "colourpicker-lib"), script = "js/colourpicker.min.js",
-              stylesheet = "css/colourpicker.min.css"))
-      inputTag <- shiny::tags$input(id = inputId, type = "text",
-          class = "form-control shiny-colour-input", `data-init-value` = value,
-          `data-show-colour` = showColour, `data-palette` = palette)
-      if (!is.null(allowedCols)) {
-          allowedCols <- jsonlite::toJSON(allowedCols)
-          inputTag <- shiny::tagAppendAttributes(inputTag, `data-allowed-cols` = allowedCols)
-      }
-      if (returnName) {
-          inputTag <- shiny::tagAppendAttributes(inputTag, `data-return-name` = "true")
-      }
-      if (allowTransparent) {
-          inputTag <- shiny::tagAppendAttributes(inputTag, `data-allow-alpha` = "true")
-      }
-      if (closeOnClick) {
-          inputTag <- shiny::tagAppendAttributes(inputTag, `data-close-on-click` = "true")
-      }
-      inputTag <- shiny::div(class = "form-group shiny-input-container",
-          `data-shiny-input-type` = "colour", label %AND% shiny::tags$label(label, class="control-label",
-              `for` = inputId), inputTag)
-      htmltools::attachDependencies(inputTag, deps)
+  colourInput <- function(inputId, label, value = "white", showColour = c(
+                            "both",
+                            "text", "background"
+                          ), palette = c("square", "limited"),
+                          allowedCols = NULL, allowTransparent = FALSE, returnName = FALSE,
+                          closeOnClick = FALSE) {
+    showColour <- match.arg(showColour)
+    palette <- match.arg(palette)
+    value <- restoreInput(id = inputId, default = value)
+    shiny::addResourcePath("colourpicker-binding", system.file("srcjs",
+      package = "colourpicker"
+    ))
+    shiny::addResourcePath("colourpicker-lib", system.file("www",
+      "shared", "colourpicker",
+      package = "colourpicker"
+    ))
+    deps <- list(
+      htmltools::htmlDependency("colourpicker-binding",
+        "0.1.0", c(href = "colourpicker-binding"),
+        script = "input_binding_colour.js"
+      ),
+      htmltools::htmlDependency("colourpicker-lib", "0.1.0",
+        c(href = "colourpicker-lib"),
+        script = "js/colourpicker.min.js",
+        stylesheet = "css/colourpicker.min.css"
+      )
+    )
+    inputTag <- shiny::tags$input(
+      id = inputId, type = "text",
+      class = "form-control shiny-colour-input", `data-init-value` = value,
+      `data-show-colour` = showColour, `data-palette` = palette
+    )
+    if (!is.null(allowedCols)) {
+      allowedCols <- jsonlite::toJSON(allowedCols)
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-allowed-cols` = allowedCols)
+    }
+    if (returnName) {
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-return-name` = "true")
+    }
+    if (allowTransparent) {
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-allow-alpha` = "true")
+    }
+    if (closeOnClick) {
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-close-on-click` = "true")
+    }
+    inputTag <- shiny::div(
+      class = "form-group shiny-input-container",
+      `data-shiny-input-type` = "colour", label %AND% shiny::tags$label(label,
+        class = "control-label",
+        `for` = inputId
+      ), inputTag
+    )
+    htmltools::attachDependencies(inputTag, deps)
   }
 
   # copied from shiny since it's not exported
   `%AND%` <- function(x, y) {
-    if (!is.null(x) && !isTRUE(is.na(x)))
-      if (!is.null(y) && !isTRUE(is.na(y)))
+    if (!is.null(x) && !isTRUE(is.na(x))) {
+      if (!is.null(y) && !isTRUE(is.na(y))) {
         return(y)
+      }
+    }
     return(NULL)
   }
 
-  downloadButton_custom <- function (outputId, label = "Download", class = NULL, status = "primary",
+  downloadButton_custom <- function(outputId, label = "Download", class = NULL, status = "primary",
                                     ...,
-                                    icon = shiny::icon("download"))
-  {
-      aTag <- tags$a(id = outputId,
-                    class = paste(paste0("btn btn-", status, " shiny-download-link"),
-                                  class),
-                    href = "", target = "_blank", download = NA,
-                    icon, label, ...)
+                                    icon = shiny::icon("download")) {
+    aTag <- tags$a(
+      id = outputId,
+      class = paste(
+        paste0("btn btn-", status, " shiny-download-link"),
+        class
+      ),
+      href = "", target = "_blank", download = NA,
+      icon, label, ...
+    )
   }
 
   # fluidRow(
@@ -82,7 +103,7 @@ mod_blast_syn_viz_ui <- function(id) {
   # fluidRow(
   #   column(
   #     6,
-  #     selectizeInput("query_ship_main"), 
+  #     selectizeInput("query_ship_main"),
   #       label = "Query Ship",
   #       choices = names(gff_list),
   #       multiple = FALSE,
@@ -92,7 +113,7 @@ mod_blast_syn_viz_ui <- function(id) {
   #   ),
   #   column(
   #     6,
-  #     selectInput("subject_ship_main"), 
+  #     selectInput("subject_ship_main"),
   #       label = "Subject Ship",
   #       choices = names(gff_list),
   #       multiple = FALSE,
@@ -106,257 +127,274 @@ mod_blast_syn_viz_ui <- function(id) {
     # shinyalert::useShinyalert(),
     waiter::useWaiter(),
     waiter::useWaitress(),
-  fluidRow(
+    fluidRow(
       column(
-          id = "settingPanel",
-          width = 3,
-          div(class = "boxLike",
-              style="background-color: #FAF9F6;",
-              h4(icon("cog"), "Settings"),
-              awesomeCheckbox(
-                  inputId = ns("generateDotPlot"),
-                  label = "Generate Dot Plot",
-                  value = TRUE,
-                  status = "primary"
-              ),
-              hr(class = "setting"),
-              h5("Macro Synteny"),
-              shinyWidgets::radioGroupButtons(
-                  inputId = ns("macroPlotMode"),
-                  label = "Choose macro synteny layout",
-                  choices = c("Circular", "Parallel"),
-                  selected = "Parallel",
-                  width = "100%",
-                  status = "primary"
-              ),
-              colourInput(
-                  inputId = ns("macroQueryColor"),
-                  label = "Query Chr Color",
-                  value = "#69a3b2"
-              ),
-              colourInput(
-                  inputId = ns("macroSubjectColor"),
-                  label = "Subject Chr Color",
-                  value = "#B27869"
-              ),
-              colourInput(
-                  inputId = ns("macroRibbonColor"),
-                  label = "Macro Ribbon Color",
-                  value = "#808080"
-              ),
-              sliderTextInput(
-                  inputId = ns("macroChrFontSize"),
-                  label = "Chromosomes Label Size",
-                  choices = paste0(seq(0.2, 2, by = 0.1),"rem"),
-                  selected = "1rem"
-              ),
-              hr(class = "setting"),
-              h5("Micro Synteny"),
-              awesomeCheckbox(
-                  inputId = ns("oneBestSubject"),
-                  label = HTML("Extract <strong>one best</strong> Subject"),
-                  value = TRUE,
-                  status = "primary"
-              ),
-              colourInput(
-                  inputId = ns("forwardGeneColor"),
-                  label = "Forward Gene's Color ",
-                  value = "#af8dc3"
-              ),
-              colourInput(
-                  inputId = ns("reverseGeneColor"),
-                  label = "Reverse Gene's Color ",
-                  value = "#7fbf7b"
-              ),
-              colourInput(
-                  inputId = ns("microRibbonColor"),
-                  label = "Micro Ribbon Color",
-                  value = "#10218b"
-              )
+        id = "settingPanel",
+        width = 3,
+        div(
+          class = "boxLike",
+          style = "background-color: #FAF9F6;",
+          h4(icon("cog"), "Settings"),
+          awesomeCheckbox(
+            inputId = ns("generateDotPlot"),
+            label = "Generate Dot Plot",
+            value = TRUE,
+            status = "primary"
+          ),
+          hr(class = "setting"),
+          h5("Macro Synteny"),
+          shinyWidgets::radioGroupButtons(
+            inputId = ns("macroPlotMode"),
+            label = "Choose macro synteny layout",
+            choices = c("Circular", "Parallel"),
+            selected = "Parallel",
+            width = "100%",
+            status = "primary"
+          ),
+          colourInput(
+            inputId = ns("macroQueryColor"),
+            label = "Query Chr Color",
+            value = "#69a3b2"
+          ),
+          colourInput(
+            inputId = ns("macroSubjectColor"),
+            label = "Subject Chr Color",
+            value = "#B27869"
+          ),
+          colourInput(
+            inputId = ns("macroRibbonColor"),
+            label = "Macro Ribbon Color",
+            value = "#808080"
+          ),
+          sliderTextInput(
+            inputId = ns("macroChrFontSize"),
+            label = "Chromosomes Label Size",
+            choices = paste0(seq(0.2, 2, by = 0.1), "rem"),
+            selected = "1rem"
+          ),
+          hr(class = "setting"),
+          h5("Micro Synteny"),
+          awesomeCheckbox(
+            inputId = ns("oneBestSubject"),
+            label = HTML("Extract <strong>one best</strong> Subject"),
+            value = TRUE,
+            status = "primary"
+          ),
+          colourInput(
+            inputId = ns("forwardGeneColor"),
+            label = "Forward Gene's Color ",
+            value = "#af8dc3"
+          ),
+          colourInput(
+            inputId = ns("reverseGeneColor"),
+            label = "Reverse Gene's Color ",
+            value = "#7fbf7b"
+          ),
+          colourInput(
+            inputId = ns("microRibbonColor"),
+            label = "Micro Ribbon Color",
+            value = "#10218b"
           )
+        )
       ),
       column(
-          id = "mainPanel",
-          width = 9,
-          div(class="boxLike",
-              fluidRow(
-                  column(
-                      12,
-                      h3(icon("file-upload"), "Input")
-                  )
-              ),
-              fluidRow(
-                  column(
-                      12,
-                      h5("Switch On to Use the Result From MCscan Pipeline Tab")
-                  )
-              ),
-              fluidRow(
-                  column(
-                      12,
-                      materialSwitch(
-                          inputId = ns("use_mcscan"),
-                          label = "",
-                          value = FALSE,
-                          right = TRUE,
-                          status = "primary",
-                          width = NULL
-                      )
-                  )
-              ),
-              fluidRow(
-                  column(
-                      12,
-                      h5("Hide Setting Panel on the left")
-                  )
-              ),
-              fluidRow(
-                  column(
-                      12,
-                      materialSwitch(
-                          inputId = ns("hide_setting"),
-                          label = "",
-                          value = FALSE,
-                          right = TRUE,
-                          status = "primary",
-                          width = NULL
-                      )
-                  )
-              ),
-              fluidRow(
-                  column(
-                      12,
-                      h5("Or use your own uploaded files")
-                  )
-              ),
-              fluidRow(
-                  column(
-                      6,
-                      textInput(ns("query_species_main"),
-                                "Input Query Species",
-                                value = "",
-                                width = "100%",
-                                placeholder = "grape")
-                  ),
-                  column(
-                      6,
-                      textInput(ns("subject_species_main"),
-                                "Input Subject Species",
-                                value = "",
-                                width = "100%",
-                                placeholder = "peach")
-                  )
-              ),
-              fluidRow(
-                  column(
-                      6,
-                      fileInput(ns("queryGff"),
-                                "Upload Query Genome Gene BED File:",
-                                multiple = FALSE,
-                                width = "100%",
-                                accept = c("text/plain",
-                                            ".tsv",
-                                            ".bed")
-                                )
-                  ),
-                  column(
-                      6,
-                      fileInput(ns("subjectGff"),
-                                "Upload Subject Genome Gene BED File:",
-                                multiple = FALSE,
-                                width = "100%",
-                                accept = c("text/plain",
-                                            ".tsv",
-                                            ".bed")
-                                )
-                  )
-              ),
-              fluidRow(
-                  column(6,
-                          fileInput(ns("anchorFile"),
-                                    "Upload Anchor File:",
-                                    multiple = FALSE,
-                                    width = "100%",
-                                    accept = c("text/plain", ".anchors")
-                                    )
-                          ),
-                  column(6,
-                          fileInput(ns("anchorLiftedFile"),
-                                    "Upload Anchor Lifted File:",
-                                    multiple = FALSE,
-                                    width = "100%",
-                                    accept = c("text/plain", ".lifted.anchors", ".anchors")
-                                    ## Added .anchors for OS X support, it only recognizes one suffix
-                                    )
-                          )
+        id = "mainPanel",
+        width = 9,
+        div(
+          class = "boxLike",
+          fluidRow(
+            column(
+              12,
+              h3(icon("file-upload"), "Input")
+            )
+          ),
+          fluidRow(
+            column(
+              12,
+              h5("Switch On to Use the Result From MCscan Pipeline Tab")
+            )
+          ),
+          fluidRow(
+            column(
+              12,
+              materialSwitch(
+                inputId = ns("use_mcscan"),
+                label = "",
+                value = FALSE,
+                right = TRUE,
+                status = "primary",
+                width = NULL
               )
-              ),
-          div(class="boxLike", style="background-color: #EADBAB;",
-              fluidRow(style="padding-bottom: 15px;",
-                        column(
-                            6,
-                            div(class="float-left",
-                                actionButton(
-                                    inputId = ns("macroSynteny"),
-                                    status = "secondary",
-                                    icon = icon("pagelines"),
-                                    label = "View Macro Synteny"
-                                )
-                                )
-                        ),
-                        column(
-                            6,
-                            div(class="float-right",
-                                downloadButton_custom(
-                                    ns("marcoSynteny_download"),
-                                    status = "secondary",
-                                    icon = icon("download"),
-                                    label = "Macro Synteny SVG"
-                                )
-                                )
-                        )
-                        )
-              ),
-          div(class="boxMargin",
-              fluidRow(
-                  column(
-                      width = 12,
-                      div(id = "macroSyntenyBlock")
-                  )
-              ),
-              fluidRow(
-                  column(
-                      width = 12,
-                      div(id = "geneDensityBlock"),
-                      div(id = "microSyntenyBlock")
-                  )
-              ),
-              fluidRow(
-                  class = "justify-content-end",
-                  div(class = "col-sm-auto",
-                      style = "padding-bottom: 7.5px;",
-                      shinyjs::hidden(
-                        downloadButton_custom(
-                          ns("microSynteny_download"),
-                          status = "secondary",
-                          icon = icon("download"),
-                          label = "Micro Synteny SVG"
-                        )
-                      )
-                    )
-              ),
-              fluidRow(
-                  column(
-                      width = 12,
-                      tags$div(id = ns("microSyntenyTable"),
-                                class = "table-responsive",
-                                DT::dataTableOutput(ns("microAnchor_out"))
-                                )
-                  )
+            )
+          ),
+          fluidRow(
+            column(
+              12,
+              h5("Hide Setting Panel on the left")
+            )
+          ),
+          fluidRow(
+            column(
+              12,
+              materialSwitch(
+                inputId = ns("hide_setting"),
+                label = "",
+                value = FALSE,
+                right = TRUE,
+                status = "primary",
+                width = NULL
               )
+            )
+          ),
+          fluidRow(
+            column(
+              12,
+              h5("Or use your own uploaded files")
+            )
+          ),
+          fluidRow(
+            column(
+              6,
+              textInput(ns("query_species_main"),
+                "Input Query Species",
+                value = "",
+                width = "100%",
+                placeholder = "grape"
               )
+            ),
+            column(
+              6,
+              textInput(ns("subject_species_main"),
+                "Input Subject Species",
+                value = "",
+                width = "100%",
+                placeholder = "peach"
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              6,
+              fileInput(ns("queryGff"),
+                "Upload Query Genome Gene BED File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c(
+                  "text/plain",
+                  ".tsv",
+                  ".bed"
+                )
+              )
+            ),
+            column(
+              6,
+              fileInput(ns("subjectGff"),
+                "Upload Subject Genome Gene BED File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c(
+                  "text/plain",
+                  ".tsv",
+                  ".bed"
+                )
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              6,
+              fileInput(ns("anchorFile"),
+                "Upload Anchor File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c("text/plain", ".anchors")
+              )
+            ),
+            column(
+              6,
+              fileInput(ns("anchorLiftedFile"),
+                "Upload Anchor Lifted File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c("text/plain", ".lifted.anchors", ".anchors")
+                ## Added .anchors for OS X support, it only recognizes one suffix
+              )
+            )
+          )
+        ),
+        div(
+          class = "boxLike", style = "background-color: #EADBAB;",
+          fluidRow(
+            style = "padding-bottom: 15px;",
+            column(
+              6,
+              div(
+                class = "float-left",
+                actionButton(
+                  inputId = ns("macroSynteny"),
+                  status = "secondary",
+                  icon = icon("pagelines"),
+                  label = "View Macro Synteny"
+                )
+              )
+            ),
+            column(
+              6,
+              div(
+                class = "float-right",
+                downloadButton_custom(
+                  ns("marcoSynteny_download"),
+                  status = "secondary",
+                  icon = icon("download"),
+                  label = "Macro Synteny SVG"
+                )
+              )
+            )
+          )
+        ),
+        div(
+          class = "boxMargin",
+          fluidRow(
+            column(
+              width = 12,
+              div(id = "macroSyntenyBlock")
+            )
+          ),
+          fluidRow(
+            column(
+              width = 12,
+              div(id = "geneDensityBlock"),
+              div(id = "microSyntenyBlock")
+            )
+          ),
+          fluidRow(
+            class = "justify-content-end",
+            div(
+              class = "col-sm-auto",
+              style = "padding-bottom: 7.5px;",
+              shinyjs::hidden(
+                downloadButton_custom(
+                  ns("microSynteny_download"),
+                  status = "secondary",
+                  icon = icon("download"),
+                  label = "Micro Synteny SVG"
+                )
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              width = 12,
+              tags$div(
+                id = ns("microSyntenyTable"),
+                class = "table-responsive",
+                DT::dataTableOutput(ns("microAnchor_out"))
+              )
+            )
+          )
+        )
       )
-      ),
+    ),
     tags$script(src = app_sys("js/popper.v2.11.5.min.js")),
     tags$script(src = app_sys("js/tippy-bundle.umd.v6.3.7.min.js")),
     tags$script(src = app_sys("js/d3.min.js")),
@@ -396,63 +434,65 @@ mod_blast_syn_viz_server <- function(id) {
     ## query Ship file path
     queryGffFile <- reactive({
       "tmp/Athaliana167.bed"
-      #gff_list[[input$query_ship_main]]
-      })
+      # gff_list[[input$query_ship_main]]
+    })
 
     ## subject Ship file path
     subjectGffFile <- reactive({
       "tmp/Alyrata384.bed"
-      #gff_list[[input$subject_ship_main]]
-      })
+      # gff_list[[input$subject_ship_main]]
+    })
 
     ## anchor file path
     # * notice that the query comes before the subject in the file name
     # ! this is important for joining to the anchor files
     anchorFile <- reactive({
       "tmp/Athaliana167.Alyrata384.anchors"
-      })
+    })
 
     ## anchor lifted file path
     anchorLiftedFile <- reactive({
       "tmp/Athaliana167.Alyrata384.lifted.anchors"
+    })
+
+    queryGff <-
+      reactive({
+        req(queryGffFile())
+        if (file.exists(queryGffFile())) {
+          # TODO: parse gff
+          vroom(queryGffFile(),
+            col_names = c("chr", "start", "end", "gene", "score", "strand")
+          ) %>%
+            mutate(chr = factor(chr, levels = unique(chr))) %>%
+            arrange(chr, start, end)
+        } else {
+          NULL
+        }
       })
 
-    queryGff <- 
-    reactive({
-      req(queryGffFile())
-      if (file.exists(queryGffFile())) {
-        # TODO: parse gff
-        vroom(queryGffFile(),
-              col_names = c("chr", "start","end","gene", "score", "strand")) %>%
-          mutate(chr = factor(chr, levels = unique(chr))) %>%
-          arrange(chr, start, end)
-      } else {
-        NULL
-      }
-    })
-
-    subjectGff <- 
-    reactive({
-      req(subjectGffFile())
-      if (file.exists(subjectGffFile())) {
-        vroom(subjectGffFile(),
-              col_names = c("chr", "start","end","gene", "score", "strand")) %>%
-          mutate(chr = factor(chr, levels = unique(chr))) %>%
-          arrange(chr, start, end)
-      } else {
-        NULL
-      }
-    })
+    subjectGff <-
+      reactive({
+        req(subjectGffFile())
+        if (file.exists(subjectGffFile())) {
+          vroom(subjectGffFile(),
+            col_names = c("chr", "start", "end", "gene", "score", "strand")
+          ) %>%
+            mutate(chr = factor(chr, levels = unique(chr))) %>%
+            arrange(chr, start, end)
+        } else {
+          NULL
+        }
+      })
 
     querySpecies <- reactive({
       "grape"
       # taxa_list[[input$query_ship_main]]
-      })
+    })
 
     subjectSpecies <- reactive({
       "peach"
       # taxa_list[[input$subject_ship_main]]
-      })
+    })
 
     observeEvent(input$macroPlotMode, {
       ## setup different default color scheme for two macro synteny layout
@@ -540,12 +580,12 @@ mod_blast_syn_viz_server <- function(id) {
           group_by(blockID) %>%
           summarize(
             summarized_queryChr = unique(queryChr),
-            summarized_queryStart = min(queryStart,na.rm=TRUE),
-            summarized_queryEnd = max(queryEnd,na.rm=TRUE),
+            summarized_queryStart = min(queryStart, na.rm = TRUE),
+            summarized_queryEnd = max(queryEnd, na.rm = TRUE),
             summarized_queryAnchorList = get_anchorGene(queryGene),
             summarized_subjectChr = unique(subjectChr),
-            summarized_subjectStart = min(subjectStart,na.rm=TRUE),
-            summarized_subjectEnd = max(subjectEnd,na.rm=TRUE),
+            summarized_subjectStart = min(subjectStart, na.rm = TRUE),
+            summarized_subjectEnd = max(subjectEnd, na.rm = TRUE),
             summarized_subjectAnchorList = get_anchorGene(subjectGene)
           ) %>%
           mutate(
@@ -649,30 +689,38 @@ mod_blast_syn_viz_server <- function(id) {
           comment = "#",
           delim = "\t"
         )
-        synteny_query_chr <- queryGff() %>% distinct(chr) %>% pull(chr)
-        synteny$queryGff <- queryGff() %>% filter(chr %in% synteny_query_chr) %>%
+        synteny_query_chr <- queryGff() %>%
+          distinct(chr) %>%
+          pull(chr)
+        synteny$queryGff <- queryGff() %>%
+          filter(chr %in% synteny_query_chr) %>%
           arrange(factor(chr, levels = synteny_query_chr), start)
-        
-        synteny_subject_chr <- subjectGff() %>% distinct(chr) %>% pull(chr)
-        synteny$subjectGff <- subjectGff() %>% filter(chr %in% synteny_subject_chr) %>%
+
+        synteny_subject_chr <- subjectGff() %>%
+          distinct(chr) %>%
+          pull(chr)
+        synteny$subjectGff <- subjectGff() %>%
+          filter(chr %in% synteny_subject_chr) %>%
           arrange(factor(chr, levels = synteny_subject_chr), start)
 
         synteny$anchor_full <- anchor_full
 
-        summarizeChrInfo <- function(inputBed, chrOrder){
-            ## summarize input bed tibble to generate
-            ## chr start, end and length
-            summarizedBed <- inputBed %>%
-                group_by(chr) %>%
-                summarise(start = min(start),
-                          end = max(end)) %>%
-                mutate(chrLength = end - start + 1) %>%
-                arrange(match(chr, chrOrder))
-            return(summarizedBed)
+        summarizeChrInfo <- function(inputBed, chrOrder) {
+          ## summarize input bed tibble to generate
+          ## chr start, end and length
+          summarizedBed <- inputBed %>%
+            group_by(chr) %>%
+            summarise(
+              start = min(start),
+              end = max(end)
+            ) %>%
+            mutate(chrLength = end - start + 1) %>%
+            arrange(match(chr, chrOrder))
+          return(summarizedBed)
         }
-        queryChrInfo <- summarizeChrInfo(synteny$queryGff,synteny_query_chr)
-        subjectChrInfo <- summarizeChrInfo(synteny$subjectGff,synteny_subject_chr)
-        
+        queryChrInfo <- summarizeChrInfo(synteny$queryGff, synteny_query_chr)
+        subjectChrInfo <- summarizeChrInfo(synteny$subjectGff, synteny_subject_chr)
+
         ## Define macro plot mode
         if (input$macroPlotMode == "Circular") {
           plotMode <- "circular"
@@ -692,12 +740,13 @@ mod_blast_syn_viz_server <- function(id) {
           "subjectChrColor" = input$macroSubjectColor,
           "ribbonColor" = input$macroRibbonColor
         )
-        
-        session$sendCustomMessage(type = "plotMacroSynteny",macro_synteny_data)
+
+        session$sendCustomMessage(type = "plotMacroSynteny", macro_synteny_data)
 
         ## Generate dot_view_data
         if (input$generateDotPlot) {
-          anchorSeed <- vroom(anchorFile(),comment = "#", delim = "\t",
+          anchorSeed <- vroom(anchorFile(),
+            comment = "#", delim = "\t",
             col_names = c("queryGene", "subjectGene", "mcscan_score")
           ) %>%
             inner_join(synteny$queryGff, by = c("queryGene" = "gene")) %>%
@@ -826,7 +875,7 @@ mod_blast_syn_viz_server <- function(id) {
     observeEvent(input$microAnchor_out_rows_selected, {
       selectedQueryGene <- synteny$selectedAnchors[input$microAnchor_out_rows_selected, ] %>%
         pull(q_Gene)
-      session$sendCustomMessage(type = "center_microSynteny", list("id" = ns("selected_macroRegion"),selectedQueryGene="selectedQueryGene"))
+      session$sendCustomMessage(type = "center_microSynteny", list("id" = ns("selected_macroRegion"), selectedQueryGene = "selectedQueryGene"))
     })
 
     observeEvent(input$selected_anchors, {

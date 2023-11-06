@@ -4,31 +4,32 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
-#' @importFrom shiny NS tagList 
-mod_user_ui <- function(id){
+#' @importFrom shiny NS tagList
+mod_user_ui <- function(id) {
   ns <- NS(id)
   tagList(
     dashboardBody(
-      box(title = "starbase User Account: ",userOutput("user"))
-  ))
+      box(title = "starbase User Account: ", userOutput("user"))
+    )
+  )
 }
-    
+
 #' user Server Functions
 #'
-#' @noRd 
-mod_user_server <- function(id){
-  moduleServer( id, function(input, output, session){
+#' @noRd
+mod_user_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
     ns <- session$ns
     output$user <- renderUser({
       dashboardUser(
-        name = "Adrian", 
-        image = "", 
+        name = "Adrian",
+        image = "",
         title = "shinydashboardPlus",
-        subtitle = "Author", 
+        subtitle = "Author",
         footer = p("The footer", class = "text-center"),
       )
     })
   })
-} 
+}
