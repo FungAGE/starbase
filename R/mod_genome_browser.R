@@ -6,8 +6,8 @@
 #'
 #' @importFrom  shinyjs inlineCSS
 #' @importFrom shiny NS tagList htmlOutput
-#' @importFrom htmltools renderTags 
-#' 
+#' @importFrom htmltools renderTags
+#'
 #' @noRd
 
 mod_genome_browser_ui <- function(id) {

@@ -6,39 +6,39 @@
 #'
 #' @noRd
 #'
-#' @import dataspice
+#' @import dataspice shinipsum
 #'
 #' @importFrom shiny NS tagList
 #' @importFrom tidyr unnest
 
-create_spice()
-prep_attributes(data_path = file.path("data","csv"))
-prep_access(data_path = file.path("data","csv"))
+# create_spice()
+# prep_attributes(data_path = file.path("data","csv"))
+# prep_access(data_path = file.path("data","csv"))
+#
+# edit_attributes()
+#
+# bib<-read_tsv("MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','genomeSource','published','assembly_acc','acquisition_date'),na=c("","NA","Unknown","unknown")) %>%
+#   distinct(ome,published) %>%
+#   rename("title"="ome","citation"="published")
+#
+# read_csv("data/metadata/biblio.csv",col_names = T) %>%
+#   bind_rows(bib) %>%
+#   write_csv("data/metadata/biblio.csv")
+#
+# edit_biblio()
+# edit_access()
+# edit_creators()
+#
 
-edit_attributes()
-
-bib<-read_tsv("MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','genomeSource','published','assembly_acc','acquisition_date'),na=c("","NA","Unknown","unknown")) %>%
-  distinct(ome,published) %>%
-  rename("title"="ome","citation"="published")
-
-read_csv("data/metadata/biblio.csv",col_names = T) %>%
-  bind_rows(bib) %>%
-  write_csv("data/metadata/biblio.csv")
-
-edit_biblio()
-edit_access()
-edit_creators()
-
-write_spice()
-build_site(out_path = "data/metadata/index.html")
-
-library(jsonlite)
-metadata <- fromJSON(txt = "data/metadata/dataspice.json")
+# write_spice()
+# source("bin/create_dataspice_site.R")
+# temp<-whisker::whisker.render(readLines(system.file("template.html5",package = "dataspice")), jsonld_to_mustache("data/metadata/dataspice.json"))
+# writeLines(temp,"data/metadata/index.html")
 
 metadata <- read_tsv("MTDB/joined_ships.tsv") %>%
   filter(!is.na(starship_family)) %>%
-  mutate(starship_family=ifelse(grepl("^fam",starship_family) & !is.na(code),code,starship_family)) %>%
-  select(starshipID,starship_family,starship_navis,starship_haplotype) %>%
+  mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
+  select(starshipID, starship_family, starship_navis, starship_haplotype) %>%
   group_by(starship_family) %>%
   summarise(named_vec = list(starshipID)) %>%
   deframe()
@@ -51,31 +51,31 @@ mod_wiki_ui <- function(id) {
     mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
     select(starshipID, starship_family, starship_navis, starship_haplotype)
 
-
   fluidPage(
     fluidRow(
-      column(
-        3,
-    box(
-        title = "Metadata Wiki", 
-        closable = FALSE, 
-        width = 12,
-        solidHeader = FALSE, 
-        collapsible = FALSE,
-        selectizeInput(
-          inputId = ns("family"),
-          label = "Starship Family",
-          choices = unique(metadata$starship_family),
-          multiple = TRUE,
-          selected = NULL,
-          width = "100%"
-        )
-      )
-  ),
-  column(9,
-      DT::DTOutput(ns("table"))
-    )
-  )
+        box(
+          title = "Metadata Wiki",
+          closable = FALSE,
+          width = 6,
+          solidHeader = FALSE,
+          collapsible = FALSE,
+          p("Search through metadata for Starship families"),
+          selectizeInput(
+            inputId = ns("family"),
+            label = "Starship Family",
+            choices = unique(metadata$starship_family),
+            multiple = FALSE,
+            selected = NULL,
+            width = "100%"
+          )
+        )),
+    fluidRow(
+     column(6,
+            uiOutput(ns("wiki"))
+      ),
+      column(6,
+        DT::DTOutput(ns("table"))
+     ))
   )
 }
 
@@ -86,19 +86,24 @@ mod_wiki_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    
     # Define the metadata
     metadata <- read_tsv("MTDB/joined_ships.tsv") %>%
       filter(!is.na(starship_family)) %>%
       mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
       select(starshipID, starship_family, starship_navis, starship_haplotype)
 
-    ##### Create the DTedit object
     observe({
-      dat <- metadata %>%
-        filter(starship_family == input$family)
+      if (!is.null(input$family)) {
+        metadata <- metadata %>%
+          filter(starship_family %in% input$family)
+      }
       output$table <- DT::renderDT({
-        DT::datatable(dat)
+        DT::datatable(metadata)
       })
+    output$wiki<-renderUI({
+      box(title=input$family,p(random_text(nwords = 50)))
     })
+      })
   })
 }

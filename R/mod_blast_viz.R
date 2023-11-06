@@ -4,9 +4,9 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
-#' @importFrom shiny NS tagList 
+#' @importFrom shiny NS tagList
 
 # TODO: use Biostrings here and then link to modules for making alignments, circos, dot plots, and jbrowse
 
@@ -20,10 +20,9 @@ mod_blast_viz_ui <- function(id) {
 
 #' blast_viz Server Functions
 #'
-#' @noRd 
-mod_blast_viz_server <- function(id){
-  moduleServer( id, function(input, output, session){
+#' @noRd
+mod_blast_viz_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    }
-  )
+  })
 }

@@ -4,15 +4,15 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
-#' @importFrom shiny NS tagList 
+#' @importFrom shiny NS tagList
 library(shiny)
 library(DBI)
 
 # TODO: options to update should only appear when search returns items
 
-mod_db_update_ui <- function(id){
+mod_db_update_ui <- function(id) {
   ns <- NS(id)
   tagList(
     fluidPage(
@@ -32,15 +32,15 @@ mod_db_update_ui <- function(id){
     )
   )
 }
-    
+
 #' db_update Server Functions
 #'
-#' @noRd 
-mod_db_update_server <- function(id){
-  moduleServer( id, function(input, output, session){
+#' @noRd
+mod_db_update_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
     ns <- session$ns
     con <- dbConnect(RSQLite::SQLite(), "../SQL/starbase.sqlite")
-    
+
     # Define a reactive dataset based on the user's search
     searched_data <- reactive({
       if (input$search_button > 0) {
@@ -48,12 +48,12 @@ mod_db_update_server <- function(id){
         dbGetQuery(con, sql)
       }
     })
-    
+
     # Render the table based on the searched dataset
     output$table <- renderTable({
       searched_data()
     })
-    
+
     # Update a record in the database
     observeEvent(input$update_button, {
       if (!is.null(input$update_id) && !is.null(input$new_value)) {
@@ -65,7 +65,7 @@ mod_db_update_server <- function(id){
         })
       }
     })
-    
+
     # Close the database connection when the app is closed
     session$onSessionEnded(function() {
       dbDisconnect(con)
