@@ -38,7 +38,9 @@ mod_blast_ui <- function(id) {
                           selected = "tyr", 
                           multiple = TRUE, 
                         width = "200px",
-                        choices = c("tyr", "freB", "nlr", "DUF3723", "plp")),
+                        choices = "tyr"
+                        # choices = c("tyr", "freB", "nlr", "DUF3723", "plp")
+                        ),
             ns = ns),
           div(
             style = "display:inline-block",
@@ -48,7 +50,7 @@ mod_blast_ui <- function(id) {
         )
       )),
       column(width=9,
-          box(        title = "Results",
+          box(        title = "Comparison of BLAST results",
                       width = NULL,
                       status = "success",
                       closable = FALSE,
@@ -61,15 +63,26 @@ mod_blast_ui <- function(id) {
     # TODO: should be separated by results from different genes?
     # Basic results output
     fluidRow(
-        tabsetPanel(tabPanel("Starship BLAST",
+      box(title="BLAST/HMMER Results",
+        tabsetPanel(tabPanel("Starship Elements",
           
                  DT::dataTableOutput(ns("table_ship")),
                  tableOutput(ns("clicked_table_ship")),
                  msaROutput(ns("alignment_ship"), width = "85%", height = "120%")
-        )
-        # uiOutput(ns("tabs"))
+        ),
+        tabPanel("Extracted Genes",
+                 tabsetPanel(tabPanel("tyr",
+                   DT::dataTableOutput(ns("table_tyr")),
+                   tableOutput(ns("clicked_table_tyr")),
+                   msaROutput(ns("alignment_tyr"))
+                 
+                 # uiOutput(ns("tabs")
+                          )
+                 )
+      )
       )
     )
+  )
   )
 }
 
@@ -86,8 +99,7 @@ mod_blast_server <- function(id) {
 
     db_list <- list(
       starship = list(
-        nucl = "blastdb/concatenated.fa",
-        prot = ""
+        nucl = "blastdb/concatenated.fa"
       ),
       gene = list(
         tyr = list(
@@ -190,17 +202,12 @@ mod_blast_server <- function(id) {
       # force the right database to be used
       # and calls the BLAST/HMMER
 
-      # TODO: skip ship blast if query == protein
-        if (query_list$query_type == "prot") {
-          shinyalert("Error:", "Cannot search starship database with protein sequence", type = "error")
-        }
-
-        if (query_list$query_type == "nucl") {
+        if (query_list$query_type == "nucl" ) {
           blast_program <- "blastn"
         } else {
-          blast_program <- "blastp"
+          blast_program <- "tblastn"
         }
-        db <- db_list[["starship"]][[query_list$query_type]]
+        db <- db_list[["starship"]][["nucl"]]
         ship_blast_out<-withProgress(message = "Performing BLAST search of Starship elements in database...", {
           system(paste0(blast_program, " -query ", tmp_fasta, " -db ", db, " -evalue ", input$eval, " -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
             xmlParse()
@@ -221,13 +228,17 @@ mod_blast_server <- function(id) {
         
         run_hmmer <- function(gene) {
           db <- db_list[["gene"]][[gene]][[query_list$query_type]]
+          
           tmp_hmmer <- tempfile(fileext = ".hmmer")
-          tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
+          
           hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
           system(hmmer_cmd, intern = FALSE)
-          system(paste0("python bin/hmm.py -i ", tmp_hmmer, "-o ", tmp_hmmer_parsed))
-          # {record.id}\t{hit.id}\t{aln_length}\t{query_seq}\t{query_start}\t{query_end}\t{subject_seq}\t{evalue}\t{bitscore}
-          read_csv(tmp_hmmer_parsed, show_col_types = FALSE, col_names = c("query_id", "hit_IDs", "aln_length", "query_start", "query_end", "gaps", "query_seq", "subject_seq", "evalue", "bitscore"))
+          
+          tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
+          print(tmp_hmmer_parsed)
+          system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed))
+
+          read_tsv(tmp_hmmer_parsed, show_col_types = FALSE, col_names = c("query_id", "hit_IDs", "aln_length", "query_start", "query_end", "gaps", "query_seq", "subject_seq", "evalue", "bitscore"))
         }
         
         withProgress(message = "Performing HMMER search of cargo genes in database...", {
@@ -235,13 +246,14 @@ mod_blast_server <- function(id) {
           genes_blast_out<-map(gene_list, ~ {
             run_hmmer(.x)
           })
+          names(genes_blast_out) <- gene_list
         })
       }
-      list(ship_blast_out,genes_blast_out)
+      list("ship"=ship_blast_out,"genes"=genes_blast_out)
     })
 
     parsedresults_ship <- reactive({
-      blast_out <- blastresults()[[1]]
+      blast_out <- blastresults()[["ship"]]
       if (is.null(blast_out)) {} else {
           xmltop <- xmlRoot(blast_out)
 
@@ -266,12 +278,14 @@ mod_blast_server <- function(id) {
     
     parsedresults_genes <- reactive({
       if (input$search_ship_genes == TRUE) {
-          blast_out <- blastresults()[[2]]
+          blast_out <- blastresults()[["genes"]]
           if (is.null(blast_out)) {} else {
             # contains a named list of DFs
-            map(blast_out, ~ {
-              .x %>% select(query_id, hit_IDs, aln_length, gaps, evalue, bitscore)
-            })
+            map(blast_out,~{.x %>% 
+              as.data.frame(., stringsAsFactors = FALSE) %>% 
+              select(query_id, hit_IDs, aln_length, gaps, bitscore,evalue) %>% 
+                slice(-1L)
+              }) 
           }
       }
     })
@@ -281,7 +295,7 @@ mod_blast_server <- function(id) {
     make_blast_table <- function(data) {
       renderDT(
         {
-          data
+          data 
         },
         selection = "single"
       )
@@ -320,28 +334,52 @@ mod_blast_server <- function(id) {
     }
 
     # creates tabs for each gene
-    tabify <- function(dataset) {
+    tabify <- function(dataset,blast_table) {
+      name<-names(dataset)
       tabPanel(
-        dataset,
-        DT::DTOutput(paste0("table_", dataset))
+        name,
+        DT::DTOutput(ns(paste0("table_", name)))
         # tableOutput(ns(paste0("clicked_table_", dataset))),
         # msaROutput(ns(paste0("alignment_", dataset)), width = "100%", height = "100%")
       )
     }
 
-    # output$tabs <- renderUI({
-    #   tab_list<-tabPanel("Starship", 
-    #                      DT::dataTableOutput(ns("table_ship")))
-    #   if (input$search_ship_genes == TRUE) {
-    #     # tab_list <- map(selected_datasets, ~ {
-    #     #   tabify(.x)
-    #     gene_tabs <- lapply(genes, function(dataset) {
-    #       tabPanel(dataset, DT::dataTableOutput(ns(paste0("table_", dataset))))
-    #     })
-    #     tab_list <- c(tab_list,gene_tabs)
-    #   }
-    #   do.call(tabsetPanel, tab_list)
-    # })
+    output$table_tyr<-renderDT(
+        {
+          parsedresults_genes()[["tyr"]] %>% 
+            as.data.frame(., stringsAsFactors = FALSE)
+        },
+        selection = "single"
+      )
+  
+    output$clicked_table_tyr <- renderTable(
+      {
+        blast_out <-parsedresults_genes()[["tyr"]]
+        clicked <- input$table_tyr_rows_selected
+        
+        if (is.null(clicked)) {
+        } else {
+          
+        tableout <- blast_out %>%
+          slice(clicked) %>%
+          t()
+        names(tableout) <- c("")
+        rownames(tableout) <- c("Query ID", "Hit ID", "Alignment Length", "Gaps", "Bit Score", "e-value")
+        colnames(tableout) <- NULL
+        data.frame(tableout)
+      }
+      },
+      rownames = T,
+      colnames = F
+    )
+  
+    output$tabs <- renderUI({
+      if (input$search_ship_genes == TRUE) {
+        gene_tabs <- map(parsedresults_genes(), ~ {
+          tabify(.x,make_blast_table(.x))})
+      do.call(tabsetPanel, gene_tabs)
+      }
+    })
     
     output$chord_ship <- renderChorddiag({
       if (is.null(parsedresults_ship())) {
@@ -393,18 +431,9 @@ mod_blast_server <- function(id) {
       selection = "single"
     )
     
-      # if (input$search_ship_genes == TRUE) {
-      #   for (dataset in names(parsedresults())) {
-      #     output[[paste0("table_", dataset)]] <- make_blast_table(parsedresults()[[dataset]])
-      #     clicked_gene <- input[[paste0("table_", dataset, "_rows_selected")]]
-      #     output[[paste0("clicked_table_", dataset)]] <- make_clicked_table(parsedresults()[[dataset]], clicked_gene)
-      #     output[[paste0("alignment_", dataset)]] <- make_alignment(parsedresults()[[dataset]], clicked_gene)
-      #   }
-      # }
-      
     output$clicked_table_ship <- renderTable(
       {
-        blast_out <- blastresults()[[1]]
+        blast_out <- blastresults()[["ship"]]
         
           if (is.null(input$table_ship_rows_selected)) {
           } else {
@@ -427,7 +456,7 @@ mod_blast_server <- function(id) {
     
     # this chunk makes the alignments for clicked rows
     output$alignment_ship <- renderMsaR({
-      blast_out <- blastresults()[[1]]
+      blast_out <- blastresults()[["ship"]]
       
       if (is.null(input$table_ship_rows_selected)) {
       } else {
@@ -458,5 +487,21 @@ mod_blast_server <- function(id) {
       msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200)
       }
     })
+    
+    output$alignment_tyr <- renderMsaR({
+      blast_out <- blastresults()[["genes"]][["tyr"]]
+      clicked <- input$table_tyr_rows_selected
+      if (is.null(clicked)) {
+      } else {
+        align <- 
+        ss <- DNAStringSet(c(blast_out$query_seq[[clicked]], blast_out$subject_seq[[clicked]]))
+        names(ss) <- c("Query:", "Subject:")
+        # BUG: when setting custom headers for msa object:
+        # names(ss) <- c(paste("Query:", unique(qid[[clicked]])), paste("Subject:", sids[[clicked]]))
+        
+        msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200)
+      }
+    })
+    
   })
 }
