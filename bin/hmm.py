@@ -15,11 +15,7 @@ parser.add_argument(
     required=True,
 )
 parser.add_argument(
-    "-o",
-    "--parsed",
-    dest="parsed_file",
-    help="Output file",
-    required=True,
+    "-o", "--parsed", dest="parsed_file", help="Output file", required=True
 )
 args = parser.parse_args()
 
@@ -27,7 +23,9 @@ args = parser.parse_args()
 # Parse the HMMER results
 def parse_hmmer(hmmer_output_file, parsed_file):
     with open(parsed_file, "w") as tsv_file:
-        tsv_file.write("Query\tSubject\tQuery Sequence\tSubject Sequence\tevalue\n")
+        tsv_file.write(
+            "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+        )
         for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
             for hit in record.hits:
                 for hsp in hit.hsps:
@@ -56,12 +54,12 @@ def extract_hmmer(parsed_file):
     data = pd.read_csv(parsed_file, sep="\t")
 
     # Get rows with the lowest e-value for each unique entry in Query
-    min_evalue_rows = data.loc[data.groupby("Query")["evalue"].idxmin()]
+    min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
 
     # Create individual FASTA files
     for index, row in min_evalue_rows.iterrows():
-        query = row["Query"]
-        query_sequence = row["Query Sequence"]
+        query = row["query_id"]
+        query_sequence = row["query_seq"]
 
         # Create a SeqRecord
         sequence = SeqIO.SeqRecord(SeqIO.Seq(query_sequence), id=query, description="")
@@ -73,4 +71,4 @@ def extract_hmmer(parsed_file):
         SeqIO.write(sequence, output_filename, "fasta")
 
 
-extract_hmmer(parsed_file)
+extract_hmmer(args.parsed_file)
