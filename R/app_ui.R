@@ -9,14 +9,11 @@ app_ui <- function(request) {
   tagList(
     # Leave this function for adding external resources
     golem_add_external_resources(),
-    fluidPage(
-      tagList(
-        # Your application UI logic
-        # includeMarkdown("dashboard.Rmd")
         dashboardPage(
           skin = "blue",
           options = list(sidebarExpandOnHover = TRUE),
-          header = dashboardHeader(title = "starbase"),
+          header = dashboardHeader(title = "starbase",   
+                                   controlbarIcon = img(app_sys("img/favicon.ico"))),
           sidebar = dashboardSidebar(
             minified = FALSE, collapsed = FALSE,
             sidebarMenu(
@@ -70,13 +67,15 @@ app_ui <- function(request) {
                 tabName = "user", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Sign in")),
-                startExpanded = FALSE,
-                menuSubItem("Update starbase Entries", tabName = "db_update")
+                startExpanded = FALSE
               ),
+              uiOutput("usersidebarpanel"),
+              uiOutput("logout"),
               id = NULL, .list = NULL
             )
           ),
           body = dashboardBody(
+            shinyjs::useShinyjs(),
             tabItems(
               tabItem(
                 tabName = "home",
@@ -111,7 +110,7 @@ app_ui <- function(request) {
               ),
               tabItem(
                 tabName = "user",
-                mod_user_ui("user_1")
+                uiOutput("userloginpage")
               ),
               tabItem(
                 tabName = "db_update",
@@ -123,6 +122,4 @@ app_ui <- function(request) {
           title = "starbase home"
         )
       )
-    ),
-  )
 }
