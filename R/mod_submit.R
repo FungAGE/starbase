@@ -11,7 +11,7 @@
 #' @importFrom shiny NS tagList
 
 # Create the SQL database and responses table
-pool <- dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
 
 #Label mandatory fields
 labelMandatory <- function(label) {
@@ -21,24 +21,19 @@ labelMandatory <- function(label) {
   )
 }
 
-appCSS <- ".mandatory_star { color: red; }"
-
-
 mod_submit_ui <- function(id) {
   ns <- NS(id)
   # ui
   fluidPage(
     shinyjs::useShinyjs(),
-    shinyjs::inlineCSS(appCSS),
     fluidRow(
-      actionButton("add_button", "Add", icon("plus")),
-      actionButton("edit_button", "Edit", icon("edit")),
-      actionButton("copy_button", "Copy", icon("copy")),
-      actionButton("delete_button", "Delete", icon("trash-alt"))
+      actionButton(ns("add_button"), "Add", icon("plus")),
+      actionButton(ns("edit_button"), "Edit", icon("edit")),
+      actionButton(ns("copy_button"), "Copy", icon("copy")),
+      actionButton(ns("delete_button"), "Delete", icon("trash-alt"))
     ),
     br(),
-    fluidRow(width="100%",
-             dataTableOutput("ship", width = "100%")
+    fluidRow(DT::dataTableOutput(ns("ship"))
     )
   )
 }
@@ -63,7 +58,7 @@ mod_submit_server <- function(id) {
       })  
       
       #List of mandatory fields for submission
-      fieldsMandatory <- c("fna","gff3","genus","species","evidence")
+      fieldsMandatory <- c("fna","gff3","genus","species","evidence","uploader")
       
       #define which input fields are mandatory 
       observe({
@@ -89,18 +84,14 @@ mod_submit_server <- function(id) {
                 tags$head(tags$style(HTML(".shiny-split-layout > div {overflow: visible}"))),
                 fluidPage(
                   fluidRow(
-                    splitLayout(
-                      cellWidths = c("250px", "100px"),
-                      cellArgs = list(style = "vertical-align: top"),
-                      textInput("uploader",label = "Name of curator"),
-                      textInput("evidence",label="What evidence exists for ship annotation?"),
-                      textInput("genus",label = "Enter genus name"),
-                      textInput("species",label = "Enter species name"),
+                      textInput("uploader",label = labelMandatory("Name of curator")),
+                      textInput("evidence",label=labelMandatory("What evidence exists for ship annotation?")),
+                      textInput("genus",label = labelMandatory("Enter genus name")),
+                      textInput("species",label = labelMandatory("Enter species name")),
                       
                       # TODO: store file and put path in SQL table
-                      fileInput("fna",label = "Upload ship sequence",accept = c(".fa",".fna",".fasta")),
-                      fileInput("gff3",label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3"))
-                    ),
+                      fileInput("fna",label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
+                      fileInput("gff3",label = labelMandatory("Upload ship annotations (GFF3 format)"),accept = c(".gff",".gff3")),
                     textAreaInput("comment", "Comment", placeholder = "", height = 100, width = "354px"),
                     helpText(labelMandatory(""), paste("Mandatory field.")),
                     actionButton(button_id, "Submit")
@@ -133,8 +124,8 @@ mod_submit_server <- function(id) {
       
       #Add data
       appendData <- function(data){
-        quary <- sqlAppendTable(pool, "ship", data, row.names = FALSE)
-        dbExecute(pool, quary)
+        query <- sqlAppendTable(pool, "ship", data, row.names = FALSE)
+        dbExecute(pool, query)
       }
       
       observeEvent(input$add_button, priority = 20,{
@@ -157,7 +148,7 @@ mod_submit_server <- function(id) {
         SQL_df <- dbReadTable(pool, "ship")
         row_selection <- SQL_df[input$ship_rows_selected, "row_id"]
         
-        quary <- lapply(row_selection, function(nr){
+        query <- lapply(row_selection, function(nr){
           
           dbExecute(pool, sprintf('DELETE FROM "ship" WHERE "row_id" == ("%s")', nr))
         })
@@ -191,8 +182,8 @@ mod_submit_server <- function(id) {
         SQL_df <- SQL_df %>% filter(row_id %in% row_selection)
         SQL_df$row_id <- unique_id(SQL_df)
         
-        quary <- sqlAppendTable(pool, "ship", SQL_df, row.names = FALSE)
-        dbExecute(pool, quary)
+        query <- sqlAppendTable(pool, "ship", SQL_df, row.names = FALSE)
+        dbExecute(pool, query)
         
       })
       
