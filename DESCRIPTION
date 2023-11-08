@@ -31,6 +31,7 @@ Imports:
     shinydashboardPlus,
     shinyjs,
     shinyWidgets,
+    sodium,
     stringi,
     stringr,
     taxa,
