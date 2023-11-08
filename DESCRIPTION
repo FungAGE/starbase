@@ -23,6 +23,7 @@ Imports:
     httpuv,
     JBrowseR,
     metacoder,
+    pool,
     readr,
     RSQLite,
     shiny (>= 1.7.5),
