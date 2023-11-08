@@ -56,7 +56,7 @@ mod_wiki_ui <- function(id) {
         box(
           title = "Metadata Wiki",
           closable = FALSE,
-          width = 6,
+          width = NULL,
           solidHeader = FALSE,
           collapsible = FALSE,
           p("Search through metadata for Starship families"),
@@ -66,16 +66,15 @@ mod_wiki_ui <- function(id) {
             choices = unique(metadata$starship_family),
             multiple = FALSE,
             selected = NULL,
-            width = "100%"
-          )
-        )),
+            width = "30%"
+          ),
     fluidRow(
-     column(6,
-            uiOutput(ns("wiki"))
-      ),
-      column(6,
+     column(width=6,
+                   fluidRow(valueBoxOutput(ns("total_ships"))),
+                   fluidRow(uiOutput(ns("wiki")))),
+      column(width=6,
         DT::DTOutput(ns("table"))
-     ))
+     ))))
   )
 }
 
@@ -101,8 +100,17 @@ mod_wiki_server <- function(id) {
       output$table <- DT::renderDT({
         DT::datatable(metadata)
       })
+      
+      output$total_ships <- renderValueBox({
+        valueBox(
+          value = nrow(metadata),
+          subtitle = paste0("Total number of ",input$family," Starships in Database"),
+          icon = icon("area-chart")
+        )
+      })
+      
     output$wiki<-renderUI({
-      box(title=input$family,p(random_text(nwords = 50)))
+      p(random_text(nwords = 50))
     })
       })
   })

@@ -27,8 +27,8 @@ mod_home_ui <- function(id) {
         disabled(
           checkboxGroupInput(ns("functions"),
             label = "Working Functions:",
-            choices = c("BLAST/HMMER searches", "Synteny/Genome Browser", "Starship Catalogue", "Running Starfish", "Submission of new Ships", "Editing of Database entries"),
-            selected = "BLAST/HMMER searches"
+            choices = c("BLAST/HMMER searches", "Synteny/Genome Browser", "Catalogue/Wiki of Starship Metadata", "Running Starfish", "Submission of new Ships", "Editing of Database entries"),
+            selected = c("BLAST/HMMER searches","Submission of new Ships", "Editing of Database entries")
           )
         )
       )
