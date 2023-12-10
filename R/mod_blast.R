@@ -33,7 +33,7 @@ mod_blast_ui <- function(id) {
           checkboxInput(ns("search_ship_genes"),"Screen for genes in starship sequence?",value = FALSE),
           conditionalPanel(
             condition = "input.search_ship_genes == TRUE",
-            
+            # ? is this even needed anymore?
             selectInput(ns("gene_type"), "Select a specific gene model? Default is to run search for tyr genes", 
                           selected = "tyr", 
                           multiple = TRUE, 
@@ -134,6 +134,7 @@ mod_blast_server <- function(id) {
       # validate(need(input$query_file || input$query, message = TRUE))
 
       # throw error if none or both provided
+      # BUG: file upload is always an error
       if (is.null(input$query_file) & is.null(input$query)) {
         shinyalert("Oops!", "Please provide a query sequence or fasta file", type = "error")
       }
@@ -163,7 +164,7 @@ mod_blast_server <- function(id) {
         prot_char <- prot_char[!prot_char %in% c(na_char, nucl_char)]
 
         query_lines <- str_split(query, "\n", simplify = T)
-
+        # BUG: header is not being added correctly in some cases
         for (line in query_lines) {
           if (str_length(line) > 1) {
             if (grepl("^>", trimws(line))) {

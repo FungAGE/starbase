@@ -689,16 +689,21 @@ mod_blast_syn_viz_server <- function(id) {
           comment = "#",
           delim = "\t"
         )
+        
         synteny_query_chr <- queryGff() %>%
           distinct(chr) %>%
+          # slice(1) %>% 
           pull(chr)
+        
         synteny$queryGff <- queryGff() %>%
           filter(chr %in% synteny_query_chr) %>%
           arrange(factor(chr, levels = synteny_query_chr), start)
 
         synteny_subject_chr <- subjectGff() %>%
           distinct(chr) %>%
+          # slice(1) %>% 
           pull(chr)
+        
         synteny$subjectGff <- subjectGff() %>%
           filter(chr %in% synteny_subject_chr) %>%
           arrange(factor(chr, levels = synteny_subject_chr), start)
@@ -727,6 +732,20 @@ mod_blast_syn_viz_server <- function(id) {
         } else {
           plotMode <- "parallel"
         }
+        
+        ## Generate macro_synteny_data
+        macro_synteny_data <- list(
+          "querySpecies" = querySpecies(),
+          "queryChrInfo" = queryChrInfo,
+          "subjectSpecies" = subjectSpecies(),
+          "subjectChrInfo" = subjectChrInfo,
+          "ribbon" = anchorSimple,
+          "plotMode" = plotMode,
+          "queryChrColor" = input$macroQueryColor,
+          "subjectChrColor" = input$macroSubjectColor,
+          "ribbonColor" = input$macroRibbonColor
+        )
+        
         ## Generate macro_synteny_data
         macro_synteny_data <- list(
           # "id" = ns("selected_macroRegion"),
@@ -786,14 +805,14 @@ mod_blast_syn_viz_server <- function(id) {
 
       synteny$selectedQueryRegion <- synteny$queryGff %>%
         filter(
-          chr == macroQueryChr,
+          chr %in% macroQueryChr,
           start >= macroQueryStart,
           end <= macroQueryEnd
         )
 
       synteny$selectedSubjectRegion <- synteny$subjectGff %>%
         filter(
-          chr == macroSubjectChr,
+          chr %in% macroSubjectChr,
           start >= macroSubjectStart,
           end <= macroSubjectEnd
         )
@@ -875,7 +894,8 @@ mod_blast_syn_viz_server <- function(id) {
     observeEvent(input$microAnchor_out_rows_selected, {
       selectedQueryGene <- synteny$selectedAnchors[input$microAnchor_out_rows_selected, ] %>%
         pull(q_Gene)
-      session$sendCustomMessage(type = "center_microSynteny", list("id" = ns("selected_macroRegion"), selectedQueryGene = "selectedQueryGene"))
+      session$sendCustomMessage(type = "center_microSynteny", selectedQueryGene)
+      # session$sendCustomMessage(type = "center_microSynteny", list("id" = ns("selected_macroRegion"), selectedQueryGene = "selectedQueryGene"))
     })
 
     observeEvent(input$selected_anchors, {
@@ -911,7 +931,7 @@ mod_blast_syn_viz_server <- function(id) {
             style = "color: gray;",
             "Please select your region of interest from the dot plot on the left panel, the table below will be updated automatically."
           ),
-          DTOutput("selected_anchors")
+          DTOutput(ns("selected_anchors"))
         )
       })
     })
