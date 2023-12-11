@@ -6,7 +6,8 @@
 #'
 #' @noRd
 #'
-#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag
+#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag ggtree treeio ggiraph stringi htmltools htmlwidgets 
+#' 
 #' @importFrom readr read_csv
 #' @importFrom shiny NS tagList
 
@@ -17,12 +18,12 @@ mod_blast_ui <- function(id) {
       column(width=3,
       # input block
       box(
-        title = "BLAST/HMMER Searches",
+        title = "Input for BLAST/HMMER Searches",
         solidHeader = FALSE,
         collapsible = TRUE,
         width = NULL,
         tagList(
-          textAreaInput(ns("query"), "Paste a sequence here in FASTA format:", value = "", width = "600px", height = "200px", placeholder = "Paste any nucleotide or protein sequence here"),
+          textAreaInput(ns("query"), "Paste a sequence here in FASTA format:", value = NULL, width = "600px", height = "200px", placeholder = "Paste any nucleotide or protein sequence here"),
           fileInput(ns("query_file"), "Upload a fasta file (10 MB maximum size)",accept = c(".fa",".fna",".fasta",".faa")),
 
           # input logic:
@@ -30,17 +31,16 @@ mod_blast_ui <- function(id) {
           # 2) look for captain genes
           # 3) look for cargo genes
 
-          checkboxInput(ns("search_ship_genes"),"Screen for genes in starship sequence?",value = FALSE),
+          checkboxInput(ns("search_ship_genes"),"Screen for genes in starship sequence?",value = TRUE),
           conditionalPanel(
             condition = "input.search_ship_genes == TRUE",
             # ? is this even needed anymore?
             selectInput(ns("gene_type"), "Select a specific gene model? Default is to run search for tyr genes", 
                           selected = "tyr", 
                           multiple = TRUE, 
-                        width = "200px",
-                        choices = "tyr"
-                        # choices = c("tyr", "freB", "nlr", "DUF3723", "plp")
-                        ),
+                          width = "200px",
+                          choices = c("tyr", "fre", "nlr", "DUF3723", "plp")
+                          ),
             ns = ns),
           div(
             style = "display:inline-block",
@@ -50,39 +50,51 @@ mod_blast_ui <- function(id) {
         )
       )),
       column(width=9,
-          box(        title = "Comparison of BLAST results",
-                      width = NULL,
-                      status = "success",
-                      closable = FALSE,
-                      solidHeader = FALSE,
-                      collapsible = FALSE,
-                      chorddiagOutput(ns("chord_ship"),width="100%",height = "600px")
-          ))
-    ),
-
-    # TODO: should be separated by results from different genes?
-    # Basic results output
-    fluidRow(
-      box(title="BLAST/HMMER Results",
-        tabsetPanel(tabPanel("Starship Elements",
-          
-                 DT::dataTableOutput(ns("table_ship")),
-                 tableOutput(ns("clicked_table_ship")),
-                 msaROutput(ns("alignment_ship"), width = "85%", height = "120%")
-        ),
-        tabPanel("Extracted Genes",
-                 tabsetPanel(tabPanel("tyr",
+        box(title="BLAST/HMMER Results",
+            width = NULL,
+            status = "success",
+            closable = FALSE,
+            solidHeader = FALSE,
+            collapsible = FALSE,
+          box(title = "Comparison of BLAST results",chorddiagOutput(ns("chord_ship"),width="100%",height = "600px")),
+          box(title="Alignments",
+            tabsetPanel(tabPanel("Starship Elements",
+              DT::dataTableOutput(ns("table_ship")),
+              tableOutput(ns("clicked_table_ship")),
+              msaROutput(ns("alignment_ship"), width = "100%", height = "120%")
+              ),
+              tabPanel(title="Extracted Genes",
+                tabsetPanel(
+                  tabPanel("tyr",
                    DT::dataTableOutput(ns("table_tyr")),
                    tableOutput(ns("clicked_table_tyr")),
-                   msaROutput(ns("alignment_tyr"))
-                 
-                 # uiOutput(ns("tabs")
-                          )
-                 )
-      )
+                   msaROutput(ns("alignment_tyr"))),
+                  tabPanel("fre",
+                   DT::dataTableOutput(ns("table_fre")),
+                   tableOutput(ns("clicked_table_fre")),
+                   msaROutput(ns("alignment_fre"))),
+                  tabPanel("nlr",
+                   DT::dataTableOutput(ns("table_nlr")),
+                   tableOutput(ns("clicked_table_nlr")),
+                   msaROutput(ns("alignment_nlr"))),
+                  tabPanel("DUF3723",
+                   DT::dataTableOutput(ns("table_DUF3723")),
+                   tableOutput(ns("clicked_table_DUF3723")),
+                   msaROutput(ns("alignment_DUF3723"))),
+                  tabPanel("plp",
+                   DT::dataTableOutput(ns("table_plp")),
+                   tableOutput(ns("clicked_table_plp")),
+                   msaROutput(ns("alignment_plp")))
+                )))),
+          actionButton(
+            inputId = "shoot", 
+            label = "Place Query Sequence in TYR phylogeny"
+          ),
+          # shinyWidgetOutput(ns("shoot_tree"))
+          readRDS(file = "data/shoot-tree.RDS")
+        )
       )
     )
-  )
   )
 }
 
@@ -93,8 +105,11 @@ mod_blast_ui <- function(id) {
 mod_blast_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    # separate lists of starship and gene databases with sub lists of nucl and prot databases
 
+    # Create reactive values
+    # rv <- reactiveValues()
+
+    # separate lists of starship and gene databases with sub lists of nucl and prot databases
     # TODO: add profiles for other cargo genes? i.e. metal resistance/formaldeyde?
 
     db_list <- list(
@@ -106,7 +121,7 @@ mod_blast_server <- function(id) {
           prot = "blastdb/YRsuperfamRefs.faa",
           nucl = "blastdb/YRsuperfamRefs.fa"
         ),
-        freB = list(
+        fre = list(
           prot = "blastdb/fre.mycoDB.faa",
           nucl = "blastdb/fre.fa"
         ),
@@ -127,8 +142,7 @@ mod_blast_server <- function(id) {
     
     # gather input and set up temp file
     tmp_fasta <- tempfile(fileext = ".fa")
-    
-    blastresults <- eventReactive(input$blast, {
+    submitted <- eventReactive(input$blast, {
 
       # gather input and set up temp file
       # validate(need(input$query_file || input$query, message = TRUE))
@@ -198,12 +212,15 @@ mod_blast_server <- function(id) {
       query_list <- clean_lines(query)
 
       writeLines(str_c(str_c(">", query_list$header, sep = ""), query_list$query, sep = "\n"), tmp_fasta)
+      return(query_list)
+    })
 
+    blastresults <- reactive({
       # select correct BLAST/HMMER program
       # force the right database to be used
       # and calls the BLAST/HMMER
-
-        if (query_list$query_type == "nucl" ) {
+      # TODO: set threshold for # of returned hits?
+        if (submitted()$query_type == "nucl" ) {
           blast_program <- "blastn"
         } else {
           blast_program <- "tblastn"
@@ -216,19 +233,16 @@ mod_blast_server <- function(id) {
         
         genes_blast_out <- NULL
       if (input$search_ship_genes == TRUE) {
-        if (query_list$query_type == "nucl") {
+        if (submitted()$query_type == "nucl") {
           hmmer_program <- "jackhmmer"
         } else {
           hmmer_program <- "phmmer"
         }
-        if (!is.null(input$gene_type)) {
-          gene_list <- input$gene_type
-        } else {
-          gene_list <- names(db_list[["gene"]])
-        }
+
+        gene_list <- input$gene_type
         
         run_hmmer <- function(gene) {
-          db <- db_list[["gene"]][[gene]][[query_list$query_type]]
+          db <- db_list[["gene"]][[gene]][[submitted()$query_type]]
           
           tmp_hmmer <- tempfile(fileext = ".hmmer")
           
@@ -291,9 +305,8 @@ mod_blast_server <- function(id) {
       }
     })
     
-
     # these functions are really just for parsing the results list for genes
-    make_blast_table <- function(data) {
+    make_blast_table<-function(data) {
       renderDT(
         {
           data 
@@ -304,9 +317,10 @@ mod_blast_server <- function(id) {
 
     # this chunk gets the alignment information from a clicked row
     # TODO: how to sort out which tab is being clicked?
-    make_clicked_table <- function(data, clicked) {
+    make_clicked_table <- function(data, name) {
       renderTable(
         {
+          clicked<-input[[paste0("table_",name,"_rows_selected")]]
           tableout <- data %>%
             slice(clicked) %>%
             t()
@@ -320,68 +334,68 @@ mod_blast_server <- function(id) {
       )
     }
 
-    make_alignment <- function(data, clicked) {
-      renderMsaR({
-        cdat <- data %>% slice(clicked)
-        qseq <- cdat %>% pull(query_seq)
-        qid <- cdat %>% pull(query_ID)
-        sseq <- cdat %>% pull(subject_seq)
-        sid <- cdat %>% pull(subject_IDs)
+    # this function makes the alignments for clicked rows
+    make_alignment<-function(type, data, name) {
+        renderMsaR({
+          #? needed for when row is not clicked?
+          clicked<-input[[paste0("table_",name,"_rows_selected")]]
+          if(!is.null(clicked)){
+            if(type=="gene"){
+              cdat <- data %>% slice(clicked)
+              qseq <- cdat %>% pull(query_seq)
+              qid <- cdat %>% pull(query_ID)
+              sseq <- cdat %>% pull(subject_seq)
+              sid <- cdat %>% pull(subject_IDs)
+            } else if(type=="ship") {
+              xmltop <- xmlRoot(data)
+              
+              align <- xpathApply(data, "//Iteration", function(row) {
+                query <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_qseq") %>% sapply(., xmlValue)
+                subject <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_hseq") %>% sapply(., xmlValue)
+                rbind(query, subject)
+              })
 
-        ss <- DNAStringSet(c(qseq, sseq))
-        names(ss) <- c(paste("Query:", qid), paste("Subject:", sid))
-        msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200)
-      })
+              # add query and subject IDs
+              qid <- getNodeSet(data, "//BlastOutput_query-def") %>% sapply(., xmlValue)
+              
+              sids <- xpathApply(data, "//Iteration", function(row) {
+                getNodeSet(row, "Iteration_hits//Hit//Hit_id") %>% sapply(., xmlValue)
+              })
+
+              alignx <- do.call("bind_cols", align)
+              qseq<-alignx[1, clicked]
+              sseq<-alignx[2, clicked]
+            }
+
+            if (submitted()$query_type == "nucl" ) {
+              ss <- DNAStringSet(c(qseq, sseq))
+              base_palette="nucleotide"
+            } else {
+              tmp_aln<-tempfile(fileext = ".aln")
+              writeLines(str_c(str_c(str_c(">", qid,sep=""), qseq, sep = "\n"),
+                              str_c(str_c(">", sids[[clicked]]), sseq, sep = "\n"),
+                              sep="\n"),tmp_aln)
+              ss <- seqinr::read.alignment(file = tmp_aln, format = "fasta")
+              base_palette="clustal"
+            }
+            # BUG: when setting custom headers for msa object:
+            # names(ss) <- c(paste("Query:", unique(qid[[clicked]])), paste("Subject:", sids[[clicked]]))
+            # names(ss) <- c("Query:", "Subject:")        
+            msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200,colorscheme=base_palette)
+          } else {}
+        })
     }
 
     # creates tabs for each gene
-    tabify <- function(dataset,blast_table) {
-      name<-names(dataset)
+    tabify<-function(name) {
       tabPanel(
         name,
-        DT::DTOutput(ns(paste0("table_", name)))
-        # tableOutput(ns(paste0("clicked_table_", dataset))),
-        # msaROutput(ns(paste0("alignment_", dataset)), width = "100%", height = "100%")
+        DT::DTOutput(ns(paste0("table_", name))),
+        tableOutput(ns(paste0("clicked_table_", name))),
+        msaROutput(ns(paste0("alignment_", name)), width = "85%", height = "120%")
       )
     }
 
-    output$table_tyr<-renderDT(
-        {
-          parsedresults_genes()[["tyr"]] %>% 
-            as.data.frame(., stringsAsFactors = FALSE)
-        },
-        selection = "single"
-      )
-  
-    output$clicked_table_tyr <- renderTable(
-      {
-        blast_out <-parsedresults_genes()[["tyr"]]
-        clicked <- input$table_tyr_rows_selected
-        
-        if (is.null(clicked)) {
-        } else {
-          
-        tableout <- blast_out %>%
-          slice(clicked) %>%
-          t()
-        names(tableout) <- c("")
-        rownames(tableout) <- c("Query ID", "Hit ID", "Alignment Length", "Gaps", "Bit Score", "e-value")
-        colnames(tableout) <- NULL
-        data.frame(tableout)
-      }
-      },
-      rownames = T,
-      colnames = F
-    )
-  
-    output$tabs <- renderUI({
-      if (input$search_ship_genes == TRUE) {
-        gene_tabs <- map(parsedresults_genes(), ~ {
-          tabify(.x,make_blast_table(.x))})
-      do.call(tabsetPanel, gene_tabs)
-      }
-    })
-    
     output$chord_ship <- renderChorddiag({
       if (is.null(parsedresults_ship())) {
       } else {
@@ -397,6 +411,7 @@ mod_blast_server <- function(id) {
         df<-parsedresults_ship() %>%
           mutate(across(c(query_ID,hit_IDs),~sub(rexp,"\\1",.)),
                  aln_length=as.numeric(aln_length)) %>%
+          mutate(aln_length=ifelse(query_ID == hit_IDs,NA,aln_length)) %>% # exclude self-hits
           arrange(desc(eval)) %>%
           slice_head(n=nhits) %>%
           select(query_ID,hit_IDs,aln_length)
@@ -405,7 +420,7 @@ mod_blast_server <- function(id) {
       queryName<-"QUERY"
       # queryName<-unique(df$query_ID)
 
-      groupColors <- RColorBrewer::brewer.pal(nhits,"Paired")
+      groupColors<-RColorBrewer::brewer.pal(nhits,"Paired")
       
       m <- matrix(df$aln_length,
                   byrow = FALSE,
@@ -414,7 +429,6 @@ mod_blast_server <- function(id) {
       dimnames(m) <- list(query = rep(queryName,nhits),
                           subject = subNames)
 
-      # TODO: exclude self-hits
       # Build the chord diagram:
       chorddiag(m, 
                 groupnameFontsize = 12,
@@ -439,10 +453,10 @@ mod_blast_server <- function(id) {
           if (is.null(input$table_ship_rows_selected)) {
           } else {
           xmltop <- xmlRoot(blast_out)
-          clicked_ship <- input$table_ship_rows_selected
+          clicked <- input$table_ship_rows_selected
           tableout <- parsedresults_ship() %>%
             data.frame() %>%
-            slice(clicked_ship)
+            slice(clicked)
   
           tableout <- t(tableout)
           names(tableout) <- c("")
@@ -455,54 +469,65 @@ mod_blast_server <- function(id) {
       colnames = F
     )
     
-    # this chunk makes the alignments for clicked rows
-    output$alignment_ship <- renderMsaR({
-      blast_out <- blastresults()[["ship"]]
-      
-      if (is.null(input$table_ship_rows_selected)) {
-      } else {
-        
-      xmltop <- xmlRoot(blast_out)
-      clicked_ship <- input$table_ship_rows_selected
-      
-      # loop over the xml to get the alignments
-      align <- xpathApply(blast_out, "//Iteration", function(row) {
-        query <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_qseq") %>% sapply(., xmlValue)
-        subject <- getNodeSet(row, "Iteration_hits//Hit//Hit_hsps//Hsp//Hsp_hseq") %>% sapply(., xmlValue)
-        rbind(query, subject)
-      })
+    output$alignment_ship<-reactive(
+      make_alignment("ship",blastresults()[["ship"]],"ship")
+    )
 
-      # add query and subject IDs
-      qid <- getNodeSet(blast_out, "//BlastOutput_query-def") %>% sapply(., xmlValue)
-      
-      sids <- xpathApply(blast_out, "//Iteration", function(row) {
-        getNodeSet(row, "Iteration_hits//Hit//Hit_id") %>% sapply(., xmlValue)
-      })
+    output$table_tyr<-make_blast_table(parsedresults_genes()[["tyr"]])
+    output$clicked_table_tyr<-make_clicked_table(parsedresults_genes()[["tyr"]],"tyr")
+    output$alignment_tyr<-make_alignment("gene",parsedresults_genes()[["tyr"]],"tyr")
 
-      alignx <- do.call("cbind", align)
-      ss <- DNAStringSet(c(alignx[1, clicked_ship], alignx[2, clicked_ship]))
-      names(ss) <- c("Query:", "Subject:")
-      # BUG: when setting custom headers for msa object:
-      # names(ss) <- c(paste("Query:", unique(qid[[clicked_ship]])), paste("Subject:", sids[[clicked_ship]]))
+    output$table_fre<-make_blast_table(parsedresults_genes()[["fre"]])
+    output$clicked_table_fre<-make_clicked_table(parsedresults_genes()[["fre"]],"fre")
+    output$alignment_fre<-make_alignment("gene",parsedresults_genes()[["fre"]],"fre")
 
-      msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200)
-      }
+    output$table_nlr<-make_blast_table(parsedresults_genes()[["nlr"]])
+    output$clicked_table_nlr<-make_clicked_table(parsedresults_genes()[["nlr"]],"nlr")
+    output$alignment_nlr<-make_alignment("gene",parsedresults_genes()[["nlr"]],"nlr")
+
+    output$table_DUF3723<-make_blast_table(parsedresults_genes()[["DUF3723"]])
+    output$clicked_table_DUF3723<-make_clicked_table(parsedresults_genes()[["DUF3723"]],"DUF3723")
+    output$alignment_DUF3723<-make_alignment("gene",parsedresults_genes()[["DUF3723"]],"DUF3723")
+
+    output$table_plp<-make_blast_table(parsedresults_genes()[["plp"]])
+    output$clicked_table_plp<-make_clicked_table(parsedresults_genes()[["plp"]],"plp")
+    output$alignment_plp<-make_alignment("gene",parsedresults_genes()[["plp"]],"plp")
+
+  output$gene_tabs<- renderUI({
+    gene_tabs <- map(names(parsedresults_genes()), ~ {
+      tabify(.x)
     })
-    
-    output$alignment_tyr <- renderMsaR({
-      blast_out <- blastresults()[["genes"]][["tyr"]]
-      clicked <- input$table_tyr_rows_selected
-      if (is.null(clicked)) {
+  do.call(tabsetPanel, gene_tabs)
+  })
+
+  # TODO: use `update` functions to update UI
+  shoot_tree<-observeEvent(input$shoot, {
+    if(input$search_ship_genes == TRUE & !is.null(parsedresults_genes()[["tyr"]]) & submitted()$query_type == "prot"){
+      db_name<-"YRSuperfamRefs"
+      withProgress(message="Running SHOOT...",
+        system(paste("bash bin/shoot.sh",tmp_fasta,submitted()$query_header,db_name,sep=" "),intern=FALSE)
+      )
+        tree<-read.tree(Sys.glob(paste0(gsub(".shoot.fa","",tmp_fasta),"/*.treefile"))) 
+        int_tree<-girafe(
+          ggobj = ggtree(tree),
+          width_svg = 12,
+          height_svg = 12,
+          options = list(
+            opts_hover(css = "fill:white;stroke:black;r:5pt;"),
+            opts_sizing(width = 0.8),
+            opts_zoom(min=0.7,max=10),
+            opts_tooltip(opacity = .7,
+              css = "text:black;",
+              offx = 20, offy = -10,
+              use_fill = TRUE, use_stroke = TRUE,
+              delay_mouseout = 1000
+            )
+          )
+        )
+        saveRDS(int_tree,file="data/shoot-tree.RDS")
       } else {
-        align <- 
-        ss <- DNAStringSet(c(blast_out$query_seq[[clicked]], blast_out$subject_seq[[clicked]]))
-        names(ss) <- c("Query:", "Subject:")
-        # BUG: when setting custom headers for msa object:
-        # names(ss) <- c(paste("Query:", unique(qid[[clicked]])), paste("Subject:", sids[[clicked]]))
-        
-        msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200)
-      }
+        shinyalert("Error!", "Can't run shoot with this combination (yet)", type = "error")
+        }
     })
-    
   })
 }
