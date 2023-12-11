@@ -22,14 +22,13 @@ usethis::use_package("crosstalk")
 usethis::use_package("XML")
 usethis::use_package("DT")
 usethis::use_package("RColorBrewer")
-usethis::use_package("Biostrings")
 usethis::use_package("msaR")
 usethis::use_package("stringi")
 usethis::use_package("JBrowseR")
 usethis::use_package("readr")
 usethis::use_package("covrpage")
 usethis::use_package("spelling")
-
+usethis::use_package("stringr")
 usethis::use_package("bslib")
 usethis::use_package("shinyWidgets")
 usethis::use_package("shinyalert")
@@ -38,9 +37,10 @@ usethis::use_package("waiter")
 usethis::use_package("vroom")
 
 devtools::install_github('jbryer/DTedit')
+devtools::install_github("YuLab-SMU/ggtree")
 
 # issue with these bioconductor packages:
-# renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings"))
+# renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings","bioc::treeio"))
 
 ## Install the required dev dependencies ----
 golem::install_dev_deps()

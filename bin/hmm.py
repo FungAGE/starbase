@@ -1,7 +1,10 @@
 import argparse
 import pandas as pd
+import os
 from Bio import SearchIO
 from Bio import AlignIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 from Bio import SeqIO
 
 parser = argparse.ArgumentParser(
@@ -62,7 +65,7 @@ def extract_hmmer(parsed_file):
         query_sequence = row["query_seq"]
 
         # Create a SeqRecord
-        sequence = SeqIO.SeqRecord(SeqIO.Seq(query_sequence), id=query, description="")
+        sequence = SeqIO.SeqRecord(Seq(query_sequence), id=query, description="")
 
         # Write the SeqRecord to a FASTA file
         # TODO: create directory for output
