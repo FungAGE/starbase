@@ -12,27 +12,25 @@ mod_explore_ui <- function(id) {
   ns <- NS(id)
   dashboardBody(
     fluidPage(title = "Explore the starbase",
-      
       fluidRow(
                box(
-                 title = "Starship Diversity",width=NULL,
+                 title = "Starship Diversity",width=12,
                  valueBoxOutput(ns("total_species")),valueBoxOutput(ns("total_ships")),
                  img(
                    src = "img/heat_tree.png",
                    width = "75%",
                    style = "background-color: black;"
-                 )
+                 ),br()
                )),
-      fluidRow(column(width=6,
-               box(
-                 title = "Captain Phylogeny",width=NULL,
-                 readRDS(file = "data/captain-tree.RDS"))),
-      column(width=6,box(
-        title = "Represented Species",width=NULL,
-        DT::DTOutput(ns("meta_table")))))
-      )
-    )
-}
+      fluidRow(box(
+                 title = "Captain Phylogeny and Represented Species",width=NULL,
+                column(width=4,
+                  h4("Select tyr Family: "),
+                  actionButton("reset", label = "Reset selection"),
+                  ggiraph::girafeOutput(ns("captain_tree"))),
+                column(width=6,
+                  DT::DTOutput(ns("meta_table"))
+                )))))}
 
 #' explore Server Functions
 #'
@@ -57,8 +55,42 @@ mod_explore_server <- function(id) {
       )
     ))
 
+    output$total_ships <- renderValueBox({
+    valueBox(
+      value = nrow(table_dat),
+      subtitle = "Total number of Starships in starbase",
+      icon = icon("dna")
+    )
+    })
+    
+    output$total_species<-renderValueBox({
+      valueBox(
+      value = n_distinct(paste(table_dat$genus, table_dat$species)),
+      subtitle = "Fungi represented in starbase",
+      icon = icon("dna")
+    )})
+    
+    gg<-readRDS(file = "data/captain-tree.RDS")
+
+    selected_state <- reactive({
+      input$captain_tree_selected
+    })
+    output$console <- renderPrint({
+      input$captain_tree_hovered
+    })
+
+    output$captain_tree <- renderGirafe({gg})
+
+    observeEvent(input$reset, {
+      session$sendCustomMessage(type = 'plot_set', message = character(0))
+    })
+
     output$meta_table <- renderDT({
-      table_dat %>%
+      tab_dat<-table_dat %>%
+        filter(starship_family %in% gsub("-","",selected_state()))
+      if( nrow(tab_dat) < 1 ) return(NULL)
+      
+      tab_dat %>%
         DT::datatable(
           options = list(), class = "display", rownames = FALSE, container = sketch,
           callback = JS("return table;"), # rownames, colnames, container,
@@ -71,21 +103,6 @@ mod_explore_server <- function(id) {
         )
     })
 
-    output$total_ships <- renderValueBox({
-    valueBox(
-      value = nrow(table_dat),
-      subtitle = "Total number of Starships in Database",
-      icon = icon("area-chart")
-    )
-    })
-    
-    output$total_species<-renderValueBox({
-      valueBox(
-      value = n_distinct(paste(table_dat$genus, table_dat$species)),
-      subtitle = "Total number of Represented Species",
-      icon = icon("area-chart")
-    )})
-    
     #   # a custom table container
     #   sketch = htmltools::withTags(table(
     #     class = 'display',
@@ -114,8 +131,18 @@ mod_explore_server <- function(id) {
     #   })
 
     # mydb <- dbConnect(RSQLite::SQLite(), "SQL/starbase.sqlite")
+
+    # Using a local cache
+    # cache_dir <- cache_filesystem("cache")
+    # We memoise the dbGetQuery,
+    #  so that every time this function is called with
+    # the same parameters, 
+    # the SQL query is not actually run,
+    #  but the results are fetched from the cache 
+    # m_get_query <- memoise(DBI::dbGetQuery, cache=cache_dir)
+
     # output$tbl<-
-    #   dbGetQuery(mydb, 'SELECT * FROM starbase') %>%
+    #   m_get_query(mydb, 'SELECT * FROM starbase') %>%
     #     distinct(ome,genus,species,strain) %>%
     #     datatable(options = list(), class = "display",
     #               callback = JS("return table;"), #rownames, colnames, container,

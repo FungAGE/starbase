@@ -8,7 +8,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio import SeqIO
 
 parser = argparse.ArgumentParser(
-    description="Parse HMMER output and extract gene sequences from full starship sequence"
+    description="Parse HMMER output and extract useful information. Options for extracting gene sequences from full starship sequence as well as placement into most likely gene family"
 )
 parser.add_argument(
     "-i",
@@ -47,11 +47,7 @@ def parse_hmmer(hmmer_output_file, parsed_file):
 
 parse_hmmer(args.hmmer_output_file, args.parsed_file)
 
-# Create a dictionary to store sequences
-sequences = {}
 
-
-# TODO: just return top hit
 def extract_hmmer(parsed_file):
     # Read the TSV file into a DataFrame
     data = pd.read_csv(parsed_file, sep="\t")
@@ -59,19 +55,42 @@ def extract_hmmer(parsed_file):
     # Get rows with the lowest e-value for each unique entry in Query
     min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
 
-    # Create individual FASTA files
-    for index, row in min_evalue_rows.iterrows():
-        query = row["query_id"]
-        query_sequence = row["query_seq"]
+    # Use os.path.join to construct file paths correctly
+    top_hit_out_path = os.path.join(
+        os.path.dirname(parsed_file), f"{os.path.basename(parsed_file)}.besthit.txt"
+    )
 
-        # Create a SeqRecord
-        sequence = SeqIO.SeqRecord(Seq(query_sequence), id=query, description="")
+    with open(top_hit_out_path, "w") as top_hit_out:
+        top_hit_out.write(
+            "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+        )
 
-        # Write the SeqRecord to a FASTA file
-        # TODO: create directory for output
-        output_filename = os.path.dirname(parsed_file) + f"/{query}_best_hsp.fa"
+        # Create individual FASTA files
+        for index, row in min_evalue_rows.iterrows():
+            query = row["query_id"]
+            query_seq = row["query_seq"]
+            subject_seq = row["subject_seq"]
+            aln_length = row["aln_length"]
+            query_start = row["query_start"]
+            query_end = row["query_end"]
+            gaps = row["gaps"]
+            bitscore = row["bitscore"]
+            evalue = row["evalue"]
 
-        SeqIO.write(sequence, output_filename, "fasta")
+            top_hit_out.write(
+                f"{query}\t{query}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
+            )
+
+            # Create a SeqRecord
+            sequence = SeqRecord(Seq(query_seq), id=query, description="")
+
+            # Write the SeqRecord to a FASTA file
+            # Use os.path.join for constructing output file paths
+            output_filename = os.path.join(
+                os.path.dirname(parsed_file), f"{query}_best_hsp.fa"
+            )
+
+            SeqIO.write(sequence, output_filename, "fasta")
 
 
 extract_hmmer(args.parsed_file)
