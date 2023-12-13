@@ -9,7 +9,7 @@ library(htmlwidgets)
 library(crosstalk)
 library(DT)
 
-nexus_tree<-"Starships/ships/starfish/phylo/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
+nexus_tree<-"Starships/ships/mycodb/phylo/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
 
 # Read the Newick tree using the read.tree function
 tree <- treeio::read.nexus(nexus_tree)
@@ -84,8 +84,9 @@ inter.tree.p<-p +
     aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,fill=groups,
     tooltip = groups,
     data_id = groups,
-    size=1,
-    onclick = sprintf('%s"%s%s"%s', !!window_open, groups, !!html_extension, !!closing_quote)),
+    size=1
+    # onclick = sprintf('%s"%s%s"%s', !!window_open, groups, !!html_extension, !!closing_quote)
+    ),
     alpha=0.5) + 
     scale_fill_manual(values=group_df$custom.fill)+
     guides(size="none",fill="none")
@@ -132,8 +133,9 @@ row2 <- div(
           aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,fill=groups,
           tooltip = groups,
           data_id = groups,
-          size=1,
-          onclick = sprintf('%s"%s%s"%s', !!window_open, groups, !!html_extension, !!closing_quote)),
+          size=1
+          # onclick = sprintf('%s"%s%s"%s', !!window_open, groups, !!html_extension, !!closing_quote)
+          ),
           alpha=0.5) + 
           scale_fill_manual(values=group_df$custom.fill)+
           guides(size="none",fill="none"),

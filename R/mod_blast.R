@@ -6,7 +6,7 @@
 #'
 #' @noRd
 #'
-#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag ggtree treeio ggiraph stringi htmltools htmlwidgets 
+#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets 
 #' 
 #' @importFrom readr read_csv
 #' @importFrom shiny NS tagList
@@ -56,7 +56,8 @@ mod_blast_ui <- function(id) {
             closable = FALSE,
             solidHeader = FALSE,
             collapsible = FALSE,
-          box(title = "Comparison of BLAST results",chorddiagOutput(ns("chord_ship"),width="100%",height = "600px")),
+          box(title = "Comparison of BLAST results",
+            chorddiagOutput(ns("chord_ship"),width="100%",height = "600px")),
           box(title="Alignments",
             tabsetPanel(tabPanel("Starship Elements",
               DT::dataTableOutput(ns("table_ship")),
@@ -86,12 +87,7 @@ mod_blast_ui <- function(id) {
                    tableOutput(ns("clicked_table_plp")),
                    msaROutput(ns("alignment_plp")))
                 )))),
-          actionButton(
-            inputId = "shoot", 
-            label = "Place Query Sequence in TYR phylogeny"
-          ),
-          # shinyWidgetOutput(ns("shoot_tree"))
-          readRDS(file = "data/shoot-tree.RDS")
+          box("Captain Phylogeney",girafeOutput(ns("captain_tree")))
         )
       )
     )
@@ -250,7 +246,7 @@ mod_blast_server <- function(id) {
           system(hmmer_cmd, intern = FALSE)
           
           tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
-          print(tmp_hmmer_parsed)
+
           system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed))
 
           read_tsv(tmp_hmmer_parsed, show_col_types = FALSE, col_names = c("query_id", "hit_IDs", "aln_length", "query_start", "query_end", "gaps", "query_seq", "subject_seq", "evalue", "bitscore"))
@@ -336,7 +332,8 @@ mod_blast_server <- function(id) {
 
     # this function makes the alignments for clicked rows
     make_alignment<-function(type, data, name) {
-        renderMsaR({
+        output_name<-paste0("alignment_",name)
+        output[[output_name]]<-renderMsaR({
           #? needed for when row is not clicked?
           clicked<-input[[paste0("table_",name,"_rows_selected")]]
           if(!is.null(clicked)){
@@ -436,7 +433,7 @@ mod_blast_server <- function(id) {
                 groupnamePadding = 50)
     }})
     
-    output$table_ship <- renderDT(
+    output$table_ship <- DT::renderDT(
       {
         if (is.null(parsedresults_ship())) {
         } else {
@@ -469,13 +466,11 @@ mod_blast_server <- function(id) {
       colnames = F
     )
     
-    output$alignment_ship<-reactive(
-      make_alignment("ship",blastresults()[["ship"]],"ship")
-    )
-
+    make_alignment("ship",blastresults()[["ship"]],"ship")
+    
     output$table_tyr<-make_blast_table(parsedresults_genes()[["tyr"]])
     output$clicked_table_tyr<-make_clicked_table(parsedresults_genes()[["tyr"]],"tyr")
-    output$alignment_tyr<-make_alignment("gene",parsedresults_genes()[["tyr"]],"tyr")
+    make_alignment("gene",parsedresults_genes()[["tyr"]],"tyr")
 
     output$table_fre<-make_blast_table(parsedresults_genes()[["fre"]])
     output$clicked_table_fre<-make_clicked_table(parsedresults_genes()[["fre"]],"fre")
@@ -500,34 +495,14 @@ mod_blast_server <- function(id) {
   do.call(tabsetPanel, gene_tabs)
   })
 
-  # TODO: use `update` functions to update UI
-  shoot_tree<-observeEvent(input$shoot, {
-    if(input$search_ship_genes == TRUE & !is.null(parsedresults_genes()[["tyr"]]) & submitted()$query_type == "prot"){
-      db_name<-"YRSuperfamRefs"
-      withProgress(message="Running SHOOT...",
-        system(paste("bash bin/shoot.sh",tmp_fasta,submitted()$query_header,db_name,sep=" "),intern=FALSE)
-      )
-        tree<-read.tree(Sys.glob(paste0(gsub(".shoot.fa","",tmp_fasta),"/*.treefile"))) 
-        int_tree<-girafe(
-          ggobj = ggtree(tree),
-          width_svg = 12,
-          height_svg = 12,
-          options = list(
-            opts_hover(css = "fill:white;stroke:black;r:5pt;"),
-            opts_sizing(width = 0.8),
-            opts_zoom(min=0.7,max=10),
-            opts_tooltip(opacity = .7,
-              css = "text:black;",
-              offx = 20, offy = -10,
-              use_fill = TRUE, use_stroke = TRUE,
-              delay_mouseout = 1000
-            )
-          )
-        )
-        saveRDS(int_tree,file="data/shoot-tree.RDS")
-      } else {
-        shinyalert("Error!", "Can't run shoot with this combination (yet)", type = "error")
-        }
+  output$captain_tree<-eventReactive(input$blast,
+  renderGirafe({
+    # if(input$search_ship_genes == TRUE & !is.null(parsedresults_genes()[["tyr"]]) & submitted()$query_type == "prot"){
+    readRDS(file = "data/captain-tree.RDS")
+      # } else {
+        # shinyalert("Error!", "Can't run shoot with this combination (yet)", type = "error")
+      # }
     })
-  })
+  )
+})
 }

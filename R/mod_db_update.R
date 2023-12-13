@@ -33,7 +33,9 @@ mod_db_update_ui <- function(id) {
       actionButton(ns("delete_button"), "Delete", icon("trash-alt"))
     ),
     br(),
-    fluidRow(DT::dataTableOutput(ns("ship"))
+    fluidRow(DT::dataTableOutput(ns("ship_table")),
+    actionButton(ns("submit_edit"), "Submit"),
+    br()
     )
   )
 }
@@ -48,7 +50,6 @@ mod_db_update_server <- function(id) {
     ship_df <- reactive({
       
       #make reactive to
-      input$submit
       input$submit_edit
       input$copy_button
       input$delete_button
@@ -71,7 +72,7 @@ mod_db_update_server <- function(id) {
                logical(1))
       mandatoryFilled <- all(mandatoryFilled)
       
-      shinyjs::toggleState(id = "submit", condition = mandatoryFilled)
+      shinyjs::toggleState(id = "submit_edit", condition = mandatoryFilled)
     })
     
     #Form for data entry
@@ -130,11 +131,11 @@ mod_db_update_server <- function(id) {
     
     observeEvent(input$add_button, priority = 20,{
       
-      entry_form("submit")
+      entry_form("submit_edit")
       
     })
     
-    observeEvent(input$submit, priority = 20,{
+    observeEvent(input$submit_edit, priority = 20,{
       
       appendData(formData())
       shinyjs::reset("entry_form")
@@ -255,17 +256,10 @@ mod_db_update_server <- function(id) {
       
     })
     
-    
-    output$ship <- DT::renderDataTable({
-      
-      table <- ship_df() # %>% select(-row_id) 
-      
+    output$ship_table <- DT::renderDataTable({
       # TODO: add names/labels to table columns?
-      table <- datatable(table, 
-                         rownames = FALSE,
-                         options = list(searching = FALSE, lengthChange = FALSE)
-      )
-      
+      ship_df() %>% #select(-row_id) %>%
+        datatable(table,rownames = FALSE,options = list(searching = FALSE, lengthChange = FALSE))
     })
     
   })

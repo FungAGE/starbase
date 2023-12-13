@@ -55,6 +55,8 @@ tmp/
 .Rproj.user
 .Rdata
 
+*.gz
+
 MTDB/**
 SQL/**
 Starships/**
@@ -62,4 +64,5 @@ blastdb/**
 inst/doc
 /doc/
 /Meta/
-*.gz
+shoot/**
+bin/SHOOT/**
