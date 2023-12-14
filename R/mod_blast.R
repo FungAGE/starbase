@@ -6,10 +6,12 @@
 #'
 #' @noRd
 #'
-#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets 
+#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets promises future
 #' 
 #' @importFrom readr read_csv
 #' @importFrom shiny NS tagList
+
+future::plan("future::multicore")
 
 mod_blast_ui <- function(id) {
   ns <- NS(id)
@@ -215,8 +217,10 @@ mod_blast_server <- function(id) {
       # select correct BLAST/HMMER program
       # force the right database to be used
       # and calls the BLAST/HMMER
-      # TODO: set threshold for # of returned hits?
-        if (submitted()$query_type == "nucl" ) {
+      blastinput<-submitted()
+      future_promise({
+        # TODO: set threshold for # of returned hits?
+        if (blastinput$query_type == "nucl" ) {
           blast_program <- "blastn"
         } else {
           blast_program <- "tblastn"
@@ -228,44 +232,45 @@ mod_blast_server <- function(id) {
         })
         
         genes_blast_out <- NULL
-      if (input$search_ship_genes == TRUE) {
-        if (submitted()$query_type == "nucl") {
-          hmmer_program <- "jackhmmer"
-        } else {
-          hmmer_program <- "phmmer"
-        }
+        if (input$search_ship_genes == TRUE) {
+          if (blastinput$query_type == "nucl") {
+            hmmer_program <- "jackhmmer"
+          } else {
+            hmmer_program <- "phmmer"
+          }
 
-        gene_list <- input$gene_type
-        
-        run_hmmer <- function(gene) {
-          db <- db_list[["gene"]][[gene]][[submitted()$query_type]]
+          gene_list <- input$gene_type
           
-          tmp_hmmer <- tempfile(fileext = ".hmmer")
-          
-          hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
-          system(hmmer_cmd, intern = FALSE)
-          
-          tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
+          run_hmmer <- function(gene) {
+            db <- db_list[["gene"]][[gene]][[blastinput$query_type]]
+            
+            tmp_hmmer <- tempfile(fileext = ".hmmer")
+            
+            hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
+            system(hmmer_cmd, intern = FALSE)
+            
+            tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
 
-          system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed))
+            system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed))
 
-          read_tsv(tmp_hmmer_parsed, show_col_types = FALSE, col_names = c("query_id", "hit_IDs", "aln_length", "query_start", "query_end", "gaps", "query_seq", "subject_seq", "evalue", "bitscore"))
-        }
-        
-        withProgress(message = "Performing HMMER search of cargo genes in database...", {
-          # combine results from multiple genes
-          genes_blast_out<-map(gene_list, ~ {
-            run_hmmer(.x)
+            read_tsv(tmp_hmmer_parsed, show_col_types = FALSE, col_names = c("query_id", "hit_IDs", "aln_length", "query_start", "query_end", "gaps", "query_seq", "subject_seq", "evalue", "bitscore"))
+          }
+          
+          withProgress(message = "Performing HMMER search of cargo genes in database...", {
+            # combine results from multiple genes
+            genes_blast_out<-map(gene_list, ~ {
+              run_hmmer(.x)
+            })
+            names(genes_blast_out) <- gene_list
           })
-          names(genes_blast_out) <- gene_list
-        })
-      }
-      list("ship"=ship_blast_out,"genes"=genes_blast_out)
+        }
+        list("ship"=ship_blast_out,"genes"=genes_blast_out)
+      })
     })
 
     parsedresults_ship <- reactive({
-      blast_out <- blastresults()[["ship"]]
-      if (is.null(blast_out)) {} else {
+      parse_ship<-function(blast_out){
+        if (is.null(blast_out)) {} else {
           xmltop <- xmlRoot(blast_out)
 
           # the first chunk is for multi-fastas
@@ -283,8 +288,9 @@ mod_blast_server <- function(id) {
           lapply(results, function(y) {
             as.data.frame((y), stringsAsFactors = FALSE)
           }) %>% bind_rows()
-
+        }
       }
+      blastresults()[["ship"]] %...>% parse_ship()
     })
     
     parsedresults_genes <- reactive({

@@ -35,6 +35,8 @@ usethis::use_package("shinyalert")
 usethis::use_package("colourpicker")
 usethis::use_package("waiter")
 usethis::use_package("vroom")
+usethis::use_package("promises")
+usethis::use_package("future")
 
 devtools::install_github('jbryer/DTedit')
 devtools::install_github("YuLab-SMU/ggtree")
