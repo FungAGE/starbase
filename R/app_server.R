@@ -15,4 +15,5 @@ app_server <- function(input, output, session) {
   mod_starfish_server("starfish_1")
   mod_submit_server("submit_1")
   mod_user_server("user_1")
+  mod_worker_test_server("worker_test_1")
 }

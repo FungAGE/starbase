@@ -94,8 +94,7 @@ mod_wiki_server <- function(id) {
 
     ##### Create the DTedit object
     observe({
-      dat <- metadata %>%
-        filter(starship_family == input$family)
+      dat <- metadata #%>% filter(starship_family == input$family)
       output$table <- DT::renderDT({
         DT::datatable(dat)
       })

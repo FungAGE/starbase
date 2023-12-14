@@ -36,8 +36,8 @@ mod_worker_test_ui <- function(id){
         # Show a plot of the generated distribution
         mainPanel(
           fluidRow(
-            column(6, plotOutput("distPlot")),
-            column(6, plotOutput("FuturePlot")))
+            column(6, plotOutput(ns("distPlot"))),
+            column(6, plotOutput(ns("FuturePlot"))))
         )
       )
     )
@@ -78,9 +78,4 @@ mod_worker_test_server <- function(id){
     })
   })
 }
-    
-## To be copied in the UI
-# 
-    
-## To be copied in the server
-# mod_worker_test_server("worker_test_1")
+  
