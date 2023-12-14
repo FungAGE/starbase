@@ -4,7 +4,7 @@ library(tidyverse)
 library(metacoder)
 library(ggiraph)
 
-dat<-read_tsv("MTDB/joined_ships.tsv") %>%
+dat<-read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
   # distinct(checksum,.keep_all=TRUE) %>%
   rowwise() %>%
   mutate(genus=ifelse(is.na(genus),  gsub(" (.+)","",species),genus)) %>%
