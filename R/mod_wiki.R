@@ -35,7 +35,7 @@
 # temp<-whisker::whisker.render(readLines(system.file("template.html5",package = "dataspice")), jsonld_to_mustache("data/metadata/dataspice.json"))
 # writeLines(temp,"data/metadata/index.html")
 
-metadata <- read_tsv("MTDB/joined_ships.tsv") %>%
+metadata <- read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
   filter(!is.na(starship_family)) %>%
   mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
   select(starshipID, starship_family, starship_navis, starship_haplotype) %>%
@@ -46,7 +46,7 @@ metadata <- read_tsv("MTDB/joined_ships.tsv") %>%
 mod_wiki_ui <- function(id) {
   ns <- NS(id)
   # Define the metadata
-  metadata <- read_tsv("MTDB/joined_ships.tsv") %>%
+  metadata <- read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
     filter(!is.na(starship_family)) %>%
     mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
     select(starshipID, starship_family, starship_navis, starship_haplotype)
@@ -87,7 +87,7 @@ mod_wiki_server <- function(id) {
 
     
     # Define the metadata
-    metadata <- read_tsv("MTDB/joined_ships.tsv") %>%
+    metadata <- read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
       filter(!is.na(starship_family)) %>%
       mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
       select(starshipID, starship_family, starship_navis, starship_haplotype)

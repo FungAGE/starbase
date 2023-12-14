@@ -61,28 +61,19 @@ def extract_hmmer(parsed_file):
     )
 
     with open(top_hit_out_path, "w") as top_hit_out:
+        # Write the header line
         top_hit_out.write(
             "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
         )
 
-        # Create individual FASTA files
+        # Write the rows to the file using to_csv
+        min_evalue_rows.to_csv(top_hit_out, sep="\t", header=False, index=False)
+
         for index, row in min_evalue_rows.iterrows():
-            query = row["query_id"]
-            query_seq = row["query_seq"]
-            subject_seq = row["subject_seq"]
-            aln_length = row["aln_length"]
-            query_start = row["query_start"]
-            query_end = row["query_end"]
-            gaps = row["gaps"]
-            bitscore = row["bitscore"]
-            evalue = row["evalue"]
-
-            top_hit_out.write(
-                f"{query}\t{query}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
-            )
-
             # Create a SeqRecord
-            sequence = SeqRecord(Seq(query_seq), id=query, description="")
+            query = row["query_id"]
+            qseq = row["query_seq"]
+            sequence = SeqRecord(Seq(qseq), id=query, description="")
 
             # Write the SeqRecord to a FASTA file
             # Use os.path.join for constructing output file paths
