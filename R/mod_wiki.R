@@ -35,21 +35,23 @@
 # temp<-whisker::whisker.render(readLines(system.file("template.html5",package = "dataspice")), jsonld_to_mustache("data/metadata/dataspice.json"))
 # writeLines(temp,"data/metadata/index.html")
 
-metadata <- read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
-  filter(!is.na(starship_family)) %>%
-  mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
-  select(starshipID, starship_family, starship_navis, starship_haplotype) %>%
+load_metadata<-function(){
+  joined_ships %>%
+    filter(!is.na(starship_family)) %>%
+    mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
+    select(starshipID, starship_family, starship_navis, starship_haplotype)
+}
+
+metadata <- load_metadata() %>%
   group_by(starship_family) %>%
   summarise(named_vec = list(starshipID)) %>%
   deframe()
 
 mod_wiki_ui <- function(id) {
   ns <- NS(id)
+
   # Define the metadata
-  metadata <- read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
-    filter(!is.na(starship_family)) %>%
-    mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
-    select(starshipID, starship_family, starship_navis, starship_haplotype)
+  metadata <- load_metadata()
 
   fluidPage(
     fluidRow(
@@ -69,9 +71,7 @@ mod_wiki_ui <- function(id) {
             width = "30%"
           ),
     fluidRow(
-     column(width=6,
-                   fluidRow(valueBoxOutput(ns("total_ships"))),
-                   fluidRow(uiOutput(ns("wiki")))),
+     column(width=6,fluidRow(uiOutput(ns("wiki")))),
       column(width=6,
         DT::DTOutput(ns("table"))
      ))))
@@ -85,12 +85,7 @@ mod_wiki_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    
-    # Define the metadata
-    metadata <- read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
-      filter(!is.na(starship_family)) %>%
-      mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
-      select(starshipID, starship_family, starship_navis, starship_haplotype)
+    metadata <- load_metadata()
 
     observe({
       if (!is.null(input$family)) {
@@ -99,14 +94,6 @@ mod_wiki_server <- function(id) {
       }
       output$table <- DT::renderDT({
         DT::datatable(metadata)
-      })
-      
-      output$total_ships <- renderValueBox({
-        valueBox(
-          value = nrow(metadata),
-          subtitle = paste0("Total number of ",input$family," Starships in Database"),
-          icon = icon("area-chart")
-        )
       })
       
     output$wiki<-renderUI({

@@ -6,12 +6,9 @@
 #'
 #' @noRd
 #'
-#' @import DT RSQLite pool shinyjs uuid dplyr
+#' @import DT RSQLite con shinyjs uuid dplyr
 #'
 #' @importFrom shiny NS tagList
-
-# Create the SQL database and responses table
-pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
 
 #Label mandatory fields
 labelMandatory <- function(label) {
@@ -53,7 +50,7 @@ mod_submit_server <- function(id) {
         
         #make reactive to
         input$submit
-        dbReadTable(pool, "ship")
+        dbReadTable(con, "joined_ships")
       })  
       
       #List of mandatory fields for submission
@@ -93,8 +90,8 @@ mod_submit_server <- function(id) {
       
       #Add data
       appendData <- function(data){
-        query <- sqlAppendTable(pool, "ship", data, row.names = FALSE)
-        dbExecute(pool, query)
+        query <- sqlAppendTable(con, "joined_ships", data, row.names = FALSE)
+        dbExecute(con, query)
       }
       
       observeEvent(input$submit, priority = 20,{

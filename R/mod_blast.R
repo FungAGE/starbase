@@ -53,14 +53,15 @@ mod_blast_ui <- function(id) {
           actionButton(ns("blast"), "Start BLAST/HMMER Search")
         )
       )),
-      column(width=8,
-      box(title="BLAST/HMMER Results",
-        solidHeader = FALSE,
-        collapsible = TRUE,
-        width = NULL,
-        uiOutput(ns("tabs"))
+      column(width = 8,
+        uiOutput(ns("ship_ui")),
+        uiOutput(ns("gene_ui"))
       )
-      )
+      # box(title="Classification",
+      #   solidHeader = FALSE,
+      #   collapsible = TRUE,
+      #   width = NULL,
+      #   uiOutput(ns("classification_ui")))
     )
   )
 }
@@ -265,19 +266,22 @@ mod_blast_server <- function(id) {
         
     # these functions are really just for parsing the results list for genes
     make_blast_table<-function(data) {
-      data %>% dplyr::select(-c(query_id,query_seq,subject_seq)) %>% datatable(data=.,selection = "single")
+      data %>% 
+        dplyr::select(-c(query_id,query_seq,subject_seq)) %>% 
+        datatable(data=.,selection = "single")
     }
 
     # this chunk gets the alignment information from a clicked row
     # TODO: this info is redundant with main blast table. include other info like taxonomy? links to pages?
     make_clicked_table <- function(data, name) {
-      data %>% dplyr::select(-c(query_id,query_seq,subject_seq)) %>%
-        dplyr::slice(input[[paste0("table_",name,"_rows_selected")]]) %>%
-        t()
-        names(tableout) <- c("")
-        rownames(tableout) <- c("Query ID", "Hit ID", "Alignment Length", "Gaps", "Bit Score", "e-value")
-        colnames(tableout) <- NULL
-        data.frame(tableout)
+      tableout<-data %>% dplyr::select(-c(query_id,query_seq,subject_seq)) %>%
+        dplyr::slice(input[[paste0("table_",name,"_rows_selected")]]) #%>% t()
+
+      tableout %>% pull(hit_IDs)
+        # names(tableout) <- c("")
+        # rownames(tableout) <- c("Query ID", "Hit ID", "Alignment Length", "Gaps", "Bit Score", "e-value")
+        # colnames(tableout) <- NULL
+        # data.frame(tableout)
     }
 
     # this function makes the alignments for clicked rows
@@ -297,7 +301,7 @@ mod_blast_server <- function(id) {
         } else {
           tmp_aln<-tempfile(fileext = ".aln")
           writeLines(str_c(str_c(str_c(">", qid,sep=""), qseq, sep = "\n"),
-                          str_c(str_c(">", sids[[clicked]]), sseq, sep = "\n"),
+                          str_c(str_c(">", sids[[clicked]]), sseqs[[clicked]], sep = "\n"),
                           sep="\n"),tmp_aln)
           ss <- seqinr::read.alignment(file = tmp_aln, format = "fasta")
           base_palette="clustal"
@@ -347,47 +351,46 @@ mod_blast_server <- function(id) {
                   groupColors = groupColors, 
                   groupnamePadding = 50)
     }}
-    render_output <- function(category, plot.chord = FALSE) {
+    
+    render_output <- function(name, plot.chord = FALSE) {
       req(blastresults())  # Check if blastresults() is available
-      output$table <- DT::renderDT({ make_blast_table(blastresults()[[category]]) })
-      output$clicked_table <- renderTable({ make_clicked_table(blastresults()[[category]], category) }, rownames = TRUE, colnames = FALSE)
-      output$alignment <- renderMsaR({ make_alignment(blastresults()[[category]], category) })
-      if (plot.chord) {
-        output$chord_ship <- renderChorddiag({ make_chord(blastresults()[[category]]) })
-      }
-    }
 
-    tabify <- function(name, plot.chord = FALSE) {
+      output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(blastresults()[[name]]) })
+      output[[paste0("clicked_table_",name)]] <- renderTable({ make_clicked_table(blastresults()[[name]], name) }, rownames = TRUE, colnames = FALSE)
+      output[[paste0("alignment_",name)]] <- renderMsaR({ make_alignment(blastresults()[[name]], name) })
+
       tab_content <- list(
         DT::DTOutput(ns(paste0("table_", name))),
         tableOutput(ns(paste0("clicked_table_", name))),
         msaROutput(ns(paste0("alignment_", name)), width = "85%", height = "120%")
       )
       if (plot.chord) {
+        output[[paste0("chord_",name)]] <- renderChorddiag({ make_chord(blastresults()[[name]]) })
         tab_content <- c(chorddiagOutput(ns(paste0("chord_", name)), width = "100%", height = "600px"), tab_content)
       }
-      tabPanel(title = name, tab_content)
+      return(tab_content)
     }
 
-    output$tabs <- renderUI({
-      ui_elements<-tabPanel("Starships", 
-              DT::DTOutput(ns("table_ship")),
-              tableOutput(ns("clicked_table_ship")),
-              msaROutput(ns("alignment_ship"), width = "85%", height = "120%"))
-
-      if (input$search_ship_genes == TRUE) {
-        gene_tabs <- tabPanel("Genes", map(names(blastresults()[["genes"]]), ~ {
-          tabify(.x, FALSE)
-        }))
-        ui_elements<-tabsetPanel(ui_elements,gene_tabs)
-        if (!is.null(blastresults()[["genes"]][["tyr"]])) {
-          output$captain_tree <- renderGirafe({
-            readRDS(file = "data/captain-tree.RDS")
-          })
-          ui_elements <- list(ui_elements, girafeOutput(ns("captain_tree")))
-        }
-      }
-      ui_elements
+    output$ship_ui <- renderUI({
+      box(title = "Ship BLAST/HMMER Results",
+          solidHeader = FALSE,
+          collapsible = TRUE,
+          width = NULL,
+          render_output("ship", TRUE)
+      )
     })
+
+    output$gene_ui<-renderUI({
+        box(title="Gene BLAST/HMMER Results",
+        solidHeader = FALSE,
+        collapsible = TRUE,
+        width = NULL,
+        # map(names(blastresults()[["genes"]]), ~ {
+        #   render_output(.x, FALSE)})
+        render_output("tyr", FALSE))
+    })
+
+    output$captain_tree<-renderGirafe(readRDS("data/captain-tree.RDS"))
+    output$classification_ui <- renderUI({girafeOutput(ns("captain_tree"))})
   })
 }
