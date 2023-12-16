@@ -8,6 +8,19 @@
 #'
 #' @importFrom readr read_tsv
 #' @importFrom shiny NS tagList
+
+load_metadata<-function(){
+  dbReadTable(con, "joined_ships") %>%
+    filter(!is.na(starship_family)) %>%
+    mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
+    select(starshipID, starship_family, starship_navis, starship_haplotype)
+}
+
+metadata <- load_metadata() %>%
+  group_by(starship_family) %>%
+  summarise(named_vec = list(starshipID)) %>%
+  deframe()
+
 mod_explore_ui <- function(id) {
   ns <- NS(id)
   dashboardBody(
@@ -18,7 +31,7 @@ mod_explore_ui <- function(id) {
                  valueBoxOutput(ns("total_species")),valueBoxOutput(ns("total_ships")),
                  img(
                    src = "img/heat_tree.png",
-                   width = "75%",
+                   width = "50%",
                    style = "background-color: black;"
                  ),br()
                )),
@@ -26,10 +39,18 @@ mod_explore_ui <- function(id) {
                  title = "Captain Phylogeny and Represented Species",width=NULL,
                 column(width=4,
                   h4("Select tyr Family: "),
-                  actionButton("reset", label = "Reset selection"),
+                  selectizeInput(
+                    inputId = ns("family"),
+                    label = "Starship Family",
+                    choices = unique(metadata$starship_family),
+                    multiple = FALSE,
+                    selected = NULL,
+                    width = "30%"
+                  )
                   ggiraph::girafeOutput(ns("captain_tree"))),
                 column(width=6,
-                  DT::DTOutput(ns("meta_table"))
+                  fluidRow(valueBoxOutput(ns("total_family_ships"))),
+                  fluidRow(DT::DTOutput(ns("meta_table")))
                 )))))}
 
 #' explore Server Functions
@@ -62,7 +83,7 @@ mod_explore_server <- function(id) {
       icon = icon("dna")
     )
     })
-    
+
     output$total_species<-renderValueBox({
       valueBox(
       value = n_distinct(paste(table_dat$genus, table_dat$species)),
@@ -75,6 +96,7 @@ mod_explore_server <- function(id) {
     selected_state <- reactive({
       input$captain_tree_selected
     })
+
     output$console <- renderPrint({
       input$captain_tree_hovered
     })
@@ -83,6 +105,14 @@ mod_explore_server <- function(id) {
 
     observeEvent(input$reset, {
       session$sendCustomMessage(type = 'plot_set', message = character(0))
+    })
+
+    output$total_family_ships <- renderValueBox({
+      valueBox(
+        value = table_dat %>% filter(starship_family %in% gsub("-","",selected_state())) %>% nrow(),
+        subtitle = paste0("Total number of ",gsub("-","",selected_state())," Starships in Database"),
+        icon = icon("dna")
+      )
     })
 
     output$meta_table <- renderDT({
@@ -142,7 +172,7 @@ mod_explore_server <- function(id) {
     # m_get_query <- memoise(DBI::dbGetQuery, cache=cache_dir)
 
     # output$tbl<-
-    #   m_get_query(mydb, 'SELECT * FROM starbase') %>%
+    #   m_get_query(mydb, 'SELECT * FROM joined_ships') %>%
     #     distinct(ome,genus,species,strain) %>%
     #     datatable(options = list(), class = "display",
     #               callback = JS("return table;"), #rownames, colnames, container,

@@ -57,19 +57,22 @@ app_ui <- function(request) {
                 expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
                 startExpanded = FALSE
               ),
-              menuItem("Submit Starships to starbase",
-                tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
-                startExpanded = FALSE
-              ),
+              # menuItem("Submit Starships to starbase",
+              #   tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+              #   href = NULL, newtab = FALSE, selected = NULL,
+              #   expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
+              #   startExpanded = FALSE
+              # ),
               menuItem("Sign in",
                 tabName = "user", icon = NULL, badgeLabel = NULL, badgeColor = "green",
                 href = NULL, newtab = FALSE, selected = NULL,
                 expandedName = as.character(gsub("[[:space:]]", "", "Sign in")),
                 startExpanded = FALSE
               ),
-              uiOutput("usersidebarpanel"),
+              # TODO: move back into "usersidebarpanel"
+              menuItem("Update starbase Entries", 
+                tabName = "db_update", icon = icon("th")),
+              # uiOutput("usersidebarpanel"),
               uiOutput("logout"),
               id = NULL, .list = NULL
             )

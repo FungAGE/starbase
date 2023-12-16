@@ -3,6 +3,7 @@
 export(run_app)
 import(Biostrings)
 import(DT)
+import(DTedit)
 import(RSQLite)
 import(XML)
 import(bslib)
