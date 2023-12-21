@@ -6,13 +6,127 @@
 #'
 #' @noRd
 #'
-#' @import tidyverse shinyalert vroom shinyWidgets colourpicker waiter purrr
+#' @import tidyverse shinyalert shinyjs vroom shinyWidgets waiter purrr
 #' @importFrom shiny NS tagList
 #' @importFrom tibble deframe
+#' @importFrom colourpicker updateColourInput
+
 mod_blast_syn_viz_ui <- function(id) {
   ns <- NS(id)
-  tabPanel(
-    "Main View",
+
+  ## Altered label of colourInput
+  colourInput <- function(inputId, label, value = "white", showColour = c(
+                            "both",
+                            "text", "background"
+                          ), palette = c("square", "limited"),
+                          allowedCols = NULL, allowTransparent = FALSE, returnName = FALSE,
+                          closeOnClick = FALSE) {
+    showColour <- match.arg(showColour)
+    palette <- match.arg(palette)
+    value <- restoreInput(id = inputId, default = value)
+    shiny::addResourcePath("colourpicker-binding", system.file("srcjs",
+      package = "colourpicker"
+    ))
+    shiny::addResourcePath("colourpicker-lib", system.file("www",
+      "shared", "colourpicker",
+      package = "colourpicker"
+    ))
+    deps <- list(
+      htmltools::htmlDependency("colourpicker-binding",
+        "0.1.0", c(href = "colourpicker-binding"),
+        script = "input_binding_colour.js"
+      ),
+      htmltools::htmlDependency("colourpicker-lib", "0.1.0",
+        c(href = "colourpicker-lib"),
+        script = "js/colourpicker.min.js",
+        stylesheet = "css/colourpicker.min.css"
+      )
+    )
+    inputTag <- shiny::tags$input(
+      id = inputId, type = "text",
+      class = "form-control shiny-colour-input", `data-init-value` = value,
+      `data-show-colour` = showColour, `data-palette` = palette
+    )
+    if (!is.null(allowedCols)) {
+      allowedCols <- jsonlite::toJSON(allowedCols)
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-allowed-cols` = allowedCols)
+    }
+    if (returnName) {
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-return-name` = "true")
+    }
+    if (allowTransparent) {
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-allow-alpha` = "true")
+    }
+    if (closeOnClick) {
+      inputTag <- shiny::tagAppendAttributes(inputTag, `data-close-on-click` = "true")
+    }
+    inputTag <- shiny::div(
+      class = "form-group shiny-input-container",
+      `data-shiny-input-type` = "colour", label %AND% shiny::tags$label(label,
+        class = "control-label",
+        `for` = inputId
+      ), inputTag
+    )
+    htmltools::attachDependencies(inputTag, deps)
+  }
+
+  # copied from shiny since it's not exported
+  `%AND%` <- function(x, y) {
+    if (!is.null(x) && !isTRUE(is.na(x))) {
+      if (!is.null(y) && !isTRUE(is.na(y))) {
+        return(y)
+      }
+    }
+    return(NULL)
+  }
+
+  downloadButton_custom <- function(outputId, label = "Download", class = NULL, status = "primary",
+                                    ...,
+                                    icon = shiny::icon("download")) {
+    aTag <- tags$a(
+      id = outputId,
+      class = paste(
+        paste0("btn btn-", status, " shiny-download-link"),
+        class
+      ),
+      href = "", target = "_blank", download = NA,
+      icon, label, ...
+    )
+  }
+
+  # fluidRow(
+  #   column(
+  #     12,
+  #     h5("Compare genome to Starships in starbase")
+  #   )
+  # ),
+  # fluidRow(
+  #   column(
+  #     6,
+  #     selectizeInput("query_ship_main"),
+  #       label = "Query Ship",
+  #       choices = names(gff_list),
+  #       multiple = FALSE,
+  #       width = "100%",
+  #       selected = "",
+  #     )
+  #   ),
+  #   column(
+  #     6,
+  #     selectInput("subject_ship_main"),
+  #       label = "Subject Ship",
+  #       choices = names(gff_list),
+  #       multiple = FALSE,
+  #       width = "100%",
+  #       selected = "Pegasus"
+  #     )
+
+  tagList(
+    shinyjs::useShinyjs(),
+    shinyjs::extendShinyjs(text = jsCode, functions = c("hideSetting", "showSetting")),
+    # shinyalert::useShinyalert(),
+    waiter::useWaiter(),
+    waiter::useWaitress(),
     fluidRow(
       column(
         id = "settingPanel",
@@ -29,7 +143,7 @@ mod_blast_syn_viz_ui <- function(id) {
           ),
           hr(class = "setting"),
           h5("Macro Synteny"),
-          radioGroupButtons(
+          shinyWidgets::radioGroupButtons(
             inputId = ns("macroPlotMode"),
             label = "Choose macro synteny layout",
             choices = c("Circular", "Parallel"),
@@ -97,6 +211,25 @@ mod_blast_syn_viz_ui <- function(id) {
           fluidRow(
             column(
               12,
+              h5("Switch On to Use the Result From MCscan Pipeline Tab")
+            )
+          ),
+          fluidRow(
+            column(
+              12,
+              materialSwitch(
+                inputId = ns("use_mcscan"),
+                label = "",
+                value = FALSE,
+                right = TRUE,
+                status = "primary",
+                width = NULL
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              12,
               h5("Hide Setting Panel on the left")
             )
           ),
@@ -116,46 +249,158 @@ mod_blast_syn_viz_ui <- function(id) {
           fluidRow(
             column(
               12,
-              h5("Compare genome to Starships in starbase")
+              h5("Or use your own uploaded files")
             )
           ),
           fluidRow(
             column(
               6,
-              selectizeInput(ns("query_ship_main"), choices = NULL, 
-                label = "Query Ship",
-                multiple = FALSE,
+              textInput(ns("query_species_main"),
+                "Input Query Species",
+                value = "",
                 width = "100%",
-                selected = "Hephaestus"
+                placeholder = "grape"
               )
             ),
             column(
               6,
-              selectInput(ns("subject_ship_main"), choices = NULL, 
-                label = "Subject Ship",
-                multiple = FALSE,
+              textInput(ns("subject_species_main"),
+                "Input Subject Species",
+                value = "",
                 width = "100%",
-                selected = "Pegasus"
+                placeholder = "peach"
               )
             )
           ),
-          fluidRow(style="padding-bottom: 15px;",
-          column(
-              12,
-              div(class="float-left",
-                  actionButton(
-                      inputId = ns("macroSynteny"),
-                      status = "secondary",
-                      icon = icon("pagelines"),
-                      label = "View Macro Synteny"
-                  )
-                  )
+          fluidRow(
+            column(
+              6,
+              fileInput(ns("queryGff"),
+                "Upload Query Genome Gene BED File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c(
+                  "text/plain",
+                  ".tsv",
+                  ".bed"
+                )
+              )
+            ),
+            column(
+              6,
+              fileInput(ns("subjectGff"),
+                "Upload Subject Genome Gene BED File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c(
+                  "text/plain",
+                  ".tsv",
+                  ".bed"
+                )
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              6,
+              fileInput(ns("anchorFile"),
+                "Upload Anchor File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c("text/plain", ".anchors")
+              )
+            ),
+            column(
+              6,
+              fileInput(ns("anchorLiftedFile"),
+                "Upload Anchor Lifted File:",
+                multiple = FALSE,
+                width = "100%",
+                accept = c("text/plain", ".lifted.anchors", ".anchors")
+                ## Added .anchors for OS X support, it only recognizes one suffix
+              )
             )
           )
+        ),
+        div(
+          class = "boxLike", style = "background-color: #EADBAB;",
+          fluidRow(
+            style = "padding-bottom: 15px;",
+            column(
+              6,
+              div(
+                class = "float-left",
+                actionButton(
+                  inputId = ns("macroSynteny"),
+                  status = "secondary",
+                  icon = icon("pagelines"),
+                  label = "View Macro Synteny"
+                )
+              )
+            ),
+            column(
+              6,
+              div(
+                class = "float-right",
+                downloadButton_custom(
+                  ns("marcoSynteny_download"),
+                  status = "secondary",
+                  icon = icon("download"),
+                  label = "Macro Synteny SVG"
+                )
+              )
+            )
+          )
+        ),
+        div(
+          class = "boxMargin",
+          fluidRow(
+            column(
+              width = 12,
+              div(id = "macroSyntenyBlock")
+            )
+          ),
+          fluidRow(
+            column(
+              width = 12,
+              div(id = "geneDensityBlock"),
+              div(id = "microSyntenyBlock")
+            )
+          ),
+          fluidRow(
+            class = "justify-content-end",
+            div(
+              class = "col-sm-auto",
+              style = "padding-bottom: 7.5px;",
+              shinyjs::hidden(
+                downloadButton_custom(
+                  ns("microSynteny_download"),
+                  status = "secondary",
+                  icon = icon("download"),
+                  label = "Micro Synteny SVG"
+                )
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              width = 12,
+              tags$div(
+                id = ns("microSyntenyTable"),
+                class = "table-responsive",
+                DT::dataTableOutput(ns("microAnchor_out"))
+              )
+            )
+          )
+        )
+      )
     ),
-    icon = icon("binoculars")
+    tags$script(src = app_sys("js/popper.v2.11.5.min.js")),
+    tags$script(src = app_sys("js/tippy-bundle.umd.v6.3.7.min.js")),
+    tags$script(src = app_sys("js/d3.min.js")),
+    tags$script(src = app_sys("js/synteny.min.js")),
+    tags$script("tippy('[data-tippy-content]');"),
   )
-  ))
 }
 
 #' blast_syn_viz Server Functions
@@ -165,36 +410,9 @@ mod_blast_syn_viz_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # populate input for ships
-    # BUG: there's one entry with 2 sequences, using distinct to deal with this for now
-    ships<-vroom("MTDB/joined_ships.tsv") %>%
-      filter(!is.na(fna) & !is.na(gff3)) %>% 
-      mutate(ship_code=ifelse(is.na(ship_code),
-        paste0(ome,"_s",str_sub(checksum,start=1,end=5)),ship_code)) %>% 
-      distinct(ship_code,fna,gff3,genus,species) 
-      
-    fna_list<-ships %>%
-      group_by(ship_code) %>%
-      summarise(named_vec = list(fna)) %>%
-      deframe()
-
-    gff_list<-ships %>%
-      group_by(ship_code) %>%
-      summarise(named_vec = list(gff3)) %>%
-      deframe()
-
-    taxa_list<-ships %>%
-      mutate(taxa=paste(genus,species)) %>%
-      group_by(ship_code) %>%
-      summarise(named_vec = list(taxa)) %>%
-      deframe()
-
-    updateSelectizeInput(session, ns("subject_ship_main"), choices = names(fna_list), server = TRUE)
-    updateSelectizeInput(session, ns("query_ship_main"), choices = names(fna_list), server = TRUE)
-
-    if (identical(ns("subject_ship_main"),ns("query_ship_main"))) {
-      shinyalert("Oops!", "Please choose different ships to compare", type = "error")
-    }
+    # server-side processing of input
+    # updateSelectizeInput(session, ns("subject_ship_main"), choices = names(fna_list), server = TRUE)
+    # updateSelectizeInput(session, ns("query_ship_main"), choices = names(fna_list), server = TRUE)
 
     ## Init synteny data as `reactiveValues`
     # list object for storing reactive values
@@ -204,73 +422,77 @@ mod_blast_syn_viz_server <- function(id) {
     mainView_waiter <- Waiter$new()
 
     # hide settings
-    # observe({
-    #   if (input$hide_setting) {
-    #     js$hideSetting()
-    #   } else {
-    #     js$showSetting()
-    #   }
-    # })
+    observe({
+      if (input$hide_setting) {
+        js$hideSetting()
+      } else {
+        js$showSetting()
+      }
+    })
 
     ## Setup file paths
-    # ## query Ship file path
-    # queryGffFile <- reactive({gff_list[[ns("query_ship_main")]]})
-
-    queryGffFile <- reactive({"tmp/Alyrata384.bed"})
-
-    # ## subject Ship file path
-    # subjectGffFile <- reactive({gff_list[[ns("subject_ship_main")]]})
-
-    subjectGffFile <- reactive({"tmp/Athaliana167.bed"})
-
-    # ## anchor file path
-    # anchorFile <- reactive({
-    # })
-
-    anchorFile <- reactive({"tmp/Athaliana167.Alyrata384.anchors"})
-
-    # ## anchor lifted file path
-    # anchorLiftedFile <- reactive({
-    # })
-    
-    anchorLiftedFile <- reactive({"tmp/Athaliana167.Alyrata384.lifted.anchors"})
-
-    queryGff <- 
-    reactive({
-      req(queryGffFile())
-      if (file.exists(queryGffFile())) {
-        # TODO: parse gff
-        vroom(queryGffFile(),
-              col_names = c("chr", "start","end","gene", "score", "strand")) %>%
-          mutate(chr = factor(chr, levels = unique(chr))) %>%
-          arrange(chr, start, end)
-      } else {
-        NULL
-      }
+    ## query Ship file path
+    queryGffFile <- reactive({
+      "tmp/Athaliana167.bed"
+      # gff_list[[input$query_ship_main]]
     })
 
-    subjectGff <- 
-    reactive({
-      req(subjectGffFile())
-      if (file.exists(subjectGffFile())) {
-        vroom(subjectGffFile(),
-              col_names = c("chr", "start","end","gene", "score", "strand")) %>%
-          mutate(chr = factor(chr, levels = unique(chr))) %>%
-          arrange(chr, start, end)
-      } else {
-        NULL
-      }
+    ## subject Ship file path
+    subjectGffFile <- reactive({
+      "tmp/Alyrata384.bed"
+      # gff_list[[input$subject_ship_main]]
     })
 
-    # querySpecies <- reactive({taxa_list[[ns("query_ship_main")]]
-    # })
+    ## anchor file path
+    # * notice that the query comes before the subject in the file name
+    # ! this is important for joining to the anchor files
+    anchorFile <- reactive({
+      "tmp/Athaliana167.Alyrata384.anchors"
+    })
 
-    querySpecies <- reactive({"grape"})
+    ## anchor lifted file path
+    anchorLiftedFile <- reactive({
+      "tmp/Athaliana167.Alyrata384.lifted.anchors"
+    })
 
-    # subjectSpecies <- reactive({taxa_list[[ns("subject_ship_main")]]
-    # })
+    queryGff <-
+      reactive({
+        req(queryGffFile())
+        if (file.exists(queryGffFile())) {
+          # TODO: parse gff
+          vroom(queryGffFile(),
+            col_names = c("chr", "start", "end", "gene", "score", "strand")
+          ) %>%
+            mutate(chr = factor(chr, levels = unique(chr))) %>%
+            arrange(chr, start, end)
+        } else {
+          NULL
+        }
+      })
 
-    subjectSpecies <- reactive({"peach"})
+    subjectGff <-
+      reactive({
+        req(subjectGffFile())
+        if (file.exists(subjectGffFile())) {
+          vroom(subjectGffFile(),
+            col_names = c("chr", "start", "end", "gene", "score", "strand")
+          ) %>%
+            mutate(chr = factor(chr, levels = unique(chr))) %>%
+            arrange(chr, start, end)
+        } else {
+          NULL
+        }
+      })
+
+    querySpecies <- reactive({
+      "grape"
+      # taxa_list[[input$query_ship_main]]
+    })
+
+    subjectSpecies <- reactive({
+      "peach"
+      # taxa_list[[input$subject_ship_main]]
+    })
 
     observeEvent(input$macroPlotMode, {
       ## setup different default color scheme for two macro synteny layout
@@ -358,12 +580,12 @@ mod_blast_syn_viz_server <- function(id) {
           group_by(blockID) %>%
           summarize(
             summarized_queryChr = unique(queryChr),
-            summarized_queryStart = min(queryStart,na.rm=TRUE),
-            summarized_queryEnd = max(queryEnd,na.rm=TRUE),
+            summarized_queryStart = min(queryStart, na.rm = TRUE),
+            summarized_queryEnd = max(queryEnd, na.rm = TRUE),
             summarized_queryAnchorList = get_anchorGene(queryGene),
             summarized_subjectChr = unique(subjectChr),
-            summarized_subjectStart = min(subjectStart,na.rm=TRUE),
-            summarized_subjectEnd = max(subjectEnd,na.rm=TRUE),
+            summarized_subjectStart = min(subjectStart, na.rm = TRUE),
+            summarized_subjectEnd = max(subjectEnd, na.rm = TRUE),
             summarized_subjectAnchorList = get_anchorGene(subjectGene)
           ) %>%
           mutate(
@@ -467,43 +689,50 @@ mod_blast_syn_viz_server <- function(id) {
           comment = "#",
           delim = "\t"
         )
-
+        
+        synteny_query_chr <- queryGff() %>%
+          distinct(chr) %>%
+          # slice(1) %>% 
+          pull(chr)
+        
         synteny$queryGff <- queryGff() %>%
-          filter(chr %in% input$synteny_query_chr) %>%
-          arrange(factor(chr, levels = input$synteny_query_chr), start)
+          filter(chr %in% synteny_query_chr) %>%
+          arrange(factor(chr, levels = synteny_query_chr), start)
 
+        synteny_subject_chr <- subjectGff() %>%
+          distinct(chr) %>%
+          # slice(1) %>% 
+          pull(chr)
+        
         synteny$subjectGff <- subjectGff() %>%
-          filter(chr %in% input$synteny_subject_chr) %>%
-          arrange(factor(chr, levels = input$synteny_subject_chr), start)
+          filter(chr %in% synteny_subject_chr) %>%
+          arrange(factor(chr, levels = synteny_subject_chr), start)
 
-        anchorSimple <- anchorSimple %>%
-          filter(queryChr %in% input$synteny_query_chr & subjectChr %in% input$synteny_subject_chr)
+        synteny$anchor_full <- anchor_full
 
-        ## Filter and order anchor_full
-        synteny$anchor_full <- anchor_full ## %>%
-        ## filter(q_GeneChr %in% input$synteny_query_chr) %>%
-        ## arrange(q_GeneChr, q_GeneStart)
-
-        summarizeChrInfo <- function(inputBed, chrOrder){
-            ## summarize input bed tibble to generate
-            ## chr start, end and length
-            summarizedBed <- inputBed %>%
-                group_by(chr) %>%
-                summarise(start = min(start),
-                          end = max(end)) %>%
-                mutate(chrLength = end - start + 1) %>%
-                arrange(match(chr, chrOrder))
-            return(summarizedBed)
+        summarizeChrInfo <- function(inputBed, chrOrder) {
+          ## summarize input bed tibble to generate
+          ## chr start, end and length
+          summarizedBed <- inputBed %>%
+            group_by(chr) %>%
+            summarise(
+              start = min(start),
+              end = max(end)
+            ) %>%
+            mutate(chrLength = end - start + 1) %>%
+            arrange(match(chr, chrOrder))
+          return(summarizedBed)
         }
+        queryChrInfo <- summarizeChrInfo(synteny$queryGff, synteny_query_chr)
+        subjectChrInfo <- summarizeChrInfo(synteny$subjectGff, synteny_subject_chr)
 
-        queryChrInfo <- summarizeChrInfo(synteny$queryGff, input$synteny_query_chr)
-        subjectChrInfo <- summarizeChrInfo(synteny$subjectGff, input$synteny_subject_chr)
         ## Define macro plot mode
         if (input$macroPlotMode == "Circular") {
           plotMode <- "circular"
         } else {
           plotMode <- "parallel"
         }
+        
         ## Generate macro_synteny_data
         macro_synteny_data <- list(
           "querySpecies" = querySpecies(),
@@ -516,6 +745,21 @@ mod_blast_syn_viz_server <- function(id) {
           "subjectChrColor" = input$macroSubjectColor,
           "ribbonColor" = input$macroRibbonColor
         )
+        
+        ## Generate macro_synteny_data
+        macro_synteny_data <- list(
+          # "id" = ns("selected_macroRegion"),
+          "querySpecies" = querySpecies(),
+          "queryChrInfo" = queryChrInfo,
+          "subjectSpecies" = subjectSpecies(),
+          "subjectChrInfo" = subjectChrInfo,
+          "ribbon" = anchorSimple,
+          "plotMode" = plotMode,
+          "queryChrColor" = input$macroQueryColor,
+          "subjectChrColor" = input$macroSubjectColor,
+          "ribbonColor" = input$macroRibbonColor
+        )
+
         session$sendCustomMessage(type = "plotMacroSynteny", macro_synteny_data)
 
         ## Generate dot_view_data
@@ -531,6 +775,7 @@ mod_blast_syn_viz_server <- function(id) {
             )
 
           dot_view_data <- list(
+            # "id" = ns("selected_anchors"),
             "querySpecies" = querySpecies(),
             "queryChrInfo" = queryChrInfo,
             "subjectSpecies" = subjectSpecies(),
@@ -560,14 +805,14 @@ mod_blast_syn_viz_server <- function(id) {
 
       synteny$selectedQueryRegion <- synteny$queryGff %>%
         filter(
-          chr == macroQueryChr,
+          chr %in% macroQueryChr,
           start >= macroQueryStart,
           end <= macroQueryEnd
         )
 
       synteny$selectedSubjectRegion <- synteny$subjectGff %>%
         filter(
-          chr == macroSubjectChr,
+          chr %in% macroSubjectChr,
           start >= macroSubjectStart,
           end <= macroSubjectEnd
         )
@@ -632,6 +877,7 @@ mod_blast_syn_viz_server <- function(id) {
       )
 
       micro_synteny_data <- list(
+        # "id" = ns("selected_macroRegion"),
         "microQueryRegion" = synteny$selectedQueryRegion,
         "microSubjectRegion" = synteny$selectedSubjectRegion,
         "microAnchors" = synteny$selectedAnchors,
@@ -649,6 +895,7 @@ mod_blast_syn_viz_server <- function(id) {
       selectedQueryGene <- synteny$selectedAnchors[input$microAnchor_out_rows_selected, ] %>%
         pull(q_Gene)
       session$sendCustomMessage(type = "center_microSynteny", selectedQueryGene)
+      # session$sendCustomMessage(type = "center_microSynteny", list("id" = ns("selected_macroRegion"), selectedQueryGene = "selectedQueryGene"))
     })
 
     observeEvent(input$selected_anchors, {
@@ -684,7 +931,7 @@ mod_blast_syn_viz_server <- function(id) {
             style = "color: gray;",
             "Please select your region of interest from the dot plot on the left panel, the table below will be updated automatically."
           ),
-          DTOutput("selected_anchors")
+          DTOutput(ns("selected_anchors"))
         )
       })
     })

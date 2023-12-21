@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="/home/adrian/Systematics/Starship_Database/starbase/SQL/foreign-keys" readonly="0" foreign_keys="" case_sensitive_like="" temp_store="" wal_autocheckpoint="" synchronous=""/><attached/><window><main_tabs open="structure browser pragmas query" current="0"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="1610"/><column_width id="4" width="0"/></tab_structure><tab_browse><current_table name="0,0:"/><default_encoding codec=""/><browse_table_settings/></tab_browse><tab_sql><sql name="json">ALTER TABLE mtdb_new 
+
+UPDATE mtdb
+SET
+  kingdom = json_extract(taxonomy, '$.kingdom'),
+  phylum = json_extract(taxonomy, '$.phylum'),
+  subphylum = json_extract(taxonomy, '$.subphylum'),
+  class = json_extract(taxonomy, '$.class'),
+  order = json_extract(taxonomy, '$.order'),
+  family = json_extract(taxonomy, '$.family'),
+  subfamily = json_extract(taxonomy, '$.subfamily'),
+  genus = json_extract(taxonomy, '$.genus'),
+  species = json_extract(taxonomy, '$.species'),
+  strain = json_extract(taxonomy, '$.strain');
+
+-- Assuming you have a table named 'mtdb' with a column 'taxonomy'
+
+-- Add new columns for each key in the JSON
+-- The number of key columns is determined dynamically
+-- based on the distinct keys present in the JSON data
+CREATE TABLE mtdb_new AS
+SELECT
+  ome,
+  taxonomy
+FROM mtdb;
+
+-- Identify distinct keys using a temporary table
+CREATE TEMPORARY TABLE JsonKeys AS
+SELECT DISTINCT json_each(all_keys_json).key AS key
+FROM (
+  SELECT DISTINCT json_extract(taxonomy, '$.*') AS all_keys_json
+  FROM mtdb_new
+) AS temp;
+
+
+-- Identify distinct keys using a recursive common table expression (CTE)
+WITH RECURSIVE JsonKeys AS (
+  SELECT DISTINCT json_each(all_keys_json).key AS key
+  FROM mtdb_new
+  
+  UNION ALL
+
+  SELECT DISTINCT json_each(all_keys_json).key AS key
+  FROM JsonKeys
+       JOIN mtdb_new ON json_valid(taxonomy) AND JsonKeys.key IS NOT NULL
+)
+, JsonKeysDistinct AS (
+  SELECT DISTINCT key
+  FROM JsonKeys
+)
+
+-- Add new columns for each distinct key
+-- Update the new columns with data from the JSON
+, UpdateColumns AS (
+  SELECT
+    mtdb_new.ome,
+    mtdb_new.taxonomy,
+    JsonKeysDistinct.key AS json_key,
+    json_extract(mtdb_new.taxonomy, '$.' || JsonKeysDistinct.key) AS json_value
+  FROM mtdb_new
+       CROSS JOIN JsonKeysDistinct
+)
+
+-- Create a pivot table to handle dynamic number of columns
+SELECT
+  ome,
+  taxonomy,
+  MAX(CASE WHEN json_key = 'key1' THEN json_value END) AS key1,
+  MAX(CASE WHEN json_key = 'key2' THEN json_value END) AS key2,
+  MAX(CASE WHEN json_key = 'key3' THEN json_value END) AS key3,
+  -- Add more columns as needed based on distinct keys
+FROM UpdateColumns
+GROUP BY ome, taxonomy;</sql><current_tab id="0"/></tab_sql></sqlb_project>

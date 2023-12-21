@@ -52,7 +52,7 @@ with open(args.bed_file, "r") as bed_file:
             start = abs(int(fields[1]) - int(begin_dict[item])) + 1
             end = abs(int(fields[2]) - int(end_dict[item]))
 
-            output = f"{contig}\tbed\t{type}\t{start}\t{end}\t{score}\t{strand}\t{feature}\tID={name};Description={item};parent={contig}"
+            output = f"{contig}\tbed\t{type}\t{start}\t{end}\t{score}\t{strand}\t{feature}\tID=gene_{name};Description={item};parent={contig}"
 
             name_key = item
 
@@ -70,6 +70,36 @@ os.makedirs(output_directory, exist_ok=True)
 # Create separate GFF files for each ID
 for name_key, data in data_by_id.items():
     output_file_name = f"{output_directory}/{name_key}.gff"
+    # Create a list to store RNA/CDS entries for each gene
+    rna_entries = []
+    cds_entries = []
+
     with open(output_file_name, "w") as output_file:
         for line in data:
             output_file.write(line + "\n")
+
+            # Extract gene start and end coordinates from the line
+            fields = line.split("\t")
+            if fields[2] == "gene":
+                gene_start = int(fields[3])
+                gene_end = int(fields[4])
+                id = fields[8].split(";")[0]
+                rna_id = id.replace("gene_", "rna_")
+                rna_parent = id.replace("ID=", "parent=")
+                cds_id = id.replace("gene_", "cds_")
+                cds_parent = rna_id.replace("ID=", "parent=")
+
+                # Create a RNA entry for the gene
+                rna_entry = f"{fields[0]}\tbed\tRNA\t{gene_start}\t{gene_end}\t{fields[5]}\t{fields[6]}\t{rna_id};Description=;{rna_parent}"
+                rna_entries.append(rna_entry)
+
+                # Create a CDS entry for the gene
+                cds_entry = f"{fields[0]}\tbed\tCDS\t{gene_start}\t{gene_end}\t{fields[5]}\t{fields[6]}\t{cds_id};Description=;{cds_parent}"
+                cds_entries.append(cds_entry)
+
+    # Append CDS entries to the output GFF file
+    with open(output_file_name, "a") as output_file:
+        for rna_entry in rna_entries:
+            output_file.write(rna_entry + "\n")
+        for cds_entry in cds_entries:
+            output_file.write(cds_entry + "\n")
