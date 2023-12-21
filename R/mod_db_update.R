@@ -4,71 +4,107 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @noRd 
+#' @noRd
 #'
-#' @importFrom shiny NS tagList 
-library(shiny)
-library(DBI)
+#' @import DT RSQLite pool shinyjs uuid dplyr DTedit
+#'
+#' @importFrom shiny NS tagList
 
-# TODO: options to update should only appear when search returns items
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+con <- pool::poolCheckout(pool)
 
-mod_db_update_ui <- function(id){
-  ns <- NS(id)
+#Label mandatory fields
+labelMandatory <- function(label) {
   tagList(
-    fluidPage(
-      titlePanel("SQLite Database Search and Update"),
-      sidebarLayout(
-        sidebarPanel(
-          textInput(ns("search_text"), "Search for records:"),
-          textInput(ns("update_id"), "ID to Update:"),
-          textInput(ns("new_value"), "New Value:"),
-          actionButton(ns("search_button"), "Search"),
-          actionButton(ns("update_button"), "Update")
-        ),
-        mainPanel(
-          tableOutput("table")
-        )
-      )
-    )
+    label,
+    span("*", class = "mandatory_star")
   )
 }
-    
+
+appCSS <- ".mandatory_star { color: red; }"
+
+mod_db_update_ui <- function(id) {
+  ns <- NS(id)
+  # ui
+  fluidPage(
+    box(title='Update starbase entries',width=NULL,
+      DTedit::dtedit_ui(ns("sql_table")))
+    # shinyjs::useShinyjs(),
+    # shinyjs::inlineCSS(appCSS),
+    # fluidRow(
+    #   actionButton(ns("add_button"), "Add", icon("plus")),
+    #   actionButton(ns("edit_button"), "Edit", icon("edit")),
+    #   actionButton(ns("copy_button"), "Copy", icon("copy")),
+    #   actionButton(ns("delete_button"), "Delete", icon("trash-alt"))
+    # ),
+    # br(),
+    # fluidRow(width="100%",
+    #   DT::dataTableOutput(ns("sql_table"))
+    # )
+  )
+}
+
 #' db_update Server Functions
 #'
-#' @noRd 
-mod_db_update_server <- function(id){
-  moduleServer( id, function(input, output, session){
+#' @noRd
+mod_db_update_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    con <- dbConnect(RSQLite::SQLite(), "../SQL/starbase.sqlite")
+
+    # better is object is loaded in the server
+    #load ship_df and make reactive to inputs  
+    ship_df <- joined_ships
     
-    # Define a reactive dataset based on the user's search
-    searched_data <- reactive({
-      if (input$search_button > 0) {
-        sql <- paste0("SELECT * FROM mytable WHERE column_name LIKE '%", input$search_text, "%'")
-        dbGetQuery(con, sql)
-      }
-    })
+    ##### Callback functions.
+    appendData <- function(data, row) {
+      ship_df <- rbind(data, ship_df)
+      return(ship_df)
+      query <- sqlAppendTable(con, "joined_ships", data, row.names = FALSE)
+      dbExecute(con, query)
+    }
+
+    updateData <- function(data, olddata, row) {
+      ship_df[row,] <- data[1,]
+      return(ship_df)
+
+      sql_names <- colnames(data)
+      # Generate the SET part of the SQL query dynamically
+      set_clause <- paste(sql_names, "= ?", collapse = ", ")
+
+      rowid <- dbGetQuery(con, sprintf('SELECT "rowid" FROM "joined_ships" WHERE "rowid" = %d', row))
+
+      # Construct and execute the SQL update statement
+      sql_statement <- sprintf("INSERT OR REPLACE INTO %s(row_id, %s) VALUES (?, %s)", "joined_ships", set_clause, set_clause)
+      params <- c(as.list(unname(data[1,])), rowid)
+      dbExecute(con, sql_statement, params)
+    }
+
+    deleteData <- function(data, row) {
+      ship_df <- ship_df[-row,]
+      return(ship_df)
+      SQL_df <- dbReadTable(con, "joined_ships")
+      row_selection <- SQL_df[row, "rowid"] 
+      dbExecute(con, sprintf('DELETE FROM "joined_ships" WHERE "rowid" == ("%s")', row))
+    }
     
-    # Render the table based on the searched dataset
-    output$table <- renderTable({
-      searched_data()
-    })
+    ##### Create the DTedit object
+    DTedit::dtedit_server(
+        id = "sql_table",
+        thedata = ship_df,
+        # edit.cols = c('name', 'email', 'useR', 'notes'),
+        # edit.label.cols = c('Name', 'Email Address', 'Are they an R user?', 'Additional notes'),
+        # input.types = c(notes='textAreaInput'),
+        # view.cols = c('name', 'email', 'useR'),
+        callback.update = updateData,
+        callback.insert = appendData,
+        callback.delete = deleteData)
+
+    # output$sql_table <- DT::renderDataTable({
+    #   table<-ship_df() %>% select(-rowid)
+    #   # TODO: add names/labels to table columns?
+    #   # names(table) <- ...
+    #   table<-datatable(table,rownames = FALSE,options = list(searching = FALSE, lengthChange = FALSE))
+    # })
     
-    # Update a record in the database
-    observeEvent(input$update_button, {
-      if (!is.null(input$update_id) && !is.null(input$new_value)) {
-        sql <- paste0("UPDATE mytable SET column_name = '", input$new_value, "' WHERE id = ", input$update_id)
-        dbExecute(con, sql)
-        # Update the displayed table after the update
-        output$table <- renderTable({
-          dbGetQuery(con, "SELECT * FROM mytable")
-        })
-      }
-    })
-    
-    # Close the database connection when the app is closed
-    session$onSessionEnded(function() {
-      dbDisconnect(con)
-    })
   })
 }
