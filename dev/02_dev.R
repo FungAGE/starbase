@@ -49,6 +49,7 @@ golem::add_html_template("kablammo")
 
 ## Add internal datasets ----
 # TODO: incorporate database scripts into `raw_data`?
+# usethis::use_data_raw( name = "con", open = FALSE )
 usethis::use_data_raw( name = "joined_ships", open = FALSE )
 usethis::use_data_raw( name = "ships_with_anno", open = FALSE )
 usethis::use_data_raw( name = "fna_list", open = FALSE )
@@ -63,7 +64,7 @@ usethis::use_test("app")
 
 ## Vignette ----
 usethis::use_vignette("starbase")
-devtools::build_vignettes()
+remotes::build_vignettes()
 
 ## Code Coverage----
 ## Set the code coverage service ("codecov" or "coveralls")

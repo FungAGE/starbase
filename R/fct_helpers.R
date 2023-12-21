@@ -5,6 +5,7 @@
 #' @return The return value, if any, from executing the function.
 #'
 #' @noRd
+library(shiny)
 
 #Form for data entry
 entry_form <- function(button_id){

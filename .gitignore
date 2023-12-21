@@ -58,8 +58,7 @@ tmp/
 *.gz
 
 MTDB/**
-SQL/**
-Starships/**
+SQL/data/**
 blastdb/**
 inst/doc
 /doc/

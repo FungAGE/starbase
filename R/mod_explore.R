@@ -6,11 +6,14 @@
 #'
 #' @noRd
 #'
+#' @import RSQLite pool
 #' @importFrom readr read_tsv
 #' @importFrom shiny NS tagList
 
+load("data/joined_ships.rda")
+
 load_metadata<-function(){
-  dbReadTable(con, "joined_ships") %>%
+  joined_ships %>%
     filter(!is.na(starship_family)) %>%
     mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
     select(starshipID, starship_family, starship_navis, starship_haplotype)
@@ -19,7 +22,7 @@ load_metadata<-function(){
 metadata <- load_metadata() %>%
   group_by(starship_family) %>%
   summarise(named_vec = list(starshipID)) %>%
-  deframe()
+  tibble::deframe()
 
 mod_explore_ui <- function(id) {
   ns <- NS(id)
@@ -46,7 +49,7 @@ mod_explore_ui <- function(id) {
                     multiple = FALSE,
                     selected = NULL,
                     width = "30%"
-                  )
+                  ),
                   ggiraph::girafeOutput(ns("captain_tree"))),
                 column(width=6,
                   fluidRow(valueBoxOutput(ns("total_family_ships"))),

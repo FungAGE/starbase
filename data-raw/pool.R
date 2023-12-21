@@ -16,4 +16,4 @@ usethis::use_data(con, overwrite = TRUE)
 # dbWriteTable(con, "ship", joined_ships)
 
 # disconnect from database
-# dbDisconnect(con)
+dbDisconnect(con)
