@@ -10,6 +10,9 @@
 #'
 #' @importFrom shiny NS tagList
 
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+con <- pool::poolCheckout(pool)
+
 #Label mandatory fields
 labelMandatory <- function(label) {
   tagList(

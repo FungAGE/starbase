@@ -1,10 +1,10 @@
-remotes::install_local("/home/adrian/Systematics/bin/metacoder",force=TRUE)
-
 library(tidyverse)
 library(metacoder)
 library(ggiraph)
 
-dat<-read_tsv("MTDB/joined_ships.tsv",show_col_types = FALSE) %>%
+load("data/joined_ships.rda")
+
+dat<-joined_ships %>%
   # distinct(checksum,.keep_all=TRUE) %>%
   rowwise() %>%
   mutate(genus=ifelse(is.na(genus),  gsub(" (.+)","",species),genus)) %>%

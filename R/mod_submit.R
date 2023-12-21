@@ -6,9 +6,12 @@
 #'
 #' @noRd
 #'
-#' @import DT RSQLite con shinyjs uuid dplyr
+#' @import DT RSQLite pool shinyjs uuid dplyr
 #'
 #' @importFrom shiny NS tagList
+
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+con <- pool::poolCheckout(pool)
 
 #Label mandatory fields
 labelMandatory <- function(label) {

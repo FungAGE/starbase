@@ -1,4 +1,6 @@
 library(tidyverse)
+load("data/joined_ships.rda")
+
 ships_with_anno <- joined_ships %>%
   filter(!is.na(fna) & !is.na(gff3)) %>%
   mutate(starshipID = ifelse(is.na(starshipID),

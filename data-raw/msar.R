@@ -1,4 +1,3 @@
-devtools::install_github("zachcp/msaR")
 library(msaR)
 
 prot<-"shoot/YRsuperfamRefs/tree/YRsuperfamRefs.mafft.faa"
