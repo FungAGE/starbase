@@ -1,11 +1,12 @@
 # `starbase`: Database and Toolkit for Exploration of Starship Elements in Fungi
 
-<img src=inst/app/www/favicon.png width=200>
+<img src=inst/app/img/favicon.png width=200>
 
 <!-- badges: start -->
 
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![Codecov test coverage](https://codecov.io/gh/FungAGE/starbase/branch/main/graph/badge.svg)](https://app.codecov.io/gh/FungAGE/starbase?branch=main)
+[![R-CMD-check](https://github.com/AdrianForsythe/starbase/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/AdrianForsythe/starbase/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 ## Structure
@@ -18,6 +19,7 @@
 ## Made Using the Following Resources/People
 
 ### [starfish](https://github.com/egluckthaler/starfish)
+
 - [Example of shiny front-end for nextflow](https://github.com/angelovangel/nextflow-fastp-shiny)
 
 ### Database frame work
@@ -28,15 +30,18 @@
 - [GitHub - systemPipeR/SPblast: Workflow Template](https://github.com/systemPipeR/SPblast)
 
 ### Alignments
+
 - [Multiple Sequence Alignment for R Shiny • msaR](https://zachcp.github.io/msaR/)
 
 #### Dotplots
+
 - [dotPlotly](https://github.com/tpoorten/dotPlotly)
 
 ### Genome Browser
 
 - [JBrowseR](https://gmod.github.io/JBrowseR/)
-  - https://github.com/mmollina/viewpoly
+  - <https://github.com/mmollina/viewpoly>
+
 ### Taxonomy and Phylogenies
 
 - phylocanvas
