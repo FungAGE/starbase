@@ -28,10 +28,6 @@ golem::add_shinyappsio_file()
 # have to install your own app locally first
 remotes::install_local("starbase_0.0.0.9000.tar.gz")
 
-# Docker ----
-## If you want to deploy via a generic Dockerfile
-# golem::add_dockerfile_with_renv()
-
 # If you want to deploy to ShinyProxy
 # golem::add_dockerfile_with_renv_shinyproxy()
 
