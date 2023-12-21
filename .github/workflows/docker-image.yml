@@ -1,5 +1,4 @@
 name: starbase
-description: Database and Toolkit for Exploration of Starship Elements in Fungi
 
 on:
   push:
