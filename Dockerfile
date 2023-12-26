@@ -39,5 +39,5 @@ RUN Rscript -e 'BiocManager::install(c("GenomeInfoDb","BiocGenerics","zlibbioc",
 RUN rm -rf /srv/shiny-server/*
 COPY . /srv/shiny-server/
 USER shiny
-EXPOSE 5858
+EXPOSE 3838
 CMD ["/usr/bin/shiny-server"]
