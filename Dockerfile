@@ -36,7 +36,11 @@ RUN Rscript -e 'remotes::install_version("dataspice",upgrade="never", version = 
 RUN Rscript -e 'remotes::install_github("yonicd/covrpage")'
 RUN Rscript -e 'remotes::install_version("colourpicker",upgrade="never", version = "1.3.0")'
 RUN Rscript -e 'BiocManager::install(c("GenomeInfoDb","BiocGenerics","zlibbioc","S4Vectors","IRanges","XVector","Biostrings","treeio"),ask=F)'
-RUN rm -rf /srv/shiny-server/*
+RUN mkdir /build_zone
+ADD . /build_zone
+WORKDIR /build_zone
+RUN R -e 'remotes::install_local(upgrade="never")'
+RUN rm -rf /build_zone /srv/shiny-server/*
 COPY . /srv/shiny-server/
 USER shiny
 EXPOSE 3838
