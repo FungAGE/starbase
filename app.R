@@ -21,4 +21,4 @@ options(repos = BiocManager::repositories())
 options(shiny.reactlog=TRUE)
 
 # Run the application
-golex::run_app()
+starbase::run_app()
