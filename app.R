@@ -13,6 +13,7 @@ options(shiny.autoreload = TRUE)
 
 # Comment this if you don't want the app to be served on a random port
 # options(shiny.port = httpuv::randomPort())
+options('shiny.port'=3838,shiny.host='127.0.0.1')
 
 # for bioc repos
 options(repos = BiocManager::repositories())

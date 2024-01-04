@@ -22,8 +22,8 @@ golem::add_dockerfile_with_renv(extra_sysreqs = c("ncbi-blast+","hmmer","python"
 ## RStudio ----
 ## If you want to deploy on RStudio related platforms
 # golem::add_rstudioconnect_file()
-# golem::add_shinyserver_file()
-golem::add_shinyappsio_file()
+# golem::add_shinyappsio_file()
+golem::add_shinyserver_file()
 
 # have to install your own app locally first
 remotes::install_local("starbase_0.0.0.9000.tar.gz")
