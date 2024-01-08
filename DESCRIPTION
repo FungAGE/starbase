@@ -37,6 +37,7 @@ Imports:
     shinipsum,
     shiny (>= 1.7.5),
     shinyalert,
+    shinyauthr,
     shinydashboard,
     shinydashboardPlus,
     shinyjs,

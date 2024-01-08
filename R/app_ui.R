@@ -2,127 +2,97 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard shinydashboardPlus bslib
+#' @import shiny shinydashboard shinydashboardPlus bslib dplyr glue shinyauthr RSQLite DBI lubridate
 #' @noRd
 
 app_ui <- function(request) {
   tagList(
     # Leave this function for adding external resources
     golem_add_external_resources(),
-        dashboardPage(
-          skin = "blue",
-          options = list(sidebarExpandOnHover = TRUE),
-          header = dashboardHeader(title = "starbase",   
-                                   controlbarIcon = img(app_sys("img/favicon.ico"))),
-          sidebar = dashboardSidebar(
-            minified = FALSE, collapsed = FALSE,
-            sidebarMenu(
-              menuItem("Welcome to starbase",
-                tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
-                startExpanded = TRUE
-              ),
-              menuItem("Wiki",
-                tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
-                startExpanded = TRUE
-              ),
-              menuItem("BLAST/HMMER Searches",
-                tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
-                startExpanded = FALSE
-              ),
-              # menuItem("Viz BLAST Results", tabName = "blastviz", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-              #    href = NULL, newtab = FALSE, selected = NULL,
-              #    expandedName = as.character(gsub("[[:space:]]", "", "Viz BLAST Results")),
-              #    startExpanded = FALSE),
-              menuItem("Explore Starships",
-                tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
-                startExpanded = FALSE
-              ),
-              menuItem("Starship Synteny",
-                tabName = "synteny", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
-                startExpanded = FALSE
-              ),
-              menuItem("starfish",
-                icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
-                startExpanded = FALSE
-              ),
-              # menuItem("Submit Starships to starbase",
-              #   tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-              #   href = NULL, newtab = FALSE, selected = NULL,
-              #   expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
-              #   startExpanded = FALSE
-              # ),
-              menuItem("Sign in",
-                tabName = "user", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-                href = NULL, newtab = FALSE, selected = NULL,
-                expandedName = as.character(gsub("[[:space:]]", "", "Sign in")),
-                startExpanded = FALSE
-              ),
-              # TODO: move back into "usersidebarpanel"
-              menuItem("Update starbase Entries", 
-                tabName = "db_update", icon = icon("th")),
-              # uiOutput("usersidebarpanel"),
-              uiOutput("logout"),
-              id = NULL, .list = NULL
-            )
+    dashboardPage(
+      skin = "blue",
+      options = list(sidebarExpandOnHover = TRUE),
+      header = dashboardHeader(title = "starbase",   
+                              controlbarIcon = img(app_sys("img/favicon.ico")),
+                              leftUi = tagList(
+                                div(textOutput("welcome"), style = "padding: 10px"),
+                                # TODO: should be on right side of page
+                                tags$li(
+                                  class = "dropdown",
+                                  style = "padding: 8px;",
+                                  shinyauthr::logoutUI("logout")
+                                ),
+                                # tags$li(
+                                #   class = "dropdown",
+                                #   tags$a(
+                                #     icon("github"),
+                                #     href = "https://github.com/FungAGE/starbase",
+                                #     title = "See the code on github"
+                                #   )
+                                # )
+                              )),
+      controlbar = dashboardControlbar(),
+      title = "starbase home",
+      sidebar = dashboardSidebar(
+        minified = FALSE, collapsed = TRUE,
+        sidebarMenu(
+          menuItem("Welcome to starbase",
+            tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
+            startExpanded = FALSE
           ),
-          body = dashboardBody(
-            shinyjs::useShinyjs(),
-            tabItems(
-              tabItem(
-                tabName = "home",
-                mod_home_ui("home_1")
-              ),
-              tabItem(
-                tabName = "wiki",
-                mod_wiki_ui("wiki_1")
-              ),
-              tabItem(
-                tabName = "blast",
-                mod_blast_ui("blast_1")
-              ),
-              # tabItem(tabName = "blastviz",
-              #   mod_blast_viz_ui("blast_viz_1")
-              # ),
-              tabItem(
-                tabName = "explore",
-                mod_explore_ui("explore_1")
-              ),
-              tabItem(
-                tabName = "synteny",
-                mod_blast_syn_viz_ui("blast_syn_viz_1")
-              ),
-              tabItem(
-                tabName = "starfish",
-                mod_starfish_ui("starfish_1")
-              ),
-              tabItem(
-                tabName = "submit",
-                mod_submit_ui("submit_1")
-              ),
-              tabItem(
-                tabName = "user",
-                uiOutput("userloginpage")
-              ),
-              tabItem(
-                tabName = "db_update",
-                mod_db_update_ui("db_update_1")
-              )
-            )
+          menuItem("Wiki",
+            tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
+            startExpanded = FALSE
           ),
-          controlbar = dashboardControlbar(),
-          title = "starbase home"
+          menuItem("BLAST/HMMER Searches",
+            tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
+            startExpanded = FALSE
+          ),
+          menuItem("Explore Starships",
+            tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
+            startExpanded = FALSE
+          ),
+          menuItem("Starship Synteny",
+            tabName = "synteny", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
+            startExpanded = FALSE
+          ),
+          menuItem("starfish",
+            icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
+            startExpanded = FALSE
+          ),
+          menuItem("Submit Starships to starbase",
+            tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
+            startExpanded = FALSE
+          ),
+          menuItem("Update starbase Entries", 
+            tabName = "db_update", icon = icon("th")
+            ),
+          id = NULL, .list = NULL
         )
+      ),
+      body = dashboardBody(
+        shinyjs::useShinyjs(),
+          fluidPage(
+            fluidRow(
+              shinyauthr::loginUI("login",cookie_expiry = cookie_expiry),
+              uiOutput("loginUI")
+            )
+          )
       )
+    )
+  )
 }

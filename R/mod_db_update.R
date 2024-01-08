@@ -13,23 +13,19 @@
 pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
 con <- pool::poolCheckout(pool)
 
-#Label mandatory fields
-labelMandatory <- function(label) {
-  tagList(
-    label,
-    span("*", class = "mandatory_star")
-  )
-}
+onStop(function() {
+  pool::poolReturn(con)
+  dbDisconnect(con)
+})
 
-appCSS <- ".mandatory_star { color: red; }"
 
 mod_db_update_ui <- function(id) {
   ns <- NS(id)
-  # ui
   fluidPage(
     box(title='Update starbase entries',width=NULL,
       DTedit::dtedit_ui(ns("sql_table")))
     # shinyjs::useShinyjs(),
+    # appCSS <- ".mandatory_star { color: red; }"
     # shinyjs::inlineCSS(appCSS),
     # fluidRow(
     #   actionButton(ns("add_button"), "Add", icon("plus")),
@@ -51,8 +47,8 @@ mod_db_update_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # better is object is loaded in the server
-    #load ship_df and make reactive to inputs  
+    # better if object is loaded in the server
+    # so make a copy of joined_ships and make reactive to inputs  
     ship_df <- joined_ships
     
     ##### Callback functions.
@@ -88,16 +84,20 @@ mod_db_update_server <- function(id) {
     }
     
     ##### Create the DTedit object
-    DTedit::dtedit_server(
-        id = "sql_table",
-        thedata = ship_df,
-        # edit.cols = c('name', 'email', 'useR', 'notes'),
-        # edit.label.cols = c('Name', 'Email Address', 'Are they an R user?', 'Additional notes'),
-        # input.types = c(notes='textAreaInput'),
-        # view.cols = c('name', 'email', 'useR'),
-        callback.update = updateData,
-        callback.insert = appendData,
-        callback.delete = deleteData)
+    reactive({
+      req(credentials()$user_auth)
+      req(user_info()$permissions == "admin")
+      DTedit::dtedit_server(
+          id = "sql_table",
+          thedata = ship_df,
+          # edit.cols = c('name', 'email', 'useR', 'notes'),
+          # edit.label.cols = c('Name', 'Email Address', 'Are they an R user?', 'Additional notes'),
+          # input.types = c(notes='textAreaInput'),
+          # view.cols = c('name', 'email', 'useR'),
+          callback.update = updateData,
+          callback.insert = appendData,
+          callback.delete = deleteData)
+    })
 
     # output$sql_table <- DT::renderDataTable({
     #   table<-ship_df() %>% select(-rowid)
