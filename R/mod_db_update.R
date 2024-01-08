@@ -86,6 +86,7 @@ mod_db_update_server <- function(id) {
     ##### Create the DTedit object
     reactive({
       req(credentials()$user_auth)
+      # TODO: add error message is not admin
       req(user_info()$permissions == "admin")
       DTedit::dtedit_server(
           id = "sql_table",
