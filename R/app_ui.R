@@ -10,10 +10,9 @@ app_ui <- function(request) {
     # Leave this function for adding external resources
     golem_add_external_resources(),
         dashboardPage(
-          skin = "blue",
-          options = list(sidebarExpandOnHover = TRUE),
-          header = dashboardHeader(title = "starbase",   
-                                   controlbarIcon = img(app_sys("img/favicon.ico"))),
+          skin = "midnight",
+          md = TRUE,
+          header = dashboardHeader(title = "starbase"),
           sidebar = dashboardSidebar(
             minified = FALSE, collapsed = FALSE,
             sidebarMenu(
