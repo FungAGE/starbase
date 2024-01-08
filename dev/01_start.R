@@ -38,6 +38,9 @@ usethis::use_package("colourpicker")
 usethis::use_package("waiter")
 usethis::use_package("vroom")
 
+usethis::use_package("sodium")
+usethis::use_package("shinyauthr")
+
 usethis::use_package("Biostrings")
 usethis::use_package("DTedit")
 usethis::use_package("chorddiag")

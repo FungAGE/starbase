@@ -2,118 +2,121 @@
 #'
 #' @param input,output,session Internal parameters for {shiny}.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard DT shinyjs sodium
-#' @noRd
-app_server <- function(input, output, session) {
-  # Your application server logic
+#' @import shiny shinydashboard shinydashboardPlus DT shinyjs dplyr glue shinyauthr RSQLite DBI lubridate
+#' @noRd 
 
-  credentials <- data.frame(
-    username_id = c("myuser", "myuser1"),
-    passod = sapply(c("mypass", "mypass1"), password_store),
-    permission = c("Basic User", "Admin"),
-    image = app_sys("img/favicon.ico"),
-    stringsAsFactors = F
+cookie_expiry <- 7
+db <- dbConnect(SQLite(), ":memory:")
+dbCreateTable(db, "sessions", c(user = "TEXT", sessionid = "TEXT", login_time = "TEXT"))
+load("data/user_base.rda")
+app_server <- function(input, output, session) {
+  # call login module supplying data frame, user and password cols and reactive trigger
+  credentials <- shinyauthr::loginServer(
+    id = "login",
+    data = user_base,
+    user_col = user,
+    pwd_col = password_hash,
+    sodium_hashed = TRUE,
+    cookie_logins = TRUE,
+    sessionid_col = sessionid,
+    cookie_getter = get_sessions_from_db,
+    cookie_setter = add_session_to_db,
+    log_out = reactive(logout_init())
   )
 
-  login <- FALSE
-  USER <- reactiveValues(login = login)
-
-  loginpage <- div(
-    id = "loginpage", style = "width: 500px; max-width: 100%; margin: 0 auto; padding: 20px;",
-    wellPanel(
-      tags$h2("LOG IN", class = "text-center", style = "padding-top: 0;color:#333; font-weight:600;"),
-      textInput("userName", placeholder = "Username", label = tagList(icon("user"), "Username")),
-      passwordInput("passwd", placeholder = "Password", label = tagList(icon("unlock-alt"), "Password")),
-      br(),
-      div(
-        style = "text-align: center;",
-        actionButton("login", "SIGN IN", style = "color: white; background-color:#3c8dbc;
-                                 padding: 10px 15px; width: 150px; cursor: pointer;
-                                 font-size: 18px; font-weight: 600;"),
-        shinyjs::hidden(
-          div(
-            id = "nomatch",
-            tags$p("Oops! Incorrect username or password!",
-              style = "color: red; font-weight: 600; 
-                                            padding-top: 5px;font-size:16px;",
-              class = "text-center"
-            )
-          )
-        ),
-        br(),
-        br(),
-        tags$code("Username: myuser  Password: mypass"),
-        br(),
-        tags$code("Username: myuser1  Password: mypass1")
-      )
-    )
+  # call the logout module with reactive trigger to hide/show
+  logout_init <- shinyauthr::logoutServer(
+    id = "logout",
+    active = reactive(credentials()$user_auth)
   )
 
   observe({
-    if (USER$login == FALSE) {
-      if (!is.null(input$login)) {
-        if (input$login > 0) {
-          Username <- isolate(input$userName)
-          Password <- isolate(input$passwd)
-          if (length(which(credentials$username_id == Username)) == 1) {
-            pasmatch <- credentials["passod"][which(credentials$username_id == Username), ]
-            pasverify <- password_verify(pasmatch, Password)
-            if (pasverify) {
-              USER$login <- TRUE
-            } else {
-              shinyjs::toggle(id = "nomatch", anim = TRUE, time = 1, animType = "fade")
-              shinyjs::delay(3000, shinyjs::toggle(id = "nomatch", anim = TRUE, time = 1, animType = "fade"))
-            }
-          } else {
-            shinyjs::toggle(id = "nomatch", anim = TRUE, time = 1, animType = "fade")
-            shinyjs::delay(3000, shinyjs::toggle(id = "nomatch", anim = TRUE, time = 1, animType = "fade"))
-          }
-        }
-      }
+    if (credentials()$user_auth) {
+      shinyjs::removeClass(selector = "body", class = "sidebar-collapse")
+    } else {
+      shinyjs::addClass(selector = "body", class = "sidebar-collapse")
     }
   })
 
-  output$logoutbtn <- renderUI({
-    if (USER$login == TRUE) {
-      menuItem("logout", tabName = "Logout",href = "javascript:window.location.reload(true)", icon = icon("key"))
-    } else {}
+  user_info <- reactive({
+    credentials()$info
   })
 
-  output$usersidebarpanel <- renderUI({
-    if (USER$login == TRUE) {
-        menuItem("Update starbase Entries", tabName = "db_update", icon = icon("th"))
-    } else {}
-  })
+  user_data <- reactive({
+    req(credentials()$user_auth)
 
-  output$userloginpage<-renderUI({
-    if (USER$login == TRUE) {
-      Username <- isolate(input$userName)
-      userBox(
-        title = userDescription(
-          title = credentials[which(credentials$username_id==Username),"username_id"],
-          subtitle = credentials[which(credentials$username_id==Username),"permission"],
-          type = 2,
-          image = shinipsum::random_image(),
-          # image = credentials[which(credentials$username_id==Username),"image"],
-          shinipsum::random_text(nchars = 20)
-        ),
-        status = "warning"
+    if (user_info()$permissions == "admin") {
+      dplyr::starwars[, 1:10]
+    } else if (user_info()$permissions == "standard") {
+      dplyr::storms[, 1:11]
+    }
+  })
+  
+  # TODO: add user page
+  output$user_page<-renderUI({
+    req(credentials()$user_auth)
+    fluidRow(
+      box(
+        width = 12,
+        tags$h2(glue("Your permission level is: {user_info()$permissions}.
+                    You logged in at: {user_info()$login_time}.")),
+          width = NULL,
+          status = "primary"
         )
-        } else {
-          # TODO: link to login page here
-          loginpage
-        }
-      
+    )
   })
 
+
+  output$welcome <- renderText({
+    req(credentials()$user_auth)
+
+    glue("Logged in as: {user_info()$name}")
+  })
+
+  output$loginUI <- renderUI({
+    req(credentials()$user_auth)
+    # BUG: first item does not render automatically after login
+    tabItems(
+      tabItem(
+        tabName = "home",
+        mod_home_ui("home_1")
+      ),
+      tabItem(
+        tabName = "wiki",
+        mod_wiki_ui("wiki_1")
+      ),
+      tabItem(
+        tabName = "blast",
+        mod_blast_ui("blast_1")
+      ),
+      tabItem(
+        tabName = "explore",
+        mod_explore_ui("explore_1")
+      ),
+      # tabItem(
+      #   tabName = "synteny",
+      #   mod_blast_syn_viz_ui("blast_syn_viz_1")
+      # ),
+      tabItem(
+        tabName = "starfish",
+        mod_starfish_ui("starfish_1")
+      ),
+      tabItem(
+        tabName = "submit",
+        mod_submit_ui("submit_1")
+      ),
+      tabItem(
+        tabName = "db_update",
+        mod_db_update_ui("db_update_1")
+      )
+    )
+  })
 
   mod_home_server("home_1")
   mod_wiki_server("wiki_1")
   mod_explore_server("explore_1")
   mod_blast_server("blast_1")
-  # mod_genome_browser_server("genome_browser_1")
-  mod_blast_syn_viz_server("blast_syn_viz_1")
+  # mod_blast_syn_viz_server("blast_syn_viz_1")
   mod_starfish_server("starfish_1")
-  # mod_submit_server("submit_1")
   mod_db_update_server("db_update_1")
 }

@@ -63,5 +63,5 @@ blastdb/**
 inst/doc
 /doc/
 /Meta/
-shoot/**
-bin/SHOOT/**
+
+data-raw/user-base.R
