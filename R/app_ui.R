@@ -80,7 +80,7 @@ app_ui <- function(request) {
           ),
           menuItem("Update starbase Entries", 
             tabName = "db_update", icon = icon("th")
-            )
+            ),
           id = NULL, .list = NULL
         )
       ),
