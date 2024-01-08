@@ -83,6 +83,7 @@ golem::set_golem_options()
 
 usethis::use_mit_license()  
 usethis::use_readme_rmd(open = FALSE)
+usethis::use_badge(badge_name="Starbase status",href="https://img.shields.io/website?url=https%3A%2F%2Fstarbase.serve.scilifelab.se%2Fapp%2Fstarbase",src="")
 usethis::use_lifecycle_badge("Experimental")
 ## Use git ----
 usethis::use_git()
