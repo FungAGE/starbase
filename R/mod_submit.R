@@ -34,7 +34,7 @@ mod_submit_ui <- function(id) {
       
       # TODO: store file and put path in SQL table
       fileInput(ns("fna"),label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
-      fileInput(ns("gff3"),label = labelMandatory("Upload ship annotations (GFF3 format)"),accept = c(".gff",".gff3")),
+      fileInput(ns("gff3"),label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3")),
       textAreaInput(ns("comment"), "Comment", placeholder = "", height = 100, width = "354px"),
       helpText(labelMandatory(""), paste("Mandatory field.")),
       actionButton(ns("submit"), "Submit")
@@ -53,11 +53,11 @@ mod_submit_server <- function(id) {
         
         #make reactive to
         input$submit
-        dbReadTable(con, "joined_ships")
+        dbReadTable(con, "submissions")
       })  
       
       #List of mandatory fields for submission
-      fieldsMandatory <- c("fna","gff3","genus","species","evidence","uploader")
+      fieldsMandatory <- c("fna","genus","species","evidence","uploader")
       
       #define which input fields are mandatory 
       observe({
@@ -77,9 +77,8 @@ mod_submit_server <- function(id) {
       
       #save form data into data_frame format
       formData <- reactive({
-        
-        formData <- data.frame(row_id = UUIDgenerate(),
-                               fna = input$fna,
+        # UUIDgenerate() may be useful elsewhere
+        formData <- data.frame(fna = input$fna,
                                gff3 = input$gff3,
                                genus = input$genus,
                                species = input$species,
