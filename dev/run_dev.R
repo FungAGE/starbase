@@ -4,14 +4,11 @@ options(golem.app.prod = FALSE) # TRUE = production mode, FALSE = development mo
 # options(shiny.testmode = TRUE)
 options(shiny.autoreload = TRUE)
 
-# host address
-options(shiny.host = "localhost")
-
 # address accessible by other computers on the same network
 # options(shiny.host = "130.238.82.67")
 
 # accept any connection (not just from localhost)
-# options(shiny.host = "0.0.0.0")
+options(shiny.host = "0.0.0.0")
 
 # port
 # can assume any value that you want (just assure to avoid to select ports used by other services like ssh or http)
