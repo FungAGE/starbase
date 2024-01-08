@@ -13,15 +13,11 @@
 pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
 con <- pool::poolCheckout(pool)
 
-#Label mandatory fields
-labelMandatory <- function(label) {
-  tagList(
-    label,
-    span("*", class = "mandatory_star")
-  )
-}
+onStop(function() {
+  pool::poolReturn(con)
+  dbDisconnect(con)
+})
 
-appCSS <- ".mandatory_star { color: red; }"
 
 mod_db_update_ui <- function(id) {
   ns <- NS(id)
@@ -29,6 +25,7 @@ mod_db_update_ui <- function(id) {
     box(title='Update starbase entries',width=NULL,
       DTedit::dtedit_ui(ns("sql_table")))
     # shinyjs::useShinyjs(),
+    # appCSS <- ".mandatory_star { color: red; }"
     # shinyjs::inlineCSS(appCSS),
     # fluidRow(
     #   actionButton(ns("add_button"), "Add", icon("plus")),
@@ -101,7 +98,6 @@ mod_db_update_server <- function(id) {
           callback.insert = appendData,
           callback.delete = deleteData)
     })
-
 
     # output$sql_table <- DT::renderDataTable({
     #   table<-ship_df() %>% select(-rowid)

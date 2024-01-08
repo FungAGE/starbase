@@ -59,6 +59,7 @@ tmp/
 
 MTDB/**
 SQL/data/**
+*.sqbpro
 blastdb/**
 inst/doc
 /doc/

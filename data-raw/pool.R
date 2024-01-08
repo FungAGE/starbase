@@ -8,7 +8,6 @@ library(RSQLite)
 # connect to database file
 pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
 con <- pool::poolCheckout(pool)
-poolReturn(con)
 
 usethis::use_data(con, overwrite = TRUE)
 
@@ -16,4 +15,7 @@ usethis::use_data(con, overwrite = TRUE)
 # dbWriteTable(con, "ship", joined_ships)
 
 # disconnect from database
-dbDisconnect(con)
+onStop(function() {
+  pool::poolReturn(con)
+  dbDisconnect(con)
+})
