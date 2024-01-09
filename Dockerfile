@@ -1,9 +1,6 @@
 FROM rocker/shiny-verse:4.2.3
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y  libglpk-dev libgmp-dev libjq-dev libsodium-dev libmagick++-dev git && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+MAINTAINER Adrian Forsythe <adrian.e.forsythe@gmail.com>
+RUN apt-get update && apt-get upgrade -y && apt-get install -y  libglpk-dev libgmp-dev libjq-dev libsodium-dev libmagick++-dev git ncbi-blast+ hmmer python python3-biopython && apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/
 RUN echo "options(repos = c(CRAN = 'https://cran.rstudio.com/'), download.file.method = 'libcurl', Ncpus = 4)" | tee /usr/local/lib/R/etc/Rprofile.site | tee /usr/lib/R/etc/Rprofile.site
 RUN Rscript -e 'remotes::install_version("XML",upgrade="never", version = "3.99-0.16")'
@@ -39,6 +36,8 @@ RUN Rscript -e 'remotes::install_github("mattflor/chorddiag")'
 RUN Rscript -e 'remotes::install_github("YuLab-SMU/ggtree")'
 RUN Rscript -e 'remotes::install_github("yonicd/covrpage")'
 RUN Rscript -e 'remotes::install_version("colourpicker",upgrade="never", version = "1.3.0")'
+RUN Rscript -e 'remotes::install_version("sodium",upgrade="never", version = NA)
+RUN Rscript -e 'remotes::install_version("shinyauthr",upgrade="never", version = NA)
 RUN Rscript -e 'BiocManager::install(c("GenomeInfoDb","BiocGenerics","zlibbioc","S4Vectors","IRanges","XVector","Biostrings","treeio"),ask=F)'
 RUN rm -rf /srv/shiny-server/*
 COPY . /srv/shiny-server/
