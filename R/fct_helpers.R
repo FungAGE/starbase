@@ -7,7 +7,39 @@
 #' @noRd
 library(shiny)
 
-#Form for data entry
+# Login
+# This function must return a data.frame with columns user and sessionid.  Other columns are also okay
+# and will be made available to the app after log in.
+get_sessions_from_db <- function(conn = db, expiry = cookie_expiry) {
+  dbReadTable(conn, "sessions") %>%
+    mutate(login_time = ymd_hms(login_time)) %>%
+    as_tibble() %>%
+    filter(login_time > now() - days(expiry))
+}
+
+# This function must accept two parameters: user and sessionid. It will be called whenever the user
+# successfully logs in with a password.
+add_session_to_db <- function(user, sessionid, conn = db) {
+  tibble(user = user, sessionid = sessionid, login_time = as.character(now())) %>%
+    dbWriteTable(conn, "sessions", ., append = TRUE)
+}
+
+#Label mandatory fields
+labelMandatory <- function(label) {
+  tagList(
+    label,
+    span("*", class = "mandatory_star")
+  )
+}
+
+# append data to SQL table
+appendData <- function(con,table,data){
+  query <- sqlAppendTable(con, table, data, row.names = FALSE)
+  dbExecute(con, query)
+  shinyalert::shinyalert(title="Starship sequence added to database", type = "success",closeOnClickOutside = TRUE, closeOnEsc = TRUE)
+}
+
+# Form for data entry
 entry_form <- function(button_id){
   showModal(
     modalDialog(
