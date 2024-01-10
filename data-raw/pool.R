@@ -6,7 +6,7 @@ library(RSQLite)
 # joined_ships <- vroom("MTDB/joined_ships.tsv",show_col_types = FALSE)
 
 # connect to database file
-pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "Starships/SQLstarbase.sqlite")
 con <- pool::poolCheckout(pool)
 
 usethis::use_data(con, overwrite = TRUE)

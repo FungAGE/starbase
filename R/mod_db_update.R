@@ -10,7 +10,7 @@
 #'
 #' @importFrom shiny NS tagList
 
-pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "Starships/SQLstarbase.sqlite")
 con <- pool::poolCheckout(pool)
 
 onStop(function() {

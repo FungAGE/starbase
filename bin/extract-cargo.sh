@@ -7,7 +7,7 @@ DIAMOND=$BASEDIR/bin/diamond-linux64/diamond
 cargo_genes="duf3723 fre nlr plp"
 
 # * query file cannot contain certain characters in the header
-query=blastdb/concatenated.fa
+query=Starships/blastdb/concatenated.fa
 query_file=$(basename -- "$query")
 query_name=$(echo "$query_file" | cut -d . -f 1)
 query_ext="${query_file##*.}"
@@ -21,7 +21,7 @@ for cargo in $cargo_genes
 
     # TODO: add a check to prevent overwriting?
     # FIXME: fa != fna
-    output=blastdb/$ref_name"."$query_ext
+    output=Starships/blastdb/$ref_name"."$query_ext
 
     if [[ $ref_ext == "fa" ]]; then
       exit
@@ -35,7 +35,7 @@ for cargo in $cargo_genes
       fi
     fi
     
-    ref_out=blastdb/$ref_file
+    ref_out=Starships/blastdb/$ref_file
     seqkit rmdup -n "$ref" > "$ref_out"
 
     makeblastdb -in "$ref_out" -input_type fasta -dbtype "$db_type" -parse_seqids

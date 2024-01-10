@@ -8,17 +8,17 @@ library(DT)
 # - separate tables for ship and gene sequences (also separate for nucl/prot?) with checksums
 #   - contains all sequences, all versions, etc.
 
-mydb <- dbConnect(RSQLite::SQLite(), "SQL/starbase.sqlite")
+mydb <- dbConnect(RSQLite::SQLite(), "Starships/SQLstarbase.sqlite")
 
 # mycodb
 # TODO: add ncbi taxids?
 
 mycodb_df<-read_tsv("MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','source','published','assembly_acc','acquisition_date'),show_col_types = FALSE) %>% 
   rowwise() %>%
-  mutate(fna=ifelse(length(Sys.glob(paste0("SQL/data/fna/ships/",ome,"*.fna")))==1,
-                    Sys.glob(paste0("SQL/data/fna/ships/",ome,"*.fna")),NA),
-         gff=ifelse(length(Sys.glob(paste0("SQL/data/gff/mycodb/",ome,".gff")))==1,
-                    Sys.glob(paste0("SQL/data/gff/mycodb/",ome,".gff")),NA)) %>%
+  mutate(fna=ifelse(length(Sys.glob(paste0("Starships/SQL/data/fna/ships/",ome,"*.fna")))==1,
+                    Sys.glob(paste0("Starships/SQL/data/fna/ships/",ome,"*.fna")),NA),
+         gff=ifelse(length(Sys.glob(paste0("Starships/SQL/data/gff/mycodb/",ome,".gff")))==1,
+                    Sys.glob(paste0("Starships/SQL/data/gff/mycodb/",ome,".gff")),NA)) %>%
   ungroup() %>%
   separate_rows(taxonomy,sep=",") %>%
   mutate(taxonomy=gsub(c("\\{|\\}|\\'"),"",trimws(taxonomy)),
@@ -43,24 +43,24 @@ manual_df<-read_csv("Starships/ships/manual-annotations/Starships.fulltaxa.csv")
 
 # ships
 ## checksums
-read_file("SQL/data/fna/ships")
+read_file("Starships/SQL/data/fna/ships")
 
 # genes
 ## checksums
-read_file("SQL/data/faa/cargo/tyr")
+read_file("Starships/SQL/data/faa/cargo/tyr")
 
 mycodb_genes<-mycodb_df %>%
   rowwise() %>%
-  mutate(tyr_faa=ifelse(length(Sys.glob(paste0("SQL/data/faa/cargo/tyr/mycodb/*",ome,"*.faa")))==1,
-                    Sys.glob(paste0("SQL/data/faa/cargo/tyr/mycodb/*",ome,"*.faa")),NA),
-         plp_faa=ifelse(length(Sys.glob(paste0("SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")),NA),
-         nlr_faa=ifelse(length(Sys.glob(paste0("SQL/data/faa/cargo/nlr/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("SQL/data/faa/cargo/nlr/mycodb/*",ome,"*.faa")),NA),
-         fre_faa=ifelse(length(Sys.glob(paste0("SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")),NA),
-         duf3723_faa=ifelse(length(Sys.glob(paste0("SQL/data/faa/cargo/duf3723/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("SQL/data/faa/cargo/duf3723/mycodb/*",ome,"*.faa")),NA)) %>%
+  mutate(tyr_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/tyr/mycodb/*",ome,"*.faa")))==1,
+                    Sys.glob(paste0("Starships/SQL/data/faa/cargo/tyr/mycodb/*",ome,"*.faa")),NA),
+         plp_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")),NA),
+         nlr_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/nlr/mycodb/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/nlr/mycodb/*",ome,"*.faa")),NA),
+         fre_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")),NA),
+         duf3723_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/duf3723/mycodb/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/duf3723/mycodb/*",ome,"*.faa")),NA)) %>%
   ungroup()
 
 # dbWriteTable(mydb, "starbase", df)

@@ -9,7 +9,7 @@ type=$2
 if [[ $type == "prot" ]]; then
   REF="/home/adrian/Systematics/Starship_Database/starbase/Starships/captain/tyr/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit"
   TREE="/home/adrian/Systematics/Starship_Database/starbase/Starships/captain/tyr/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
-  HMM="/home/adrian/Systematics/Starship_Database/starbase/SQL/data/hmm/captain/YRsuperfams.p1-512.hmm"
+  HMM="/home/adrian/Systematics/Starship_Database/starbase/Starships/SQL/data/hmm/captain/YRsuperfams.p1-512.hmm"
 else
   REF="/home/adrian/Systematics/Starship_Database/starbase/Starships/captain/tyr/YRsuperfamRefs.fa"
   TREE="/home/adrian/Systematics/Starship_Database/starbase/Starships/captain/tyr/tree/YRsuperfamRefs.trimal.fa.iqtree"
