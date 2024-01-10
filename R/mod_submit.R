@@ -13,7 +13,7 @@
 # TODO: add checks when entries are added to database:
 # i.e. sequence already present in database
 
-pool <- pool::dbPool(RSQLite::SQLite(), dbname = "SQL/starbase.sqlite")
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "Starships/SQLstarbase.sqlite")
 con <- pool::poolCheckout(pool)
 
 onStop(function() {

@@ -83,28 +83,28 @@ mod_blast_server <- function(id) {
 
     db_list <- list(
       starship = list(
-        nucl = "blastdb/concatenated.fa"
+        nucl = "Starships/blastdb/concatenated.fa"
       ),
       gene = list(
         tyr = list(
-          prot = "blastdb/YRsuperfamRefs.faa",
-          nucl = "blastdb/YRsuperfamRefs.fa"
+          prot = "Starships/blastdb/YRsuperfamRefs.faa",
+          nucl = "Starships/blastdb/YRsuperfamRefs.fa"
         ),
         fre = list(
-          prot = "blastdb/fre.mycoDB.faa",
-          nucl = "blastdb/fre.fa"
+          prot = "Starships/blastdb/fre.mycoDB.faa",
+          nucl = "Starships/blastdb/fre.fa"
         ),
         nlr = list(
-          prot = "blastdb/nlr.mycoDB.faa",
-          nucl = "blastdb/nlr.fa"
+          prot = "Starships/blastdb/nlr.mycoDB.faa",
+          nucl = "Starships/blastdb/nlr.fa"
         ),
         DUF3723 = list(
-          prot = "blastdb/duf3723.mycoDB.faa",
-          nucl = "blastdb/duf3723.fa"
+          prot = "Starships/blastdb/duf3723.mycoDB.faa",
+          nucl = "Starships/blastdb/duf3723.fa"
         ),
         plp = list(
-          prot = "blastdb/plp.mycoDB.faa",
-          nucl = "blastdb/plp.fa"
+          prot = "Starships/blastdb/plp.mycoDB.faa",
+          nucl = "Starships/blastdb/plp.fa"
         )
       )
     )
