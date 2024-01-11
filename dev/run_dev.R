@@ -4,6 +4,9 @@ options(golem.app.prod = FALSE) # TRUE = production mode, FALSE = development mo
 # options(shiny.testmode = TRUE)
 options(shiny.autoreload = TRUE)
 
+# host address
+options(shiny.host = "127.0.0.1")
+
 # address accessible by other computers on the same network
 # options(shiny.host = "130.238.82.67")
 

@@ -50,6 +50,7 @@ mod_blast_ui <- function(id) {
             style = "display:inline-block",
             selectInput(ns("eval"), "Filter by e-value:", choices = c(1, 0.001, 1e-4, 1e-5, 1e-10),multiple = FALSE,selected = 1)
           ),
+          rep_br(1),
           actionButton(ns("blast"), "Start BLAST/HMMER Search")
         )
       )),
