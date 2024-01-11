@@ -15,7 +15,6 @@ options(repos = BiocManager::repositories())
 ## Add modules ----
 ## Create a module infrastructure in R/
 # Creating a module skeleton
-golem::add_module(name = "dashboard") 
 golem::add_module(name = "home")
 golem::add_module(name = "explore")
 golem::add_module(name = "metadata")
@@ -23,13 +22,9 @@ golem::add_module(name = "wiki")
 golem::add_module(name = "starfish")
 golem::add_module(name = "submit")
 golem::add_module(name = "blast") 
-golem::add_module(name = "blast_viz")
 golem::add_module(name = "genome_browser")
 golem::add_module(name = "dotplot")
-golem::add_module(name = "user")
-golem::add_module(name = "sql")
 golem::add_module(name = "db_update")
-golem::add_module(name = "diversity")
 golem::add_module(name = "blast_syn_viz")
 golem::add_module(name = "dotplot_syn")
 
@@ -44,12 +39,13 @@ golem::add_css_file("custom")
 golem::add_sass_file("custom")
 
 # add html templates
-golem::add_html_template("BlasterJS")
-golem::add_html_template("kablammo")
+# golem::add_html_template("BlasterJS")
+# golem::add_html_template("kablammo")
 
 ## Add internal datasets ----
 # TODO: incorporate database scripts into `raw_data`?
 # usethis::use_data_raw( name = "con", open = FALSE )
+usethis::use_data_raw( name = "user_base", open = FALSE )
 usethis::use_data_raw( name = "joined_ships", open = FALSE )
 usethis::use_data_raw( name = "ships_with_anno", open = FALSE )
 usethis::use_data_raw( name = "fna_list", open = FALSE )
