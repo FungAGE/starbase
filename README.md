@@ -4,9 +4,10 @@
 
 <!-- badges: start -->
 
+![Starbase status](https://img.shields.io/website?url=https%3A%2F%2Fstarbase.serve.scilifelab.se%2Fapp%2Fstarbase)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![Codecov test coverage](https://codecov.io/gh/FungAGE/starbase/branch/main/graph/badge.svg)](https://app.codecov.io/gh/FungAGE/starbase?branch=main)
-[![R-CMD-check](https://github.com/AdrianForsythe/starbase/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/AdrianForsythe/starbase/actions/workflows/R-CMD-check.yaml)
+
 <!-- badges: end -->
 
 ## Structure

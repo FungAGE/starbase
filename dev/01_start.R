@@ -37,8 +37,15 @@ usethis::use_package("shinyalert")
 usethis::use_package("colourpicker")
 usethis::use_package("waiter")
 usethis::use_package("vroom")
+usethis::use_package("sodium")
+usethis::use_package("shinyauthr")
+usethis::use_package("dockerfiler")
 
-# installs from github:
+usethis::use_package("Biostrings")
+usethis::use_package("DTedit")
+usethis::use_package("chorddiag")
+usethis::use_package("shinipsum")
+
 remotes::install_github('jbryer/DTedit')
 remotes::install_github('mattflor/chorddiag')
 remotes::install_github("YuLab-SMU/ggtree")
@@ -85,6 +92,7 @@ golem::set_golem_options()
 
 usethis::use_mit_license()  
 usethis::use_readme_rmd(open = FALSE)
+usethis::use_badge(badge_name="Starbase status",href="https://img.shields.io/website?url=https%3A%2F%2Fstarbase.serve.scilifelab.se%2Fapp%2Fstarbase",src="")
 usethis::use_lifecycle_badge("Experimental")
 ## Use git ----
 usethis::use_git()
