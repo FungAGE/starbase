@@ -83,28 +83,28 @@ mod_blast_server <- function(id) {
 
     db_list <- list(
       starship = list(
-        nucl = "Starships/blastdb/concatenated.fa"
+        nucl = "Starships/ships/fna/blastdb/concatenated.fa"
       ),
       gene = list(
         tyr = list(
-          prot = "Starships/blastdb/YRsuperfamRefs.faa",
-          nucl = "Starships/blastdb/YRsuperfamRefs.fa"
+          prot = "Starships/captain/tyr/faa/blastdb/YRsuperfamRefs.faa",
+          nucl = "Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
         ),
         fre = list(
-          prot = "Starships/blastdb/fre.mycoDB.faa",
-          nucl = "Starships/blastdb/fre.fa"
+          prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+          nucl = "Starships/cargo/fre/faa/blastdb/fre.fa"
         ),
         nlr = list(
-          prot = "Starships/blastdb/nlr.mycoDB.faa",
-          nucl = "Starships/blastdb/nlr.fa"
+          prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+          nucl = "Starships/cargo/nlr/faa/blastdb/nlr.fa"
         ),
         DUF3723 = list(
-          prot = "Starships/blastdb/duf3723.mycoDB.faa",
-          nucl = "Starships/blastdb/duf3723.fa"
+          prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+          nucl = "Starships/cargo/duf3723/faa/blastdb/duf3723.fa"
         ),
         plp = list(
-          prot = "Starships/blastdb/plp.mycoDB.faa",
-          nucl = "Starships/blastdb/plp.fa"
+          prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+          nucl = "Starships/cargo/plp/faa/blastdb/plp.fa"
         )
       )
     )
