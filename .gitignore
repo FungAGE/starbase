@@ -64,3 +64,4 @@ blastdb/**
 inst/doc
 
 data-raw/user-base.R
+Starships/
