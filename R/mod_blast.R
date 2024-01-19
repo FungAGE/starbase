@@ -87,8 +87,8 @@ mod_blast_server <- function(id) {
       ),
       gene = list(
         tyr = list(
-          prot = "blastdb/YRsuperfamRefs.faa",
-          nucl = "blastdb/YRsuperfamRefs.fa"
+          prot = "Starships/captain/tyr/faa/blastdb/concatenated.faa",
+          nucl = "Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
         ),
         fre = list(
           prot = "blastdb/fre.mycoDB.faa",
@@ -126,11 +126,26 @@ mod_blast_server <- function(id) {
       } 
       
       if (all(is.null(input$query_file$datapath),input$query_text != "")) {
-        query <- input$query_text
+        if (sum(grepl(">",input$query_text))==0) {
+          query<-c(">QUERY",input$query_text)
+          fasta_file_header<-"QUERY"
+        } else if(sum(grepl(">",input$query_text))>1) {
+          shinyalert("Multi-fastas not supported at this time","Please provide one sequence at a time.",type="error")
+        } else {
+          query <- input$query_text
+        }
       } else if (all(!is.null(input$query_file$datapath), input$query_text == "")) {
-        fasta_file<-seqinr::read.fasta(input$query_file$datapath)
-        fasta_file_header<-ifelse(any(is.null(names(fasta_file)),names(fasta_file) == "",is.na(names(fasta_file))),"QUERY",names(fasta_file))
-        query <-str_c(paste0(">",fasta_file_header),str_flatten(fasta_file),sep="\n")
+        fasta_file_text<-read_lines(input$query_file$datapath)
+        if (sum(grepl(">",fasta_file_text))==0) {
+          query<-c(">QUERY",fasta_file_text)
+          fasta_file_header<-"QUERY"
+        } else if(sum(grepl(">",fasta_file_text))>1) {
+          shinyalert("Multi-fastas not supported at this time","Please provide one sequence at a time.",type="error")
+        } else {
+          fasta_file<-seqinr::read.fasta(input$query_file$datapath)
+          fasta_file_header<-names(fasta_file)
+          query <-str_c(paste0(">",fasta_file_header),str_flatten(fasta_file),sep="\n")
+        }
       }
 
       if (is.null(query)){
@@ -203,8 +218,8 @@ mod_blast_server <- function(id) {
         } else {
           blast_program <- "tblastn"
         }
-        db <- db_list[["starship"]][["nucl"]]
-        ship_blast_out<-system(paste0(blast_program, " -query ", tmp_fasta, " -db ", db, " -evalue ", input$eval, " -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
+        blastdb <- db_list[["starship"]][["nucl"]]
+        ship_blast_out<-system(paste0(blast_program, " -query ", tmp_fasta, " -db ", blastdb, " -evalue ", input$eval, " -outfmt 5 -max_hsps 1 -max_target_seqs 10 -num_threads 4"), intern = T) %>%
             xmlParse()
         xmltop <- xmlRoot(ship_blast_out)
 
@@ -236,11 +251,11 @@ mod_blast_server <- function(id) {
         gene_list <- input$gene_type
         
         run_hmmer <- function(gene) {
-          db <- db_list[["gene"]][[gene]][[submitted()$query_type]]
+          hmmer_db <- db_list[["gene"]][[gene]][[submitted()$query_type]]
           
           tmp_hmmer <- tempfile(fileext = ".hmmer")
           
-          hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input$eval, tmp_fasta, db, sep = " ")
+          hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input$eval, tmp_fasta, hmmer_db, sep = " ")
           system(hmmer_cmd, intern = FALSE)
           
           tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed")
@@ -354,11 +369,14 @@ mod_blast_server <- function(id) {
     }}
     
     render_output <- function(name, plot.chord = FALSE) {
-      req(blastresults())  # Check if blastresults() is available
-
-      output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(blastresults()[[name]]) })
-      output[[paste0("clicked_table_",name)]] <- renderTable({ make_clicked_table(blastresults()[[name]], name) }, rownames = TRUE, colnames = FALSE)
-      output[[paste0("alignment_",name)]] <- renderMsaR({ make_alignment(blastresults()[[name]], name) })
+      if (name == "ships") {
+        results_list<-blastresults()[[name]]
+      } else {
+        results_list<-blastresults()["genes"][[name]]
+      }
+      output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(results_list) })
+      output[[paste0("clicked_table_",name)]] <- renderTable({ make_clicked_table(results_list, name) }, rownames = TRUE, colnames = FALSE)
+      output[[paste0("alignment_",name)]] <- renderMsaR({ make_alignment(results_list, name) })
 
       tab_content <- list(
         DT::DTOutput(ns(paste0("table_", name))),
@@ -382,6 +400,8 @@ mod_blast_server <- function(id) {
     })
 
     output$gene_ui<-renderUI({
+        req(blastresults())  # Check if blastresults() is available
+
         box(title="Gene BLAST/HMMER Results",
         solidHeader = FALSE,
         collapsible = TRUE,
