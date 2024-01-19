@@ -14,16 +14,21 @@
 mod_home_ui <- function(id) {
   ns <- NS(id)
   dashboardBody(
-    div(
-      fluidRow(
-        style = "padding-bottom: 15px;",
-        column(width = 1, img(src = "img/favicon.png", width = "100%")),
-        column(width = 3, h2("starbase: Database and tools for exploring large eukaryotic transposable elements in Fungi"))
-      )
-    ),
+    fluidRow(
+      style = "padding-bottom: 15px;",
+          tags$table(style = "width: 85%",
+             tags$tr(tags$td(style = "width: 20%",
+                             align = "right",
+                             img(src = "img/favicon.png", width = "100%")),
+                     tags$td(style = "width: 5%"),
+                     tags$td(style = "width: 75%",
+                             align = "left",
+                      h2("Database and tools for exploring large eukaryotic transposable elements in Fungi"))))),
     fluidRow(
       box(
-        title = "This is the development version of starbase", status = "warning",
+        title = "This is the development version of starbase", 
+        status = "warning",
+        width = 8,
         disabled(
           checkboxGroupInput(ns("functions"),
             label = "Working Functions:",
