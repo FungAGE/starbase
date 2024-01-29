@@ -13,28 +13,36 @@
 
 mod_home_ui <- function(id) {
   ns <- NS(id)
-  dashboardBody(
-    fluidRow(
-      style = "padding-bottom: 15px;",
-          tags$table(style = "width: 85%",
-             tags$tr(tags$td(style = "width: 20%",
-                             align = "right",
-                             img(src = "img/favicon.png", width = "100%")),
-                     tags$td(style = "width: 5%"),
-                     tags$td(style = "width: 75%",
-                             align = "left",
-                      h2("Database and tools for exploring large eukaryotic transposable elements in Fungi"))))),
-    fluidRow(
-      box(
-        title = "This is the development version of starbase", 
-        status = "warning",
-        width = 8,
-        disabled(
-          checkboxGroupInput(ns("functions"),
-            label = "Working Functions:",
-            choices = c("BLAST/HMMER searches", "Synteny/Genome Browser", "Catalogue/Wiki of Starship Metadata", "Running Starfish", "Submission of new Ships", "Editing of Database entries"),
-            selected = c("BLAST/HMMER searches","Submission of new Ships", "Editing of Database entries")
-          )
+  shiny::tagList(
+    br(),
+    box(
+      title = "Database and tools for exploring large eukaryotic transposable elements in Fungi", 
+      status = "warning",
+      width = NULL,
+      tags$table(style = "width: 85%",
+        tags$tr(tags$td(style = "width: 20%",
+                        align = "middle",
+                        img(src = "img/favicon.png", width = "100px")),
+                tags$td(style = "width: 5%"),
+                tags$td(style = "width: 20%",
+                        align = "left",
+            h4("This is the development version of starbase")))),
+      footer = fluidRow(
+        column(width=12,
+          h2(),
+          h4("Working Functions:"),
+          p("BLAST/HMMER searches"),
+          br(),
+          p("Catalogue/Wiki of Starship Metadata"),
+          br(),
+          p("Submission of new Ships"),
+          br(),
+          p( "Editing of Database entries"),
+          br(),
+          h4("Non-Working Functions:"),
+          p("Synteny/Genome Browser"),
+          br(),
+          p("Running Starfish")
         )
       )
     )

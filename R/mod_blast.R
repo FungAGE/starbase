@@ -25,6 +25,7 @@ mod_blast_ui <- function(id) {
       column(width=4,
       box(
         title = "Input for BLAST/HMMER Searches",
+        background = "gray",
         id = "blastbox",
         solidHeader = FALSE,
         collapsible = TRUE,
@@ -62,6 +63,7 @@ mod_blast_ui <- function(id) {
       #   solidHeader = FALSE,
       #   collapsible = TRUE,
       #   width = NULL,
+      #   background = "gray",
       #   uiOutput(ns("classification_ui")))
     )
   )
@@ -83,7 +85,7 @@ mod_blast_server <- function(id) {
 
     db_list <- list(
       starship = list(
-        nucl = "blastdb/concatenated.fa"
+        nucl = "Starships/ships/fna/blastdb/concatenated.fa"
       ),
       gene = list(
         tyr = list(
@@ -91,20 +93,20 @@ mod_blast_server <- function(id) {
           nucl = "Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
         ),
         fre = list(
-          prot = "blastdb/fre.mycoDB.faa",
-          nucl = "blastdb/fre.fa"
+          prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+          nucl = "Starships/cargo/fre/fna/blastdb/fre.fa"
         ),
         nlr = list(
-          prot = "blastdb/nlr.mycoDB.faa",
-          nucl = "blastdb/nlr.fa"
+          prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+          nucl = "Starships/cargo/nlr/fna/blastdb/nlr.fa"
         ),
         DUF3723 = list(
-          prot = "blastdb/duf3723.mycoDB.faa",
-          nucl = "blastdb/duf3723.fa"
+          prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+          nucl = "Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
         ),
         plp = list(
-          prot = "blastdb/plp.mycoDB.faa",
-          nucl = "blastdb/plp.fa"
+          prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+          nucl = "Starships/cargo/plp/fna/blastdb/plp.fa"
         )
       )
     )
@@ -125,37 +127,25 @@ mod_blast_server <- function(id) {
         shinyalert("Multiple inputs:", "Please provide either a query sequence in the text box, or upload a fasta file, not both", type = "error")
       } 
       
-      if (all(is.null(input$query_file$datapath),input$query_text != "")) {
-        if (sum(grepl(">",input$query_text))==0) {
-          query<-c(">QUERY",input$query_text)
+      if (all(is.null(input$query_file$datapath),all(!is.null(input$query_text),input$query_text!=""))) {
+        input_type<-"text"
+        query<-input$query_text
+        if (all(!grepl(">",query))) {
+          query<-c(">QUERY",query)
           fasta_file_header<-"QUERY"
-        } else if(sum(grepl(">",input$query_text))>1) {
+        } else if(sum(grepl(">",query))>1) {
           shinyalert("Multi-fastas not supported at this time","Please provide one sequence at a time.",type="error")
-        } else {
-          query <- input$query_text
         }
-      } else if (all(!is.null(input$query_file$datapath), input$query_text == "")) {
-        fasta_file_text<-read_lines(input$query_file$datapath)
-        if (sum(grepl(">",fasta_file_text))==0) {
-          query<-c(">QUERY",fasta_file_text)
-          fasta_file_header<-"QUERY"
-        } else if(sum(grepl(">",fasta_file_text))>1) {
-          shinyalert("Multi-fastas not supported at this time","Please provide one sequence at a time.",type="error")
-        } else {
-          fasta_file<-seqinr::read.fasta(input$query_file$datapath)
-          fasta_file_header<-names(fasta_file)
-          query <-str_c(paste0(">",fasta_file_header),str_flatten(fasta_file),sep="\n")
-        }
+      } else if (all(!is.null(input$query_file$datapath),any(is.null(input$query_text),input$query_text==""))) {
+        input_type<-"file"
+        fasta_file<-read_lines(input$query_file$datapath)
+        fasta_file<-seqinr::read.fasta(fasta_file)
+        fasta_file_header<-names(fasta_file)
+        query <-str_c(paste0(">",fasta_file_header),str_flatten(fasta_file),sep="\n")
       }
-
-      if (is.null(query)){
-        shinyalert("Input error","something wrong with fasta input")
-      }
-
-      # if(!(length(grep(">", query)) > 1)){ shinyalert("Multifasta provided:","Multifastas are currently not supported. Upload one sequence at a time please!")}
 
       # if gene scan is chosen, use this to create separate results section
-      input_type <- ifelse(input$search_ship_genes == TRUE, "gene","ship")
+      blast_type <- ifelse(input$search_ship_genes == TRUE, "gene","ship")
       
       # TODO: add better error catching for format of query sequence/file here
       # function to clean the query sequence: first remove non-letter characters, then ambiguous characters, then guess if query is nucl or protein
@@ -395,6 +385,7 @@ mod_blast_server <- function(id) {
           solidHeader = FALSE,
           collapsible = TRUE,
           width = NULL,
+          background = "gray",
           render_output("ship", TRUE)
       )
     })
@@ -406,6 +397,7 @@ mod_blast_server <- function(id) {
         solidHeader = FALSE,
         collapsible = TRUE,
         width = NULL,
+        background = "gray",
         # map(names(blastresults()[["genes"]]), ~ {
         #   render_output(.x, FALSE)})
         render_output("tyr", FALSE))

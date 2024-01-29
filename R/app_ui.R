@@ -9,9 +9,9 @@ app_ui <- function(request) {
   tagList(
     # Leave this function for adding external resources
     golem_add_external_resources(),
+    shinyjs::useShinyjs(),
     dashboardPage(
-      skin = "midnight",
-      md = TRUE,
+      skin = "blue",
       options = list(sidebarExpandOnHover = TRUE),
       header = dashboardHeader(title = "starbase",   
                               controlbarIcon = img(app_sys("img/favicon.ico")),
@@ -34,66 +34,15 @@ app_ui <- function(request) {
                               )),
       controlbar = dashboardControlbar(),
       title = "starbase home",
-      sidebar = dashboardSidebar(
-        minified = FALSE, collapsed = TRUE,
-        sidebarMenu(
-          menuItem("Welcome to starbase",
-            tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
-            startExpanded = FALSE
-          ),
-          menuItem("Wiki",
-            tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
-            startExpanded = FALSE
-          ),
-          menuItem("BLAST/HMMER Searches",
-            tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
-            startExpanded = FALSE
-          ),
-          menuItem("Explore Starships",
-            tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
-            startExpanded = FALSE
-          ),
-          menuItem("Starship Synteny",
-            tabName = "synteny", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
-            startExpanded = FALSE
-          ),
-          menuItem("starfish",
-            icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
-            startExpanded = FALSE
-          ),
-          menuItem("Submit Starships to starbase",
-            tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
-            startExpanded = FALSE
-          ),
-          menuItem("Update starbase Entries", 
-            tabName = "db_update", icon = icon("th")
-            ),
-          id = NULL, .list = NULL
-        )
-      ),
+      sidebar = uiOutput("loginSidebar"),
       body = dashboardBody(
-        shinyjs::useShinyjs(),
-          fluidPage(
-            fluidRow(
-              shinyauthr::loginUI("login",cookie_expiry = cookie_expiry),
-              uiOutput("loginUI")
+              shinyauthr::loginUI("login",
+                title = "Please log in to access starbase",
+                cookie_expiry = cookie_expiry,
+                additional_ui=mod_home_ui("home_1")
+              ),
+              uiOutput("loginBody")
             )
-          )
-      )
     )
   )
 }

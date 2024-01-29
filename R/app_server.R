@@ -30,93 +30,125 @@ app_server <- function(input, output, session) {
     active = reactive(credentials()$user_auth)
   )
 
-  observe({
-    if (credentials()$user_auth) {
-      shinyjs::removeClass(selector = "body", class = "sidebar-collapse")
-    } else {
-      shinyjs::addClass(selector = "body", class = "sidebar-collapse")
-    }
-  })
-
   user_info <- reactive({
     credentials()$info
   })
 
-  user_data <- reactive({
-    req(credentials()$user_auth)
+  observe({
+    if (credentials()$user_auth) {
 
-    if (user_info()$permissions == "admin") {
-      dplyr::starwars[, 1:10]
-    } else if (user_info()$permissions == "standard") {
-      dplyr::storms[, 1:11]
-    }
-  })
-  
-  # TODO: add user page
-  output$user_page<-renderUI({
-    req(credentials()$user_auth)
-    fluidRow(
-      box(
-        width = 12,
-        tags$h2(glue("Your permission level is: {user_info()$permissions}.
-                    You logged in at: {user_info()$login_time}.")),
-          width = NULL,
-          status = "primary"
+      # TODO: add user page
+      output$user_page<-renderUI({
+        fluidRow(
+          box(
+            width = 12,
+            tags$h2(glue("Your permission level is: {user_info()$permissions}.
+                        You logged in at: {user_info()$login_time}.")),
+              width = NULL,
+              status = "primary"
+            )
         )
-    )
-  })
+      })
 
+      output$welcome <- renderText({
+        glue("Logged in as {user_info()$permissions} user: {user_info()$name}")
+      })
 
-  output$welcome <- renderText({
-    req(credentials()$user_auth)
+      output$loginSidebar<-renderUI({
+        dashboardSidebar(
+            minified = FALSE,
+            collapsed = FALSE,
+            sidebarMenu(
+              # menuItem("Home",
+              #   tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+              #   href = NULL, newtab = FALSE, selected = TRUE,
+              #   expandedName = as.character(gsub("[[:space:]]", "", "home")),
+              #   startExpanded = FALSE
+              # ),
+              menuItem("Wiki",
+                tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = TRUE,
+                expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
+                startExpanded = TRUE
+              ),
+              menuItem("BLAST/HMMER Searches",
+                tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
+                startExpanded = FALSE
+              ),
+              menuItem("Explore Starships",
+                tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
+                startExpanded = FALSE
+              ),
+              menuItem("Starship Synteny",
+                tabName = "synteny", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
+                startExpanded = FALSE
+              ),
+              menuItem("starfish",
+                icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
+                startExpanded = FALSE
+              ),
+              menuItem("Submit Starships to starbase",
+                tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+                href = NULL, newtab = FALSE, selected = NULL,
+                expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
+                startExpanded = FALSE
+              ),
+              menuItem("Update starbase Entries", 
+                tabName = "db_update", icon = icon("th")
+                ),
+              id = NULL, .list = NULL
+            )
+          )
+      })
 
-    glue("Logged in as: {user_info()$name}")
-  })
-
-  output$loginUI <- renderUI({
-    req(credentials()$user_auth)
-    # BUG: first item does not render automatically after login
-    tabItems(
-      tabItem(
-        tabName = "home",
-        mod_home_ui("home_1")
-      ),
-      tabItem(
-        tabName = "wiki",
-        mod_wiki_ui("wiki_1")
-      ),
-      tabItem(
-        tabName = "blast",
-        mod_blast_ui("blast_1")
-      ),
-      tabItem(
-        tabName = "explore",
-        mod_explore_ui("explore_1")
-      ),
-      # tabItem(
-      #   tabName = "synteny",
-      #   mod_blast_syn_viz_ui("blast_syn_viz_1")
-      # ),
-      tabItem(
-        tabName = "starfish",
-        mod_starfish_ui("starfish_1")
-      ),
-      tabItem(
-        tabName = "submit",
-        mod_submit_ui("submit_1")
-      ),
-      tabItem(
-        tabName = "db_update",
-        mod_db_update_ui("db_update_1")
+    output$loginBody <- renderUI({
+      tabItems(
+        tabItem(
+          tabName = "wiki",
+          mod_wiki_ui("wiki_1")
+        ),
+        tabItem(
+          tabName = "blast",
+          mod_blast_ui("blast_1")
+        ),
+        tabItem(
+          tabName = "explore",
+          mod_explore_ui("explore_1")
+        ),
+        tabItem(
+          tabName = "starfish",
+          mod_starfish_ui("starfish_1")
+        ),
+        tabItem(
+          tabName = "submit",
+          mod_submit_ui("submit_1")
+        ),
+        tabItem(
+          tabName = "db_update",
+          mod_db_update_ui("db_update_1")
+        )
       )
-    )
+    })
+      shinyjs::removeClass(selector = "body", class = "sidebar-collapse")
+    } else {
+      shinyjs::addClass(selector = "body", class = "sidebar-collapse")
+    }
+    # BUG: first item does not render automatically after login
+    # shinyjs::runjs('$("#myMenu > .shinyjs-menuitem:first-child").click();')
   })
 
   mod_home_server("home_1")
   mod_wiki_server("wiki_1")
   mod_explore_server("explore_1")
   mod_blast_server("blast_1")
-  # mod_blast_syn_viz_server("blast_syn_viz_1")
   mod_starfish_server("starfish_1")
   mod_submit_server("submit_1")
   mod_db_update_server("db_update_1")

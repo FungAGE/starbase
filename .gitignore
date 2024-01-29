@@ -57,10 +57,11 @@ tmp/
 
 *.gz
 
+# specific to this repo
+data-raw/user-base.R
+Starships/**
 MTDB/**
 SQL/data/**
 *.sqbpro
 blastdb/**
 inst/doc
-
-data-raw/user-base.R
