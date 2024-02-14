@@ -13,7 +13,7 @@ options(shiny.maxRequestSize = 30 * 1024^2)
 
 mod_dotplot_ui <- function(id) {
   ns <- NS(id)
-  dashboardBody(
+  fluidPage(
     plotlyOutput(ns("plot1")),
     verbatimTextOutput(ns("event"))
   )

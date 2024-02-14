@@ -41,20 +41,16 @@ usethis::use_package("sodium")
 usethis::use_package("shinyauthr")
 usethis::use_package("dockerfiler")
 
-usethis::use_package("Biostrings")
-usethis::use_package("DTedit")
-usethis::use_package("chorddiag")
-usethis::use_package("shinipsum")
+# issue with these bioconductor packages:
+renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings","bioc::treeio"))
 
+# add packages with github install
 remotes::install_github('jbryer/DTedit')
 remotes::install_github('mattflor/chorddiag')
 remotes::install_github("YuLab-SMU/ggtree")
 remotes::install_github('yonicd/covrpage')
 
-# issue with these bioconductor packages:
-renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings","bioc::treeio"))
-
-# add packages install from above sources
+# track these packages
 usethis::use_package("Biostrings")
 usethis::use_package("DTedit")
 usethis::use_package("chorddiag")
