@@ -26,35 +26,34 @@ metadata <- load_metadata() %>%
 
 mod_explore_ui <- function(id) {
   ns <- NS(id)
-  dashboardBody(
-    fluidPage(title = "Explore the starbase",
-      fluidRow(
-               box(
-                 title = "Starship Diversity",width=12,
-                 valueBoxOutput(ns("total_species")),valueBoxOutput(ns("total_ships")),
-                 img(
-                   src = "img/heat_tree.png",
-                   width = "50%",
-                   style = "background-color: black;"
-                 ),br()
-               )),
-      fluidRow(box(
-                 title = "Captain Phylogeny and Represented Species",width=NULL,
-                column(width=4,
-                  h4("Select tyr Family: "),
-                  selectizeInput(
-                    inputId = ns("family"),
-                    label = "Starship Family",
-                    choices = unique(metadata$starship_family),
-                    multiple = FALSE,
-                    selected = NULL,
-                    width = "30%"
-                  ),
-                  ggiraph::girafeOutput(ns("captain_tree"))),
-                column(width=6,
-                  fluidRow(valueBoxOutput(ns("total_family_ships"))),
-                  fluidRow(DT::DTOutput(ns("meta_table")))
-                )))))}
+  fluidPage(title = "Explore the starbase",
+    fluidRow(
+              box(
+                title = "Starship Diversity",width=12,
+                valueBoxOutput(ns("total_species")),valueBoxOutput(ns("total_ships")),
+                img(
+                  src = "img/heat_tree.png",
+                  width = "50%",
+                  style = "background-color: black;"
+                ),br()
+              )),
+    fluidRow(box(
+                title = "Captain Phylogeny and Represented Species",width=NULL,
+              column(width=4,
+                h4("Select tyr Family: "),
+                selectizeInput(
+                  inputId = ns("family"),
+                  label = "Starship Family",
+                  choices = unique(metadata$starship_family),
+                  multiple = FALSE,
+                  selected = NULL,
+                  width = "30%"
+                ),
+                ggiraph::girafeOutput(ns("captain_tree"))),
+              column(width=6,
+                fluidRow(valueBoxOutput(ns("total_family_ships"))),
+                fluidRow(DT::DTOutput(ns("meta_table")))
+              ))))}
 
 #' explore Server Functions
 #'

@@ -2,7 +2,7 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard shinydashboardPlus bslib dplyr glue shinyauthr RSQLite DBI lubridate
+#' @import shiny shinydashboard shinydashboardPlus bslib
 #' @noRd
 
 app_ui <- function(request) {
@@ -22,27 +22,96 @@ app_ui <- function(request) {
                                   class = "dropdown",
                                   style = "padding: 8px;",
                                   shinyauthr::logoutUI("logout")
-                                ),
-                                # tags$li(
-                                #   class = "dropdown",
-                                #   tags$a(
-                                #     icon("github"),
-                                #     href = "https://github.com/FungAGE/starbase",
-                                #     title = "See the code on github"
-                                #   )
-                                # )
-                              )),
+                                ))),
       controlbar = dashboardControlbar(),
       title = "starbase home",
-      sidebar = uiOutput("loginSidebar"),
-      body = dashboardBody(
-              shinyauthr::loginUI("login",
-                title = "Please log in to access starbase",
-                cookie_expiry = cookie_expiry,
-                additional_ui=mod_home_ui("home_1")
-              ),
-              uiOutput("loginBody")
+      sidebar = dashboardSidebar(
+        minified = FALSE,
+        collapsed = FALSE,
+        sidebarMenu(
+          menuItem("Home",
+            tabName = "home",
+            href = NULL, newtab = FALSE, selected = TRUE,
+            expandedName = as.character(gsub("[[:space:]]", "", "home")),
+            startExpanded = FALSE
+          ),
+          menuItem("Wiki",
+            tabName = "wiki",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
+            startExpanded = TRUE
+          ),
+          menuItem("BLAST/HMMER Searches",
+            tabName = "blast",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
+            startExpanded = FALSE
+          ),
+          menuItem("Explore Starships",
+            tabName = "explore",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
+            startExpanded = FALSE
+          ),
+          menuItem("Starship Synteny",
+            tabName = "synteny",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
+            startExpanded = FALSE
+          ),
+          menuItem("starfish",
+            icon = NULL, tabName = "starfish",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
+            startExpanded = FALSE
+          ),
+          menuItem("Submit Starships to starbase",
+            tabName = "submit",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
+            startExpanded = FALSE
+          ),
+          menuItem("Update starbase Entries", 
+            tabName = "db_update",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Update starbase entries")),
+            startExpanded = FALSE
+            ),
+          id = NULL, .list = NULL
+        )),
+        body=dashboardBody(
+          tabItems(
+            tabItem(
+              tabName = "home",
+              mod_home_ui("home_1")
+
+            ),
+            tabItem(
+              tabName = "wiki",
+              mod_wiki_ui("wiki_1")
+            ),
+            tabItem(
+              tabName = "blast",
+              mod_blast_ui("blast_1")
+            ),
+            tabItem(
+              tabName = "explore",
+              mod_explore_ui("explore_1")
+            ),
+            tabItem(
+              tabName = "starfish",
+              mod_starfish_ui("starfish_1")
+            ),
+            tabItem(
+              tabName = "submit",
+              mod_submit_ui("submit_1")
+            ),
+            tabItem(
+              tabName = "db_update",
+              mod_db_update_ui("db_update_1")
             )
+          )
+        )
     )
   )
 }

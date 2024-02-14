@@ -13,7 +13,7 @@ mydb <- dbConnect(RSQLite::SQLite(), "SQL/starbase.sqlite")
 # mycodb
 # TODO: add ncbi taxids?
 
-mycodb_df<-read_tsv("MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','source','published','assembly_acc','acquisition_date'),show_col_types = FALSE) %>% 
+mycodb_df<-read_tsv("Starships/MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','source','published','assembly_acc','acquisition_date'),show_col_types = FALSE) %>% 
   rowwise() %>%
   mutate(fna=ifelse(length(Sys.glob(paste0("SQL/data/fna/ships/",ome,"*.fna")))==1,
                     Sys.glob(paste0("SQL/data/fna/ships/",ome,"*.fna")),NA),
