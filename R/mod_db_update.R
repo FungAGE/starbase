@@ -80,7 +80,7 @@ mod_db_update_server <- function(id) {
 
     observe({
       if (credentials()$user_auth) {
-        con<-load_sql("SQL/starbase.sqlite")
+        con<-load_sql("../Starships/SQL/starbase.sqlite")
 
         # better if object is loaded in the server
         # so make a copy of joined_ships and make reactive to inputs  

@@ -44,13 +44,13 @@ golem::add_sass_file("custom")
 
 ## Add internal datasets ----
 # TODO: incorporate database scripts into `raw_data`?
-# usethis::use_data_raw( name = "con", open = FALSE )
-usethis::use_data_raw( name = "user_base", open = FALSE )
-usethis::use_data_raw( name = "joined_ships", open = FALSE )
-usethis::use_data_raw( name = "ships_with_anno", open = FALSE )
-usethis::use_data_raw( name = "fna_list", open = FALSE )
-usethis::use_data_raw( name = "gff_list", open = FALSE )
-usethis::use_data_raw( name = "taxa_list", open = FALSE )
+usethis::use_data_raw(name="user_base", open=rlang::is_interactive())
+usethis::use_data_raw(name="captain_tree", open=rlang::is_interactive())
+usethis::use_data_raw(name="joined_ships", open=rlang::is_interactive())
+usethis::use_data_raw(name="ships_with_anno", open=rlang::is_interactive())
+usethis::use_data_raw(name="fna_list", open=rlang::is_interactive())
+usethis::use_data_raw(name="gff_list", open=rlang::is_interactive())
+usethis::use_data_raw(name="taxa_list", open=rlang::is_interactive())
 
 ## Tests ----
 ## Add one line by test you want to create
@@ -78,13 +78,11 @@ covrpage::covrpage()
 usethis::use_github()
 
 # GitHub Actions
-usethis::use_github_action()
-# Chose one of the three
 # See https://usethis.r-lib.org/reference/use_github_action.html
-usethis::use_github_action_check_release()
+usethis::use_github_action("test-coverage")
 
 # Add action for PR
-usethis::use_github_action_pr_commands()
+usethis::use_github_action("pr-commands")
 
 # go to dev/03_deploy.R
 rstudioapi::navigateToFile("dev/03_deploy.R")

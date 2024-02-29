@@ -18,6 +18,9 @@
 # 3) look for cargo genes
 
 
+load("data/joined_ships.rda")
+load("data/captain_tree.rda")
+
 mod_blast_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
@@ -33,14 +36,14 @@ mod_blast_ui <- function(id) {
             textAreaInput(ns("query_text"), "Paste a sequence here in FASTA format:", value = NULL, width = "1000px", height = "200px", placeholder = "Paste any nucleotide or protein sequence here"),
             fileInput(ns("query_file"), "Upload a fasta file (10 MB maximum size)",width="400px",accept = c(".fa",".fna",".fasta",".faa")),
 
-            checkboxInput(ns("search_ship_genes"),"Screen for genes in starship sequence?",value = TRUE),
+            checkboxInput(ns("search_ship_genes"),"Screen for genes in starship sequence?",value = FALSE),
             conditionalPanel(
               condition = "input.search_ship_genes == TRUE",
               selectInput(
                 ns("gene_type"), 
                 "Select a specific gene model? Default is to run search for tyr genes", 
                 selected = "tyr", 
-                multiple = TRUE, 
+                multiple = FALSE, 
                 width = "200px",
                 choices = c("tyr", "fre", "nlr", "DUF3723", "plp")
               ),
@@ -145,45 +148,55 @@ mod_blast_server <- function(id) {
       return(results)
     })
 
-    plot.chord=FALSE
 
     ship_tabs<-reactive({
-      req(blastresults())  # Check if blastresults() is available
-      render_output(blastresults()[["ship"]],input,"ship",output,submitted()$query_type, plot.chord)
+      req(blastresults()[["ship"]])
+      render_output(results=blastresults()[["ship"]],
+        input=input,
+        name="ship",
+        output=output,
+        query_type=submitted()$query_type,
+        plot_chord=TRUE)
       tab_content<-list(
           DT::DTOutput(ns("table_ship")),
-          # tableOutput(ns("clicked_table_ship")),
-          msaROutput(ns("alignment_ship"), width = "85%", height = "120%"))
-      if (plot.chord == TRUE) {
-        tab_content <- c(chorddiagOutput(ns("chord_ship"), width = "100%", height = "600px"), tab_content)
+          msaROutput(ns("alignment_ship"), width = "100%", height = "120%"))
+      if (!is.null(ns("chord_ship"))) {
+        tab_content <- c(chorddiag::chorddiagOutput(ns("chord_ship"), width = "100%"), tab_content)
       }
       return(tab_content)
     })
 
     hmm_tabs<-reactive({
-      req(blastresults())  # Check if blastresults() is available
-      # map(names(blastresults()[["gene"]]), ~ {
-      #   render_output(blastresults(),.x,output,submitted(), plot.chord)})
-      render_output(blastresults()[["hmm"]],input,"hmm",output,submitted()$query_type, plot.chord)
-      
+      req(blastresults()[["ship"]])
+      req(blastresults()[["hmm"]])
+      render_output(results=blastresults()[["hmm"]],
+        input=input,
+        name="hmm",
+        output=output,
+        query_type=submitted()$query_type,
+        plot_chord=FALSE)      
       tab_content<-list(
-          DT::DTOutput(ns("table_hmm")),
-          girafeOutput(ns("captain_tree"))
+          valueBoxOutput(ns("superfam_id")),
+          ggiraph::girafeOutput(ns("superfam_tree")),
+          DT::DTOutput(ns("superfam_table"))
           )
       return(tab_content)
     })
 
     gene_tabs<-reactive({
-      req(blastresults())  # Check if blastresults() is available
-      # map(names(blastresults()[["gene"]]), ~ {
-      #   render_output(blastresults(),.x,output,submitted(), plot.chord)})
-      render_output(blastresults()[["gene"]][["tyr"]],input,"tyr",output,submitted()$query_type, plot.chord)
+      req(blastresults()[["ship"]])
+      req(blastresults()[["gene"]])
+      render_output(results=blastresults()[["gene"]][[input$gene_type]],
+        input=input,
+        name=input$gene_type,
+        output=output,
+        query_type=submitted()$query_type,
+        plot_chord=FALSE)
       tab_content<-list(
-          DT::DTOutput(ns("table_tyr")),
-          # tableOutput(ns("clicked_table_tyr")),
-          msaROutput(ns("alignment_tyr"), width = "85%", height = "120%"))
-      if (plot.chord == TRUE) {
-        tab_content <- c(chorddiagOutput(ns("chord_tyr"), width = "100%", height = "600px"), tab_content)
+          DT::DTOutput(ns(paste0("table_",input$gene_type))),
+          msaROutput(ns(paste0("alignment_",input$gene_type)), width = "100%", height = "120%"))
+      if (!is.null(ns(paste0("chord_",input$gene_type)))) {
+        tab_content <- c(chorddiag::chorddiagOutput(ns(paste0("chord_",input$gene_type)), width = "100%"), tab_content)
       }
       return(tab_content)
     })
@@ -200,7 +213,7 @@ mod_blast_server <- function(id) {
 
     output$hmm_ui <- renderUI({
       req(hmm_tabs())
-      box(title = "Starship tyr Family",
+      box(title = "Captain Superfamily",
           solidHeader = FALSE,
           collapsible = TRUE,
           width = NULL,
@@ -208,8 +221,8 @@ mod_blast_server <- function(id) {
       )
     })
 
-    output$gene_ui<-renderUI({
-      req(gene_tabs())
+    output$gene_ui <- renderUI({
+      req(gene_tabs())      
       box(title="Starship Gene BLAST Results",
         solidHeader = FALSE,
         collapsible = TRUE,

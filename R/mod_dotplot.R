@@ -8,9 +8,6 @@
 #'
 #' @importFrom shiny NS tagList
 
-# set max upload size
-options(shiny.maxRequestSize = 30 * 1024^2)
-
 mod_dotplot_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
@@ -25,6 +22,24 @@ mod_dotplot_ui <- function(id) {
 mod_dotplot_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    ref<-"../Starships/ships/fna/starfish/aspcri2_s00912.fna"
+    query<-"../Starships/ships/fna/starfish/morimp1_s08010.fna"
+    # -b int
+    # --breaklen 	Distance an alignment extension will attempt to extend poor scoring regions before giving up (default 200)
+    # -c int
+    # --mincluster 	Minimum cluster length (default 65)
+    # -l int
+    # --minmatch 	Minimum length of an maximal exact match (default 20)
+    tmp_delta <- tempfile(fileext = ".delta")
+    tmp_coords <- gsub(".delta",".coords",tmp_delta)
+    prefix <- gsub(".delta","",tmp_delta)
+    system(paste0("nucmer -b 1000 -c 25 -l 10 --prefix=",prefix," ",ref," ",query))
+    system(paste0("show-coords ",tmp_delta," >",tmp_coords))
+    # system(paste0("lastz --format=text ",ref," ",query))
+
+
+
     dat <- reactive({
       infile <- input$file1
       if (is.null(infile)) {
@@ -32,7 +47,8 @@ mod_dotplot_server <- function(id) {
         return(NULL)
       } else {
         opt <- list(
-          refIDs = NULL, keep_ref = input$num,
+          refIDs = NULL, 
+          keep_ref = input$num,
           min_query_aln = input$min_query_aln,
           min_align = input$min_align,
           similarity = input$similarity,
