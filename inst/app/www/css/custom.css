@@ -62,3 +62,7 @@ hr.setting {
 .mandatory_star {
   color: red;
 }
+
+.gosling-component {
+  padding: 10px !important;
+}

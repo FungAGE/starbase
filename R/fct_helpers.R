@@ -192,14 +192,18 @@ parse_fasta_input <- function(input,tmp_fasta) {
   # throw error if none or both provided
   # choose the input
   # BUG: header is not being added correctly in some cases
-  if(sum(grepl(">",query,fixed=TRUE))>1) {
+  header_grep<-grep(">",query,fixed=TRUE)
+  if(length(header_grep)>1) {
     shinyalert("Multi-fastas not supported at this time","Please provide one sequence at a time.",type="error")
-  } else if (sum(grepl(">",query))==0) {
+  } else if (length(header_grep)==0) {
     query_header<-"QUERY"
-  } else if (sum(grepl(">",query))==1) {
-    query_header <- query[which(grepl(query,">"))]
+  } else if (length(header_grep)==1) {
+    query_header <- gsub(">","",query[header_grep])
   } else { 
     shinyalert("Error reading header from input",type="error")
+  }
+  if (length(query_header)==0){
+    query_header<-"QUERY"
   }
   print(paste0("Input type is: ",input_type))
   writeLines(query, tmp_fasta)
@@ -241,31 +245,31 @@ clean_lines <- function(query_list) {
   return(c(query_list,query_type = query_type, cleaned_query = cleaned_seq))
 }
 
-run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL,threads=NULL,stitch=NULL){
+run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL,threads=NULL,stitch=FALSE){
   db_list <- list(
     ship = list(
-      nucl = "Starships/ships/fna/blastdb/concatenated.fa"
+      nucl = "../Starships/ships/fna/blastdb/concatenated.fa"
     ),
     gene = list(
       tyr = list(
-        prot = "Starships/captain/tyr/faa/blastdb/concatenated.faa",
-        nucl = "Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
+        prot = "../Starships/captain/tyr/faa/blastdb/YRsuperfamRefs.dd.faa",
+        nucl = "../Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
       ),
       fre = list(
-        prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-        nucl = "Starships/cargo/fre/fna/blastdb/fre.fa"
+        prot = "../Starships/cargo/fre/faa/blastdb/fre.mycoDB.dd.faa",
+        nucl = "../Starships/cargo/fre/fna/blastdb/fre.fa"
       ),
       nlr = list(
-        prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-        nucl = "Starships/cargo/nlr/fna/blastdb/nlr.fa"
+        prot = "../Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.dd.faa",
+        nucl = "../Starships/cargo/nlr/fna/blastdb/nlr.fa"
       ),
       DUF3723 = list(
-        prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-        nucl = "Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
+        prot = "../Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.dd.faa",
+        nucl = "../Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
       ),
       plp = list(
-        prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-        nucl = "Starships/cargo/plp/fna/blastdb/plp.fa"
+        prot = "../Starships/cargo/plp/faa/blastdb/plp.mycoDB.dd.faa",
+        nucl = "../Starships/cargo/plp/fna/blastdb/plp.fa"
       )
     )
   )
@@ -290,53 +294,45 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
      stop("Issue accessing BLAST database")
   }
 
+  blast_tmp<-tempfile(fileext = ".blast")    
+  blast_cmd<-paste(blast_program, "-query", tmp_fasta, "-db", blastdb, "-evalue", input.eval,"-out",blast_tmp,"-outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq' -max_hsps 1 -max_target_seqs 10 -num_threads",threads,sep=" ")
+  system(blast_cmd, intern = FALSE)
   if(stitch == TRUE){
     # BUG: blast_tmp file does not get written with system call?
-    blast_tmp<-tempfile(fileext = ".blast")    
-    blast_cmd<-paste(blast_program, "-query", tmp_fasta, "-db", blastdb, "-evalue", input.eval,"-out",blast_tmp,"-outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq' -max_hsps 1 -max_target_seqs 10 -num_threads",threads,sep=" ")
-    system(blast_cmd, intern = FALSE)
     stitched_blast_tmp<-tempfile(fileext = ".stitch")
     stitch_blast_cmd<-paste("python bin/BLASTstitcher.py -i",blast_tmp, "-o",stitched_blast_tmp, sep = " ")
     system(stitch_blast_cmd,intern=FALSE)
     ship_blast_out<-stitched_blast_tmp
   } else {
-    blast_cmd<-paste(blast_program, "-query", tmp_fasta, "-db", blastdb, "-evalue", input.eval,"-outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq' -max_hsps 1 -max_target_seqs 10 -num_threads",threads, sep = " ")
-    ship_blast_out<-system(blast_cmd, intern = TRUE)
   }
-  readr::read_table(ship_blast_out,col_names=c("query_id","hit_IDs","pident","aln_length","mismatches","gaps","query_start","query_end","subject_start","subject_end","evalue","bitscore","query_seq","subject_seq"))
+  readr::read_delim(blast_tmp,col_names=c("query_id","hit_IDs","pident","aln_length","mismatches","gaps","query_start","query_end","subject_start","subject_end","evalue","bitscore","query_seq","subject_seq"))
 }
 
 run_hmmer <- function(seq_type=NULL,tmp_hmmer=NULL,input.eval=NULL,tmp_fasta=NULL) {
   hmmer_program <- "hmmsearch"
-  hmmer_db <- "Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
+  hmmer_db <- "../Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
   hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input.eval, hmmer_db, tmp_fasta, sep = " ")
-  
   system(hmmer_cmd, intern = FALSE)
-  
   tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed.txt")
-
-  system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed))
-
-  hmmer_df<-read_tsv(tmp_hmmer_parsed, show_col_types = FALSE)
-  colnames(hmmer_df)<-c("query_id","hit_IDs","aln_length","query_start","query_end","gaps","query_seq","subject_seq","evalue","bitscore")
-  return(hmmer_df)
+  system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed),intern=FALSE)
+  read_tsv(tmp_hmmer_parsed)
 }
 
 # these functions are really just for parsing the results list for genes
 make_blast_table<-function(data) {
-  data %>% as.data.frame() %>% 
-  dplyr::select(c(hit_IDs,aln_length,query_start,query_end,gaps,evalue,bitscore)) %>%
-  datatable(selection = "single")
-}
-
-# this chunk gets the alignment information from a clicked row
-# TODO: this info is redundant with main blast table. include other info like taxonomy? links to pages?
-make_clicked_table <- function(input,data, name) {
-  data[input[[paste0("table_",name,"_rows_selected")]],]
-  # names(tableout) <- c("")
-  # rownames(tableout) <- c("Query ID", "Hit ID", "Alignment Length", "Gaps", "Bit Score", "e-value")
-  # colnames(tableout) <- NULL
-  # data.frame(tableout)
+  if (!is.null(data)) {
+    data %>% as.data.frame() %>% 
+      dplyr::select(hit_IDs,aln_length,query_start,query_end,gaps,evalue,bitscore) %>%
+      DT::datatable(
+        options = list(), class = "display", rownames = FALSE,
+        callback = JS("return table;"), # rownames, colnames, container,
+        caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,
+        style = "auto", width = NULL, height = NULL, elementId = NULL,
+        fillContainer = getOption("DT.fillContainer", NULL),
+        autoHideNavigation = getOption("DT.autoHideNavigation", NULL),
+        selection = "single", extensions = list(),
+        plugins = NULL, editable = FALSE)
+  }
 }
 
 # this function makes the alignments for clicked rows
@@ -344,28 +340,25 @@ make_alignment<-function(input,data, name,query_type) {
   #? needed for when row is not clicked?
   clicked<-input[[paste0("table_",name,"_rows_selected")]]
   if (!is.null(clicked)) {
-    cdat <- data %>% dplyr::slice(clicked)
-    qseq <- cdat %>% pull(query_seq)
-    qid <- cdat %>% pull(query_id)
-    sseqs <- cdat %>% pull(subject_seq)
-    sids <- cdat %>% pull(hit_IDs)
+    cdat <- data[input[[paste0("table_",name,"_rows_selected")]],]
+    qseq <- cdat$query_seq
+    qid <- cdat$query_id
+    sseqs <- cdat$subject_seq
+    sids <- cdat$hit_IDs
 
     if (query_type == "nucl" ) {
-      ss <- DNAStringSet(c(qseq, sseqs[[clicked]]))
+      ss <- Biostrings::DNAStringSet(c(qseq, sseqs))
       base_palette="nucleotide"
     } else {
-      tmp_aln<-tempfile(fileext = ".aln")
-      writeLines(str_c(str_c(str_c(">", qid,sep=""), qseq, sep = "\n"),
-                      str_c(str_c(">", sids[[clicked]]), sseqs[[clicked]], sep = "\n"),
-                      sep="\n"),tmp_aln)
-      ss <- seqinr::read.alignment(file = tmp_aln, format = "fasta")
+      ss <- Biostrings::AAStringSet(c(qseq, sseqs))
       base_palette="clustal"
     }
     # BUG: when setting custom headers for msa object:
-    # names(ss) <- c("Query:", "Subject:")        
-    msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200,colorscheme=base_palette)
+    names(ss) <- c(paste0(qid,":"), paste0(sids,":"))        
+    msaR::msaR(ss, menu = T, overviewbox = F, seqlogo = FALSE, leftheader = FALSE, labelname = TRUE, labelid = FALSE, labelNameLength = 200,colorscheme=base_palette)
   } else {}
 }
+
 
 make_chord<-function(data){     
     if (is.null(data)) {
@@ -400,22 +393,73 @@ make_chord<-function(data){
                         subject = subNames)
 
     # Build the chord diagram:
-    chorddiag(m, 
+    chorddiag::chorddiag(m, 
               groupnameFontsize = 12,
               groupColors = groupColors, 
               groupnamePadding = 50)
 }}
 
-render_output <- function(results,input,name,output,query_type,ns, plot.chord = FALSE) {
-  output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(results) })
+render_output <- function(results,input,name,output,query_type, plot_chord) {
   if (name != "hmm") {
-    output[[paste0("clicked_table_",name)]] <- renderTable({ make_clicked_table(input,results, name) }, rownames = TRUE, colnames = FALSE)
+    output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(results) })
     output[[paste0("alignment_",name)]] <- renderMsaR({ make_alignment(input,results, name,query_type) })
-    if (plot.chord) {
-      output[[paste0("chord_",name)]] <- renderChorddiag({ make_chord(results) })
+    if (plot_chord) {
+      output[[paste0("chord_",name)]] <- chorddiag::renderChorddiag({ make_chord(results) })
     }
   } else {
-    output[["captain_tree"]]<-renderGirafe(readRDS("data/captain-tree.RDS"))
-  }
+    superfam<-results %>% slice_min(evalue) %>% pull(hit_IDs)
+    output[["superfam_id"]]<-renderValueBox({
+      valueBox(
+      subtitle = "Likely captain superfamily",
+      value = superfam,
+      icon = icon("dna")
+    )})
+    
+    output[["superfam_tree"]]<-renderGirafe(captain_tree)
+    
 
+    # a custom table container
+    sketch <- htmltools::withTags(table(
+      class = "display",
+      thead(
+        tr(
+          th(colspan = 4, "hmmersearch of captain genes"),
+          th(colspan = 4, "Captain gene phylogeny"),
+          th(colspan = 4, "Other Starships in captain superfamily")
+        )
+      )
+    ))
+
+    table_dat<-joined_ships %>%
+      filter(!is.na(starship_family)) %>%
+      mutate(starship_family=gsub("fam","superfam0",starship_family),
+        starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family))
+
+    reactive({
+      req(superfam)
+
+      output[["superfam_table"]]<-renderDT({
+        tab_dat<-table_dat %>% filter(starship_family %in% superfam)
+        if( nrow(tab_dat)==0) return(NULL)
+        
+        tab_dat %>%
+          DT::datatable(
+            options = list(), class = "display", rownames = FALSE, #container = sketch,
+            callback = JS("return table;"), 
+            caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,
+            style = "auto", width = NULL, height = NULL, elementId = NULL,
+            fillContainer = getOption("DT.fillContainer", NULL),
+            autoHideNavigation = getOption("DT.autoHideNavigation", NULL),
+            selection = "none", extensions = list(),
+            plugins = NULL, editable = FALSE
+          )
+      })
+      session$sendCustomMessage(type = "superfam_tree_selected", message = superfam)
+    })
+
+    observeEvent(input$reset, {
+      session$sendCustomMessage(type = 'plot_set', message = character(0))
+    })
+      
+    }
 }

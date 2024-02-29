@@ -94,7 +94,7 @@ my_dock$write()
 #     "inst/",
 #     "tmp/",
 #     "data/",
-#     "Starships/",
+#     "../Starships/",
 #     "blastdb/",
 #     "bin/",
 #     "MTDB/",

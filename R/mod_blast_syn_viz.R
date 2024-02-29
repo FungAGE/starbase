@@ -395,10 +395,10 @@ mod_blast_syn_viz_ui <- function(id) {
         )
       )
     ),
-    tags$script(src = app_sys("js/popper.v2.11.5.min.js")),
-    tags$script(src = app_sys("js/tippy-bundle.umd.v6.3.7.min.js")),
-    tags$script(src = app_sys("js/d3.min.js")),
-    tags$script(src = app_sys("js/synteny.min.js")),
+    tags$script(src = "js/popper.v2.11.5.min.js"),
+    tags$script(src = "js/tippy-bundle.umd.v6.3.7.min.js"),
+    tags$script(src = "js/d3.min.js"),
+    tags$script(src = "js/synteny.min.js"),
     tags$script("tippy('[data-tippy-content]');"),
   )
 }

@@ -80,7 +80,7 @@ mod_submit_server <- function(id) {
 
     observe({
       if (credentials()$user_auth) {
-        con<-load_sql("SQL/starbase.sqlite")
+        con<-load_sql("../Starships/SQL/starbase.sqlite")
         if(user_info()$permissions != "admin") {
           shinyalert::shinyalert(title="Insufficient permissions", type = "error",closeOnClickOutside = TRUE, closeOnEsc = TRUE)
         }
