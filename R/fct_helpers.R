@@ -8,7 +8,15 @@
 
 
 load_sql <- function(db){
-  pool <- pool::dbPool(RSQLite::SQLite(),dbname="mas",host="0.0.0.0",port="3307",username="root",password="changeme")
+  loadNamespace("dbplyr")
+  pool <- pool::dbPool(
+    drv = RMySQL::MySQL(),
+    dbname = "mas",
+    host = "0.0.0.0",
+    port = 3307,
+    username = "root",
+    password = "changeme"
+  )
   con <- pool::poolCheckout(pool)
   return(con)
 }
