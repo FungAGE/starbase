@@ -26,7 +26,7 @@ diamond blastp --db "$DB" \
 sed -i '1!s/[^[:alpha:]]//g' "${QUERY_FASTA}"
 
 # seem to need absolute path to folder
-SHOOT=/home/adrian/Systematics/Starship_Database/starbase/bin/SHOOT/shoot/
+SHOOT=../SHOOT/shoot/
 # now run shoot to create a phylogeny of just the orthologous sequences
 # must specify -t and -n otherwise it will fail
 python "$SHOOT" --profiles_all -f -t iqtree -n "$threads" "${QUERY_FASTA}" "$ORTHO_OUT"

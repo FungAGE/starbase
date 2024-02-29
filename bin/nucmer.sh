@@ -7,4 +7,4 @@
 
 nucmer -b 1000 -c 25 -l 10 --prefix=ref_qry SQL/data/fna/ships/mycodb/mycodb.final.starships.part_altals1_s00058__+.fna SQL/data/fna/ships/mycodb/mycodb.final.starships.part_altalt7_s00064__+.fna -o ref_qry.coords
 
-lastz SQL/data/fna/ships/mycodb/mycodb.final.starships.part_altals1_s00058__+.fna SQL/data/fna/ships/mycodb/mycodb.final.starships.part_altalt7_s00064__+.fna
+# lastz SQL/data/fna/ships/mycodb/mycodb.final.starships.part_altals1_s00058__+.fna SQL/data/fna/ships/mycodb/mycodb.final.starships.part_altalt7_s00064__+.fna

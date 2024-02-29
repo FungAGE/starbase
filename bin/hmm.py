@@ -63,7 +63,7 @@ def extract_hmmer(parsed_file):
     with open(top_hit_out_path, "w") as top_hit_out:
         # Write the header line
         top_hit_out.write(
-            "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+            "hit_IDs\tquery_id\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
         )
 
         # Write the rows to the file using to_csv
