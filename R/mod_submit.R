@@ -13,7 +13,7 @@
 
 # TODO: add checks when entries are added to database:
 # i.e. sequence already present in database
-
+cookie_expiry <- 7
 mod_submit_ui <- function(id) {
   ns <- NS(id)
   fluidRow(
