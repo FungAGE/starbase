@@ -24,7 +24,6 @@ golem::add_module(name = "submit")
 golem::add_module(name = "blast") 
 golem::add_module(name = "genome_browser")
 golem::add_module(name = "dotplot")
-golem::add_module(name = "db_update")
 golem::add_module(name = "blast_syn_viz")
 golem::add_module(name = "dotplot_syn")
 

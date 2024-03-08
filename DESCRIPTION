@@ -33,6 +33,7 @@ Imports:
     purrr,
     RColorBrewer,
     readr,
+    RMariaDB,
     RSQLite,
     seqinr,
     shinipsum,

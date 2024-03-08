@@ -179,7 +179,7 @@ mod_explore_server <- function(id) {
     #                 plugins = NULL, editable = FALSE)
     #   })
 
-    # mydb <- dbConnect(RSQLite::SQLite(), "Starships/SQLstarbase.sqlite")
+    # mydb <- load_sql()
 
     # Using a local cache
     # cache_dir <- cache_filesystem("cache")

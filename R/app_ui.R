@@ -53,12 +53,12 @@ app_ui <- function(request) {
             expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
             startExpanded = FALSE
           ),
-          # menuItem("Starship Browser",
-          #   tabName = "genome_browser",
-          #   href = NULL, newtab = FALSE, selected = NULL,
-          #   expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
-          #   startExpanded = FALSE
-          # ),
+          menuItem("Starship Browser",
+            tabName = "genome_browser",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
+            startExpanded = FALSE
+          ),
           menuItem("starfish",
             icon = NULL, tabName = "starfish",
             href = NULL, newtab = FALSE, selected = NULL,
@@ -71,12 +71,6 @@ app_ui <- function(request) {
             expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
             startExpanded = FALSE
           ),
-          menuItem("Update starbase Entries", 
-            tabName = "db_update",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Update starbase entries")),
-            startExpanded = FALSE
-            ),
           id = NULL, .list = NULL
         )),
         body=dashboardBody(
@@ -97,10 +91,10 @@ app_ui <- function(request) {
               tabName = "explore",
               mod_explore_ui("explore_1")
             ),
-            # tabItem(
-            #   tabName = "genome_browser",
-            #   mod_genome_browser_ui("genome_browser_1")
-            # ),
+            tabItem(
+              tabName = "genome_browser",
+              mod_genome_browser_ui("genome_browser_1")
+            ),
             tabItem(
               tabName = "starfish",
               mod_starfish_ui("starfish_1")
@@ -108,10 +102,6 @@ app_ui <- function(request) {
             tabItem(
               tabName = "submit",
               mod_submit_ui("submit_1")
-            ),
-            tabItem(
-              tabName = "db_update",
-              mod_db_update_ui("db_update_1")
             )
           )
         )
