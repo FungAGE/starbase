@@ -36,8 +36,9 @@ RUN Rscript -e 'remotes::install_github("mattflor/chorddiag")'
 RUN Rscript -e 'remotes::install_github("YuLab-SMU/ggtree")'
 RUN Rscript -e 'remotes::install_github("yonicd/covrpage")'
 RUN Rscript -e 'remotes::install_version("colourpicker",upgrade="never", version = "1.3.0")'
-RUN Rscript -e 'remotes::install_version("sodium",upgrade="never", version = NA)
-RUN Rscript -e 'remotes::install_version("shinyauthr",upgrade="never", version = NA)
+RUN Rscript -e 'remotes::install_version("sodium",upgrade="never", version = "1.3.0")'
+RUN Rscript -e 'remotes::install_version("shinyauthr",upgrade="never", version = "1.0.0")'
+RUN Rscript -e 'remotes::install_version("dockerfiler",upgrade="never", version = "0.2.2")'
 RUN Rscript -e 'BiocManager::install(c("GenomeInfoDb","BiocGenerics","zlibbioc","S4Vectors","IRanges","XVector","Biostrings","treeio"),ask=F)'
 RUN rm -rf /srv/shiny-server/*
 COPY . /srv/shiny-server/

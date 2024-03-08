@@ -13,7 +13,7 @@ mydb <- dbConnect(RSQLite::SQLite(), "Starships/SQLstarbase.sqlite")
 # mycodb
 # TODO: add ncbi taxids?
 
-mycodb_df<-read_tsv("MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','source','published','assembly_acc','acquisition_date'),show_col_types = FALSE) %>% 
+mycodb_df<-read_tsv("../Starships/MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','source','published','assembly_acc','acquisition_date'),show_col_types = FALSE) %>% 
   rowwise() %>%
   mutate(fna=ifelse(length(Sys.glob(paste0("Starships/SQL/data/fna/ships/",ome,"*.fna")))==1,
                     Sys.glob(paste0("Starships/SQL/data/fna/ships/",ome,"*.fna")),NA),
@@ -28,12 +28,12 @@ mycodb_df<-read_tsv("MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 's
 
 # manual
 # TODO: add ome's like here: https://github.com/xonq/mycotools/blob/0b4ff2977f291e7637363c0e5592d3d73a138e67/mycotools/predb2mtdb.py#L191
-manual_df<-read_csv("Starships/ships/manual-annotations/Starships.fulltaxa.csv") %>%
+manual_df<-read_csv("../Starships/metadata/ships/manual/Starships.fulltaxa.csv") %>%
   rename("starship_class"="Class") %>%
   rename_all(tolower) %>%
   rowwise() %>%
-  mutate(fna=ifelse(length(Sys.glob(paste0("Starships/starships/starfish/mycodb.final.starships.fna.split/",ome,"*.fna")))==1,
-                    Sys.glob(paste0("Starships/starships/starfish/mycodb.final.starships.fna.split/",ome,"*.fna")),NA),
+  mutate(fna=ifelse(length(Sys.glob(paste0("../Starships/starships/starfish/mycodb.final.starships.fna.split/",ome,"*.fna")))==1,
+                    Sys.glob(paste0("../Starships/starships/starfish/mycodb.final.starships.fna.split/",ome,"*.fna")),NA),
          gff=ifelse(length(Sys.glob(paste0("MTDB/mycodb.final.starships_split/",ome,".gff")))==1,
                     Sys.glob(paste0("MTDB/mycodb.final.starships_split/",ome,".gff")),NA)) %>%
   ungroup() %>%
@@ -51,16 +51,16 @@ read_file("Starships/SQL/data/faa/cargo/tyr")
 
 mycodb_genes<-mycodb_df %>%
   rowwise() %>%
-  mutate(tyr_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/tyr/mycodb/*",ome,"*.faa")))==1,
-                    Sys.glob(paste0("Starships/SQL/data/faa/cargo/tyr/mycodb/*",ome,"*.faa")),NA),
-         plp_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")),NA),
-         nlr_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/nlr/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/nlr/mycodb/*",ome,"*.faa")),NA),
-         fre_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")),NA),
-         duf3723_faa=ifelse(length(Sys.glob(paste0("Starships/SQL/data/faa/cargo/duf3723/mycodb/*",ome,"*.faa")))==1,
-                        Sys.glob(paste0("Starships/SQL/data/faa/cargo/duf3723/mycodb/*",ome,"*.faa")),NA)) %>%
+  mutate(tyr_faa=ifelse(length(Sys.glob(paste0("../Starships/captain/tyr/faa/starfish/*",ome,"*.faa")))==1,
+                    Sys.glob(paste0("../Starships/captain/tyr/faa/starfish/*",ome,"*.faa")),NA),
+         plp_faa=ifelse(length(Sys.glob(paste0("../Starships/cargo/plp/faa/starfish/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("SQL/data/faa/cargo/plp/mycodb/*",ome,"*.faa")),NA),
+         nlr_faa=ifelse(length(Sys.glob(paste0("../Starships/cargo/nlr/faa/starfish/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("../Starships/cargo/nlr/faa/starfish/*",ome,"*.faa")),NA),
+         fre_faa=ifelse(length(Sys.glob(paste0("../Starships/cargo/fre/faa/starfish/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("SQL/data/faa/cargo/fre/mycodb/*",ome,"*.faa")),NA),
+         duf3723_faa=ifelse(length(Sys.glob(paste0("../Starships/cargo/duf3723/faa/starfish/*",ome,"*.faa")))==1,
+                        Sys.glob(paste0("../Starships/cargo/duf3723/faa/starfish/*",ome,"*.faa")),NA)) %>%
   ungroup()
 
 # dbWriteTable(mydb, "starbase", df)
@@ -78,4 +78,5 @@ dbGetQuery(mydb, 'SELECT * FROM joined_ships') %>%
             selection = c("multiple", "single", "none"), extensions = list(),
             plugins = NULL, editable = FALSE)
 
+pool::poolReturn(mydb)
 dbDisconnect(mydb)

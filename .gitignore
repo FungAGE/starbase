@@ -57,10 +57,8 @@ tmp/
 
 *.gz
 
-MTDB/**
-SQL/data/**
-*.sqbpro
-blastdb/**
+# specific to this repo
+data-raw/user-base.R
 inst/doc
 
 data-raw/user-base.R

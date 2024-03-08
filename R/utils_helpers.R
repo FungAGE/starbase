@@ -36,7 +36,7 @@ golem_add_external_resources <- function() {
       ),
       # Add here other external resources
       # for example, you can add shinyalert::useShinyalert()
-      tags$link(rel = "stylesheet", type = "text/css", href = "www/custom.css")
+      tags$link(rel = "stylesheet", type = "text/css", href = "css/custom.css")
     )
   )
 }
