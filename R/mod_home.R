@@ -11,29 +11,38 @@
 #' @importFrom shinyjs disabled
 #'
 
+working<-c("BLAST/HMMER searches", "Catalogue/Wiki of Starship Metadata", "Submission of new Ships", "Editing of Database entries")
+notworking_ul <- working_ul <- tags$ul()
+working_ul$children <- purrr::map(working, function(.x) tags$li(.x))
+notworking<-c("Synteny/Genome Browser","Running Starfish")
+notworking_ul$children <- purrr::map(working, function(.x) tags$li(.x))
+
 mod_home_ui <- function(id) {
   ns <- NS(id)
-  dashboardBody(
-    div(
-      fluidRow(
-        style = "padding-bottom: 15px;",
-        column(width = 1, img(src = "img/favicon.png", width = "100%")),
-        column(width = 3, h2("starbase: Database and tools for exploring large eukaryotic transposable elements in Fungi"))
-      )
-    ),
-    fluidRow(
-      box(
-        title = "This is the development version of starbase", status = "warning",
-        disabled(
-          checkboxGroupInput(ns("functions"),
-            label = "Working Functions:",
-            choices = c("BLAST/HMMER searches", "Synteny/Genome Browser", "Catalogue/Wiki of Starship Metadata", "Running Starfish", "Submission of new Ships", "Editing of Database entries"),
-            selected = c("BLAST/HMMER searches","Submission of new Ships", "Editing of Database entries")
-          )
-        )
-      )
-    )
-  )
+  fluidPage(
+    column(width=8,
+    box(width=8,
+    tags$table(style = "width: 85%",
+      tags$tr(tags$td(style = "width: 85%",
+                      align = "middle",
+                      img(src = "img/favicon.png", width = "50%"))),
+      tags$tr(tags$td(style = "width: 75%",
+                      align = "middle",
+                      h1("Database and tools for exploring large eukaryotic transposable elements in Fungi"))),
+      tags$tr(tags$td(style = "width: 85%",
+      align = "left",
+        h4("This is the development version of starbase"))),
+      tags$tr(tags$td(style = "width: 85%",
+      align = "left",
+        h4("Working Functions:"),
+        working_ul
+        )),
+      tags$tr(tags$td(style = "width: 85%",
+      align = "left",
+      h4("Non-Working Functions:"),
+      notworking_ul      
+      )),
+  ))))
 }
 
 #' home Server Functions

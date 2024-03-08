@@ -16,3 +16,4 @@ $run_dev.*
 ^Dockerfile$
 ^\.dockerignore$
 ^codecov\.yml$
+^\.github$

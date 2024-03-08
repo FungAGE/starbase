@@ -4,24 +4,54 @@
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
-#' @importFrom  shinyjs inlineCSS
+#' @importFrom shinyjs inlineCSS
 #' @importFrom shiny NS tagList htmlOutput
 #' @importFrom htmltools renderTags
+#' @import shiny.react shiny.gosling
 #'
 #' @noRd
 
 mod_genome_browser_ui <- function(id) {
   ns <- NS(id)
   tagList(
+    includeCSS(app_sys("css/custom.css")),
+    shiny.gosling::use_gosling(),
     fluidPage(
-      verticalLayout(
-        fluidRow(
-          inlineCSS(".form-group {margin-bottom: 0;}
-                                .irs-with-grid {bottom: 0px;}
-                                .irs-grid {height: 13px;}
-                                .irs-grid-text {height: 0px;}
-                                "),
-          JBrowseROutput(ns("browserOutput"))
+      fluidRow(
+        column(
+          width = 8,
+          goslingOutput(ns("gosling_plot_sars_cov2"))
+        ),
+        column(
+          width = 4,
+          fluidRow(
+            column(
+              2,
+              actionButton(
+                ns("download_png"),
+                "PNG",
+                icon = icon("cloud-arrow-down")
+              )
+            ),
+            column(
+              2,
+              actionButton(
+                ns("download_pdf"),
+                "PDF",
+                icon = icon("cloud-arrow-down")
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              8,
+              br(),
+              actionButton(
+                ns("zoom_out"),
+                "Zoom Out"
+              )
+            )
+          )
         )
       )
     )
@@ -29,84 +59,325 @@ mod_genome_browser_ui <- function(id) {
 }
 
 #' genome_browser Server Functions
-#' @importFrom JBrowseR serve_data renderJBrowseR assembly track_feature tracks default_session JBrowseR JBrowseROutput
+#' @import shiny.react shiny.gosling
 #'
 #' @noRd
 mod_genome_browser_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # TODO: add code for zipping/indexing
-    path.fa <- "tmp/browser/aspcla3_s00849.fa.gz"
-    path.gff <- "tmp/browser/aspcla3.gff.gz"
-    g.chr <- "aspcla3_DS026990.1"
-    mks.range.1 <- 1
-    mks.range.2 <- 1000
-    port <- httpuv::randomPort()
+    readr::read_tsv("../Starships/MTDB/mycodb.final.starships.bed",col_names=c("chr","start","end","gene_id","feature","strand","starshipID","attribute")) %>% readr::write_csv("test.bed")
+    
+    view2_track1_data <- track_data("test.bed",type="csv",
+      chromosomeField = "chr",
+      genomicFields = c("start", "end")
+    )
 
-    if (!grepl("^http", path.fa)) {
-      data_server <- serve_data(dirname(path.fa), port = port)
-    } else {
-      data_server <- NULL
+    starship_oi<-"altals1_s00058"
+    bed_sub<-bed %>% filter(starshipID==starship_oi)
+    
+    if(n_distinct(bed$chr)>1){
+      stop("multiple contigs represented")
     }
 
-    if (!grepl("^http", path.fa)) {
-      assembly <- assembly(
-        paste0("http://127.0.0.1:", port, "/", basename(path.fa)),
-        bgzip = TRUE
+    view2_track1a_color <- visual_channel_color(
+      field = "Protein",
+      type = "nominal",
+      domain = c(
+        "receptor-binding domain (RBD)", "receptor-binding motif (RBM)",
+        "S1/S2 cleavage site", "heptad repeat 1 (HR1)",
+        "heptad repeat 2 (HR2)"
       )
-    } else {
-      assembly <- assembly(
-        path.fa,
-        bgzip = TRUE
-      )
-    }
-    ## create configuration for a JB2 GFF FeatureTrack
+    )
 
-    if (!is.null(path.gff)) {
-      if (!grepl("^http", path.gff)) {
-        annotations_track <- track_feature(
-          paste0("http://127.0.0.1:", port, "/", basename(path.gff)),
-          assembly
+    view2_track1a_xe <- visual_channel_x(
+      field = "Stop", type = "genomic"
+    )
+
+    view2_track1a <- add_single_track(
+      mark = "rect",
+      color = view2_track1a_color,
+      xe = view2_track1a_xe
+    )
+
+    view2_track1b_text <- visual_channel_text(
+      field = "Protein",
+      type = "nominal"
+    )
+
+    view2_track1b_style <- default_track_styles(
+      textAnchor = "end"
+    )
+
+    view2_track1b <- add_single_track(
+      mark = "text",
+      text = view2_track1b_text,
+      color = "#333",
+      stroke = "white",
+      strokeWidth = 3,
+      style = view2_track1b_style
+    )
+
+    view2_track1_x <- visual_channel_x(
+      field = "Start", type = "genomic"
+    )
+
+    view2_track1_row <- visual_channel_row(
+      field = "Protein",
+      type = "nominal",
+      domain = c(
+        "receptor-binding domain (RBD)",
+        "receptor-binding motif (RBM)",
+        "S1/S2 cleavage site",
+        "heptad repeat 1 (HR1)",
+        "heptad repeat 2 (HR2)"
+      )
+    )
+
+    view2_track1 <- add_single_track(
+      id = "view2_track1",
+      alignment = "overlay",
+      title = "S Protein Annotation",
+      data = view2_track1_data,
+      tracks = add_multi_tracks(
+        view2_track1a, view2_track1b
+      ),
+      x = view2_track1_x,
+      row = view2_track1_row,
+      width = 800, height = 80
+    )
+
+    # View 2 Track 2----
+    view2_track2_data <- track_data(
+      url = "https://s3.amazonaws.com/gosling-lang.org/data/COVID/NC_045512.2-Genes.csv",
+      type = "csv",
+      chromosomeField = "Accession",
+      genomicFields = c("Start", "Stop")
+    )
+
+    view2_track2a <- add_single_track(
+      mark = "rect",
+      color = "#0072B2",
+      stroke = "white",
+      strokeWidth = 2
+    )
+
+    view2_track2b <- add_single_track(
+      mark = "rule",
+      color = "white",
+      opacity = 0.6,
+      strokeWidth = 0,
+      style = default_track_styles(
+        linePattern = list(
+          type = "triangleRight", size = 10
         )
-      } else {
-        annotations_track <- track_feature(
-          path.gff,
-          assembly
-        )
-      }
-    } else {
-      annotations_track <- NULL
-    }
-
-    ## create the tracks array to pass to browser
-    tracks <- tracks(annotations_track)
-
-    tracks_set <- c(annotations_track)
-
-    theme <- JBrowseR::theme("#6c81c0", "#22284c")
-
-    if (any(!is.null(tracks_set))) {
-      default_session <- default_session(
-        assembly,
-        tracks_set[which(!is.null(tracks_set))]
       )
-      output$browserOutput <- renderJBrowseR(JBrowseR(
-        "View",
-        assembly = assembly,
-        tracks = tracks,
-        location = paste0(g.chr, ":", mks.range.1, "..", mks.range.2),
-        defaultSession = default_session,
-        theme = theme
+    )
+
+    view2_track2c <- add_single_track(
+      mark = "text",
+      text = visual_channel_text(
+        field = "Gene symbol", type = "nominal"
+      ),
+      color = "black",
+      stroke = "white",
+      strokeWidth = 3,
+      visibility = list(list(
+        target = "mark",
+        measure = "width",
+        threshold = "|xe-x|",
+        operation = "LTET",
+        transitionPadding = 30
       ))
-    } else {
-      output$browserOutput <- renderJBrowseR(JBrowseR(
-        "View",
-        assembly = assembly,
-        location = paste0(g.chr, ":", mks.range.1, "..", mks.range.2),
-        theme = theme
-      ))
-    }
-    # data_server$stop_server()
+    )
+
+    view2_track2_x <- visual_channel_x(
+      field = "Start", type = "genomic"
+    )
+
+    view2_track2_xe <- visual_channel_x(
+      field = "Stop", type = "genomic"
+    )
+
+    view2_track2 <- add_single_track(
+      alignment = "overlay",
+      title = "NC_045512.2 Genes",
+      data = view2_track2_data,
+      tracks = add_multi_tracks(
+        view2_track2a, view2_track2b, view2_track2c
+      ),
+      x = view2_track2_x,
+      xe = view2_track2_xe,
+      width = 800, height = 30
+    )
+
+    # View 2 Track 3----
+    view2_track3_data <- track_data(
+      url = "https://server.gosling-lang.org/api/v1/tileset_info/?d=NC_045512_2-multivec",
+      type = "multivec",
+      row = "base",
+      column = "position",
+      value = "count",
+      categories = c("A", "T", "G", "C"),
+      start = "start",
+      end = "end"
+    )
+
+    view2_track3a <- add_single_track(
+      mark = "bar",
+      y = visual_channel_y(
+        field = "count", type = "quantitative", axis = "none"
+      )
+    )
+
+    view2_track3b <- add_single_track(
+      dataTransform = track_data_transform(
+        type = "filter",
+        field = "count",
+        oneOf = list(0),
+        not = TRUE
+      ),
+      mark = "text",
+      x = visual_channel_x(
+        field = "start", type = "genomic"
+      ),
+      xe = visual_channel_x(
+        field = "end", type = "genomic"
+      ),
+      size = 24,
+      color = "white",
+      visibility = list(
+        list(
+          operation = "less-than",
+          measure = "width",
+          threshold = "|xe-x|",
+          transitionPadding = 30,
+          target = "mark"
+        ),
+        list(
+          operation = "LT",
+          measure = "zoomLevel",
+          threshold = 40,
+          target = "track"
+        )
+      )
+    )
+
+    view2_track3_x <- visual_channel_x(
+      field = "position", type = "genomic"
+    )
+
+    view2_track3_color <- visual_channel_color(
+      field = "base",
+      type = "nominal",
+      domain = c("A", "T", "G", "C"),
+      legend = TRUE
+    )
+
+    view2_track3_text <- visual_channel_text(
+      field = "base", type = "nominal"
+    )
+
+    view2_track3_style <- default_track_styles(
+      inlineLegend = TRUE
+    )
+
+    view2_track3 <- add_single_track(
+      title = "NC_045512.2 Sequence",
+      alignment = "overlay",
+      data = view2_track3_data,
+      tracks = add_multi_tracks(
+        view2_track3a, view2_track3b
+      ),
+      x = view2_track3_x,
+      color = view2_track3_color,
+      text = view2_track3_text,
+      style = view2_track3_style,
+      width = 800, height = 40
+    )
+
+    # View 2 Track 4----
+    view2_track4_data <- track_data(
+      url = "https://s3.amazonaws.com/gosling-lang.org/data/COVID/TRS-L-dependent_recombinationEvents_sorted.bed",
+      type = "csv",
+      chromosomeField = "Accession",
+      genomicFields = c("Start1", "Stop1", "Start2", "Stop2")
+    )
+
+    view2_track4_x <- visual_channel_x(
+      field = "Start1", type = "genomic"
+    )
+
+    view2_track4_xe <- visual_channel_x(
+      field = "Stop1", type = "genomic"
+    )
+
+    view2_track4_x1 <- visual_channel_x(
+      field = "Start2", type = "genomic"
+    )
+
+    view2_track4_x1e <- visual_channel_x(
+      field = "Stop2", type = "genomic"
+    )
+
+    view2_track4 <- add_single_track(
+      title = "TRS-L-Dependent Recombination Events",
+      data = view2_track4_data,
+      mark = "withinLink",
+      x = view2_track4_x,
+      xe = view2_track4_xe,
+      x1 = view2_track4_x1,
+      x1e = view2_track4_x1e,
+      stroke = "#0072B2",
+      color = "#0072B2",
+      opacity = 0.1,
+      width = 800,
+      height = 300
+    )
+
+
+    view2 <- compose_view(
+      multi = TRUE,
+      centerRadius = 0,
+      xDomain = list(interval = c(1, 29903)),
+      linkingId = "detail",
+      alignment = "stack",
+      tracks = add_multi_tracks(
+        view2_track1, view2_track2, view2_track3, view2_track4
+      )
+    )
+
+
+    combined_view <- arrange_views(
+      title = "SARS-CoV-2",
+      subtitle = "Data Source: WashU Virus Genome Browser, NCBI, GISAID",
+      assembly = list(list("NC_045512.2", 29903)),
+      layout = "linear",
+      spacing = 50,
+      views = view2,
+      listify = FALSE
+    )
+
+    observeEvent(input$download_png, {
+      export_png(component_id = "sars_cov2")
+    })
+
+    observeEvent(input$download_pdf, {
+      export_pdf(component_id = "sars_cov2")
+    })
+
+    observeEvent(input$zoom_out, {
+      zoom_to_extent(
+        component_id = "sars_cov2",
+        view_id = "view2_track1"
+      )
+    })
+
+    output$gosling_plot_sars_cov2 <- renderGosling({
+      gosling(
+        component_id = "sars_cov2",
+        combined_view
+      )
+    })
   })
 }

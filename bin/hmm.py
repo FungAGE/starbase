@@ -41,7 +41,7 @@ def parse_hmmer(hmmer_output_file, parsed_file):
                     bitscore = hsp.bitscore
                     evalue = hsp.evalue
                     tsv_file.write(
-                        f"{record.id}\t{hit.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
+                        f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
                     )
 
 
@@ -57,13 +57,13 @@ def extract_hmmer(parsed_file):
 
     # Use os.path.join to construct file paths correctly
     top_hit_out_path = os.path.join(
-        os.path.dirname(parsed_file), f"{os.path.basename(parsed_file)}.besthit.txt"
+        os.path.dirname(parsed_file), f"{os.path.splitext(parsed_file)[0]}.besthit.txt"
     )
 
     with open(top_hit_out_path, "w") as top_hit_out:
         # Write the header line
         top_hit_out.write(
-            "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+            "hit_IDs\tquery_id\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
         )
 
         # Write the rows to the file using to_csv

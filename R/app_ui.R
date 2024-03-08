@@ -2,13 +2,14 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard shinydashboardPlus bslib dplyr glue shinyauthr RSQLite DBI lubridate
+#' @import shiny shinydashboard shinydashboardPlus bslib
 #' @noRd
 
 app_ui <- function(request) {
   tagList(
     # Leave this function for adding external resources
     golem_add_external_resources(),
+    shinyjs::useShinyjs(),
     dashboardPage(
       skin = "blue",
       options = list(sidebarExpandOnHover = TRUE),
@@ -21,78 +22,99 @@ app_ui <- function(request) {
                                   class = "dropdown",
                                   style = "padding: 8px;",
                                   shinyauthr::logoutUI("logout")
-                                ),
-                                # tags$li(
-                                #   class = "dropdown",
-                                #   tags$a(
-                                #     icon("github"),
-                                #     href = "https://github.com/FungAGE/starbase",
-                                #     title = "See the code on github"
-                                #   )
-                                # )
-                              )),
+                                ))),
       controlbar = dashboardControlbar(),
       title = "starbase home",
       sidebar = dashboardSidebar(
-        minified = FALSE, collapsed = TRUE,
+        minified = FALSE,
+        collapsed = FALSE,
         sidebarMenu(
-          menuItem("Welcome to starbase",
-            tabName = "home", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Welcome to Starbase")),
+          menuItem("Home",
+            tabName = "home",
+            href = NULL, newtab = FALSE, selected = TRUE,
+            expandedName = as.character(gsub("[[:space:]]", "", "home")),
             startExpanded = FALSE
           ),
           menuItem("Wiki",
-            tabName = "wiki", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            tabName = "wiki",
             href = NULL, newtab = FALSE, selected = NULL,
             expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
-            startExpanded = FALSE
+            startExpanded = TRUE
           ),
           menuItem("BLAST/HMMER Searches",
-            tabName = "blast", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            tabName = "blast",
             href = NULL, newtab = FALSE, selected = NULL,
             expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
             startExpanded = FALSE
           ),
           menuItem("Explore Starships",
-            tabName = "explore", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            tabName = "explore",
             href = NULL, newtab = FALSE, selected = NULL,
             expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
             startExpanded = FALSE
           ),
-          menuItem("Starship Synteny",
-            tabName = "synteny", icon = NULL, badgeLabel = NULL, badgeColor = "green",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Starship Synteny")),
-            startExpanded = FALSE
-          ),
+          # menuItem("Starship Browser",
+          #   tabName = "genome_browser",
+          #   href = NULL, newtab = FALSE, selected = NULL,
+          #   expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
+          #   startExpanded = FALSE
+          # ),
           menuItem("starfish",
-            icon = NULL, tabName = "starfish", badgeLabel = NULL, badgeColor = "green",
+            icon = NULL, tabName = "starfish",
             href = NULL, newtab = FALSE, selected = NULL,
             expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
             startExpanded = FALSE
           ),
           menuItem("Submit Starships to starbase",
-            tabName = "submit", icon = NULL, badgeLabel = NULL, badgeColor = "green",
+            tabName = "submit",
             href = NULL, newtab = FALSE, selected = NULL,
             expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
             startExpanded = FALSE
           ),
           menuItem("Update starbase Entries", 
-            tabName = "db_update", icon = icon("th")
+            tabName = "db_update",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "Update starbase entries")),
+            startExpanded = FALSE
             ),
           id = NULL, .list = NULL
-        )
-      ),
-      body = dashboardBody(
-        shinyjs::useShinyjs(),
-          fluidPage(
-            fluidRow(
-              shinyauthr::loginUI("login",cookie_expiry = cookie_expiry),
-              uiOutput("loginUI")
+        )),
+        body=dashboardBody(
+          tabItems(
+            tabItem(
+              tabName = "home",
+              mod_home_ui("home_1")
+            ),
+            tabItem(
+              tabName = "wiki",
+              mod_wiki_ui("wiki_1")
+            ),
+            tabItem(
+              tabName = "blast",
+              mod_blast_ui("blast_1")
+            ),
+            tabItem(
+              tabName = "explore",
+              mod_explore_ui("explore_1")
+            ),
+            # tabItem(
+            #   tabName = "genome_browser",
+            #   mod_genome_browser_ui("genome_browser_1")
+            # ),
+            tabItem(
+              tabName = "starfish",
+              mod_starfish_ui("starfish_1")
+            ),
+            tabItem(
+              tabName = "submit",
+              mod_submit_ui("submit_1")
+            ),
+            tabItem(
+              tabName = "db_update",
+              mod_db_update_ui("db_update_1")
             )
           )
-      )
+        )
     )
   )
 }

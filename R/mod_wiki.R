@@ -55,13 +55,15 @@ mod_wiki_ui <- function(id) {
 
   fluidPage(
     fluidRow(
+      column(width=8,img(app_sys("img/starship-model.png"),width="80%"))),
+    fluidRow(
         box(
           title = "Metadata Wiki",
           closable = FALSE,
           width = NULL,
           solidHeader = FALSE,
           collapsible = FALSE,
-          p("Search through metadata for Starship families"),
+          h4("Search through metadata for Starship families"),
           selectizeInput(
             inputId = ns("family"),
             label = "Starship Family",
@@ -71,10 +73,10 @@ mod_wiki_ui <- function(id) {
             width = "30%"
           ),
     fluidRow(
-     column(width=6,fluidRow(uiOutput(ns("wiki")))),
+    column(width=6,fluidRow(uiOutput(ns("wiki")))),
       column(width=6,
         DT::DTOutput(ns("table"))
-     ))))
+    ))))
   )
 }
 
