@@ -61,4 +61,5 @@ tmp/
 data-raw/user-base.R
 inst/doc
 
-launch.json
+data-raw/user-base.R
+Starships/

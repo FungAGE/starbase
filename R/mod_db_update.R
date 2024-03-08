@@ -9,7 +9,14 @@
 #' @import DT RSQLite pool shinyjs uuid dplyr DTedit
 #'
 #' @importFrom shiny NS tagList
-#' @import dplyr glue shinyauthr RSQLite DBI lubridate 
+
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "Starships/SQLstarbase.sqlite")
+con <- pool::poolCheckout(pool)
+
+onStop(function() {
+  pool::poolReturn(con)
+  dbDisconnect(con)
+})
 
 
 cookie_expiry <- 7

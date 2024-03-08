@@ -13,7 +13,15 @@
 
 # TODO: add checks when entries are added to database:
 # i.e. sequence already present in database
-cookie_expiry <- 7
+
+pool <- pool::dbPool(RSQLite::SQLite(), dbname = "Starships/SQLstarbase.sqlite")
+con <- pool::poolCheckout(pool)
+
+onStop(function() {
+  pool::poolReturn(con)
+  dbDisconnect(con)
+})
+
 mod_submit_ui <- function(id) {
   ns <- NS(id)
   fluidPage(

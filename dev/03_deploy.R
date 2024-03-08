@@ -88,7 +88,7 @@ my_dock$write()
 #   appTitle = desc::desc_get_field("Package"),
 #   appFiles = c(
 #     # Add any additional files unique to your app here.
-#     "SQL/",
+#     "Starships/SQL",
 #     "html/",
 #     "R/",
 #     "inst/",
