@@ -90,7 +90,7 @@ inter.tree.p<-p +
     # scale_fill_manual(values=group_df$custom.fill, guide=guide_legend_interactive(title="Starship family_nodes"))
     # theme(legend.position="right")
 
-ggsave(inter.tree.p,file="~/Downloads/captain-tree.svg")
+ggsave(inter.tree.p,file="inst/app/img/captain-tree.svg")
 
 captain_tree  <- girafe(
   ggobj = inter.tree.p,

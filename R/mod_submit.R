@@ -16,18 +16,20 @@
 cookie_expiry <- 7
 mod_submit_ui <- function(id) {
   ns <- NS(id)
-  fluidRow(
-    textInput(ns("uploader"),label = labelMandatory("Name of curator")),
-    textInput(ns("evidence"),label=labelMandatory("What evidence exists for ship annotation?")),
-    textInput(ns("genus"),label = labelMandatory("Enter genus name")),
-    textInput(ns("species"),label = labelMandatory("Enter species name")),
-    
-    # TODO: store file and put path in SQL table
-    fileInput(ns("fna"),label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
-    fileInput(ns("gff3"),label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3")),
-    textAreaInput(ns("comment"), "Comment", placeholder = "", height = 100, width = "354px"),
-    helpText(labelMandatory(""), paste("Mandatory field.")),
-    actionButton(ns("submit_ship"), "Submit")
+  fluidPage(
+    fluidRow(
+      textInput(ns("uploader"),label = labelMandatory("Name of curator")),
+      textInput(ns("evidence"),label=labelMandatory("What evidence exists for ship annotation?")),
+      textInput(ns("genus"),label = labelMandatory("Enter genus name")),
+      textInput(ns("species"),label = labelMandatory("Enter species name")),
+      
+      # TODO: store file and put path in SQL table
+      fileInput(ns("fna"),label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
+      fileInput(ns("gff3"),label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3")),
+      textAreaInput(ns("comment"), "Comment", placeholder = "", height = 100, width = "354px"),
+      helpText(labelMandatory(""), paste("Mandatory field.")),
+      actionButton(ns("submit_ship"), "Submit")
+    )
   )
 }
 

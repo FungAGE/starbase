@@ -6,7 +6,7 @@
 #'
 #' @noRd
 #'
-#' @import ggiraph
+#' @import ggiraph plotly
 #' @importFrom readr read_tsv
 #' @importFrom shiny NS tagList
 
@@ -32,11 +32,7 @@ mod_explore_ui <- function(id) {
                 title = "Starship Diversity",
                 valueBoxOutput(ns("total_species")),
                 valueBoxOutput(ns("total_ships")),
-                img(
-                  src = "img/heat_tree.png",
-                  width = "50%",
-                  style = "background-color: black;"
-                )
+                plotly::plotlyOutput(ns("pie-donut"))
               )),
     fluidRow(box(title = "Captain Phylogeny and Represented Species",width=NULL,
               column(width=4,
@@ -74,6 +70,36 @@ mod_explore_server <- function(id) {
         )
       )
     ))
+
+    output$pie_donut<-plotly::renderPlotly({
+      load("data/joined_ships.rda")
+
+      pie_dat<-joined_ships %>%
+        # distinct(checksum,.keep_all=TRUE) %>%
+        rowwise() %>%
+        mutate(genus=ifelse(is.na(genus),  gsub(" (.+)","",species),genus)) %>%
+        group_by(genus) %>%
+        fill(c(kingdom,phylum,class,order,family,genus),.direction="downup") %>% # fill in missing taxonomic info
+        group_by(species) %>%
+        fill(taxid,.direction="downup") %>%
+        ungroup() %>%
+        mutate(across(c(kingdom,phylum,class,order,family,genus,species),~replace_na(.,"Unknown"))) %>%
+        select(ome,kingdom,phylum,class,order,family,genus,species,taxid)
+
+      # fill in missing tax levels
+      missing_tax <- pie_dat %>%
+        filter(is.na(phylum)|is.na(class)|is.na(order)|is.na(family)) %>%
+        distinct(taxid,genus,species,.keep_all=T) %>%
+        mutate(tax=paste(genus,species))
+
+      pie_plot_dat <- pie_dat %>% 
+        filter(class != "Unknown") %>%
+        group_by(class,order) %>% 
+        summarise(n=n_distinct(ome))
+      pie_p<-PieDonut(pie_plot_dat,aes(class, order, count=n))
+      ggplotly(pie_p)
+    })
+
 
     output$total_ships <- renderValueBox({
     valueBox(
