@@ -26,6 +26,7 @@ golem::add_module(name = "genome_browser")
 golem::add_module(name = "dotplot")
 golem::add_module(name = "blast_syn_viz")
 golem::add_module(name = "dotplot_syn")
+golem::add_module(name = "about")
 
 ## Add helper functions ----
 ## Creates fct_* and utils_*

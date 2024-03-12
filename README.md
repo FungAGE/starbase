@@ -1,4 +1,4 @@
-# `starbase`: Database and Toolkit for Exploration of Starship Elements in Fungi
+# `starbase`: Database and Toolkit for Exploration of _Starship_ Elements in Fungi
 
 <img src=inst/app/img/favicon.png width=200>
 
@@ -10,22 +10,22 @@
 
 <!-- badges: end -->
 
+# References and Inspiration
+
 ## Structure
 
-- This repo is for:
-  - code and files created by code
-- This repo is not for:
-  - database and other backend stuff
+- golem
+- rhino
 
-## Made Using the Following Resources/People
+## _Starship_ annotation
 
-### [starfish](https://github.com/egluckthaler/starfish)
+- [starfish](https://github.com/egluckthaler/starfish)
 
-- [Example of shiny front-end for nextflow](https://github.com/angelovangel/nextflow-fastp-shiny)
+## Database frame work
 
-### Database frame work
+- [MAS](), fork for _starbase_ [here]()
 
-### BLAST-server
+## BLAST-server
 
 - [GitHub - ScientistJake/Shiny_BLAST](https://github.com/ScientistJake/Shiny_BLAST)
 - [GitHub - systemPipeR/SPblast: Workflow Template](https://github.com/systemPipeR/SPblast)
@@ -43,13 +43,12 @@
 - [JBrowseR](https://gmod.github.io/JBrowseR/)
   - <https://github.com/mmollina/viewpoly>
 
-### Taxonomy and Phylogenies
+### Interactive Viz/Tables
 
-- phylocanvas
-- phylowidget
+- DataTable
+- ggiraph
+- plotly
 
-### html
+#### Taxonomy and Phylogenies
 
-- htmltools/htmlwidgets
-- crosstalk
-- DT
+- ggtree

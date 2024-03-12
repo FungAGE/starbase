@@ -1,6 +1,5 @@
 library(vroom)
 library(tidyverse)
-library(RSQLite)
 
 con<-load_sql()
 joined_ships <- dbGetQuery(con, 'SELECT * FROM joined_ships')

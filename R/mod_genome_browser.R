@@ -12,11 +12,9 @@
 #'
 #' @noRd
 
-con <- load_sql()
-ship_df<-tbl(con, "genome_genome")
-ship_ids <- ship_df %>% distinct(genome_name) %>% pull(genome_name)
-
 mod_genome_browser_ui <- function(id) {
+  load("data/ship_ids.rda")
+
   ns <- NS(id)
   tagList(
     fluidPage(
@@ -65,6 +63,7 @@ mod_genome_browser_server <- function(id) {
 
     sub_df<-eventReactive(input$go, {
       req(input$ship)
+      load("data/ship_df.rda")
       # subset SQL data
       ship_df %>% filter(genome_name %in% !!input$ship)
     })
