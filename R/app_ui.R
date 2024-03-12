@@ -13,17 +13,9 @@ app_ui <- function(request) {
     dashboardPage(
       skin = "blue",
       options = list(sidebarExpandOnHover = TRUE),
-      header = dashboardHeader(title = "starbase",   
-                              controlbarIcon = img(app_sys("img/favicon.ico")),
-                              leftUi = tagList(
-                                div(textOutput("welcome"), style = "padding: 10px"),
-                                # TODO: should be on right side of page
-                                tags$li(
-                                  class = "dropdown",
-                                  style = "padding: 8px;",
-                                  shinyauthr::logoutUI("logout")
-                                ))),
-      controlbar = dashboardControlbar(),
+      header = dashboardHeader(title = "starbase"#,controlbarIcon = img(src="img/favicon.ico")
+      ),
+      controlbar = dashboardControlbar(disable=TRUE),
       title = "starbase home",
       sidebar = dashboardSidebar(
         minified = FALSE,
@@ -71,6 +63,13 @@ app_ui <- function(request) {
             expandedName = as.character(gsub("[[:space:]]", "", "Submit Starships to starbase")),
             startExpanded = FALSE
           ),
+          menuItem("About starbase",
+            tabName = "about",
+            href = NULL, newtab = FALSE, selected = NULL,
+            expandedName = as.character(gsub("[[:space:]]", "", "About starbase")),
+            startExpanded = FALSE
+          ),
+
           id = NULL, .list = NULL
         )),
         body=dashboardBody(
@@ -102,6 +101,10 @@ app_ui <- function(request) {
             tabItem(
               tabName = "submit",
               mod_submit_ui("submit_1")
+            ),
+            tabItem(
+              tabName = "about",
+              mod_about_ui("about_1")
             )
           )
         )
