@@ -13,8 +13,6 @@
 #' @noRd
 
 mod_genome_browser_ui <- function(id) {
-  load("data/ship_ids.rda")
-
   ns <- NS(id)
   tagList(
     fluidPage(
@@ -54,6 +52,7 @@ mod_genome_browser_server <- function(id) {
 
     # starting location for browser
     mks.range.1 <- 1
+    # TODO: make this the end of the element
     mks.range.2 <- 1000
 
     host <- getOption("shiny.host")
@@ -63,9 +62,8 @@ mod_genome_browser_server <- function(id) {
 
     sub_df<-eventReactive(input$go, {
       req(input$ship)
-      load("data/ship_df.rda")
       # subset SQL data
-      ship_df %>% filter(genome_name %in% !!input$ship)
+      ship_seqs %>% filter(genome_name %in% !!input$ship)
     })
 
     reactive({

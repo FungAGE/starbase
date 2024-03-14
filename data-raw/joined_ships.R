@@ -1,5 +1,5 @@
-library(vroom)
 library(tidyverse)
+library(DBI)
 
 con<-load_sql()
 joined_ships <- dbGetQuery(con, 'SELECT * FROM joined_ships')

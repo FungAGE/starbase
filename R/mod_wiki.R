@@ -35,27 +35,36 @@
 # temp<-whisker::whisker.render(readLines(system.file("template.html5",package = "dataspice")), jsonld_to_mustache("data/metadata/dataspice.json"))
 # writeLines(temp,"data/metadata/index.html")
 
-load_metadata<-function(){
-  joined_ships %>%
-    filter(!is.na(starship_family)) %>%
-    mutate(starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family)) %>%
-    select(starshipID, starship_family, starship_navis, starship_haplotype)
-}
-
-metadata <- load_metadata() %>%
-  group_by(starship_family) %>%
-  summarise(named_vec = list(starshipID)) %>%
-  deframe()
+load("data/joined_ships.rda")
+table_dat<-joined_ships %>%
+  filter(!is.na(starship_family)) %>%
+  mutate(starship_family=gsub("fam","superfam0",starship_family),
+    starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family))
 
 mod_wiki_ui <- function(id) {
   ns <- NS(id)
-
-  # Define the metadata
-  metadata <- load_metadata()
-
   fluidPage(
     fluidRow(
-      column(width=8,img(app_sys("img/starship-model.png"),width="80%"))),
+            column(width=4,
+        box(title="What is a Starship?",
+          width=NULL,
+          collapsible=TRUE,
+          tags$table(style = "width: 85%",
+            tags$tr(tags$td(style = "width: 100%",
+                            align = "left",
+                            p("Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes) [2]. They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in Paecilomyces, cheese making in Penicillium, and enable the reansfer of formaldehyde resistance in Aspergillus nidulans and Penicillium chrysogenum."))),
+            tags$tr(tags$td(style = "width: 100%",
+                            align = "middle",
+                            img(src="img/starship-model.png",width="85%")))))),
+      column(width=4,
+        box(title="starbase statistics",
+          width=NULL,
+          collapsible=TRUE,
+          shinydashboard::valueBoxOutput(ns("total_species")),
+          shinydashboard::valueBoxOutput(ns("total_ships"))
+        )
+      )
+    ),
     fluidRow(
         box(
           title = "Metadata Wiki",
@@ -67,16 +76,14 @@ mod_wiki_ui <- function(id) {
           selectizeInput(
             inputId = ns("family"),
             label = "Starship Family",
-            choices = unique(metadata$starship_family),
+            choices = unique(table_dat$starship_family),
             multiple = FALSE,
             selected = NULL,
             width = "30%"
           ),
     fluidRow(
-    column(width=6,fluidRow(uiOutput(ns("wiki")))),
-      column(width=6,
         DT::DTOutput(ns("table"))
-    ))))
+    )))
   )
 }
 
@@ -86,21 +93,36 @@ mod_wiki_ui <- function(id) {
 mod_wiki_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-
-    metadata <- load_metadata()
-
     observe({
       if (!is.null(input$family)) {
-        metadata <- metadata %>%
+        table_dat_sub <- table_dat %>%
           filter(starship_family %in% input$family)
       }
       output$table <- DT::renderDT({
-        DT::datatable(metadata)
+        DT::datatable(table_dat_sub)
       })
       
-    output$wiki<-renderUI({
-      p(random_text(nwords = 50))
     })
-      })
+
+    output$total_ships <- shinydashboard::renderValueBox({
+      shinydashboard::valueBox(
+        subtitle = "Total number of Starships in starbase",
+        color="green",
+        value = n_distinct(metadata$starshipID),
+        icon = icon("dna")
+      )
+    })
+
+    n_total_species<-metadata %>% 
+      filter(!is.na(genus) & !is.na(species)) %>%
+      mutate(gen_spec=paste0(genus,species)) %>% distinct(gen_spec) %>% nrow()
+
+    output$total_species<-shinydashboard::renderValueBox({
+      shinydashboard::valueBox(
+        subtitle = "Fungal species with Starships",
+        value = n_total_species,
+        icon = icon("dna")
+    )})
+
   })
 }

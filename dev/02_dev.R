@@ -16,7 +16,6 @@ options(repos = BiocManager::repositories())
 ## Create a module infrastructure in R/
 # Creating a module skeleton
 golem::add_module(name = "home")
-golem::add_module(name = "explore")
 golem::add_module(name = "metadata")
 golem::add_module(name = "wiki")
 golem::add_module(name = "starfish")
@@ -51,6 +50,10 @@ usethis::use_data_raw(name="ships_with_anno", open=rlang::is_interactive())
 usethis::use_data_raw(name="fna_list", open=rlang::is_interactive())
 usethis::use_data_raw(name="gff_list", open=rlang::is_interactive())
 usethis::use_data_raw(name="taxa_list", open=rlang::is_interactive())
+usethis::use_data_raw(name="metadata", open=rlang::is_interactive())
+usethis::use_data_raw(name="ship_ids", open=rlang::is_interactive())
+usethis::use_data_raw(name="ship_seqs", open=rlang::is_interactive())
+usethis::use_data_raw(name="ship_features", open=rlang::is_interactive())
 
 ## Tests ----
 ## Add one line by test you want to create
