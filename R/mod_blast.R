@@ -6,8 +6,7 @@
 #'
 #' @noRd
 #'
-#' @import shinydashboard shinydashboardPlus
-#' @import XML tidyverse stringr dplyr DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets 
+#' @import XML tidyverse stringr DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets 
 #' 
 #' @importFrom readr read_csv read_file
 #' @importFrom shiny NS tagList
@@ -17,9 +16,6 @@
 # 2) look for captain genes
 # 3) look for cargo genes
 
-
-load("data/joined_ships.rda")
-load("data/captain_tree.rda")
 
 mod_blast_ui <- function(id) {
   ns <- NS(id)

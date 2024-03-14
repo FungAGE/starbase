@@ -7,7 +7,7 @@
 #' @noRd 
 #'
 #' @importFrom shiny NS tagList 
-#' @import shinydashboardPlus
+
 mod_about_ui <- function(id){
   ns <- NS(id)
   fluidPage(
@@ -27,7 +27,7 @@ mod_about_ui <- function(id){
       userBox(title=userDescription(title = "Aaron Vogan", subtitle = "FungAGE group leader", type = 2, image = "img/aaron.png"),
                 status = "purple",socialButton(href="mailto:aaron.vogan@ebc.uu.se", icon = icon("envelope")),collapsible=FALSE),
       userBox(title=userDescription(title = "Emile Gluck-Thaler", subtitle = "Developer of starfish", type = 2, image = "img/emile.png"),
-                status = "orange",socialButton(href="mailto:emilegluckthaler@gmail.com",, icon = icon("envelope")),collapsible=FALSE)
+                status = "orange",socialButton(href="mailto:emilegluckthaler@gmail.com", icon = icon("envelope")),collapsible=FALSE)
     )
   )
 }

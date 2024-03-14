@@ -1,0 +1,12 @@
+oldFamilyID	clade	newFamilyID	familyName	type element reference	notes
+fam1-1	1	1	Phoenix	Gluck-Thaler et al., 2022	
+fam1-2	1	2	Hephaestus	Urquhart et al., 2022	
+fam1-3	1	3	Tardis	Gluck-Thaler et al., unpublished	From fumigatus study
+fam1-4	1	4	Serenity	This study	Vdal manual
+fam1-5	1	5	Prometheus	Urquhart et al., unpublished	From formaldehyde study
+fam2-1	2	6	Enterprise	Vogan et al., 2021	
+fam2-2	2	7	Galactica	Gluck-Thaler et al., 2022	
+fam2-3	2	8	Moya	This study	Manual
+fam3-1	3	9	Arwing	Gluck-Thaler et al., 2022	Starship-1_Foxy_Fol4287; manual
+fam3-4	3	10	Voyager	Gluck-Thaler et al., 2022	
+fam3-5	3	11	TBD		no representatives found

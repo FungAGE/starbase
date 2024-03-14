@@ -27,7 +27,7 @@ app_ui <- function(request) {
             expandedName = as.character(gsub("[[:space:]]", "", "home")),
             startExpanded = FALSE
           ),
-          menuItem("Wiki",
+          menuItem("starbase Wiki",
             tabName = "wiki",
             href = NULL, newtab = FALSE, selected = NULL,
             expandedName = as.character(gsub("[[:space:]]", "", "Wiki")),
@@ -39,24 +39,18 @@ app_ui <- function(request) {
             expandedName = as.character(gsub("[[:space:]]", "", "BLAST/HMMER Searches")),
             startExpanded = FALSE
           ),
-          menuItem("Explore Starships",
-            tabName = "explore",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Explore Starships")),
-            startExpanded = FALSE
-          ),
-          menuItem("Starship Browser",
-            tabName = "genome_browser",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
-            startExpanded = FALSE
-          ),
-          menuItem("starfish",
-            icon = NULL, tabName = "starfish",
-            href = NULL, newtab = FALSE, selected = NULL,
-            expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
-            startExpanded = FALSE
-          ),
+          # menuItem("Starship Browser",
+          #   tabName = "genome_browser",
+          #   href = NULL, newtab = FALSE, selected = NULL,
+          #   expandedName = as.character(gsub("[[:space:]]", "", "Starship Browser")),
+          #   startExpanded = FALSE
+          # ),
+          # menuItem("Run starfish",
+          #   icon = NULL, tabName = "starfish",
+          #   href = NULL, newtab = FALSE, selected = NULL,
+          #   expandedName = as.character(gsub("[[:space:]]", "", "starfish")),
+          #   startExpanded = FALSE
+          # ),
           menuItem("Submit Starships to starbase",
             tabName = "submit",
             href = NULL, newtab = FALSE, selected = NULL,
@@ -85,10 +79,6 @@ app_ui <- function(request) {
             tabItem(
               tabName = "blast",
               mod_blast_ui("blast_1")
-            ),
-            tabItem(
-              tabName = "explore",
-              mod_explore_ui("explore_1")
             ),
             tabItem(
               tabName = "genome_browser",

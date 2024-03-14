@@ -6,11 +6,10 @@
 #'
 #' @noRd
 #'
-#' @import RSQLite pool shinyjs uuid dplyr stringr
 #'
 #' @importFrom shiny NS tagList
-#' @import dplyr glue DBI 
-
+#' @import RSQLite pool shinyjs uuid stringr glue DBI 
+#' 
 # TODO: add checks when entries are added to database:
 # i.e. sequence already present in database
 cookie_expiry <- 7
@@ -18,17 +17,27 @@ mod_submit_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
     fluidRow(
-      textInput(ns("uploader"),label = labelMandatory("Name of curator")),
-      textInput(ns("evidence"),label=labelMandatory("What evidence exists for ship annotation?")),
-      textInput(ns("genus"),label = labelMandatory("Enter genus name")),
-      textInput(ns("species"),label = labelMandatory("Enter species name")),
-      
-      # TODO: store file and put path in SQL table
-      fileInput(ns("fna"),label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
-      fileInput(ns("gff3"),label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3")),
-      textAreaInput(ns("comment"), "Comment", placeholder = "", height = 100, width = "354px"),
-      helpText(labelMandatory(""), paste("Mandatory field.")),
-      actionButton(ns("submit_ship"), "Submit")
+      column(width=8,
+        box(title="Uploads temporarily closed, please send submissions via email",
+          width=NULL,
+          status="error",
+          p("Until the migration to the new back-end is completed, submission of new Starships on starbase is not yet implemented. Please send submissions to:"),
+          socialButton(href="mailto:adrian.e.forsythe@gmail.com", icon = icon("envelope"))
+        ),
+        box(title="Submit your Starships to starbase",width=NULL,status="primary",
+          textInput(ns("uploader"),label = labelMandatory("Name of curator")),
+          textInput(ns("evidence"),label=labelMandatory("How were Starships annotated? (i.e. starfish)")),
+          textInput(ns("genus"),label = labelMandatory("Enter genus name")),
+          textInput(ns("species"),label = labelMandatory("Enter species name")),
+          
+          # TODO: store file and put path in SQL table
+          fileInput(ns("fna"),label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
+          fileInput(ns("gff3"),label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3")),
+          textAreaInput(ns("comment"), "Comment", placeholder = "", height = 100, width = "354px"),
+          helpText(labelMandatory(""), paste("Mandatory field."))
+          # actionButton(ns("submit_ship"), "Submit")
+        )
+      )
     )
   )
 }

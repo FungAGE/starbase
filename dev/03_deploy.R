@@ -17,6 +17,7 @@ devtools::check()
 
 ## Docker ----
 # Creating a new Dockerfile object
+library(dockerfiler)
 my_dock <- Dockerfile$new(FROM="rocker/shiny-verse:4.2.3")
 my_dock$MAINTAINER("Adrian Forsythe", "adrian.e.forsythe@gmail.com")
 my_dock$RUN("apt-get update && apt-get upgrade -y && apt-get install -y  libglpk-dev libgmp-dev libjq-dev libsodium-dev libmagick++-dev git ncbi-blast+ hmmer python python3-biopython && apt-get clean && rm -rf /var/lib/apt/lists/*")
@@ -51,6 +52,8 @@ my_dock$RUN("Rscript -e 'remotes::install_version(\"golem\",upgrade=\"never\", v
 my_dock$RUN("Rscript -e 'remotes::install_version(\"ggiraph\",upgrade=\"never\", version = \"0.8.8\")'")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"DT\",upgrade=\"never\", version = \"0.31\")'")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"dataspice\",upgrade=\"never\", version = NA)'")
+my_dock$RUN("Rscript -e 'remotes::install_version(\"DBI\",upgrade=\"never\", version = \"1.1.3\")'")
+my_dock$RUN("Rscript -e 'remotes::install_version(\"glue\",upgrade=\"never\", version = \"1.6.2\")'")
 my_dock$RUN("Rscript -e 'remotes::install_github(\"jbryer/DTedit\")'")
 my_dock$RUN("Rscript -e 'remotes::install_github(\"mattflor/chorddiag\")'")
 my_dock$RUN("Rscript -e 'remotes::install_github(\"YuLab-SMU/ggtree\")'")
@@ -60,10 +63,12 @@ my_dock$RUN("Rscript -e 'remotes::install_version(\"sodium\",upgrade=\"never\", 
 my_dock$RUN("Rscript -e 'remotes::install_version(\"shinyauthr\",upgrade=\"never\", version = \"1.0.0\")")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"dockerfiler\",upgrade=\"never\", version = \"0.2.2\")")
 my_dock$RUN("Rscript -e 'BiocManager::install(c(\"GenomeInfoDb\",\"BiocGenerics\",\"zlibbioc\",\"S4Vectors\",\"IRanges\",\"XVector\",\"Biostrings\",\"treeio\"),ask=F)'")
+
+my_dock$RUN("git clone https://github.com/FungAGE/Starships.git")
+
 my_dock$RUN("rm -rf /srv/shiny-server/*")
 my_dock$COPY(".", "/srv/shiny-server/")
-# TODO: add `RUN` git clone of Starships repo 
-# ! since this repo is private, need to validate with git first
+
 my_dock$USER("shiny")
 my_dock$EXPOSE(3838)
 my_dock$CMD("[\"/usr/bin/shiny-server\"]")
