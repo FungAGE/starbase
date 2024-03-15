@@ -1,6 +1,6 @@
 FROM rocker/shiny-verse:4.2.3
 MAINTAINER Adrian Forsythe <adrian.e.forsythe@gmail.com>
-RUN apt-get update && apt-get upgrade -y && apt-get install -y  libglpk-dev libgmp-dev libjq-dev libsodium-dev libmagick++-dev git ncbi-blast+ hmmer python3 python3-biopython && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get install -y libglpk-dev libgmp-dev libjq-dev libsodium-dev libmagick++-dev git ncbi-blast+ hmmer python3 python3-biopython && apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/
 RUN echo "options(repos = c(CRAN = 'https://cran.rstudio.com/'), download.file.method = 'libcurl', Ncpus = 4)" | tee /usr/local/lib/R/etc/Rprofile.site | tee /usr/lib/R/etc/Rprofile.site
 RUN Rscript -e 'remotes::install_version("XML",upgrade="never", version = "3.99-0.16")'
@@ -40,6 +40,7 @@ RUN Rscript -e 'remotes::install_version("sodium",upgrade="never", version = "1.
 RUN Rscript -e 'remotes::install_version("shinyauthr",upgrade="never", version = "1.0.0")'
 RUN Rscript -e 'remotes::install_version("dockerfiler",upgrade="never", version = "0.2.2")'
 RUN Rscript -e 'BiocManager::install(c("GenomeInfoDb","BiocGenerics","zlibbioc","S4Vectors","IRanges","XVector","Biostrings","treeio"),ask=F)'
+RUN git clone https://github.com/FungAGE/Starships.git
 RUN rm -rf /srv/shiny-server/*
 COPY . /srv/shiny-server/
 USER shiny

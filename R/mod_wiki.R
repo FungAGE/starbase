@@ -6,7 +6,7 @@
 #'
 #' @noRd
 #'
-#' @import dataspice shinipsum
+#' @import dataspice shinipsum DT
 #'
 #' @importFrom shiny NS tagList
 #' @importFrom tidyr unnest
@@ -35,17 +35,11 @@
 # temp<-whisker::whisker.render(readLines(system.file("template.html5",package = "dataspice")), jsonld_to_mustache("data/metadata/dataspice.json"))
 # writeLines(temp,"data/metadata/index.html")
 
-load("data/joined_ships.rda")
-table_dat<-joined_ships %>%
-  filter(!is.na(starship_family)) %>%
-  mutate(starship_family=gsub("fam","superfam0",starship_family),
-    starship_family = ifelse(grepl("^fam", starship_family) & !is.na(code), code, starship_family))
-
 mod_wiki_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
     fluidRow(
-            column(width=4,
+      column(width=8,
         box(title="What is a Starship?",
           width=NULL,
           collapsible=TRUE,
@@ -55,7 +49,8 @@ mod_wiki_ui <- function(id) {
                             p("Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes) [2]. They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in Paecilomyces, cheese making in Penicillium, and enable the reansfer of formaldehyde resistance in Aspergillus nidulans and Penicillium chrysogenum."))),
             tags$tr(tags$td(style = "width: 100%",
                             align = "middle",
-                            img(src="img/starship-model.png",width="85%")))))),
+                            img(src="img/starship-model.png",width="85%"))))))),
+    fluidRow(
       column(width=4,
         box(title="starbase statistics",
           width=NULL,
@@ -66,42 +61,48 @@ mod_wiki_ui <- function(id) {
       )
     ),
     fluidRow(
+      column(width=8,
         box(
-          title = "Metadata Wiki",
+          title = "Table for metadata of all Starships in starbase",
           closable = FALSE,
           width = NULL,
           solidHeader = FALSE,
           collapsible = FALSE,
-          h4("Search through metadata for Starship families"),
-          selectizeInput(
-            inputId = ns("family"),
-            label = "Starship Family",
-            choices = unique(table_dat$starship_family),
-            multiple = FALSE,
-            selected = NULL,
-            width = "30%"
-          ),
-    fluidRow(
-        DT::DTOutput(ns("table"))
-    )))
+          DT::DTOutput(ns("newtable"))
+        )
+      )
+    )
   )
 }
 
 #' wiki Server Functions
 #'
 #' @noRd
+#' @import DT
+
 mod_wiki_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    observe({
-      if (!is.null(input$family)) {
-        table_dat_sub <- table_dat %>%
-          filter(starship_family %in% input$family)
-      }
-      output$table <- DT::renderDT({
-        DT::datatable(table_dat_sub)
-      })
-      
+    load("data/metadata.rda")
+    if (is.null(metadata)) {
+      shinyalert("Issue with metadata object", type = "error")
+    } else {
+      print(class(metadata))
+    }
+
+    output$newtable <- DT::renderDT({
+      # req(metadata)
+      cars %>%
+        as.data.frame() %>%
+        DT::datatable(
+          options = list(), class = "display", rownames = FALSE,
+          callback = JS("return table;"), # rownames, colnames, container,
+          caption = NULL, filter = c("none", "bottom", "top"), escape = TRUE,
+          style = "auto", width = NULL, height = NULL, elementId = NULL,
+          fillContainer = getOption("DT.fillContainer", NULL),
+          autoHideNavigation = getOption("DT.autoHideNavigation", NULL),
+          selection = "single", extensions = list(),
+          plugins = NULL, editable = FALSE)
     })
 
     output$total_ships <- shinydashboard::renderValueBox({

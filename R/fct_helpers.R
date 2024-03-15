@@ -113,30 +113,32 @@ clean_lines <- function(query_list) {
 }
 
 run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL,threads=NULL,stitch=FALSE){
+  # separate lists of starship and gene databases with sub lists of nucl and prot databases
+  # TODO: add profiles for other cargo genes? i.e. metal resistance/formaldeyde?
+
   db_list <- list(
     ship = list(
-      nucl = "../Starships/ships/fna/blastdb/concatenated.fa"
+      nucl = "Starships/ships/fna/blastdb/concatenated.fa"
     ),
     gene = list(
       tyr = list(
-        prot = "../Starships/captain/tyr/faa/blastdb/YRsuperfamRefs.dd.faa",
-        nucl = "../Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
+        prot = "Starships/captain/tyr/faa/blastdb/concatenated.faa"
       ),
       fre = list(
-        prot = "../Starships/cargo/fre/faa/blastdb/fre.mycoDB.dd.faa",
-        nucl = "../Starships/cargo/fre/fna/blastdb/fre.fa"
+        prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+        nucl = "Starships/cargo/fre/fna/blastdb/fre.fa"
       ),
       nlr = list(
-        prot = "../Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.dd.faa",
-        nucl = "../Starships/cargo/nlr/fna/blastdb/nlr.fa"
+        prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+        nucl = "Starships/cargo/nlr/fna/blastdb/nlr.fa"
       ),
       DUF3723 = list(
-        prot = "../Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.dd.faa",
-        nucl = "../Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
+        prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+        nucl = "Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
       ),
       plp = list(
-        prot = "../Starships/cargo/plp/faa/blastdb/plp.mycoDB.dd.faa",
-        nucl = "../Starships/cargo/plp/fna/blastdb/plp.fa"
+        prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+        nucl = "Starships/cargo/plp/fna/blastdb/plp.fa"
       )
     )
   )
@@ -148,7 +150,7 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
       blastdb <- db_list[["gene"]][[blast_type]][["nucl"]]
     }
   } else {
-    if (blast_type == "ship" ) {
+    if (blast_type == "ship") {
       blast_program = "tblastn"
       blastdb <- db_list[["ship"]][["nucl"]]
     } else {
@@ -175,10 +177,10 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
   readr::read_delim(blast_tmp,col_names=c("query_id","hit_IDs","pident","aln_length","mismatches","gaps","query_start","query_end","subject_start","subject_end","evalue","bitscore","query_seq","subject_seq"))
 }
 
-run_hmmer <- function(seq_type=NULL,tmp_hmmer=NULL,input.eval=NULL,tmp_fasta=NULL) {
+run_hmmer <- function(seq_type=NULL,tmp_hmmer=NULL,input.eval=NULL,tmp_fasta=NULL,threads=4) {
   hmmer_program <- "hmmsearch"
-  hmmer_db <- "../Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
-  hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu 4", "--domE", input.eval, hmmer_db, tmp_fasta, sep = " ")
+  hmmer_db <- "Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
+  hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu ",threads, " --domE", input.eval, hmmer_db, tmp_fasta, sep = " ")
   system(hmmer_cmd, intern = FALSE)
   tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed.txt")
   system(paste0("python bin/hmm.py --hmmer_output_file ", tmp_hmmer, " --parsed ", tmp_hmmer_parsed),intern=FALSE)

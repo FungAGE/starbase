@@ -18,7 +18,11 @@ mod_about_ui <- function(id){
         collapsible = TRUE,
         width = NULL,
         p("starbase was developed by the ", a("FungAGE lab", href="https://fungage.github.io/")),
-        p("code for starbase is available on ", a("GitHub", href="https://github.com/FungAGE/starbase"))
+        p("code for starbase will be available soon on GitHub"),
+        box(width=NULL,title = "Data Availability",status="primary",
+          p("We have been maintaining starbase data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)"),
+          downloadButton(outputId="dl_package",label="Download the latest version of starbase.")
+        )
       )
     ),
     fluidRow(

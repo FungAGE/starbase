@@ -72,9 +72,13 @@ app_ui <- function(request) {
               tabName = "home",
               mod_home_ui("home_1")
             ),
+            # tabItem(
+            #   tabName = "wiki",
+            #   mod_wiki_ui("wiki_1")
+            # ),
             tabItem(
-              tabName = "wiki",
-              mod_wiki_ui("wiki_1")
+              tabName = "test",
+              mod_test_ui("test_1")
             ),
             tabItem(
               tabName = "blast",

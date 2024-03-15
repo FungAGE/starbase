@@ -6,7 +6,7 @@ library(msaR)
 # ! alignment is too large to load 
 
 # read some sequences from a multiple sequence alignment file and display
-aln<-readAAMultipleAlignment("../Starships/genes/cap_tyr/alignments/YRsuperfamRefs.mafft.faa") %>%
+aln<-readAAMultipleAlignment("Starships/genes/cap_tyr/alignments/YRsuperfamRefs.mafft.faa") %>%
   msaR(., seqlogo = T,menu=F, overviewbox = F,  colorscheme = "clustal")
 
 aln %>%
