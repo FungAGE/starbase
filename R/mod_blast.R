@@ -6,7 +6,7 @@
 #'
 #' @noRd
 #'
-#' @import XML tidyverse stringr DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets 
+#' @import DT Biostrings msaR chorddiag ggiraph stringi htmltools htmlwidgets 
 #' 
 #' @importFrom readr read_csv read_file
 #' @importFrom shiny NS tagList
@@ -81,37 +81,6 @@ mod_blast_server <- function(id) {
     
     threads=4
 
-    # separate lists of starship and gene databases with sub lists of nucl and prot databases
-    # TODO: add profiles for other cargo genes? i.e. metal resistance/formaldeyde?
-
-    db_list <- list(
-      starship = list(
-        nucl = "Starships/ships/fna/blastdb/concatenated.fa"
-      ),
-      gene = list(
-        tyr = list(
-          prot = "Starships/captain/tyr/faa/blastdb/YRsuperfamRefs.faa",
-          nucl = "Starships/captain/tyr/fna/blastdb/YRsuperfamRefs.fa"
-        ),
-        fre = list(
-          prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-          nucl = "Starships/cargo/fre/faa/blastdb/fre.fa"
-        ),
-        nlr = list(
-          prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-          nucl = "Starships/cargo/nlr/faa/blastdb/nlr.fa"
-        ),
-        DUF3723 = list(
-          prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-          nucl = "Starships/cargo/duf3723/faa/blastdb/duf3723.fa"
-        ),
-        plp = list(
-          prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-          nucl = "Starships/cargo/plp/faa/blastdb/plp.fa"
-        )
-      )
-    )
-    
     # gather input and set up temp file
     tmp_fasta <- tempfile(fileext = ".fa")
 
@@ -141,7 +110,7 @@ mod_blast_server <- function(id) {
       # captain family hmmsearch
       tmp_hmmer <- tempfile(fileext = ".hmmer.txt")
       withProgress(message = "Performing HMMER search of captain gene families...", {
-        hmmsearch_results<-run_hmmer(submitted()$query_type,tmp_hmmer,input$eval,tmp_fasta)
+        hmmsearch_results<-run_hmmer(submitted()$query_type,tmp_hmmer,input$eval,tmp_fasta,threads)
       })
 
       results<-list(ship=ship_blast_results,hmm=hmmsearch_results)

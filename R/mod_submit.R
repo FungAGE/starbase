@@ -20,7 +20,7 @@ mod_submit_ui <- function(id) {
       column(width=8,
         box(title="Uploads temporarily closed, please send submissions via email",
           width=NULL,
-          status="error",
+          status="danger",
           p("Until the migration to the new back-end is completed, submission of new Starships on starbase is not yet implemented. Please send submissions to:"),
           socialButton(href="mailto:adrian.e.forsythe@gmail.com", icon = icon("envelope"))
         ),
