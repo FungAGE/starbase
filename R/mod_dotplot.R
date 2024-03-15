@@ -23,8 +23,8 @@ mod_dotplot_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    ref<-"Starships/ships/fna/starfish/aspcri2_s00912.fna"
-    query<-"Starships/ships/fna/starfish/morimp1_s08010.fna"
+    ref<-"project-vol/Starships/ships/fna/starfish/aspcri2_s00912.fna"
+    query<-"project-vol/Starships/ships/fna/starfish/morimp1_s08010.fna"
     # -b int
     # --breaklen 	Distance an alignment extension will attempt to extend poor scoring regions before giving up (default 200)
     # -c int

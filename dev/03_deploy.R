@@ -24,7 +24,6 @@ my_dock$RUN("apt-get update && apt-get upgrade -y && apt-get install -y  libglpk
 my_dock$RUN("mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/")
 my_dock$RUN("echo \"options(repos = c(CRAN = 'https://cran.rstudio.com/'), download.file.method = 'libcurl', Ncpus = 4)\" | tee /usr/local/lib/R/etc/Rprofile.site | tee /usr/lib/R/etc/Rprofile.site")
 # TODO: there is probably a better way to automate this, i.e. using package DESCRIPTION. functions to build from renv provided in golem or dockerfiler were not flexible enough
-
 my_dock$RUN("Rscript -e 'remotes::install_version(\"shinydashboard\",upgrade=\"never\", version = \"0.7.2\")'")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"shinydashboardPlus\",upgrade=\"never\", version = \"2.0.3\")'")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"shinyjs\",upgrade=\"never\", version = \"2.1.0\")'")
@@ -40,7 +39,7 @@ my_dock$RUN("Rscript -e 'remotes::install_version(\"glue\",upgrade=\"never\", ve
 my_dock$RUN("Rscript -e 'remotes::install_github(\"mattflor/chorddiag\")'")
 my_dock$RUN("Rscript -e 'BiocManager::install(c(\"GenomeInfoDb\",\"BiocGenerics\",\"zlibbioc\",\"S4Vectors\",\"IRanges\",\"XVector\",\"Biostrings\"),ask=F)'")
 
-my_dock$RUN("git clone https://github.com/FungAGE/Starships.git")
+# my_dock$RUN("git clone https://github.com/FungAGE/Starships.git")
 
 my_dock$RUN("rm -rf /srv/shiny-server/*")
 my_dock$COPY(".", "/srv/shiny-server/")
@@ -61,59 +60,3 @@ my_dock$write()
 
 # have to install your own app locally first
 # remotes::install_local("starbase_0.0.0.9000.tar.gz")
-
-# Deploy to Posit Connect or ShinyApps.io
-# In command line.
-# rsconnect::deployApp(
-#   appName = desc::desc_get_field("Package"),
-#   appTitle = desc::desc_get_field("Package"),
-#   appFiles = c(
-#     # Add any additional files unique to your app here.
-#     "Starships/SQL",
-#     "html/",
-#     "R/",
-#     "inst/",
-#     "tmp/",
-#     "data/",
-#     "Starships/",
-#     "blastdb/",
-#     "bin/",
-#     "MTDB/",
-#     "NAMESPACE",
-#     "DESCRIPTION",
-#     "app.R"
-#   ),
-#   appId = rsconnect::deployments(".")$appID,
-#   lint = FALSE,
-#   forceUpdate = TRUE
-# )
-
-Biostrings
-bslib
-chorddiag
-dataspice
-DBI
-DT
-ggiraph
-glue
-htmltools
-htmlwidgets
-JBrowseR
-markdown
-msaR
-pool
-purrr
-RSQLite
-shinipsum
-shiny
-shinyalert
-shinydashboard
-shinydashboardPlus
-shinyjs
-shinyWidgets
-stringi
-stringr
-tidyverse
-uuid
-vroom
-waiter
