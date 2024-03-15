@@ -18,24 +18,28 @@ mod_submit_ui <- function(id) {
   fluidPage(
     fluidRow(
       column(width=8,
-        box(title="Uploads temporarily closed, please send submissions via email",
+        box(title="Submission of multiple Starships to starbase",
           width=NULL,
           status="danger",
-          p("Until the migration to the new back-end is completed, submission of new Starships on starbase is not yet implemented. Please send submissions to:"),
+          p("Unfortunately, we can only handle submission for one Starship at a time. If you have a batch of Starships that you'd like to submit, please send the submission via email:"),
           socialButton(href="mailto:adrian.e.forsythe@gmail.com", icon = icon("envelope"))
         ),
-        box(title="Submit your Starships to starbase",width=NULL,status="primary",
+        box(title="Submit individual Starships to starbase",width=NULL,status="primary",
           textInput(ns("uploader"),label = labelMandatory("Name of curator")),
           textInput(ns("evidence"),label=labelMandatory("How were Starships annotated? (i.e. starfish)")),
           textInput(ns("genus"),label = labelMandatory("Enter genus name")),
           textInput(ns("species"),label = labelMandatory("Enter species name")),
-          
+          h4("Coordinates of Starship in host genome:"),
+          textInput(ns("host_chr"),label = labelMandatory("Host genome contig/scaffold/chromosome ID")),
+          textInput(ns("ship_start"),label = labelMandatory("Start coordinate of Starship")),
+          textInput(ns("ship_end"),label = labelMandatory("End coordinate for Starship")),
+
           # TODO: store file and put path in SQL table
           fileInput(ns("fna"),label = labelMandatory("Upload ship sequence"),accept = c(".fa",".fna",".fasta")),
-          fileInput(ns("gff3"),label = "Upload ship annotations (GFF3 format)",accept = c(".gff",".gff3")),
-          textAreaInput(ns("comment"), "Comment", placeholder = "", height = 100, width = "354px"),
-          helpText(labelMandatory(""), paste("Mandatory field."))
-          # actionButton(ns("submit_ship"), "Submit")
+          fileInput(ns("gff3"),label = "Upload gene annotations associated with Starship sequence (GFF[3] or BED format)",accept = c(".gff",".gff3",".bed")),
+          textAreaInput(ns("comment"), "Any comments about the Starship features, annotations, or host genome?", placeholder = "", height = 100, width = "354px"),
+          helpText(labelMandatory(""), paste("Mandatory field.")),
+          actionButton(ns("submit_ship"), "Submit")
         )
       )
     )

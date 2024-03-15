@@ -40,7 +40,6 @@ RUN Rscript -e 'remotes::install_version("sodium",upgrade="never", version = "1.
 RUN Rscript -e 'remotes::install_version("shinyauthr",upgrade="never", version = "1.0.0")'
 RUN Rscript -e 'remotes::install_version("dockerfiler",upgrade="never", version = "0.2.2")'
 RUN Rscript -e 'BiocManager::install(c("GenomeInfoDb","BiocGenerics","zlibbioc","S4Vectors","IRanges","XVector","Biostrings","treeio"),ask=F)'
-RUN git clone https://github.com/FungAGE/Starships.git
 RUN rm -rf /srv/shiny-server/*
 COPY . /srv/shiny-server/
 USER shiny

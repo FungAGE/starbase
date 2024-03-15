@@ -25,7 +25,7 @@ mod_blast_ui <- function(id) {
         box(
           title = "Input for BLAST/HMMER Searches",
           id = "blastbox",
-          solidHeader = FALSE,
+          solidHeader = TRUE,
           collapsible = TRUE,
           width = NULL,
           tagList(
@@ -61,7 +61,7 @@ mod_blast_ui <- function(id) {
         )
       )
       # box(title="Classification",
-      #   solidHeader = FALSE,
+      #   solidHeader = TRUE,
       #   collapsible = TRUE,
       #   width = NULL,
       #   uiOutput(ns("classification_ui")))
@@ -197,7 +197,7 @@ mod_blast_server <- function(id) {
     output$ship_ui <- renderUI({
       req(ship_tabs())
       box(title = "Starship BLAST Results",
-          solidHeader = FALSE,
+          solidHeader = TRUE,
           collapsible = TRUE,
           width = NULL,
           ship_tabs()
@@ -207,7 +207,7 @@ mod_blast_server <- function(id) {
     output$hmm_ui <- renderUI({
       req(hmm_tabs())
       box(title = "Captain Superfamily",
-          solidHeader = FALSE,
+          solidHeader = TRUE,
           collapsible = TRUE,
           width = NULL,
           hmm_tabs()
@@ -217,7 +217,7 @@ mod_blast_server <- function(id) {
     output$gene_ui <- renderUI({
       req(gene_tabs())      
       box(title="Starship Gene BLAST Results",
-        solidHeader = FALSE,
+        solidHeader = TRUE,
         collapsible = TRUE,
         width = NULL,
         gene_tabs()
