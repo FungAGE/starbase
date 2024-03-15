@@ -9,7 +9,7 @@ library(htmlwidgets)
 library(crosstalk)
 library(DT)
 
-nexus_tree<-"project-vol/Starships/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
+nexus_tree<-"Starships/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile"
 
 # Read the Newick tree using the read.tree function
 tree <- treeio::read.nexus(nexus_tree)
@@ -20,7 +20,7 @@ p<-ggtree(tree)
 
 # info on the groups we care about
 family_nodes<-c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606)
-families<-read_tsv("project-vol/Starships/metadata/family/family-names.tsv",show_col_types = FALSE) %>%
+families<-read_tsv("Starships/metadata/family/family-names.tsv",show_col_types = FALSE) %>%
   rename("groups"="longFamilyID")
 
 group_df<-data.frame(parent=c(1834,1811,2032,2087,2153,1235,1384,1497,1643,1748,1778,1531,1606,2424,2425,2426,2442,2444,1477,1479,1487,1640,1227,1803),

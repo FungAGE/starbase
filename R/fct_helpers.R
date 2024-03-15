@@ -110,27 +110,27 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
 
   db_list <- list(
     ship = list(
-      nucl = "project-vol/Starships/ships/fna/blastdb/concatenated.fa"
+      nucl = "Starships/ships/fna/blastdb/concatenated.fa"
     ),
     gene = list(
       tyr = list(
-        prot = "project-vol/Starships/captain/tyr/faa/blastdb/concatenated.faa"
+        prot = "Starships/captain/tyr/faa/blastdb/concatenated.faa"
       ),
       fre = list(
-        prot = "project-vol/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-        nucl = "project-vol/Starships/cargo/fre/fna/blastdb/fre.fa"
+        prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+        nucl = "Starships/cargo/fre/fna/blastdb/fre.fa"
       ),
       nlr = list(
-        prot = "project-vol/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-        nucl = "project-vol/Starships/cargo/nlr/fna/blastdb/nlr.fa"
+        prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+        nucl = "Starships/cargo/nlr/fna/blastdb/nlr.fa"
       ),
       DUF3723 = list(
-        prot = "project-vol/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-        nucl = "project-vol/Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
+        prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+        nucl = "Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
       ),
       plp = list(
-        prot = "project-vol/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-        nucl = "project-vol/Starships/cargo/plp/fna/blastdb/plp.fa"
+        prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+        nucl = "Starships/cargo/plp/fna/blastdb/plp.fa"
       )
     )
   )
@@ -171,7 +171,7 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
 
 run_hmmer <- function(seq_type=NULL,tmp_hmmer=NULL,input.eval=NULL,tmp_fasta=NULL,threads=4) {
   hmmer_program <- "hmmsearch"
-  hmmer_db <- "project-vol/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
+  hmmer_db <- "Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
   hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu ",threads, " --domE", input.eval, hmmer_db, tmp_fasta, sep = " ")
   system(hmmer_cmd, intern = FALSE)
   tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed.txt")
