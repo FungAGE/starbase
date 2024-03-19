@@ -2,7 +2,7 @@
 #'
 #' @param request Internal parameter for `{shiny}`.
 #'     DO NOT REMOVE.
-#' @import shiny shinydashboard shinydashboardPlus bslib
+#' @import shiny shinydashboard shinydashboardPlus bslib htmltools
 #' @noRd
 
 app_ui <- function(request) {

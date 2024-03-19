@@ -24,7 +24,7 @@ mod_home_ui <- function(id) {
 
   fluidPage(
     fluidRow(
-      tagList(
+      # tagList(
         tags$table(style = "width: 85%",
           tags$tr(tags$td(style = "width: 100%",
                           align = "middle",
@@ -58,7 +58,7 @@ mod_home_ui <- function(id) {
                                                   socialButton(href="mailto:adrian.e.forsythe@gmail.com", icon = icon("envelope")))),
                                   tags$tr(tags$td(style = "width: 100%",
                                                   align = "middle",
-                                                  p("starbase was developed by the ", a("FungAGE lab", href="https://fungage.github.io/")))),
+                                                  p("starbase was developed by the ", enurl("https://fungage.github.io/","FungAGE lab")))),
                                   tags$tr(tags$td(style = "width: 75%",
                                                   align = "middle",
                                                   p("The code for starbase will soon be available on GitHub")),
@@ -67,7 +67,9 @@ mod_home_ui <- function(id) {
                                                   socialButton(href="https://github.com/FungAGE/starbase",icon=icon("github"))))))))),
           tags$tr(tags$td(style = "width: 85%",
                           align = "middle",
-                          img(src = "img/starbase-map.png", width = "100%")))))),
+                          img(src = "img/starbase-map.png", width = "100%"))))
+                          # )
+                          ),
     br(),
     fluidRow(
       column(width=8,

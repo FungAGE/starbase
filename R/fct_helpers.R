@@ -110,27 +110,27 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
 
   db_list <- list(
     ship = list(
-      nucl = "Starships/ships/fna/blastdb/concatenated.fa"
+      nucl = "/home/data/Starships/ships/fna/blastdb/concatenated.fa"
     ),
     gene = list(
       tyr = list(
-        prot = "Starships/captain/tyr/faa/blastdb/concatenated.faa"
+        prot = "/home/data/Starships/captain/tyr/faa/blastdb/concatenated.faa"
       ),
       fre = list(
-        prot = "Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-        nucl = "Starships/cargo/fre/fna/blastdb/fre.fa"
+        prot = "/home/data/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+        nucl = "/home/data/Starships/cargo/fre/fna/blastdb/fre.fa"
       ),
       nlr = list(
-        prot = "Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-        nucl = "Starships/cargo/nlr/fna/blastdb/nlr.fa"
+        prot = "/home/data/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+        nucl = "/home/data/Starships/cargo/nlr/fna/blastdb/nlr.fa"
       ),
       DUF3723 = list(
-        prot = "Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-        nucl = "Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
+        prot = "/home/data/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+        nucl = "/home/data/Starships/cargo/duf3723/fna/blastdb/duf3723.fa"
       ),
       plp = list(
-        prot = "Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-        nucl = "Starships/cargo/plp/fna/blastdb/plp.fa"
+        prot = "/home/data/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+        nucl = "/home/data/Starships/cargo/plp/fna/blastdb/plp.fa"
       )
     )
   )
@@ -171,7 +171,7 @@ run_blast<-function(seq_type=NULL,blast_type=NULL,tmp_fasta=NULL,input.eval=NULL
 
 run_hmmer <- function(seq_type=NULL,tmp_hmmer=NULL,input.eval=NULL,tmp_fasta=NULL,threads=4) {
   hmmer_program <- "hmmsearch"
-  hmmer_db <- "Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
+  hmmer_db <- "/home/data/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
   hmmer_cmd <- paste(hmmer_program, "-o", tmp_hmmer, "--cpu ",threads, " --domE", input.eval, hmmer_db, tmp_fasta, sep = " ")
   system(hmmer_cmd, intern = FALSE)
   tmp_hmmer_parsed <- tempfile(fileext = ".hmmer.parsed.txt")
@@ -260,15 +260,15 @@ make_chord<-function(data){
               groupnamePadding = 50)
 }}
 
-render_output <- function(results,input,name,output,query_type, plot_chord) {
+render_output <- function(results_list,input,name,output,query_type, plot_chord) {
   if (name != "hmm") {
-    output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(results) })
-    output[[paste0("alignment_",name)]] <- renderMsaR({ make_alignment(input,results, name,query_type) })
+    output[[paste0("table_",name)]] <- DT::renderDT({ make_blast_table(results_list) })
+    output[[paste0("alignment_",name)]] <- renderMsaR({ make_alignment(input,results_list, name,query_type) })
     if (plot_chord) {
-      output[[paste0("chord_",name)]] <- chorddiag::renderChorddiag({ make_chord(results) })
+      output[[paste0("chord_",name)]] <- chorddiag::renderChorddiag({ make_chord(results_list) })
     }
   } else {
-    superfam<-results %>% slice_min(evalue) %>% pull(hit_IDs)
+    superfam<-results_list %>% slice_min(evalue) %>% pull(hit_IDs)
     output[["superfam_id"]]<-renderValueBox({
       valueBox(
       subtitle = "Likely captain superfamily",

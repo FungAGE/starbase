@@ -7,7 +7,7 @@ pkgload::load_all(export_all = FALSE,helpers = FALSE,attach_testthat = FALSE)
 # Set options here
 # TRUE = production mode, FALSE = development mode
 options(golem.app.prod = FALSE) 
-# options(shiny.testmode = TRUE)
+options(shiny.testmode = TRUE)
 options(shiny.autoreload = TRUE)
 
 # Comment this if you don't want the app to be served on a random port
