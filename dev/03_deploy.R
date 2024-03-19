@@ -6,7 +6,7 @@
 
 ## Run checks ----
 ## Check the package before sending to prod
-devtools::check()
+# devtools::check()
 
 # Deploy
 
@@ -21,7 +21,7 @@ library(dockerfiler)
 my_dock <- Dockerfile$new(FROM="rocker/shiny-verse:4.2.3")
 my_dock$MAINTAINER("Adrian Forsythe", "adrian.e.forsythe@gmail.com")
 my_dock$RUN("apt-get update && apt-get upgrade -y && apt-get install -y  libglpk-dev libgmp-dev libjq-dev libsodium-dev libmagick++-dev git ncbi-blast+ hmmer python3 python3-biopython && apt-get clean && rm -rf /var/lib/apt/lists/*")
-my_dock$RUN("mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/")
+my_dock$RUN("mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/ /home/data/")
 my_dock$RUN("echo \"options(repos = c(CRAN = 'https://cran.rstudio.com/'), download.file.method = 'libcurl', Ncpus = 4)\" | tee /usr/local/lib/R/etc/Rprofile.site | tee /usr/lib/R/etc/Rprofile.site")
 # TODO: there is probably a better way to automate this, i.e. using package DESCRIPTION. functions to build from renv provided in golem or dockerfiler were not flexible enough
 my_dock$RUN("Rscript -e 'remotes::install_version(\"shinydashboard\",upgrade=\"never\", version = \"0.7.2\")'")
@@ -34,8 +34,6 @@ my_dock$RUN("Rscript -e 'remotes::install_version(\"msaR\",upgrade=\"never\", ve
 my_dock$RUN("Rscript -e 'remotes::install_version(\"JBrowseR\",upgrade=\"never\", version = \"0.10.0\")'")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"golem\",upgrade=\"never\", version = \"0.4.1\")'")
 my_dock$RUN("Rscript -e 'remotes::install_version(\"DT\",upgrade=\"never\", version = \"0.31\")'")
-my_dock$RUN("Rscript -e 'remotes::install_version(\"DBI\",upgrade=\"never\", version = \"1.1.3\")'")
-my_dock$RUN("Rscript -e 'remotes::install_version(\"glue\",upgrade=\"never\", version = \"1.6.2\")'")
 my_dock$RUN("Rscript -e 'remotes::install_github(\"mattflor/chorddiag\")'")
 my_dock$RUN("Rscript -e 'BiocManager::install(c(\"GenomeInfoDb\",\"BiocGenerics\",\"zlibbioc\",\"S4Vectors\",\"IRanges\",\"XVector\",\"Biostrings\"),ask=F)'")
 

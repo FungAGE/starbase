@@ -25,7 +25,6 @@ usethis::use_package("ggiraph")
 usethis::use_package("htmltools")
 usethis::use_package("htmlwidgets")
 usethis::use_package("crosstalk")
-usethis::use_package("XML")
 usethis::use_package("DT")
 usethis::use_package("RColorBrewer")
 usethis::use_package("msaR")
@@ -39,18 +38,26 @@ usethis::use_package("shinyalert")
 usethis::use_package("colourpicker")
 usethis::use_package("waiter")
 usethis::use_package("vroom")
+usethis::use_package("seqinr")
+usethis::use_package("markdown")
 # usethis::use_package("sodium")
 # usethis::use_package("shinyauthr")
 usethis::use_package("dockerfiler")
-
-# issue with these bioconductor packages:
-renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings","bioc::treeio"))
+# usethis::use_package("webr")
 
 # add packages with github install
 remotes::install_github('jbryer/DTedit')
+usethis::use_package("DTedit")
 remotes::install_github('mattflor/chorddiag')
+usethis::use_package("chorddiag")
 remotes::install_github("YuLab-SMU/ggtree")
+usethis::use_package("ggtree")
 remotes::install_github('yonicd/covrpage')
+usethis::use_package("covrpage")
+
+
+# issue with these bioconductor packages:
+renv::install(c("bioc::GenomeInfoDb","bioc::BiocGenerics","bioc::zlibbioc","bioc::S4Vectors","bioc::IRanges","bioc::XVector","bioc::Biostrings","bioc::treeio"))
 
 # track these packages
 usethis::use_package("Biostrings")

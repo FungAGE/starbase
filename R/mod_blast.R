@@ -22,13 +22,13 @@ mod_blast_ui <- function(id) {
   fluidPage(
     fluidRow(
       column(width=8,
-        box(
+        box(status="primary",
           title = "Input for BLAST/HMMER Searches",
           id = "blastbox",
           solidHeader = TRUE,
           collapsible = TRUE,
           width = NULL,
-          tagList(
+          # tagList(
             textAreaInput(ns("query_text"), "Paste a sequence here in FASTA format:", value = NULL, width = "1000px", height = "200px", placeholder = "Paste any nucleotide or protein sequence here"),
             fileInput(ns("query_file"), "Upload a fasta file (10 MB maximum size)",width="400px",accept = c(".fa",".fna",".fasta",".faa")),
 
@@ -51,7 +51,7 @@ mod_blast_ui <- function(id) {
             ),
             rep_br(1),
             actionButton(ns("blast"), "Start BLAST/HMMER Search")
-          )
+          # )
         ))),
       fluidRow(
         column(width = 8,
@@ -60,7 +60,7 @@ mod_blast_ui <- function(id) {
           uiOutput(ns("gene_ui"))
         )
       )
-      # box(title="Classification",
+      # box(status="primary",title="Classification",
       #   solidHeader = TRUE,
       #   collapsible = TRUE,
       #   width = NULL,
@@ -113,14 +113,14 @@ mod_blast_server <- function(id) {
         hmmsearch_results<-run_hmmer(submitted()$query_type,tmp_hmmer,input$eval,tmp_fasta,threads)
       })
 
-      results<-list(ship=ship_blast_results,hmm=hmmsearch_results)
+      results_list<-list(ship=ship_blast_results,hmm=hmmsearch_results)
 
-      if (length(results[["ship"]]) < 1) {
-        stop("No BLAST results")
+      if (length(results_list[["ship"]]) < 1) {
+        stop("No BLAST results_list")
       }
 
-      if (length(results[["hmm"]]) < 1) {
-        stop("No HMMER results")
+      if (length(results_list[["hmm"]]) < 1) {
+        stop("No HMMER results_list")
       }
 
       # gene blast
@@ -136,15 +136,15 @@ mod_blast_server <- function(id) {
           stop("No gene BLAST results")
         }
         names(gene_blast_results) <- gene_list
-        results<-c(results,gene=gene_blast_results)
+        results_list<-c(results_list,gene=gene_blast_results)
       }
-      return(results)
+      return(results_list)
     })
 
 
     ship_tabs<-reactive({
       req(blastresults()[["ship"]])
-      render_output(results=blastresults()[["ship"]],
+      render_output(results_list=blastresults()[["ship"]],
         input=input,
         name="ship",
         output=output,
@@ -162,7 +162,7 @@ mod_blast_server <- function(id) {
     hmm_tabs<-reactive({
       req(blastresults()[["ship"]])
       req(blastresults()[["hmm"]])
-      render_output(results=blastresults()[["hmm"]],
+      render_output(results_list=blastresults()[["hmm"]],
         input=input,
         name="hmm",
         output=output,
@@ -179,7 +179,7 @@ mod_blast_server <- function(id) {
     gene_tabs<-reactive({
       req(blastresults()[["ship"]])
       req(blastresults()[["gene"]])
-      render_output(results=blastresults()[["gene"]][[input$gene_type]],
+      render_output(results_list=blastresults()[["gene"]][[input$gene_type]],
         input=input,
         name=input$gene_type,
         output=output,
@@ -196,7 +196,7 @@ mod_blast_server <- function(id) {
 
     output$ship_ui <- renderUI({
       req(ship_tabs())
-      box(title = "Starship BLAST Results",
+      box(status="primary",title = "Starship BLAST Results",
           solidHeader = TRUE,
           collapsible = TRUE,
           width = NULL,
@@ -206,7 +206,7 @@ mod_blast_server <- function(id) {
 
     output$hmm_ui <- renderUI({
       req(hmm_tabs())
-      box(title = "Captain Superfamily",
+      box(status="primary",title = "Captain Superfamily",
           solidHeader = TRUE,
           collapsible = TRUE,
           width = NULL,
@@ -216,7 +216,7 @@ mod_blast_server <- function(id) {
 
     output$gene_ui <- renderUI({
       req(gene_tabs())      
-      box(title="Starship Gene BLAST Results",
+      box(status="primary",title="Starship Gene BLAST Results",
         solidHeader = TRUE,
         collapsible = TRUE,
         width = NULL,

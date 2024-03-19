@@ -17,7 +17,7 @@
 #
 # edit_attributes()
 #
-# bib<-read_tsv("Starships/MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','genomeSource','published','assembly_acc','acquisition_date'),na=c("","NA","Unknown","unknown")) %>%
+# bib<-read_tsv("/home/data/Starships/MTDB/20211215.pub.dedup.db",c('ome', 'genus', 'species', 'strain', 'version', 'biosample','fna', 'faa', 'gff3','taxonomy','missing1', 'missing2','genomeSource','published','assembly_acc','acquisition_date'),na=c("","NA","Unknown","unknown")) %>%
 #   distinct(ome,published) %>%
 #   rename("title"="ome","citation"="published")
 #
@@ -44,6 +44,7 @@ mod_wiki_ui <- function(id) {
           width=NULL,
           collapsible=TRUE,
           solidHeader = TRUE,
+          status="primary",
           tags$table(style = "width: 85%",
             tags$tr(tags$td(style = "width: 100%",
                             align = "left",
@@ -57,6 +58,7 @@ mod_wiki_ui <- function(id) {
           width=NULL,
           collapsible=TRUE,
           solidHeader = TRUE,
+          status="success",
           shinydashboard::valueBoxOutput(ns("total_species")),
           shinydashboard::valueBoxOutput(ns("total_ships"))
         )
@@ -66,6 +68,7 @@ mod_wiki_ui <- function(id) {
       column(width=8,
         box(
           title = "Table for metadata of all Starships in starbase",
+          status="primary",
           closable = FALSE,
           width = NULL,
           solidHeader = TRUE,
