@@ -11,6 +11,7 @@ RUN mkdir /home/project-vol/
 WORKDIR /home/starbase/
 COPY ./ ./
 
-ENV GUNICORN_CMD_ARGS "--bind=0.0.0.0:8000 --workers=2 --thread=4 --worker-class=gthread --forwarded-allow-ips='*' --access-logfile -"
+USER $USER
+EXPOSE 8000
 
-CMD [ "gunicorn", "src.app:server"]
+ENTRYPOINT ["./src/start-script.sh"]
