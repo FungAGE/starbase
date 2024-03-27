@@ -6,6 +6,9 @@ COPY ./requirements.txt /requirements.txt
 
 RUN pip3 install -r /requirements.txt
 
+# for debugging
+RUN echo $HOME
+
 RUN mkdir starbase/
 WORKDIR starbase/
 RUN mkdir project-vol/
