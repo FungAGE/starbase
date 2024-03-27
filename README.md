@@ -1,54 +1,12 @@
-# `starbase`: Database and Toolkit for Exploration of _Starship_ Elements in Fungi
+# Starbase
 
-<img src=inst/app/img/favicon.png width=200>
+### Setup
 
-<!-- badges: start -->
+1. Run `docker build -t starbase` then `docker run -p 7000:80 starbase` or `docker-compose up --build`
+2. Launch app in `localhost:7000`
 
-![Starbase status](https://img.shields.io/website?url=https%3A%2F%2Fstarbase.serve.scilifelab.se%2Fapp%2Fstarbase)
-[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![Codecov test coverage](https://codecov.io/gh/FungAGE/starbase/branch/main/graph/badge.svg)](https://app.codecov.io/gh/FungAGE/starbase?branch=main)
+### Resources:
 
-<!-- badges: end -->
-
-# References and Inspiration
-
-## Structure
-
-- golem
-- rhino
-
-## _Starship_ annotation
-
-- [starfish](https://github.com/egluckthaler/starfish)
-
-## Database frame work
-
-- [MAS](), fork for _starbase_ [here]()
-
-## BLAST-server
-
-- [GitHub - ScientistJake/Shiny_BLAST](https://github.com/ScientistJake/Shiny_BLAST)
-- [GitHub - systemPipeR/SPblast: Workflow Template](https://github.com/systemPipeR/SPblast)
-
-### Alignments
-
-- [Multiple Sequence Alignment for R Shiny • msaR](https://zachcp.github.io/msaR/)
-
-#### Dotplots
-
-- [dotPlotly](https://github.com/tpoorten/dotPlotly)
-
-### Genome Browser
-
-- [JBrowseR](https://gmod.github.io/JBrowseR/)
-  - <https://github.com/mmollina/viewpoly>
-
-### Interactive Viz/Tables
-
-- DataTable
-- ggiraph
-- plotly
-
-#### Taxonomy and Phylogenies
-
-- ggtree
+- Sidebar: https://dash-bootstrap-components.opensource.faculty.ai/examples/simple-sidebar/
+- Icon: https://icons.getbootstrap.com/icons/puzzle/
+- App Structure: https://community.plotly.com/t/structuring-a-large-dash-application-best-practices-to-follow/62739
