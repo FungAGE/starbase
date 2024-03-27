@@ -32,7 +32,7 @@ def create_genome_file_dict(directory):
 
 
 # Replace 'directory_path' with the path to the directory containing genome subdirectories
-directory_path = "project-vol/Starships"
+directory_path = "/home/project-vol/Starships"
 genome_file_dict = create_genome_file_dict(directory_path)
 print(genome_file_dict)
 
