@@ -1,9 +1,16 @@
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State
-from dash import dcc, html, callback
-from flask import session
+from dash import html
 
-from src.pages import HOME_URL, WIKI_URL, EXPLORE_URL, BLAST_URL, ABOUT_URL, IGV_URL, SUBMIT_URL
+from src.pages import (
+    HOME_URL,
+    WIKI_URL,
+    EXPLORE_URL,
+    # BLAST_URL,
+    ABOUT_URL,
+    # IGV_URL,
+    SUBMIT_URL,
+)
+
 SIDEBAR_STYLE = {
     "position": "fixed",
     "top": 0,
@@ -14,26 +21,44 @@ SIDEBAR_STYLE = {
     "background-color": "#f8f9fa",
 }
 
+
 def sidebar():
-    return html.Div([
-        html.Img(src="assets/logos/favicon.svg", style={'height': '12rem', 'width': '12rem'}),
-        html.Hr(),
-        dbc.Nav(
-            [
-                dbc.NavLink("Home", href=HOME_URL, active="exact"),
-                dbc.NavLink("Wiki", href=WIKI_URL, active="exact"),
-                dbc.NavLink("Explore starbase", href=EXPLORE_URL, active="exact"),
-                dbc.NavLink("BLAST", href=BLAST_URL, active="exact"),
-                dbc.NavLink("Genome Browser", href=IGV_URL, active="exact"),
-                dbc.NavLink("Submit to starbase", href=SUBMIT_URL, active="exact"),
-                dbc.NavLink("About", href=ABOUT_URL, active="exact")
-            ],
-            vertical=True,
-            pills=True,
-        ),
-    ],
-    style=SIDEBAR_STYLE,
-)
+    return html.Div(
+        [
+            html.Img(
+                src="assets/logos/favicon.svg",
+                style={"height": "12rem", "width": "12rem"},
+            ),
+            html.Hr(),
+            dbc.Nav(
+                [
+                    dbc.NavLink("Home", href=HOME_URL, active="exact"),
+                    dbc.NavLink("Wiki", href=WIKI_URL, active="exact"),
+                    dbc.NavLink(
+                        html.P(
+                            ["Explore ", html.Span("starbase", className="logo-text")]
+                        ),
+                        href=EXPLORE_URL,
+                        active="exact",
+                    ),
+                    # dbc.NavLink("BLAST", href=BLAST_URL, active="exact"),
+                    # dbc.NavLink("Genome Browser", href=IGV_URL, active="exact"),
+                    dbc.NavLink(
+                        html.P(
+                            ["Submit to ", html.Span("starbase", className="logo-text")]
+                        ),
+                        href=SUBMIT_URL,
+                        active="exact",
+                    ),
+                    dbc.NavLink("About", href=ABOUT_URL, active="exact"),
+                ],
+                vertical=True,
+                pills=True,
+            ),
+        ],
+        style=SIDEBAR_STYLE,
+    )
+
 
 # def test_blast_ui():
 #     html.Iframe(src='assets/blaster.html')
