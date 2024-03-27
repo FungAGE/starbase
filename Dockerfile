@@ -14,4 +14,4 @@ COPY ./ ./
 USER $USER
 EXPOSE 8000
 
-ENTRYPOINT ["./src/start-script.sh"]
+ENTRYPOINT ["/home/starbase/src/start-script.sh"]
