@@ -7,7 +7,7 @@ def run_hmmer(
     seq_type=None, tmp_hmmer=None, input_eval=None, tmp_fasta=None, threads=4
 ):
     hmmer_program = "hmmsearch"
-    hmmer_db = "project-vol/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
+    hmmer_db = "/home/project-vol/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
 
     # Run HMMER search
     hmmer_cmd = f"{hmmer_program} -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {tmp_fasta}"

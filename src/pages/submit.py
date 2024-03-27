@@ -8,7 +8,7 @@ from dash.exceptions import PreventUpdate
 dash.register_page(__name__)
 
 # Create SQLite database connection
-conn = sqlite3.connect("project-vol/starbase.sqlite")
+conn = sqlite3.connect("/home/project-vol/starbase.sqlite")
 c = conn.cursor()
 
 # Create table for storing form submissions
