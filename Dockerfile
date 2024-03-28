@@ -10,9 +10,9 @@ RUN mkdir /home/project-vol/
 WORKDIR /home/starbase/
 COPY ./ ./
 
-COPY ./start-script.sh ./
-RUN chmod +x start-script.sh
+COPY ./start-script.sh ./src/
+RUN chmod +x ./src/start-script.sh
 
 EXPOSE 8000
 
-ENTRYPOINT ["./start-script.sh"]
+ENTRYPOINT ["./src/start-script.sh"]
