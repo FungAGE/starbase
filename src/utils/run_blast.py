@@ -17,28 +17,26 @@ def run_blast(
 ):
     # Define paths to databases
     db_list = {
-        "ship": {
-            "nucl": "/home/project-vol/Starships/ships/fna/blastdb/concatenated.fa"
-        },
+        "ship": {"nucl": "project-vol/Starships/ships/fna/blastdb/concatenated.fa"},
         "gene": {
             "tyr": {
-                "prot": "/home/project-vol/Starships/captain/tyr/faa/blastdb/concatenated.faa"
+                "prot": "project-vol/Starships/captain/tyr/faa/blastdb/concatenated.faa"
             },
             "fre": {
-                "prot": "/home/project-vol/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-                "nucl": "/home/project-vol/Starships/cargo/fre/fna/blastdb/fre.fa",
+                "prot": "project-vol/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+                "nucl": "project-vol/Starships/cargo/fre/fna/blastdb/fre.fa",
             },
             "nlr": {
-                "prot": "/home/project-vol/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-                "nucl": "/home/project-vol/Starships/cargo/nlr/fna/blastdb/nlr.fa",
+                "prot": "project-vol/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+                "nucl": "project-vol/Starships/cargo/nlr/fna/blastdb/nlr.fa",
             },
             "DUF3723": {
-                "prot": "/home/project-vol/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-                "nucl": "/home/project-vol/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
+                "prot": "project-vol/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+                "nucl": "project-vol/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
             },
             "plp": {
-                "prot": "/home/project-vol/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-                "nucl": "/home/project-vol/Starships/cargo/plp/fna/blastdb/plp.fa",
+                "prot": "project-vol/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+                "nucl": "project-vol/Starships/cargo/plp/fna/blastdb/plp.fa",
             },
         },
     }
