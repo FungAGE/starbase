@@ -24,7 +24,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt
 
 USER $USER
 
-RUN pip install --no-cache-dir -r $HOME/requirements.txt \
+RUN pip install --no-cache-dir -r $HOME/requirements.txt
 
 EXPOSE 8000
 
