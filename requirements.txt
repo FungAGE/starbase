@@ -6,6 +6,7 @@ dash-core-components>=2.0.0
 dash-html-components>=2.0.0
 dash-jbrowse>=1.4.2
 dash-table>=5.0.0
+dash-bio==1.0.2
 CrossMap
 ftpretty
 graphviz
