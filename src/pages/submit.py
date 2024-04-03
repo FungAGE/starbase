@@ -1,34 +1,33 @@
+import base64
+
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html, callback
 from dash.dependencies import Output, Input
+from dash import dcc, html, callback
 import sqlite3
-from dash.exceptions import PreventUpdate
+
+from Bio import SeqIO
+
+import time
+import datetime
+import io
+
+import pandas as pd
 
 dash.register_page(__name__)
-
-# Create SQLite database connection
-conn = sqlite3.connect("project-vol/starbase.sqlite")
-c = conn.cursor()
-
-# Create table for storing form submissions
-# c.execute('''CREATE TABLE submissions (
-# 	fna	TEXT NOT NULL,
-# 	gff3	TEXT,
-# 	genus	TEXT NOT NULL,
-# 	species	INTEGER NOT NULL,
-# 	evidence	TEXT,
-# 	uploader	TEXT NOT NULL,
-# 	comment	TEXT,
-# 	id	INTEGER NOT NULL,
-# 	PRIMARY KEY(id AUTOINCREMENT)
-# )''')
-# conn.commit()
 
 # Define form layout
 form = html.Div(
     [
-        html.H1("Submit Starships to starbase"),
+        html.H1(
+            [
+                "Submit Starships to ",
+                html.Span(
+                    "starbase",
+                    className="logo-text",
+                ),
+            ]
+        ),
         dbc.Container(
             [
                 dbc.Row(
@@ -38,7 +37,15 @@ form = html.Div(
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
-                                            "Submission of multiple Starships to starbase"
+                                            html.H5(
+                                                [
+                                                    "Submission of multiple Starships to ",
+                                                    html.Span(
+                                                        "starbase",
+                                                        className="logo-text",
+                                                    ),
+                                                ]
+                                            )
                                         ),
                                         dbc.CardBody(
                                             [
@@ -48,7 +55,7 @@ form = html.Div(
                                                             [
                                                                 "Unfortunately, we can only handle submission for one Starship at a time. If you have a batch of Starships that you'd like to submit, please send the submission via ",
                                                                 html.A(
-                                                                    "email",
+                                                                    "email.",
                                                                     href="mailto:adrian.e.forsythe@gmail.com",
                                                                 ),
                                                             ]
@@ -72,119 +79,213 @@ form = html.Div(
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
-                                            "Submit individual Starships to starbase"
+                                            html.H5(
+                                                [
+                                                    "Submit individual Starships to ",
+                                                    html.Span(
+                                                        "starbase",
+                                                        className="logo-text",
+                                                    ),
+                                                ]
+                                            )
                                         ),
                                         dbc.CardBody(
                                             [
-                                                html.H4("File Upload:"),
-                                                dcc.Upload(
-                                                    id="uploadsequence",
-                                                    children="Upload ship sequence",
-                                                    accept=".fa, .fna, .fasta",
-                                                    multiple=False,
-                                                    style={
-                                                        "width": "75%",
-                                                        "height": "60px",
-                                                        "lineHeight": "60px",
-                                                        "borderWidth": "1px",
-                                                        "borderStyle": "dashed",
-                                                        "borderRadius": "5px",
-                                                        "textAlign": "center",
-                                                        "margin": "10px",
-                                                    },
+                                                html.Div(
+                                                    [
+                                                        html.H5(
+                                                            "Upload Starship sequence:"
+                                                        ),
+                                                        dcc.Upload(
+                                                            id="upload-sequence",
+                                                            children=html.Div(
+                                                                [
+                                                                    "Drag and Drop or ",
+                                                                    html.A(
+                                                                        "Select a File"
+                                                                    ),
+                                                                ]
+                                                            ),
+                                                            style={
+                                                                "width": "50%",
+                                                                "height": "60px",
+                                                                "lineHeight": "60px",
+                                                                "borderWidth": "3px",
+                                                                "borderStyle": "dashed",
+                                                                "borderRadius": "5px",
+                                                                "textAlign": "center",
+                                                                "margin": "10px",
+                                                                "color": "red",
+                                                            },
+                                                            multiple=False,
+                                                        ),
+                                                        dcc.Loading(
+                                                            id="loading-1",
+                                                            type="default",
+                                                            children=html.Div(
+                                                                id="loading-output-1"
+                                                            ),
+                                                        ),
+                                                        html.Div(
+                                                            id="output-sequence-upload"
+                                                        ),
+                                                        html.H5(
+                                                            "Upload gene annotations associated with Starship sequence (GFF[3] format)"
+                                                        ),
+                                                        dcc.Upload(
+                                                            id="upload-annotations",
+                                                            children=html.Div(
+                                                                [
+                                                                    "Drag and Drop or ",
+                                                                    html.A(
+                                                                        "Select a File"
+                                                                    ),
+                                                                ]
+                                                            ),
+                                                            accept=".gff, .gff3",
+                                                            multiple=False,
+                                                            style={
+                                                                "width": "50%",
+                                                                "height": "60px",
+                                                                "lineHeight": "60px",
+                                                                "borderWidth": "1px",
+                                                                "borderStyle": "dashed",
+                                                                "borderRadius": "5px",
+                                                                "textAlign": "center",
+                                                                "margin": "10px",
+                                                            },
+                                                        ),
+                                                        dcc.Loading(
+                                                            id="loading-2",
+                                                            type="default",
+                                                            children=html.Div(
+                                                                id="loading-output-2"
+                                                            ),
+                                                        ),
+                                                        html.Div(
+                                                            id="output-annotation-upload"
+                                                        ),
+                                                        html.Br(),
+                                                        html.H5("Starship metadata:"),
+                                                        html.P(
+                                                            [
+                                                                "Name of curator: ",
+                                                                dcc.Input(
+                                                                    id="uploader",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.P(
+                                                            [
+                                                                "How were Starships annotated? (i.e. starfish): ",
+                                                                dcc.Input(
+                                                                    id="evidence",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.P(
+                                                            [
+                                                                "Enter genus name: ",
+                                                                dcc.Input(
+                                                                    id="genus",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.P(
+                                                            [
+                                                                "Enter species name: ",
+                                                                dcc.Input(
+                                                                    id="species",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.Br(),
+                                                        html.Br(),
+                                                        html.H5(
+                                                            "Coordinates of Starship in host genome:"
+                                                        ),
+                                                        html.P(
+                                                            [
+                                                                "Host genome contig/scaffold/chromosome ID: ",
+                                                                dcc.Input(
+                                                                    id="hostchr",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.P(
+                                                            [
+                                                                "Start coordinate of Starship: ",
+                                                                dcc.Input(
+                                                                    id="shipstart",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.P(
+                                                            [
+                                                                "End coordinate for Starship: ",
+                                                                dcc.Input(
+                                                                    id="shipend",
+                                                                    type="text",
+                                                                    style={
+                                                                        "width": "15%"
+                                                                    },
+                                                                    required=True,
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        html.Br(),
+                                                        html.Br(),
+                                                        html.H5(
+                                                            "Additional information:"
+                                                        ),
+                                                        dcc.Textarea(
+                                                            id="comment",
+                                                            placeholder="Any comments about the Starship features, annotations, or host genome?",
+                                                            style={
+                                                                "height": "100px",
+                                                                "width": "50%",
+                                                            },
+                                                            required=False,
+                                                        ),
+                                                        html.Br(),
+                                                        html.Br(),
+                                                        html.Button(
+                                                            "Submit",
+                                                            id="submit-ship",
+                                                            n_clicks=0,
+                                                        ),
+                                                    ]
                                                 ),
-                                                dcc.Upload(
-                                                    id="uploadannotations",
-                                                    children="Upload gene annotations associated with Starship sequence (GFF[3] or BED format)",
-                                                    accept=".gff, .gff3, .bed",
-                                                    multiple=False,
-                                                    style={
-                                                        "width": "75%",
-                                                        "height": "60px",
-                                                        "lineHeight": "60px",
-                                                        "borderWidth": "1px",
-                                                        "borderStyle": "dashed",
-                                                        "borderRadius": "5px",
-                                                        "textAlign": "center",
-                                                        "margin": "10px",
-                                                    },
-                                                ),
-                                                html.Br(),
-                                                html.H4("Starship metadata:"),
-                                                dcc.Input(
-                                                    id="uploader",
-                                                    type="text",
-                                                    placeholder="Name of curator",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                dcc.Input(
-                                                    id="evidence",
-                                                    type="text",
-                                                    placeholder="How were Starships annotated? (i.e. starfish)",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                dcc.Input(
-                                                    id="genus",
-                                                    type="text",
-                                                    placeholder="Enter genus name",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                dcc.Input(
-                                                    id="species",
-                                                    type="text",
-                                                    placeholder="Enter species name",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                html.Br(),
-                                                html.Br(),
-                                                html.H4(
-                                                    "Coordinates of Starship in host genome:"
-                                                ),
-                                                dcc.Input(
-                                                    id="hostchr",
-                                                    type="text",
-                                                    placeholder="Host genome contig/scaffold/chromosome ID",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                dcc.Input(
-                                                    id="shipstart",
-                                                    type="text",
-                                                    placeholder="Start coordinate of Starship",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                dcc.Input(
-                                                    id="shipend",
-                                                    type="text",
-                                                    placeholder="End coordinate for Starship",
-                                                    style={"width": "75%"},
-                                                    required=True,
-                                                ),
-                                                html.Br(),
-                                                html.Br(),
-                                                html.H4("Additional information:"),
-                                                dcc.Textarea(
-                                                    id="comment",
-                                                    placeholder="Any comments about the Starship features, annotations, or host genome?",
-                                                    style={
-                                                        "height": "100px",
-                                                        "width": "75%",
-                                                    },
-                                                    required=False,
-                                                ),
-                                                html.Br(),
-                                                html.Br(),
-                                                html.Button(
-                                                    "Submit",
-                                                    id="submitship",
-                                                    n_clicks=0,
-                                                ),
-                                                html.Div(id="outputstate"),
                                             ]
                                         ),
                                     ]
@@ -203,25 +304,139 @@ form = html.Div(
 layout = html.Div([dbc.Container(form, className="mt-4")])
 
 
-# Callback to handle form submission
+@callback(Output("loading-output-1", "children"), Input("upload-sequence", "value"))
+def input_triggers_spinner(value):
+    time.sleep(1)
+    return value
+
+
+@callback(Output("loading-output-2", "children"), Input("loading-input-2", "value"))
+def input_triggers_nested(value):
+    time.sleep(1)
+    return value
+
+
+def parse_fasta(contents, filename):
+    try:
+        # Assume that the user uploaded a FASTA file
+        sequences = SeqIO.parse(io.StringIO(contents), "fasta")
+
+        records = []
+        nseq = 1
+        for sequence in sequences:
+            records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
+            nseq += 1
+
+        # df = pd.DataFrame(records)
+
+        return html.Div(
+            [
+                html.H6(f"File name: {filename}"),
+                html.H6(f"Number of sequences: {nseq}"),
+                # dash_table.DataTable(
+                #     df.to_dict("records"), [{"name": i, "id": i} for i in df.columns]
+                # ),
+            ]
+        )
+    except Exception as e:
+        print(e)
+        return html.Div(["There was an error processing this file."])
+
+
+def parse_gff(contents, filename):
+    content_type, content_string = contents.split(",")
+    decoded = base64.b64decode(content_string)
+    try:
+        if "csv" in filename:
+            # Assume that the user uploaded a CSV file
+            gff = pd.read_csv(io.StringIO(decoded.decode("utf-8")))
+            # cols = [
+            #     "seqid",
+            #     "source",
+            #     "type",
+            #     "start",
+            #     "end",
+            #     "score",
+            #     "strand",
+            #     "phase",
+            #     "attributes",
+            # ]
+
+            # annotations = pd.DataFrame(gff)
+            nanno = len(gff)
+
+            return html.Div(
+                [
+                    html.H6(f"File name: {filename}"),
+                    html.H6(f"Number of annotations: {nanno}"),
+                    # dash_table.DataTable(
+                    #     df.to_dict("records"), [{"name": i, "id": i} for i in df.columns]
+                    # ),
+                ]
+            )
+
+    except Exception as e:
+        print(e)
+        return html.Div(["There was an error processing this file."])
+
+
 @callback(
-    Output("outputstate", "children"),
-    [Input("submitship", "n_clicks")],
-    [Input("uploadsequence", "uploadsequence")],
-    [Input("uploadannotations", "uploadannotations")],
-    [Input("uploader", "uploader")],
-    [Input("evidence", "evidence")],
-    [Input("genus", "genus")],
-    [Input("species", "species")],
-    [Input("hostchr", "hostchr")],
-    [Input("shipstart", "shipstart")],
-    [Input("shipend", "shipend")],
-    [Input("comment", "comment")],
+    Output("output-sequence-upload", "children"),
+    [
+        Input("upload-sequence", "contents"),
+        Input("upload-sequence", "filename"),
+    ],
 )
-def update_output(
-    n_clicks,
-    uploadsequence,
-    uploadannotations,
+def update_seq_output(seq_content, seq_filename):
+    if seq_content is not None and seq_filename is not None:
+        children = [parse_fasta(seq_content, seq_filename)]
+        return children
+    else:
+        return False
+
+
+@callback(
+    Output("output-annotation-upload", "children"),
+    [
+        Input("upload-annotations", "contents"),
+        Input("upload-annotations", "filename"),
+    ],
+)
+def update_anno_output(anno_content, anno_filename):
+    if anno_content is not None and anno_filename is not None:
+        children = [parse_gff(anno_content, anno_filename)]
+        return children
+    else:
+        return False
+
+
+@callback(
+    Output("output-data-upload", "children"),
+    [
+        Input("upload-sequence", "contents"),
+        Input("upload-sequence", "filename"),
+        Input("upload-sequence", "last_modified"),
+        Input("upload-annotations", "contents"),
+        Input("upload-annotations", "filename"),
+        Input("upload-annotations", "last_modified"),
+        Input("uploader", "value"),
+        Input("evidence", "value"),
+        Input("genus", "value"),
+        Input("species", "value"),
+        Input("hostchr", "value"),
+        Input("shipstart", "value"),
+        Input("shipend", "value"),
+        Input("comment", "value"),
+        Input("submit-ship", "n_clicks"),
+    ],
+)
+def submit_ship(
+    seq_content,
+    seq_filename,
+    seq_date,
+    anno_content,
+    anno_filename,
+    anno_date,
     uploader,
     evidence,
     genus,
@@ -230,34 +445,98 @@ def update_output(
     shipstart,
     shipend,
     comment,
+    n_clicks,
 ):
-    if n_clicks == 0:
-        raise PreventUpdate
+    if n_clicks > 0 and seq_content is not None:
+        try:
+            # Create SQLite database connection
+            conn = sqlite3.connect("project-vol/starbase.sqlite")
+            c = conn.cursor()
 
-    if uploadsequence is None or len(uploadsequence) == 0:
-        return "No fasta file uploaded"
+            # Check if the table already exists
+            c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='submissions_new'"
+            )
+            existing_table = c.fetchone()
 
-    if uploadannotations is None or len(uploadannotations) == 0:
-        return "No gff file uploaded"
+        except sqlite3.Error as error:
+            print("Error connecting to database.", error)
 
-    # Save file and form data to SQLite database
-    for filename in uploadsequence:
-        file_path = f"uploads/{filename}"  # Assuming uploads folder exists
-        c.execute(
-            "INSERT INTO submissions (upload-sequence, upload-annotations, uploader, evidence, genus, species, host-chr, ship-start, ship-end, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                uploadsequence,
-                uploadannotations,
-                uploader,
-                evidence,
-                genus,
-                species,
-                hostchr,
-                shipstart,
-                shipend,
-                comment,
-            ),
-        )
-        conn.commit()
+        if not existing_table:
+            # Create table for storing form submissions
+            c.execute(
+                """CREATE TABLE submissions_new (
+                seq_contents TEXT NOT NULL,
+                seq_filename TEXT NOT NULL,
+                seq_date TEXT NOT NULL,
+                anno_contents TEXT,
+                anno_filename TEXT,
+                anno_date TEXT,
+                uploader TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                genus TEXT NOT NULL,
+                species TEXT NOT NULL,
+                hostchr TEXT NOT NULL,
+                shipstart INTEGER NOT NULL,
+                shipend INTEGER NOT NULL,
+                comment TEXT,
+                id	INTEGER NOT NULL,
+                PRIMARY KEY(id AUTOINCREMENT)
+            )"""
+            )
+            conn.commit()
 
-    return "Successfully submitted to starbase"
+        try:
+            if seq_content is None or len(seq_content) == 0:
+                return "No fasta file uploaded"
+            else:
+                content_type, content_string = seq_content.split(",")
+                seq_decoded = base64.b64decode(content_string).decode("utf-8")
+                seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date)
+                # update_fasta_output(seq_decoded, seq_filename, seq_datetime_obj)
+
+            # ? put annotations into separate SQL submission table?
+            if anno_content is not None and len(anno_content) > 0:
+                content_type, content_string = anno_content.split(",")
+                decoded = base64.b64decode(content_string).decode("utf-8")
+                anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date)
+                # update_gff_output(decoded, anno_filename, anno_datetime_obj)
+            else:
+                anno_contents = ""
+                anno_filename = ""
+                anno_date = ""
+
+            if comment is None:
+                comment = ""
+
+            c.execute(
+                "INSERT INTO submissions_new (seq_contents,seq_filename,seq_date,anno_contents,anno_filename,anno_date,uploader,evidence,genus,species,hostchr,shipstart,shipend,comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    seq_content,
+                    seq_filename,
+                    seq_datetime_obj,
+                    anno_contents,
+                    anno_filename,
+                    anno_datetime_obj,
+                    uploader,
+                    evidence,
+                    genus,
+                    species,
+                    hostchr,
+                    shipstart,
+                    shipend,
+                    comment,
+                ),
+            )
+            conn.commit()
+
+            return html.Div(
+                [html.H5(f"Successfully submitted '{seq_filename}' to starbase")]
+            )
+
+        except sqlite3.Error as error:
+            print("Failed to insert record into SQLite table:", error)
+        finally:
+            c.close()
+            conn.close()
+            print("SQLite connection is closed.")

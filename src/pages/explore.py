@@ -39,93 +39,147 @@ styles = {"pre": {"border": "thin lightgrey solid", "overflowX": "scroll"}}
 layout = html.Div(
     [
         html.H1("Explore Starship Diversity"),
-        dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Card(
-                        dbc.CardBody(
-                            [
-                                html.H4(
-                                    html.P(
-                                        [
-                                            "Total number of Starships in ",
-                                            html.Span(
-                                                "starbase",
-                                                className="logo-text",
-                                            ),
-                                        ]
-                                    ),
-                                    className="card-title",
-                                ),
-                                html.P(ship_count, className="card-text"),
-                            ]
-                        ),
-                        style={"font-size": "26px"},
-                        color="primary",
-                        inverse=True,
-                    ),
-                    width=2,
-                ),
-                dbc.Col(
-                    dbc.Card(
-                        dbc.CardBody(
-                            [
-                                html.H4(
-                                    "Fungal species with Starships",
-                                    className="card-title",
-                                ),
-                                html.P(species_count, className="card-text"),
-                            ]
-                        ),
-                        style={"font-size": "26px"},
-                        color="secondary",
-                        inverse=True,
-                    ),
-                    width=2,
-                ),
-            ]
-        ),
         html.Div(
-            [
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dcc.Graph(id="pie-chart2", config={"displayModeBar": False})
+            style={
+                "display": "flex",
+                "justify-content": "center",
+                "align-items": "center",
+            },
+            children=[
+                html.Table(
+                    style={"width": "50%"},
+                    children=[
+                        html.Tr(
+                            [
+                                html.Td(
+                                    style={"width": "50%"},
+                                    children=[
+                                        dbc.Card(
+                                            dbc.CardBody(
+                                                [
+                                                    html.H4(
+                                                        html.P(
+                                                            [
+                                                                "Total number of Starships in ",
+                                                                html.Span(
+                                                                    "starbase",
+                                                                    className="logo-text",
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        className="card-title",
+                                                    ),
+                                                    html.P(
+                                                        ship_count,
+                                                        className="card-text",
+                                                    ),
+                                                ]
+                                            ),
+                                            style={"font-size": "26px"},
+                                            color="primary",
+                                            inverse=True,
+                                        )
+                                    ],
+                                ),
+                                html.Td(style={"width": "25%"}),
+                                html.Td(
+                                    style={"width": "50%"},
+                                    children=[
+                                        dbc.Card(
+                                            dbc.CardBody(
+                                                [
+                                                    html.H4(
+                                                        "Fungal species with Starships",
+                                                        className="card-title",
+                                                    ),
+                                                    html.P(
+                                                        species_count,
+                                                        className="card-text",
+                                                    ),
+                                                ]
+                                            ),
+                                            style={"font-size": "26px"},
+                                            color="secondary",
+                                            inverse=True,
+                                        )
+                                    ],
+                                ),
+                            ]
                         ),
-                        dbc.Col(
-                            dcc.Graph(id="pie-chart1", config={"displayModeBar": False})
+                        html.Br(),
+                        html.Tr(
+                            [
+                                html.Td(
+                                    style={"width": "50%"},
+                                    children=[
+                                        dcc.Graph(
+                                            id="pie-chart2",
+                                            config={"displayModeBar": False},
+                                        )
+                                    ],
+                                ),
+                                html.Td(
+                                    style={"width": "25%"},
+                                ),
+                                html.Td(
+                                    style={"width": "50%"},
+                                    children=[
+                                        dcc.Graph(
+                                            id="pie-chart1",
+                                            config={"displayModeBar": False},
+                                        )
+                                    ],
+                                ),
+                            ]
                         ),
-                    ]
+                    ],
                 )
             ],
-            style={"display": "inline-block", "width": "85%"},
         ),
+        html.Br(),
         html.Div(
-            [
+            style={
+                "textAlign": "center",
+                "width": "75%",
+            },
+            children=[
                 html.H3("Table for metadata of all Starships in starbase"),
-                dash_table.DataTable(
-                    id="table",
-                    columns=[
-                        {"name": i, "id": i, "deletable": False, "selectable": True}
-                        for i in df_sub.columns
+                html.Div(
+                    style={
+                        "textAlign": "center",
+                        "width": "75%",
+                        "display": "inline-block",
+                    },
+                    children=[
+                        dash_table.DataTable(
+                            id="table",
+                            columns=[
+                                {
+                                    "name": i,
+                                    "id": i,
+                                    "deletable": False,
+                                    "selectable": True,
+                                }
+                                for i in df_sub.columns
+                            ],
+                            data=df_sub.to_dict("records"),
+                            editable=False,
+                            filter_action="native",
+                            sort_action="native",
+                            sort_mode="multi",
+                            column_selectable="single",
+                            row_selectable="multi",
+                            row_deletable=False,
+                            selected_columns=[],
+                            selected_rows=[],
+                            page_action="native",
+                            page_current=0,
+                            page_size=25,
+                        ),
                     ],
-                    data=df_sub.to_dict("records"),
-                    editable=False,
-                    filter_action="native",
-                    sort_action="native",
-                    sort_mode="multi",
-                    column_selectable="single",
-                    row_selectable="multi",
-                    row_deletable=False,
-                    selected_columns=[],
-                    selected_rows=[],
-                    page_action="native",
-                    page_current=0,
-                    page_size=25,
                 ),
                 html.Div(id="table-container"),
             ],
-            style={"display": "inline-block", "width": "85%"},
         ),
     ]
 )
@@ -154,11 +208,25 @@ def update_plots(selected_rows):
         values="count",
         title="Starships in starbase by captain family",
     )
+    ship_pie.update_layout(
+        width=800,  # Increase the width of the plot
+        height=600,  # Increase the height of the plot
+        title_font=dict(size=24),  # Increase the text size of the title
+        margin=dict(l=40, r=40, t=40, b=40),  # Add margins to the plot
+    )
+
     tax_pie = px.sunburst(
         tax_agg_filt,
         path=["order", "family"],
         values="count",
         title="Starships in starbase by Order",
+    )
+
+    tax_pie.update_layout(
+        width=800,  # Increase the width of the plot
+        height=600,  # Increase the height of the plot
+        title_font=dict(size=24),  # Increase the text size of the title
+        margin=dict(l=40, r=40, t=40, b=40),  # Add margins to the plot
     )
 
     return ship_pie, tax_pie, selected_rows

@@ -15,6 +15,7 @@ external_stylesheets = [
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
     "/assets/styles.css",
+    # "https://codepen.io/chriddyp/pen/bWLwgP.css",
 ]
 
 server = Flask(__name__)

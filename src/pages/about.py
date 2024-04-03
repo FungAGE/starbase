@@ -6,7 +6,12 @@ from dash import html
 dash.register_page(__name__)
 
 layout = html.Div(
-    [
+    style={
+        "display": "flex",
+        "justify-content": "center",
+        "align-items": "center",
+    },
+    children=[
         dbc.Container(
             [
                 dbc.Row(
@@ -257,5 +262,5 @@ layout = html.Div(
                 ),
             ]
         )
-    ]
+    ],
 )
