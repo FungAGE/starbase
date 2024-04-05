@@ -65,7 +65,14 @@ def mod_home_ui():
                                                                         [
                                                                             dbc.CardHeader(
                                                                                 html.H4(
-                                                                                    "What can I use starbase for?"
+                                                                                    [
+                                                                                        "What can I currently use ",
+                                                                                        html.Span(
+                                                                                            "starbase",
+                                                                                            className="logo-text",
+                                                                                        ),
+                                                                                        " for?",
+                                                                                    ]
                                                                                 )
                                                                             ),
                                                                             dbc.CardBody(
@@ -83,7 +90,14 @@ def mod_home_ui():
                                                                         [
                                                                             dbc.CardHeader(
                                                                                 html.H4(
-                                                                                    "Functions of starbase under active development:"
+                                                                                    [
+                                                                                        "Functions of ",
+                                                                                        html.Span(
+                                                                                            "starbase",
+                                                                                            className="logo-text",
+                                                                                        ),
+                                                                                        " under active development:",
+                                                                                    ]
                                                                                 )
                                                                             ),
                                                                             dbc.CardBody(
@@ -144,7 +158,14 @@ def mod_home_ui():
                                                     dbc.CardBody(
                                                         [
                                                             html.P(
-                                                                "We have been maintaining starbase data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)"
+                                                                [
+                                                                    "We have been maintaining ",
+                                                                    html.Span(
+                                                                        "starbase",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                                ]
                                                             ),
                                                             html.Div(
                                                                 style={
@@ -152,7 +173,16 @@ def mod_home_ui():
                                                                 },
                                                                 children=[
                                                                     dbc.Button(
-                                                                        "Download the latest version of starbase.",
+                                                                        html.P(
+                                                                            [
+                                                                                "Download the latest version of ",
+                                                                                html.Span(
+                                                                                    "starbase",
+                                                                                    className="logo-text",
+                                                                                ),
+                                                                                ".",
+                                                                            ]
+                                                                        ),
                                                                         id="dl_package",
                                                                         color="primary",
                                                                         className="mr-1",

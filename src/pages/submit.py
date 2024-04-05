@@ -94,6 +94,18 @@ form = html.Div(
                                                 html.Div(
                                                     [
                                                         html.H5(
+                                                            [
+                                                                "Fields in ",
+                                                                html.Span(
+                                                                    "red",
+                                                                    style={
+                                                                        "color": "red"
+                                                                    },
+                                                                ),
+                                                                " = manditory.",
+                                                            ]
+                                                        ),
+                                                        html.H5(
                                                             "Upload Starship sequence:"
                                                         ),
                                                         dcc.Upload(
