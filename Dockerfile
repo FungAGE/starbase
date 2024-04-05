@@ -19,7 +19,7 @@ COPY ./ ./
 RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/* && \
     pip install --no-cache-dir -r $HOME/requirements.txt && \
     chmod +x start-script.sh && \
-    mkdir project-vol/ && \
+    mkdir database_folder/ && \
     chown -R $USER:$USER $HOME
 
 USER $USER
