@@ -15,16 +15,14 @@ WORKDIR $HOME/
 # Copy code and start script (this will place the files in home/username/)
 COPY ./ ./
 
-RUN mkdir /home/project-vol/
-
 # Update system and install dependencies.
 RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir -r $HOME/requirements.txt && \
     chmod +x start-script.sh && \
+    mkdir project-vol/ && \
     chown -R $USER:$USER $HOME
 
 USER $USER
-
-RUN pip install --no-cache-dir -r $HOME/requirements.txt
 
 EXPOSE 8000
 
