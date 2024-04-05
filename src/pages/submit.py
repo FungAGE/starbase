@@ -462,7 +462,7 @@ def submit_ship(
     if n_clicks > 0 and seq_content is not None:
         try:
             # Create SQLite database connection
-            conn = sqlite3.connect("project-vol/starbase.sqlite")
+            conn = sqlite3.connect("database_folder/starbase.sqlite")
             c = conn.cursor()
 
             # Check if the table already exists

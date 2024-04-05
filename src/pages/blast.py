@@ -264,26 +264,26 @@ def run_blast(
 
     # Define paths to databases
     db_list = {
-        "ship": {"nucl": "project-vol/Starships/ships/fna/blastdb/concatenated.fa"},
+        "ship": {"nucl": "database_folder/Starships/ships/fna/blastdb/concatenated.fa"},
         "gene": {
             "tyr": {
-                "prot": "project-vol/Starships/captain/tyr/faa/blastdb/concatenated.faa"
+                "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa"
             },
             "fre": {
-                "prot": "project-vol/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-                "nucl": "project-vol/Starships/cargo/fre/fna/blastdb/fre.fa",
+                "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+                "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
             },
             "nlr": {
-                "prot": "project-vol/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-                "nucl": "project-vol/Starships/cargo/nlr/fna/blastdb/nlr.fa",
+                "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+                "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
             },
             "DUF3723": {
-                "prot": "project-vol/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-                "nucl": "project-vol/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
+                "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+                "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
             },
             "plp": {
-                "prot": "project-vol/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-                "nucl": "project-vol/Starships/cargo/plp/fna/blastdb/plp.fa",
+                "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+                "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
             },
         },
     }
