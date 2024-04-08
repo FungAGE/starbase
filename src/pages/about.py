@@ -48,12 +48,12 @@ layout = html.Div(
                                                                     "FungAGE lab",
                                                                     href="https://fungage.github.io/",
                                                                 ),
-                                                                " and the code for the ",
+                                                                " in collaboration with the Gluck-Thaler lab. The sourcecode for ",
                                                                 html.Span(
                                                                     "starbase",
                                                                     className="logo-text",
                                                                 ),
-                                                                " webserver will soon be available on our GitHub",
+                                                                " webserver will soon be available on GitHub",
                                                             ]
                                                         )
                                                     ]
@@ -233,7 +233,7 @@ layout = html.Div(
                                                                         "starfish",
                                                                         className="logo-text",
                                                                     ),
-                                                                    " lead developer",
+                                                                    " lead developer, Gluck-Thaler lab group leader",
                                                                 ],
                                                                 className="card-text",
                                                             ),
