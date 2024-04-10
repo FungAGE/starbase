@@ -111,25 +111,21 @@ form = html.Div(
                                                         dcc.Upload(
                                                             id="upload-sequence",
                                                             children=html.Div(
-                                                                [
-                                                                    "Drag and Drop or ",
-                                                                    html.A(
-                                                                        "Select a File"
-                                                                    ),
-                                                                ]
+                                                                id="output-sequence-upload"
                                                             ),
                                                             style={
+                                                                "color": "red",
                                                                 "width": "50%",
                                                                 "height": "60px",
                                                                 "lineHeight": "60px",
-                                                                "borderWidth": "3px",
+                                                                "borderWidth": "1px",
                                                                 "borderStyle": "dashed",
                                                                 "borderRadius": "5px",
                                                                 "textAlign": "center",
                                                                 "margin": "10px",
-                                                                "color": "red",
                                                             },
                                                             multiple=False,
+                                                            accept=".fa, .fas, .fasta, .fna",
                                                         ),
                                                         dcc.Loading(
                                                             id="loading-1",
@@ -138,21 +134,13 @@ form = html.Div(
                                                                 id="loading-output-1"
                                                             ),
                                                         ),
-                                                        html.Div(
-                                                            id="output-sequence-upload"
-                                                        ),
                                                         html.H5(
                                                             "Upload gene annotations associated with Starship sequence (GFF[3] format)"
                                                         ),
                                                         dcc.Upload(
                                                             id="upload-annotations",
                                                             children=html.Div(
-                                                                [
-                                                                    "Drag and Drop or ",
-                                                                    html.A(
-                                                                        "Select a File"
-                                                                    ),
-                                                                ]
+                                                                id="output-annotation-upload"
                                                             ),
                                                             accept=".gff, .gff3",
                                                             multiple=False,
@@ -173,9 +161,6 @@ form = html.Div(
                                                             children=html.Div(
                                                                 id="loading-output-2"
                                                             ),
-                                                        ),
-                                                        html.Div(
-                                                            id="output-annotation-upload"
                                                         ),
                                                         html.Br(),
                                                         html.H5("Starship metadata:"),
@@ -329,7 +314,7 @@ def input_triggers_nested(value):
 
 
 def parse_fasta(contents, filename):
-    try:
+    if contents:
         # Assume that the user uploaded a FASTA file
         sequences = SeqIO.parse(io.StringIO(contents), "fasta")
 
@@ -339,57 +324,65 @@ def parse_fasta(contents, filename):
             records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
             nseq += 1
 
-        # df = pd.DataFrame(records)
+        # Update the height attribute of the style based on the content height
+        return [
+            html.Div(
+                [
+                    html.H6(f"File name: {filename}"),
+                    html.H6(f"Number of sequences: {nseq}"),
+                ],
+            )
+        ]
+
+    else:
+        # Return the default style if no content is uploaded
+        return [
+            html.Div(
+                [
+                    "Drag and Drop or ",
+                    html.A("Select a File"),
+                ],
+            )
+        ]
+
+
+def parse_gff(contents, filename):
+    if contents:
+        content_type, content_string = contents.split(",")
+        decoded = base64.b64decode(content_string)
+        # Assume that the user uploaded a TSV file
+        gff = pd.read_csv(io.StringIO(decoded.decode("utf-8")), sep="\t")
+        # cols = [
+        #     "seqid",
+        #     "source",
+        #     "type",
+        #     "start",
+        #     "end",
+        #     "score",
+        #     "strand",
+        #     "phase",
+        #     "attributes",
+        # ]
+
+        # annotations = pd.DataFrame(gff)
+        nanno = len(gff)
 
         return html.Div(
             [
                 html.H6(f"File name: {filename}"),
-                html.H6(f"Number of sequences: {nseq}"),
-                # dash_table.DataTable(
-                #     df.to_dict("records"), [{"name": i, "id": i} for i in df.columns]
-                # ),
+                html.H6(f"Number of annotations: {nanno}"),
             ]
         )
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."])
 
-
-def parse_gff(contents, filename):
-    content_type, content_string = contents.split(",")
-    decoded = base64.b64decode(content_string)
-    try:
-        if "csv" in filename:
-            # Assume that the user uploaded a CSV file
-            gff = pd.read_csv(io.StringIO(decoded.decode("utf-8")))
-            # cols = [
-            #     "seqid",
-            #     "source",
-            #     "type",
-            #     "start",
-            #     "end",
-            #     "score",
-            #     "strand",
-            #     "phase",
-            #     "attributes",
-            # ]
-
-            # annotations = pd.DataFrame(gff)
-            nanno = len(gff)
-
-            return html.Div(
+    else:
+        return [
+            html.Div(
                 [
-                    html.H6(f"File name: {filename}"),
-                    html.H6(f"Number of annotations: {nanno}"),
-                    # dash_table.DataTable(
-                    #     df.to_dict("records"), [{"name": i, "id": i} for i in df.columns]
-                    # ),
+                    "Drag and Drop or ",
+                    html.A("Select a File"),
                 ]
-            )
-
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."])
+            ),
+        ]
 
 
 @callback(
@@ -399,12 +392,14 @@ def parse_gff(contents, filename):
         Input("upload-sequence", "filename"),
     ],
 )
-def update_seq_output(seq_content, seq_filename):
-    if seq_content is not None and seq_filename is not None:
-        children = [parse_fasta(seq_content, seq_filename)]
+def update_fasta_upload(seq_content, seq_filename):
+    try:
+        children = parse_fasta(seq_content, seq_filename)
         return children
-    else:
-        return False
+
+    except Exception as e:
+        print(e)
+        return html.Div(["There was an error processing this file."])
 
 
 @callback(
@@ -414,12 +409,14 @@ def update_seq_output(seq_content, seq_filename):
         Input("upload-annotations", "filename"),
     ],
 )
-def update_anno_output(anno_content, anno_filename):
-    if anno_content is not None and anno_filename is not None:
-        children = [parse_gff(anno_content, anno_filename)]
+def update_anno_upload(anno_content, anno_filename):
+    try:
+        children = parse_gff(anno_content, anno_filename)
         return children
-    else:
-        return False
+
+    except Exception as e:
+        print(e)
+        return html.Div(["There was an error processing this file."])
 
 
 @callback(
