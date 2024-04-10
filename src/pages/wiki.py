@@ -12,9 +12,7 @@ try:
     c = conn.cursor()
 
     # Check if the table already exists
-    c.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='submissions_new'"
-    )
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='papers'")
 
 except sqlite3.Error as error:
     print("Error connecting to database.", error)
@@ -22,11 +20,20 @@ except sqlite3.Error as error:
 
 # Read data from SQLite table into a DataFrame
 df = pd.read_sql_query(
-    "SELECT Title, Author, PublicationYear, PublicationTitle, DOI FROM papers", conn
+    "SELECT Title, Author, PublicationYear, PublicationTitle, DOI, Url FROM papers",
+    conn,
 )
 
+
+# Function to convert URL string to HTML link
+def url_to_link(url):
+    return f'<a href="{url}" target="_blank">{url}</a>'
+
+
+# Apply the function to the 'Website' column
+df["Url"] = df["Url"].apply(url_to_link)
+
 # TODO: rename columns
-# TODO: include hyperlinks
 
 layout = html.Div(
     [
@@ -56,11 +63,16 @@ layout = html.Div(
                                                         "justify-content": "center",
                                                         "align-items": "center",
                                                         "backgroundColor": "white",
+                                                        "width": "75%",
                                                     },
                                                     children=[
                                                         html.Img(
                                                             src="assets/images/starship-model.png",
-                                                            width="85%",
+                                                            style={
+                                                                "margin": "auto",
+                                                                "display": "block",
+                                                                "width": "100%",
+                                                            },
                                                         )
                                                     ],
                                                     className="box-body",
@@ -91,29 +103,27 @@ layout = html.Div(
                                                                     "id": i,
                                                                     "deletable": False,
                                                                     "selectable": False,
+                                                                    "presentation": "markdown",
                                                                 }
                                                                 for i in df.columns
                                                             ],
-                                                            id="ship_blast_table",
+                                                            id="papers-table",
                                                             style_data={
                                                                 "whiteSpace": "normal",
                                                                 "height": "auto",
                                                             },
-                                                            editable=False,
-                                                            # filter_action="native",
-                                                            # sort_action="native",
-                                                            # sort_mode="multi",
-                                                            # column_selectable="single",
-                                                            # row_selectable="multi",
-                                                            row_deletable=False,
-                                                            selected_columns=[],
-                                                            selected_rows=[],
-                                                            page_action="native",
-                                                            page_current=0,
-                                                            page_size=10,
+                                                            markdown_options={
+                                                                "html": True
+                                                            },
+                                                            style_table={
+                                                                "overflowX": "auto"
+                                                            },
                                                         ),
+                                                        # html.Div(
+                                                        #     id="papers-table-interactivity-container"
+                                                        # ),
                                                     ]
-                                                )
+                                                ),
                                             ]
                                         ),
                                     ]
