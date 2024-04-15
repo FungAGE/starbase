@@ -5,10 +5,10 @@ from src.pages import (
     HOME_URL,
     WIKI_URL,
     EXPLORE_URL,
-    # BLAST_URL,
-    ABOUT_URL,
+    BLAST_URL,
     # IGV_URL,
     SUBMIT_URL,
+    ABOUT_URL,
 )
 
 SIDEBAR_STYLE = {
@@ -41,8 +41,9 @@ def sidebar():
                         href=EXPLORE_URL,
                         active="exact",
                     ),
-                    # dbc.NavLink("BLAST", href=BLAST_URL, active="exact"),
+                    dbc.NavLink("BLAST", href=BLAST_URL, active="exact"),
                     # dbc.NavLink("Genome Browser", href=IGV_URL, active="exact"),
+                    # dbc.NavLink("Starfish", href=STARFISH_URL, active="exact"),
                     dbc.NavLink(
                         html.P(
                             ["Submit to ", html.Span("starbase", className="logo-text")]

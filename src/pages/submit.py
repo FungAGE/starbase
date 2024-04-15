@@ -276,7 +276,7 @@ form = html.Div(
                                                         ),
                                                         html.Br(),
                                                         html.Br(),
-                                                        html.Button(
+                                                        dbc.Button(
                                                             "Submit",
                                                             id="submit-ship",
                                                             n_clicks=0,

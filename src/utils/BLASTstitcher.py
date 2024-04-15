@@ -18,7 +18,6 @@
 
 # ------------------------------------------------------
 import argparse
-import os
 import sys
 
 # ------------------------------------------------------
@@ -68,7 +67,7 @@ def print_table(list_thing, output_name, header=""):
 # Read file into list
 # ------------------------------------------------------
 with open(tabfile, "r") as tabopen:
-    unsorted_tabs = [line.rstrip("\n").split("\t") for line in tabopen]
+    unsorted_tabs = [line.rstrip("\n").split(",") for line in tabopen]
 
 # ------------------------------------------------------
 # Sort file in case some subjects have multiple hits in different places
