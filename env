@@ -5,3 +5,4 @@ BLAST_URL=/blast
 IGV_URL=/igv
 SUBMIT_URL=/submit
 ABOUT_URL=/about
+STARFISH_URL=/starfish
