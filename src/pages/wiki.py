@@ -19,10 +19,8 @@ except sqlite3.Error as error:
 
 
 # Read data from SQLite table into a DataFrame
-df = pd.read_sql_query(
-    "SELECT Title, Author, PublicationYear, PublicationTitle, DOI, Url FROM papers",
-    conn,
-)
+df = pd.read_csv("src/assets/papers.csv")
+sub_df = df[["Title", "Author", "PublicationYear", "PublicationTitle", "DOI", "Url"]]
 
 
 # Function to convert URL string to HTML link
@@ -31,7 +29,7 @@ def url_to_link(url):
 
 
 # Apply the function to the 'Website' column
-df["Url"] = df["Url"].apply(url_to_link)
+sub_df["Url"] = sub_df["Url"].apply(url_to_link)
 
 # TODO: rename columns
 
@@ -47,7 +45,12 @@ layout = html.Div(
                 html.Div(
                     [
                         html.Div(
-                            [
+                            style={
+                                "justify-content": "center",
+                                "align-items": "center",
+                                "width": "75%",
+                            },
+                            children=[
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(html.H3("What is a Starship?")),
@@ -58,17 +61,11 @@ layout = html.Div(
                                                 ),
                                                 html.Br(),
                                                 html.Div(
-                                                    style={
-                                                        "display": "flex",
-                                                        "justify-content": "center",
-                                                        "align-items": "center",
-                                                        "backgroundColor": "white",
-                                                        "width": "75%",
-                                                    },
                                                     children=[
                                                         html.Img(
                                                             src="assets/images/starship-model.png",
                                                             style={
+                                                                "backgroundColor": "white",
                                                                 "margin": "auto",
                                                                 "display": "block",
                                                                 "width": "100%",
@@ -96,7 +93,9 @@ layout = html.Div(
                                                 html.Div(
                                                     [
                                                         dash_table.DataTable(
-                                                            data=df.to_dict("records"),
+                                                            data=sub_df.to_dict(
+                                                                "records"
+                                                            ),
                                                             columns=[
                                                                 {
                                                                     "name": i,
@@ -105,7 +104,7 @@ layout = html.Div(
                                                                     "selectable": False,
                                                                     "presentation": "markdown",
                                                                 }
-                                                                for i in df.columns
+                                                                for i in sub_df.columns
                                                             ],
                                                             id="papers-table",
                                                             style_data={
@@ -128,7 +127,7 @@ layout = html.Div(
                                         ),
                                     ]
                                 ),
-                            ]
+                            ],
                         ),
                     ],
                     className="box",
