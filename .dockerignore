@@ -1,7 +1,3 @@
-.RData
-.Rhistory
 .git
-.gitignore
-manifest.json
-rsconnect/
-.Rproj.user
+tmp/
+database_folder/Starships/.git

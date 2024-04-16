@@ -1,0 +1,56 @@
+{
+  "assembly": {
+    "name": "altalt8_s00067",
+    "aliases": ["altalt8_s00067"],
+    "sequence": {
+      "type": "ReferenceSequenceTrack",
+      "trackId": "Pd8Wh30ei9R",
+      "adapter": {
+        "type": "BgzipFastaAdapter",
+        "fastaLocation": {
+          "uri": "src/assets/altalt8_s00067.fa.gz"
+        },
+        "faiLocation": {
+          "uri": "src/assets/altalt8_s00067.fa.fai.gz"
+        },
+        "gziLocation": {
+          "uri": "src/assets/altalt8_s00067.fa.fai.gz.gzi"
+        }
+      }
+    },
+    "refNameAliases": {
+      "adapter": {
+        "type": "RefNameAliasAdapter",
+        "location": {
+          "uri": "src/assets/altalt8_s00067.txt"
+        }
+      }
+    }
+  },
+  "tracks": [],
+  "location": "1:2,467,681..2,667,681",
+  "defaultSession": {
+    "name": "Runtime plugins",
+    "view": {
+      "id": "aU9Nqje1U",
+      "type": "LinearGenomeView",
+      "offsetPx": 22654,
+      "bpPerPx": 108.93300653594771,
+      "displayedRegions": [
+        {
+          "refName": "altalt8_s00067",
+          "start": 0,
+          "end": 55425,
+          "reversed": false,
+          "assemblyName": "altalt8_s00067"
+        }
+      ],
+      "tracks": [],
+      "hideHeader": false,
+      "hideHeaderOverview": false,
+      "trackSelectorType": "hierarchical",
+      "trackLabels": "overlapping",
+      "showCenterLine": false
+    }
+  }
+}
