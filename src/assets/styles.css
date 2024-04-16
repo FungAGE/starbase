@@ -1,0 +1,10 @@
+@font-face {
+  font-family: "Strasua";
+  src: url("/assets/strasua.woff") format("woff"),
+    url("/assets/strasua.woff2") format("woff2");
+}
+
+/* Apply the custom font to specific elements */
+.logo-text {
+  font-family: "Strasua", sans-serif;
+}
