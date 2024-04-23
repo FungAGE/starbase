@@ -36,105 +36,104 @@ sub_df["Url"] = sub_df["Url"].apply(url_to_link)
 layout = html.Div(
     [
         html.Div(
+            className="title-bar",
+            children=[
+                html.H1(
+                    [
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
+                        ),
+                        " Wiki",
+                    ],
+                    className="title-text",
+                )
+            ],
+            style={
+                "text-align": "center",
+            },
+        ),
+        html.Div(
             style={
                 "display": "flex",
+                "flex-direction": "column",
+                "height": "100vh",
+                "width": "100%",
                 "justify-content": "center",
                 "align-items": "center",
             },
             children=[
-                html.Div(
+                dbc.Card(
                     [
-                        html.Div(
-                            style={
-                                "justify-content": "center",
-                                "align-items": "center",
-                                "width": "75%",
-                            },
-                            children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(html.H3("What is a Starship?")),
-                                        dbc.CardBody(
-                                            [
-                                                html.P(
-                                                    "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes) [2]. They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in Paecilomyces, cheese making in Penicillium, and enable the reansfer of formaldehyde resistance in Aspergillus nidulans and Penicillium chrysogenum."
-                                                ),
-                                                html.Br(),
-                                                html.Div(
-                                                    children=[
-                                                        html.Img(
-                                                            src="assets/images/starship-model.png",
-                                                            style={
-                                                                "backgroundColor": "white",
-                                                                "margin": "auto",
-                                                                "display": "block",
-                                                                "width": "100%",
-                                                            },
-                                                        )
-                                                    ],
-                                                    className="box-body",
-                                                ),
-                                            ]
-                                        ),
-                                    ],
-                                    color="primary",
-                                    inverse=True,
+                        dbc.CardHeader(html.H3("What is a Starship?")),
+                        dbc.CardBody(
+                            [
+                                html.P(
+                                    "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes) [2]. They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in Paecilomyces, cheese making in Penicillium, and enable the reansfer of formaldehyde resistance in Aspergillus nidulans and Penicillium chrysogenum."
                                 ),
                                 html.Br(),
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            html.H3(
-                                                "Research Papers Characterizing Starships"
-                                            )
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                html.Div(
-                                                    [
-                                                        dash_table.DataTable(
-                                                            data=sub_df.to_dict(
-                                                                "records"
-                                                            ),
-                                                            columns=[
-                                                                {
-                                                                    "name": i,
-                                                                    "id": i,
-                                                                    "deletable": False,
-                                                                    "selectable": False,
-                                                                    "presentation": "markdown",
-                                                                }
-                                                                for i in sub_df.columns
-                                                            ],
-                                                            id="papers-table",
-                                                            style_data={
-                                                                "whiteSpace": "normal",
-                                                                "height": "auto",
-                                                            },
-                                                            markdown_options={
-                                                                "html": True
-                                                            },
-                                                            style_table={
-                                                                "overflowX": "auto"
-                                                            },
-                                                        ),
-                                                        # html.Div(
-                                                        #     id="papers-table-interactivity-container"
-                                                        # ),
-                                                    ]
-                                                ),
-                                            ]
-                                        ),
-                                    ]
+                                html.Div(
+                                    children=[
+                                        html.Img(
+                                            src="assets/images/starship-model.png",
+                                            style={
+                                                "backgroundColor": "white",
+                                                "margin": "auto",
+                                                "display": "block",
+                                                "width": "75%",
+                                            },
+                                        )
+                                    ],
+                                    className="box-body",
                                 ),
-                            ],
+                            ]
                         ),
                     ],
-                    className="box",
+                    color="primary",
+                    inverse=True,
+                    style={"width": "50%"},
+                ),
+                html.Hr(),
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            html.H3("Research Papers Characterizing Starships")
+                        ),
+                        dbc.CardBody(
+                            [
+                                html.Div(
+                                    [
+                                        dash_table.DataTable(
+                                            data=sub_df.to_dict("records"),
+                                            columns=[
+                                                {
+                                                    "name": i,
+                                                    "id": i,
+                                                    "deletable": False,
+                                                    "selectable": False,
+                                                    "presentation": "markdown",
+                                                }
+                                                for i in sub_df.columns
+                                            ],
+                                            id="papers-table",
+                                            style_data={
+                                                "whiteSpace": "normal",
+                                                "height": "auto",
+                                            },
+                                            markdown_options={"html": True},
+                                            style_table={"overflowX": "auto"},
+                                        ),
+                                        # html.Div(
+                                        #     id="papers-table-interactivity-container"
+                                        # ),
+                                    ]
+                                ),
+                            ]
+                        ),
+                    ],
                     style={"width": "75%"},
-                )
+                ),
             ],
-            className="row",
-        )
+        ),
     ]
 )

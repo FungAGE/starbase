@@ -9,13 +9,21 @@ def mod_home_ui():
     working = [
         "Catalogue/Wiki of Starship Metadata",
         "Submission of new Starship sequences",
+        "BLAST/HMMER searches",
     ]
     working_ul = html.Ul([html.Li(item) for item in working])
 
     not_working = [
-        "BLAST/HMMER searches",
         "Synteny/Genome Browser",
-        "starfish webserver",
+        html.P(
+            [
+                html.Span(
+                    "starfish",
+                    className="logo-text",
+                ),
+                " webserver",
+            ],
+        ),
     ]
     not_working_ul = html.Ul([html.Li(item) for item in not_working])
 
@@ -23,6 +31,8 @@ def mod_home_ui():
         [
             html.Div(
                 style={
+                    "height": "100vh",
+                    "flex-direction": "column",
                     "display": "flex",
                     "justify-content": "center",
                     "align-items": "center",
@@ -34,16 +44,23 @@ def mod_home_ui():
                             html.Tr(
                                 [
                                     html.Td(
-                                        style={"width": "50%"},
+                                        style={"width": "50%", "text-align": "center"},
                                         children=[
                                             html.H1(
                                                 [
                                                     html.Span(
                                                         "starbase",
                                                         className="logo-text",
+                                                        style={
+                                                            "fontSize": "5em",
+                                                        },
                                                     ),
-                                                    ": A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
-                                                ]
+                                                    html.Br(),
+                                                    "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                                                ],
+                                                style={
+                                                    "fontSize": "3em",
+                                                },
                                             )
                                         ],
                                     )
@@ -131,17 +148,7 @@ def mod_home_ui():
                                 ]
                             ),
                         ],
-                    )
-                ],
-            ),
-            html.Br(),
-            html.Div(
-                style={
-                    "display": "flex",
-                    "justify-content": "center",
-                    "align-items": "center",
-                },
-                children=[
+                    ),
                     html.Table(
                         style={"width": "50%"},
                         children=[
@@ -198,7 +205,7 @@ def mod_home_ui():
                                 ]
                             )
                         ],
-                    )
+                    ),
                 ],
             ),
         ]

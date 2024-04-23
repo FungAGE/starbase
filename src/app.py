@@ -18,6 +18,12 @@ external_stylesheets = [
     # "https://codepen.io/chriddyp/pen/bWLwgP.css",
 ]
 
+external_scripts = [
+    "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
+    "/assets/html2canvas.js",
+    "/assets/blaster.min.js",
+]
+
 server = Flask(__name__)
 app = Dash(
     __name__,
@@ -26,6 +32,7 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
+    external_scripts=external_scripts,
 )
 
 

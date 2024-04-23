@@ -19,14 +19,23 @@ dash.register_page(__name__)
 # Define form layout
 form = html.Div(
     [
-        html.H1(
-            [
-                "Submit Starships to ",
-                html.Span(
-                    "starbase",
-                    className="logo-text",
+        html.Div(
+            className="title-bar",
+            children=[
+                html.H1(
+                    [
+                        "Submit Starships to ",
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
+                        ),
+                    ],
+                    className="title-text",
+                    style={
+                        "textAlign": "center",
+                    },
                 ),
-            ]
+            ],
         ),
         dbc.Container(
             [
@@ -295,6 +304,13 @@ form = html.Div(
             className="mt-4",
         ),
     ],
+    style={
+        "height": "100vh",
+        "display": "flex",
+        "flex-direction": "column",
+        "justify-content": "center",
+        "align-items": "center",
+    },
 )
 
 # Define app layout
