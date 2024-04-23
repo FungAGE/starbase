@@ -3,15 +3,17 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import dash_table, dcc, html, callback
 from dash.dependencies import Output, Input
+import dash_bio as dashbio
 
 import io
 from io import StringIO
 import os
 import tempfile
 import base64
-
+import subprocess
+import json
+import urllib.request as urlreq
 import pandas as pd
-import dash_bio as dashbio
 
 from Bio.Blast.Applications import NcbiblastnCommandline, NcbitblastnCommandline
 from Bio import SeqIO, SearchIO
@@ -57,92 +59,127 @@ dash.register_page(__name__)
 
 layout = html.Div(
     [
-        dbc.Card(
-            [
-                dbc.CardHeader(
-                    html.H1(
-                        [
-                            "BLAST/hmmersearch ",
-                            html.Span(
-                                "starbase",
-                                className="logo-text",
-                            ),
-                        ]
-                    )
-                ),
-                dbc.CardBody(
+        html.Div(
+            className="title-bar",
+            children=[
+                html.H1(
                     [
-                        html.H2(
-                            "Search protein/nucleotide sequences for Starships and Starship-associated genes."
+                        "BLAST/hmmersearch ",
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
                         ),
-                        html.Hr(),
-                        html.Div(
+                    ],
+                    className="title-text",
+                    style={
+                        "textAlign": "center",
+                    },
+                ),
+            ],
+        ),
+        html.Div(
+            style={
+                "height": "100vh",
+                "display": "flex",
+                "flex-direction": "column",
+                "justify-content": "center",
+                "align-items": "center",
+            },
+            children=[
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            html.H2(
+                                "Search protein/nucleotide sequences for Starships and Starship-associated genes."
+                            ),
+                        ),
+                        dbc.CardBody(
                             [
-                                html.Table(
-                                    style={
-                                        "width": "50%",
-                                        "justify-content": "center",
-                                        "align-items": "center",
-                                    },
-                                    children=[
-                                        html.Td(
-                                            style={"width": "75%"},
+                                html.Div(
+                                    [
+                                        html.Table(
+                                            style={
+                                                "justify-content": "center",
+                                                "align-items": "center",
+                                                "textAlign": "center",
+                                            },
                                             children=[
                                                 html.Tr(
                                                     children=[
-                                                        html.H3(
-                                                            "Copy and paste a FASTA sequence below:"
+                                                        html.Td(
+                                                            children=[
+                                                                html.H3(
+                                                                    "Copy and paste a FASTA sequence below:"
+                                                                ),
+                                                                dcc.Textarea(
+                                                                    id="query-text",
+                                                                    placeholder="Paste FASTA sequence here...",
+                                                                    rows=15,
+                                                                    style={
+                                                                        "width": "85%"
+                                                                    },
+                                                                ),
+                                                                html.Br(),
+                                                                html.Br(),
+                                                                html.H3("Or"),
+                                                                html.Br(),
+                                                                dcc.Upload(
+                                                                    id="query-upload",
+                                                                    children=html.Div(
+                                                                        id="query-sequence-upload"
+                                                                    ),
+                                                                    style={
+                                                                        "width": "85%",
+                                                                        "height": "75px",
+                                                                        "lineHeight": "75px",
+                                                                        "borderWidth": "2px",
+                                                                        "borderStyle": "dashed",
+                                                                        "borderRadius": "5px",
+                                                                        "justify-content": "center",
+                                                                        "margin": "10px",
+                                                                    },
+                                                                    multiple=False,
+                                                                    accept=".fa, .fas, .fasta, .fna",
+                                                                ),
+                                                                html.Br(),
+                                                                dbc.Button(
+                                                                    "Submit BLAST/hmmer Search",
+                                                                    id="submit-button",
+                                                                    n_clicks=0,
+                                                                ),
+                                                            ],
+                                                            style={
+                                                                "width": "25%",
+                                                                "justify-content": "center",
+                                                                "align-items": "center",
+                                                                "textAlign": "center",
+                                                            },
                                                         ),
-                                                        dcc.Textarea(
-                                                            id="query-text",
-                                                            placeholder="Paste FASTA sequence here...",
-                                                            rows=15,
-                                                            style={"width": "75%"},
+                                                        html.Td(
+                                                            children=[
+                                                                html.Div(
+                                                                    id="output-container"
+                                                                )
+                                                            ],
+                                                            style={
+                                                                "width": "75%",
+                                                                "justify-content": "center",
+                                                                "align-items": "center",
+                                                                "textAlign": "center",
+                                                            },
                                                         ),
                                                     ],
-                                                ),
-                                                html.Br(),
-                                                html.Tr(
-                                                    html.H3("Or"),
-                                                    style={"textAlign": "center"},
-                                                ),
-                                                html.Tr(
-                                                    dcc.Upload(
-                                                        id="query-upload",
-                                                        children=html.Div(
-                                                            id="query-sequence-upload"
-                                                        ),
-                                                        style={
-                                                            "width": "100%",
-                                                            "height": "60px",
-                                                            "lineHeight": "60px",
-                                                            "borderWidth": "1px",
-                                                            "borderStyle": "dashed",
-                                                            "borderRadius": "5px",
-                                                            "textAlign": "center",
-                                                            "margin": "10px",
-                                                        },
-                                                        multiple=False,
-                                                        accept=".fa, .fas, .fasta, .fna",
-                                                    ),
                                                 ),
                                             ],
                                         ),
                                     ],
                                 ),
-                                html.Hr(),
-                                dbc.Button(
-                                    "Submit BLAST/hmmer Search",
-                                    id="submit-button",
-                                    n_clicks=0,
-                                ),
                             ],
                         ),
-                        html.Br(),
-                        html.Div(id="output-container"),
-                    ]
+                    ],
+                    style={"width": "100em"},
                 ),
-            ]
+            ],
         ),
     ]
 )
@@ -213,11 +250,10 @@ def run_main(n_clicks, query_text_input, query_file_contents):
         # processing_data(input_type, query_type, cleaned_seq, query_header)
 
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa").name
-        print(query_seq)
         cleaned_query_seq = SeqRecord(Seq(query_seq), id=query_header, description="")
         SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
 
-        run_blast(
+        blast_results = run_blast(
             seq_type=query_type,
             db_type="ship",
             tmp_query_fasta=tmp_query_fasta,
@@ -233,31 +269,36 @@ def run_main(n_clicks, query_text_input, query_file_contents):
             threads=2,
         )
 
-        blast_results = pd.read_csv(
-            tmp_blast,
-            sep="\t",
-            names=[
-                "qseqid",
-                "sseqid",
-                "pident",
-                "length",
-                "mismatch",
-                "gapopen",
-                "qstart",
-                "qend",
-                "sstart",
-                "send",
-                "evalue",
-                "bitscore",
-                "qseq",
-                "sseq",
+        # create results table with alignments
+        ship_blast_table = blast_table(blast_results)
+
+        aln = blast_alignments(blast_results)
+        # aln.update_layout(
+        #     showlegend=True,
+        #     displayModeBar=False,
+        # )
+
+        if hmmer_results is not None:
+            superfamily_card = hmmer_table(hmmer_results)
+        else:
+            superfamily_card = """"""
+
+        # chord = blast_chords()
+
+        return html.Div(
+            [
+                ship_blast_table,
+                aln,
+                html.Br(),
+                superfamily_card,
             ],
+            id="ship-blast-table-container",
+            style={
+                "width": "85%",
+                # "display": "inline-block",
+            },
         )
 
-        # create results table with alignments
-        ship_blast_table = blast_table(blast_results, hmmer_results)
-
-        return ship_blast_table
     else:
         """"""
 
@@ -299,12 +340,10 @@ def check_input(query_text_input, query_file_contents):
         )
 
     elif query_text_input:
-        print(query_text_input)
         input_type = "text"
         header, query = parse_fasta_from_text(query_text_input)
 
     elif query_file_contents:
-        print(query_file_contents)
         input_type = "file"
         header, query = parse_fasta_from_file(query_file_contents)
 
@@ -327,7 +366,6 @@ def parse_fasta_from_file(file_contents):
         if not file_contents:
             raise ValueError("No file contents provided.")
         split_contents = file_contents.split(",")
-        print(split_contents)
 
         # Extract the header from the first line
         header = split_contents[0].strip()  # Remove leading/trailing whitespace
@@ -467,18 +505,18 @@ def run_blast(
     #     subprocess.run(stitch_blast_cmd, shell=True)
     #     ship_blast_out = stitched_blast_tmp
 
-    print(tmp_query_fasta)
-    with open(tmp_query_fasta, "r") as file:
-        file_contents = file.read()
-    print(file_contents)
+    # with open(tmp_query_fasta, "r") as file:
+    #     file_contents = file.read()
+    # print(file_contents)
 
-    with open(tmp_blast, "r") as file:
-        file_contents = file.read()
-    print(file_contents)
+    # with open(tmp_blast, "r") as file:
+    #     file_contents = file.read()
+    # print(file_contents)
 
-    df = pd.read_csv(tmp_blast, sep="\t")
-    if df.shape[1] == 14:
-        df.columns = [
+    df = pd.read_csv(
+        tmp_blast,
+        sep="\t",
+        names=[
             "qseqid",
             "sseqid",
             "pident",
@@ -493,15 +531,12 @@ def run_blast(
             "bitscore",
             "qseq",
             "sseq",
-        ]
-        return df
+        ],
+    )
+    return df
 
 
-def run_hmmer(seq_type=None, input_eval=None, query_fasta=None, threads=4):
-    import subprocess
-    import tempfile
-    import pandas as pd
-
+def run_hmmer(seq_type=None, input_eval=None, query_fasta=None, threads=None):
     hmmer_program = "hmmsearch"
     hmmer_db = "database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
 
@@ -513,8 +548,10 @@ def run_hmmer(seq_type=None, input_eval=None, query_fasta=None, threads=4):
 
     # Parse HMMER output
     tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-    print("Parsing hmmer output...")
-    parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
+    print(tmp_hmmer_parsed)
+    n_records = parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
+    print(f"Number of hmmersearch records: {n_records}")
+
     # extract sequence from results
     # extract_hmmer(tmp_hmmer_parsed)
 
@@ -540,11 +577,14 @@ def run_hmmer(seq_type=None, input_eval=None, query_fasta=None, threads=4):
 
 # Parse the HMMER results
 def parse_hmmer(hmmer_output_file, parsed_file):
+    print("Parsing hmmer output...")
     with open(parsed_file, "w") as tsv_file:
         tsv_file.write(
             "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
         )
+        n_records = 0
         for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
+            n_records = +1
             for hit in record.hits:
                 for hsp in hit.hsps:
                     query_seq = str(hsp.query.seq)
@@ -555,9 +595,11 @@ def parse_hmmer(hmmer_output_file, parsed_file):
                     gaps = str("N/A")
                     bitscore = hsp.bitscore
                     evalue = hsp.evalue
+                    print(hit.id)
                     tsv_file.write(
                         f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
                     )
+        return n_records
 
 
 def extract_hmmer(parsed_file):
@@ -614,11 +656,13 @@ def blast_alignments(ship_blast_results):
     return dashbio.AlignmentChart(
         id="alignment-viewer",
         data=data,
-        # height=nseq * 100,
+        height=150,
         tilewidth=30,
+        overview="slider",
         showconsensus=False,
         showconservation=False,
         showgap=False,
+        showid=False,
     )
 
 
@@ -626,9 +670,6 @@ def blast_chords():
     print("Making circos plot...")
     # circos_data = df[["qseqid", "sseqid", "qstart", "qend"]]
     # print(df)
-    import json
-    import urllib.request as urlreq
-    import dash_bio as dashbio
 
     data = (
         urlreq.urlopen("https://git.io/circos_graph_data.json").read().decode("utf-8")
@@ -669,7 +710,7 @@ def blast_chords():
 
 
 # TODO: link in ship classification information for subjects here
-def blast_table(ship_blast_results, hmmer_results):
+def blast_table(ship_blast_results):
     tbl_dat = ship_blast_results.drop(columns=["qseq", "sseq"])
     tbl = dash_table.DataTable(
         data=tbl_dat.to_dict("records"),
@@ -686,51 +727,48 @@ def blast_table(ship_blast_results, hmmer_results):
         editable=False,
         sort_action="native",
         sort_mode="multi",
-        row_selectable="multi",
+        row_selectable="single",
+        selected_rows=[0],  # Select the first row by default
         row_deletable=False,
         selected_columns=[],
-        selected_rows=[],
         page_action="native",
         page_current=0,
         page_size=10,
     )
+    return tbl
+
+
+def hmmer_table(hmmer_results):
+    # Convert "evalue" column to numeric with errors='coerce'
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
-    superfamily = hmmer_results.loc[hmmer_results["evalue"].idxmin(), "hit_IDs"]
 
-    superfamily_card = html.Div(
-        children=[
-            dbc.Card(
-                [
-                    dbc.CardHeader(
-                        html.H4(f"Likely captain superfamily: {superfamily}")
-                    ),
-                ],
-                color="primary",
-                inverse=True,
-            )
-        ],
-        style={"width": "20%"},
-    )
+    # Drop rows where "evalue" is NaN
+    hmmer_results.dropna(subset=["evalue"], inplace=True)
 
-    aln = blast_alignments(ship_blast_results)
+    # Find the index of the minimum "evalue" for each "query_id"
+    idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
 
-    # chord = blast_chords()
+    # Get corresponding "hit_IDs" for the minimum "evalue" indices
+    superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"]
 
-    return html.Div(
-        [
-            html.Hr(),
-            html.H3("BLAST Results"),
-            superfamily_card,
-            html.Br(),
-            tbl,
-            aln,
-        ],
-        id="ship-blast-table-container",
-        style={
-            "width": "100%",
-            "display": "inline-block",
-        },
-    )
+    if superfamily.empty:
+        return None
+    else:
+        superfamily_card = html.Div(
+            children=[
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            html.H4(f"Likely captain superfamily: {superfamily}")
+                        ),
+                    ],
+                    color="primary",
+                    inverse=True,
+                )
+            ],
+            style={"width": "20%"},
+        )
+        return superfamily_card
 
 
 # Callback to update information about selected row

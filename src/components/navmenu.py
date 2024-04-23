@@ -33,7 +33,19 @@ def sidebar():
             dbc.Nav(
                 [
                     dbc.NavLink("Home", href=HOME_URL, active="exact"),
-                    dbc.NavLink("Wiki", href=WIKI_URL, active="exact"),
+                    dbc.NavLink(
+                        html.P(
+                            [
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
+                                ),
+                                " Wiki",
+                            ]
+                        ),
+                        href=WIKI_URL,
+                        active="exact",
+                    ),
                     dbc.NavLink(
                         html.P(
                             ["Explore ", html.Span("starbase", className="logo-text")]
@@ -41,7 +53,19 @@ def sidebar():
                         href=EXPLORE_URL,
                         active="exact",
                     ),
-                    dbc.NavLink("BLAST", href=BLAST_URL, active="exact"),
+                    dbc.NavLink(
+                        html.P(
+                            [
+                                "BLAST/hmmersearch ",
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
+                                ),
+                            ]
+                        ),
+                        href=BLAST_URL,
+                        active="exact",
+                    ),
                     # dbc.NavLink("Genome Browser", href=IGV_URL, active="exact"),
                     # dbc.NavLink("Starfish", href=STARFISH_URL, active="exact"),
                     dbc.NavLink(

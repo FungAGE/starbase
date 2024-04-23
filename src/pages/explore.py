@@ -38,153 +38,184 @@ styles = {"pre": {"border": "thin lightgrey solid", "overflowX": "scroll"}}
 
 layout = html.Div(
     [
-        html.H1("Explore Starship Diversity"),
+        html.Div(
+            className="title-bar",
+            children=[
+                html.H1(
+                    "Explore Starship Diversity",
+                    className="title-text",
+                    style={"text-align": "center"},
+                ),
+            ],
+        ),
         html.Div(
             style={
+                "height": "150vh",
+                "display": "flex",
+                "flex-direction": "column",
                 "justify-content": "center",
                 "align-items": "center",
             },
             children=[
-                html.Table(
-                    style={"width": "50%"},
-                    children=[
-                        html.Tr(
+                dbc.Card(
+                    [
+                        dbc.CardBody(
                             [
-                                html.Td(
+                                html.Table(
                                     style={"width": "50%"},
                                     children=[
-                                        dbc.Card(
-                                            dbc.CardBody(
-                                                [
-                                                    html.H4(
-                                                        html.P(
-                                                            [
-                                                                "Total number of Starships in ",
-                                                                html.Span(
-                                                                    "starbase",
-                                                                    className="logo-text",
-                                                                ),
-                                                            ]
-                                                        ),
-                                                        className="card-title",
-                                                    ),
-                                                    html.P(
-                                                        ship_count,
-                                                        className="card-text",
-                                                    ),
-                                                ]
-                                            ),
-                                            style={"font-size": "26px"},
-                                            color="primary",
-                                            inverse=True,
-                                        )
+                                        html.Tr(
+                                            [
+                                                html.Td(
+                                                    style={"width": "50%"},
+                                                    children=[
+                                                        dbc.Card(
+                                                            dbc.CardBody(
+                                                                [
+                                                                    html.H4(
+                                                                        html.P(
+                                                                            [
+                                                                                "Total number of Starships in ",
+                                                                                html.Span(
+                                                                                    "starbase",
+                                                                                    className="logo-text",
+                                                                                ),
+                                                                                ":",
+                                                                            ]
+                                                                        ),
+                                                                        className="card-title",
+                                                                    ),
+                                                                    html.P(
+                                                                        ship_count,
+                                                                        className="card-text",
+                                                                    ),
+                                                                ]
+                                                            ),
+                                                            style={
+                                                                "font-size": "26px",
+                                                                "width": "75%",
+                                                                "justify-content": "center",
+                                                                "align-items": "center",
+                                                            },
+                                                            color="primary",
+                                                            inverse=True,
+                                                        )
+                                                    ],
+                                                ),
+                                                html.Td(
+                                                    style={"width": "50%"},
+                                                    children=[
+                                                        dbc.Card(
+                                                            dbc.CardBody(
+                                                                [
+                                                                    html.H4(
+                                                                        "Fungal species with Starships:",
+                                                                        className="card-title",
+                                                                    ),
+                                                                    html.P(
+                                                                        species_count,
+                                                                        className="card-text",
+                                                                    ),
+                                                                ]
+                                                            ),
+                                                            style={
+                                                                "font-size": "26px",
+                                                                "width": "75%",
+                                                                "justify-content": "center",
+                                                                "align-items": "center",
+                                                            },
+                                                            color="secondary",
+                                                            inverse=True,
+                                                        )
+                                                    ],
+                                                ),
+                                            ]
+                                        ),
+                                        html.Br(),
+                                        html.Tr(
+                                            [
+                                                html.Td(
+                                                    style={
+                                                        "width": "50%",
+                                                        "justify-content": "center",
+                                                        "align-items": "center",
+                                                    },
+                                                    children=[
+                                                        dcc.Graph(
+                                                            id="pie-chart2",
+                                                            config={
+                                                                "displayModeBar": False
+                                                            },
+                                                        )
+                                                    ],
+                                                ),
+                                                html.Td(
+                                                    style={
+                                                        "width": "50%",
+                                                        "justify-content": "center",
+                                                        "align-items": "center",
+                                                    },
+                                                    children=[
+                                                        dcc.Graph(
+                                                            id="pie-chart1",
+                                                            config={
+                                                                "displayModeBar": False
+                                                            },
+                                                        )
+                                                    ],
+                                                ),
+                                            ]
+                                        ),
                                     ],
                                 ),
-                                html.Td(style={"width": "25%"}),
-                                html.Td(
-                                    style={"width": "50%"},
-                                    children=[
-                                        dbc.Card(
-                                            dbc.CardBody(
-                                                [
-                                                    html.H4(
-                                                        "Fungal species with Starships",
-                                                        className="card-title",
-                                                    ),
-                                                    html.P(
-                                                        species_count,
-                                                        className="card-text",
-                                                    ),
-                                                ]
-                                            ),
-                                            style={"font-size": "26px"},
-                                            color="secondary",
-                                            inverse=True,
-                                        )
+                                html.Br(),
+                                html.Div(
+                                    [
+                                        html.H2(
+                                            [
+                                                "All Starships in ",
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
+                                                ),
+                                            ]
+                                        ),
+                                        dash_table.DataTable(
+                                            id="table",
+                                            columns=[
+                                                {
+                                                    "name": i,
+                                                    "id": i,
+                                                    "deletable": False,
+                                                    "selectable": True,
+                                                }
+                                                for i in df_sub.columns
+                                            ],
+                                            data=df_sub.to_dict("records"),
+                                            editable=False,
+                                            filter_action="native",
+                                            sort_action="native",
+                                            sort_mode="multi",
+                                            # column_selectable="single",
+                                            row_selectable="multi",
+                                            row_deletable=False,
+                                            selected_columns=[],
+                                            selected_rows=[],
+                                            page_action="native",
+                                            page_current=0,
+                                            page_size=25,
+                                        ),
+                                        html.Div(id="table-container"),
                                     ],
-                                ),
-                            ]
-                        ),
-                        html.Br(),
-                        html.Tr(
-                            [
-                                html.Td(
-                                    style={"width": "50%"},
-                                    children=[
-                                        dcc.Graph(
-                                            id="pie-chart2",
-                                            config={"displayModeBar": False},
-                                        )
-                                    ],
-                                ),
-                                html.Td(
-                                    style={"width": "25%"},
-                                ),
-                                html.Td(
-                                    style={"width": "50%"},
-                                    children=[
-                                        dcc.Graph(
-                                            id="pie-chart1",
-                                            config={"displayModeBar": False},
-                                        )
-                                    ],
-                                ),
-                            ]
-                        ),
-                        html.Br(),
-                        html.Tr(
-                            [
-                                html.Td(
                                     style={
                                         "textAlign": "center",
                                         "width": "100%",
                                         "display": "inline-block",
                                     },
-                                    children=[
-                                        html.Div(
-                                            [
-                                                html.H3(
-                                                    "Table for metadata of all Starships in starbase"
-                                                ),
-                                                html.Div(
-                                                    children=[
-                                                        dash_table.DataTable(
-                                                            id="table",
-                                                            columns=[
-                                                                {
-                                                                    "name": i,
-                                                                    "id": i,
-                                                                    "deletable": False,
-                                                                    "selectable": True,
-                                                                }
-                                                                for i in df_sub.columns
-                                                            ],
-                                                            data=df_sub.to_dict(
-                                                                "records"
-                                                            ),
-                                                            editable=False,
-                                                            filter_action="native",
-                                                            sort_action="native",
-                                                            sort_mode="multi",
-                                                            # column_selectable="single",
-                                                            row_selectable="multi",
-                                                            row_deletable=False,
-                                                            selected_columns=[],
-                                                            selected_rows=[],
-                                                            page_action="native",
-                                                            page_current=0,
-                                                            page_size=25,
-                                                        ),
-                                                    ],
-                                                ),
-                                                html.Div(id="table-container"),
-                                            ]
-                                        ),
-                                    ],
-                                )
+                                ),
                             ]
-                        ),
-                    ],
+                        )
+                    ]
                 ),
             ],
         ),
