@@ -116,7 +116,7 @@ layout = html.Div(
                                                                     placeholder="Paste FASTA sequence here...",
                                                                     rows=15,
                                                                     style={
-                                                                        "width": "85%"
+                                                                        "width": "100%",
                                                                     },
                                                                 ),
                                                                 html.Br(),
@@ -129,14 +129,13 @@ layout = html.Div(
                                                                         id="query-sequence-upload"
                                                                     ),
                                                                     style={
-                                                                        "width": "85%",
+                                                                        "width": "100%",
                                                                         "height": "75px",
                                                                         "lineHeight": "75px",
                                                                         "borderWidth": "2px",
                                                                         "borderStyle": "dashed",
                                                                         "borderRadius": "5px",
                                                                         "justify-content": "center",
-                                                                        "margin": "10px",
                                                                     },
                                                                     multiple=False,
                                                                     accept=".fa, .fas, .fasta, .fna",
@@ -157,12 +156,16 @@ layout = html.Div(
                                                         ),
                                                         html.Td(
                                                             children=[
-                                                                html.Div(
-                                                                    id="output-container"
-                                                                )
+                                                                dcc.Loading(
+                                                                    id="loading-1",
+                                                                    type="default",
+                                                                    children=html.Div(
+                                                                        id="output-container"
+                                                                    ),
+                                                                ),
                                                             ],
                                                             style={
-                                                                "width": "75%",
+                                                                "width": "85%",
                                                                 "justify-content": "center",
                                                                 "align-items": "center",
                                                                 "textAlign": "center",
@@ -247,8 +250,6 @@ def run_main(n_clicks, query_text_input, query_file_contents):
 
         query_type = guess_seq_type(query_seq)
 
-        # processing_data(input_type, query_type, cleaned_seq, query_header)
-
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa").name
         cleaned_query_seq = SeqRecord(Seq(query_seq), id=query_header, description="")
         SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
@@ -301,19 +302,6 @@ def run_main(n_clicks, query_text_input, query_file_contents):
 
     else:
         """"""
-
-
-def processing_data(input_type, query_list, query_header):
-    return (
-        dbc.Spinner(html.Span("Processing...")),
-        html.Div(
-            [
-                html.Div(f"Query type: {query_list['query_type']}"),
-                html.Div(f"Query header: {query_header}"),
-                html.Div(f"Input type: {input_type}"),
-            ]
-        ),
-    )
 
 
 def check_input(query_text_input, query_file_contents):
@@ -446,22 +434,6 @@ def run_blast(
         "gene": {
             "tyr": {
                 "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa"
-            },
-            "fre": {
-                "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-                "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
-            },
-            "nlr": {
-                "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-                "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
-            },
-            "DUF3723": {
-                "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-                "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
-            },
-            "plp": {
-                "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-                "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
             },
         },
     }
