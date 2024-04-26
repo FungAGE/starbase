@@ -11,7 +11,12 @@ def mod_home_ui():
         "Submission of new Starship sequences",
         "BLAST/HMMER searches",
     ]
-    working_ul = html.Ul([html.Li(item) for item in working])
+    working_ul = html.Ul(
+        [html.Li(item) for item in working],
+        style={
+            "fontSize": "0.6vw",
+        },
+    )
 
     not_working = [
         "Synteny/Genome Browser",
@@ -25,7 +30,12 @@ def mod_home_ui():
             ],
         ),
     ]
-    not_working_ul = html.Ul([html.Li(item) for item in not_working])
+    not_working_ul = html.Ul(
+        [html.Li(item) for item in not_working],
+        style={
+            "fontSize": "0.6vw",
+        },
+    )
 
     return html.Div(
         [
@@ -42,14 +52,15 @@ def mod_home_ui():
                                             "starbase",
                                             className="logo-text",
                                             style={
-                                                "fontSize": "5em",
+                                                "fontSize": "7vw",
                                             },
                                         ),
                                         html.Br(),
                                         "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
                                     ],
                                     style={
-                                        "fontSize": "3em",
+                                        "fontSize": "2vw",
+                                        "textAlign": "center",
                                     },
                                 )
                             ),
@@ -68,7 +79,10 @@ def mod_home_ui():
                                                                     className="logo-text",
                                                                 ),
                                                                 " for?",
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "fontSize": "1vw",
+                                                            },
                                                         )
                                                     ),
                                                     dbc.CardBody([working_ul]),
@@ -89,7 +103,10 @@ def mod_home_ui():
                                                                     className="logo-text",
                                                                 ),
                                                                 " under active development:",
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "fontSize": "1vw",
+                                                            },
                                                         )
                                                     ),
                                                     dbc.CardBody([not_working_ul]),
@@ -110,7 +127,10 @@ def mod_home_ui():
                             dbc.Row(
                                 dbc.Card(
                                     [
-                                        dbc.CardHeader([html.H4("Data Availability")]),
+                                        dbc.CardHeader(
+                                            [html.H4("Data Availability")],
+                                            style={"fontSize": "2vw"},
+                                        ),
                                         dbc.CardBody(
                                             [
                                                 html.P(
@@ -121,7 +141,8 @@ def mod_home_ui():
                                                             className="logo-text",
                                                         ),
                                                         " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                                    ]
+                                                    ],
+                                                    style={"fontSize": "0.6vw"},
                                                 ),
                                                 html.Div(
                                                     style={"textAlign": "center"},
@@ -135,11 +156,14 @@ def mod_home_ui():
                                                                         className="logo-text",
                                                                     ),
                                                                     ".",
-                                                                ]
+                                                                ],
+                                                                style={
+                                                                    "fontSize": "0.6vw"
+                                                                },
                                                             ),
                                                             id="dl_package",
                                                             color="primary",
-                                                            className="mr-1",
+                                                            class_name="mr-1",
                                                         )
                                                     ],
                                                 ),
@@ -149,6 +173,8 @@ def mod_home_ui():
                                 )
                             ),
                         ],
+                        md=5,
+                        align="center",
                     ),
                 ],
             ),

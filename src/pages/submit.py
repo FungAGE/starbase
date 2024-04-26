@@ -19,30 +19,17 @@ dash.register_page(__name__)
 # Define form layout
 form = html.Div(
     [
-        html.Div(
-            className="title-bar",
-            children=[
-                html.H1(
-                    [
-                        "Submit Starships to ",
-                        html.Span(
-                            "starbase",
-                            className="logo-text",
-                        ),
-                    ],
-                    className="title-text",
-                    style={
-                        "textAlign": "center",
-                    },
-                ),
-            ],
-        ),
         dbc.Container(
-            [
+            fluid=True,
+            children=[
                 dbc.Row(
-                    [
+                    justify="center",
+                    align="center",
+                    children=[
                         dbc.Col(
-                            [
+                            width=8,
+                            className="align-self-center",
+                            children=[
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
@@ -53,7 +40,8 @@ form = html.Div(
                                                         "starbase",
                                                         className="logo-text",
                                                     ),
-                                                ]
+                                                ],
+                                                style={"font-size": "1vw"},
                                             )
                                         ),
                                         dbc.CardBody(
@@ -71,20 +59,24 @@ form = html.Div(
                                                         ),
                                                     ]
                                                 )
-                                            ]
+                                            ],
+                                            style={"font-size": "0.6vw"},
                                         ),
                                     ]
                                 )
                             ],
-                            width=8,
                         )
                     ],
-                    className="mb-3",
+                    class_name="mb-3",
                 ),
                 dbc.Row(
-                    [
+                    justify="center",
+                    align="center",
+                    children=[
                         dbc.Col(
-                            [
+                            width=8,
+                            className="align-self-center",
+                            children=[
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
@@ -95,7 +87,8 @@ form = html.Div(
                                                         "starbase",
                                                         className="logo-text",
                                                     ),
-                                                ]
+                                                ],
+                                                style={"font-size": "1vw"},
                                             )
                                         ),
                                         dbc.CardBody(
@@ -112,10 +105,16 @@ form = html.Div(
                                                                     },
                                                                 ),
                                                                 " = manditory.",
-                                                            ]
+                                                            ],
+                                                            style={"font-size": "1vw"},
                                                         ),
                                                         html.H5(
-                                                            "Upload Starship sequence:"
+                                                            [
+                                                                "Upload Starship sequence:"
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         dcc.Upload(
                                                             id="upload-sequence",
@@ -144,7 +143,12 @@ form = html.Div(
                                                             ),
                                                         ),
                                                         html.H5(
-                                                            "Upload gene annotations associated with Starship sequence (GFF[3] format)"
+                                                            [
+                                                                "Upload gene annotations associated with Starship sequence (GFF[3] format):"
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         dcc.Upload(
                                                             id="upload-annotations",
@@ -172,7 +176,10 @@ form = html.Div(
                                                             ),
                                                         ),
                                                         html.Br(),
-                                                        html.H5("Starship metadata:"),
+                                                        html.H5(
+                                                            ["Starship metadata:"],
+                                                            style={"font-size": "1vw"},
+                                                        ),
                                                         html.P(
                                                             [
                                                                 "Name of curator: ",
@@ -184,7 +191,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.P(
                                                             [
@@ -197,7 +207,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.P(
                                                             [
@@ -210,7 +223,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.P(
                                                             [
@@ -223,7 +239,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.Br(),
                                                         html.Br(),
@@ -241,7 +260,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.P(
                                                             [
@@ -254,7 +276,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.P(
                                                             [
@@ -267,7 +292,10 @@ form = html.Div(
                                                                     },
                                                                     required=True,
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.Br(),
                                                         html.Br(),
@@ -286,7 +314,12 @@ form = html.Div(
                                                         html.Br(),
                                                         html.Br(),
                                                         dbc.Button(
-                                                            "Submit",
+                                                            html.P(
+                                                                ["Submit"],
+                                                                style={
+                                                                    "font-size": "1vw"
+                                                                },
+                                                            ),
                                                             id="submit-ship",
                                                             n_clicks=0,
                                                         ),
@@ -296,25 +329,18 @@ form = html.Div(
                                         ),
                                     ]
                                 )
-                            ]
+                            ],
                         )
-                    ]
+                    ],
                 ),
             ],
-            className="mt-4",
+            class_name="mt-4",
         ),
     ],
-    style={
-        "height": "100vh",
-        "display": "flex",
-        "flex-direction": "column",
-        "justify-content": "center",
-        "align-items": "center",
-    },
 )
 
 # Define app layout
-layout = html.Div([dbc.Container(form, className="mt-4")])
+layout = html.Div([dbc.Container(form, class_name="mt-4")])
 
 
 @callback(Output("loading-output-1", "children"), Input("upload-sequence", "value"))
