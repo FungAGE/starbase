@@ -8,9 +8,10 @@ import dash_bio as dashbio
 import io
 from io import StringIO
 import os
+import re
 import tempfile
 import base64
-import datetime
+from datetime import date
 import subprocess
 import json
 import urllib.request as urlreq
@@ -261,7 +262,6 @@ def run_main(n_clicks, query_text_input, query_file_contents):
                 dbc.Stack(
                     [
                         superfamily_card,
-                        html.Hr(),
                         ship_blast_table,
                     ],
                     gap=3,
@@ -475,6 +475,9 @@ def run_blast(
             "sseq",
         ],
     )
+    df["qseqid"] = df["qseqid"].apply(lambda x: re.sub(r"\|.*$", "", x))
+    df["sseqid"] = df["sseqid"].apply(lambda x: re.sub(r"\|.*$", "", x))
+
     return df
 
 
@@ -627,11 +630,12 @@ def blast_table(ship_blast_results):
     tbl = html.Div(
         [
             dbc.Button(
-                "Dowload BLAST results",
+                "Download BLAST results",
                 id="blast-dl-button",
                 n_clicks=0,
                 style={"textAlign": "center"},
             ),
+            dcc.Download(id="blast-dl"),
             html.Br(),
             dash_table.DataTable(
                 columns=[
@@ -656,6 +660,7 @@ def blast_table(ship_blast_results):
                 page_action="native",
                 page_current=0,
                 page_size=10,
+                export_format="tsv",
                 css=[{"selector": ".show-hide", "rule": "display: none"}],
             ),
         ]
@@ -674,7 +679,10 @@ def hmmer_table(hmmer_results):
     idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
 
     # Get corresponding "hit_IDs" for the minimum "evalue" indices
-    superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
+    try:
+        superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
+    except IndexError:
+        superfamily = None
 
     if superfamily is None:
         return None
@@ -689,7 +697,8 @@ def hmmer_table(hmmer_results):
                     ],
                     color="secondary",
                     inverse=True,
-                )
+                ),
+                html.Hr(),
             ],
             style={"width": "33%"},
         )
@@ -705,67 +714,68 @@ def hmmer_table(hmmer_results):
     ],
 )
 def blast_alignments(ship_blast_results, selected_row):
-    import re
 
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False)
 
     # Convert ship_blast_results to a Pandas DataFrame
     ship_blast_results_df = pd.DataFrame(ship_blast_results)
-    ship_blast_results_df["qseqid"] = ship_blast_results_df["qseqid"].apply(
-        lambda x: re.sub(r"\|.*$", "", x)
-    )
-    ship_blast_results_df["sseqid"] = ship_blast_results_df["sseqid"].apply(
-        lambda x: re.sub(r"\|.*$", "", x)
-    )
 
     if selected_row is not None:
-        row = ship_blast_results_df.iloc[selected_row]
+        row_sel = selected_row
     else:
-        row = ship_blast_results_df.iloc[0]
+        row_sel = 0
 
-    # Write the specific row to the file
-    with open(tmp_fasta.name, "w") as f:
-        f.write(f">{row['qseqid'].iloc[0]}\n")
-        f.write(f"{row['qseq'].iloc[0]}\n")
-        f.write(f">{row['sseqid'].iloc[0]}\n")
-        f.write(f"{row['sseq'].iloc[0]}\n")
+    try:
+        row = ship_blast_results_df.iloc[row_sel]
+    except IndexError:
+        row = None
+    if row is not None:
+        # Write the specific row to the file
+        with open(tmp_fasta.name, "w") as f:
+            f.write(f">{row['qseqid'].iloc[0]}\n")
+            f.write(f"{row['qseq'].iloc[0]}\n")
+            f.write(f">{row['sseqid'].iloc[0]}\n")
+            f.write(f"{row['sseq'].iloc[0]}\n")
 
-    with open(tmp_fasta.name, "r") as file:
-        data = file.read()
+        with open(tmp_fasta.name, "r") as file:
+            data = file.read()
 
-    aln = dashbio.AlignmentChart(
-        id="alignment-viewer",
-        data=data,
-        height=200,
-        tilewidth=30,
-        # overview="slider",
-        showconsensus=False,
-        showconservation=False,
-        showgap=False,
-        showid=False,
-    )
+        aln = dashbio.AlignmentChart(
+            id="alignment-viewer",
+            data=data,
+            height=200,
+            tilewidth=30,
+            # overview="slider",
+            showconsensus=False,
+            showconservation=False,
+            showgap=False,
+            showid=False,
+        )
 
-    return aln
+        return aln
 
 
 # Define callback to download TSV
 @callback(
-    Output("blast-dl-button", "data"),
+    Output("blast-dl", "data"),
     [Input("blast-dl-button", "n_clicks")],
     [State("ship-blast-table", "data"), State("ship-blast-table", "columns")],
 )
 def download_tsv(n_clicks, rows, columns):
-    if n_clicks is None:
-        return dash.no_update
+    if n_clicks == 0:
+        return None
 
-    df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
-    tsv_string = df.to_csv(sep="\t", index=False)
-    tsv_bytes = io.BytesIO(tsv_string.encode())
-    b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
+    try:
+        df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
+        tsv_string = df.to_csv(sep="\t", index=False)
+        tsv_bytes = io.BytesIO(tsv_string.encode())
+        b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
 
-    date = datetime.today().strftime("%Y-%m-%d")
+        today = date.today().strftime("%Y-%m-%d")
 
-    return dict(
-        content=f"data:text/tab-separated-values;base64,{b64}",
-        filename=f"starbase_blast_{date}.tsv",
-    )
+        return dict(
+            content=f"data:text/tab-separated-values;base64,{b64}",
+            filename=f"starbase_blast_{today}.tsv",
+        )
+    except Exception as e:
+        return f"Error: {str(e)}"
