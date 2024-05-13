@@ -37,148 +37,141 @@ def mod_home_ui():
         },
     )
 
-    return html.Div(
-        [
-            dbc.Container(
-                fluid=True,
+    return dbc.Container(
+        fluid=True,
+        className="justify-content-start",
+        children=[
+            dbc.Col(
+                width={"size": 6},
                 children=[
-                    dbc.Col(
-                        width={"size": 6, "offset": 3},
-                        children=[
-                            dbc.Row(
-                                html.H1(
-                                    [
-                                        html.Span(
-                                            "starbase",
-                                            className="logo-text",
-                                            style={
-                                                "fontSize": "7vw",
-                                            },
-                                        ),
-                                        html.Br(),
-                                        "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
-                                    ],
+                    dbc.Row(
+                        html.H1(
+                            [
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
                                     style={
-                                        "fontSize": "2vw",
-                                        "textAlign": "center",
+                                        "fontSize": "7vw",
                                     },
-                                )
-                            ),
-                            dbc.Row(
+                                ),
+                                html.Br(),
+                                "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                            ],
+                            style={
+                                "fontSize": "2vw",
+                                "textAlign": "center",
+                            },
+                        )
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
                                 [
-                                    dbc.Col(
+                                    dbc.Card(
                                         [
-                                            dbc.Card(
-                                                [
-                                                    dbc.CardHeader(
-                                                        html.H4(
-                                                            [
-                                                                "What can I currently use ",
-                                                                html.Span(
-                                                                    "starbase",
-                                                                    className="logo-text",
-                                                                ),
-                                                                " for?",
-                                                            ],
-                                                            style={
-                                                                "fontSize": "1vw",
-                                                            },
-                                                        )
-                                                    ),
-                                                    dbc.CardBody([working_ul]),
-                                                ]
-                                            )
-                                        ]
-                                    ),
-                                    dbc.Col(
-                                        [
-                                            dbc.Card(
-                                                [
-                                                    dbc.CardHeader(
-                                                        html.H4(
-                                                            [
-                                                                "Functions of ",
-                                                                html.Span(
-                                                                    "starbase",
-                                                                    className="logo-text",
-                                                                ),
-                                                                " under active development:",
-                                                            ],
-                                                            style={
-                                                                "fontSize": "1vw",
-                                                            },
-                                                        )
-                                                    ),
-                                                    dbc.CardBody([not_working_ul]),
-                                                ]
-                                            )
-                                        ]
-                                    ),
-                                ]
-                            ),
-                            dbc.Row(
-                                dbc.Col(
-                                    html.Img(
-                                        src="assets/images/starbase-map.png",
-                                        width="100%",
-                                    )
-                                )
-                            ),
-                            dbc.Row(
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [html.H4("Data Availability")],
-                                            style={"fontSize": "2vw"},
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                html.P(
+                                            dbc.CardHeader(
+                                                html.H4(
                                                     [
-                                                        "We have been maintaining ",
+                                                        "What can I currently use ",
                                                         html.Span(
                                                             "starbase",
                                                             className="logo-text",
                                                         ),
-                                                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                        " for?",
                                                     ],
-                                                    style={"fontSize": "0.6vw"},
+                                                    style={
+                                                        "fontSize": "1vw",
+                                                    },
+                                                )
+                                            ),
+                                            dbc.CardBody([working_ul]),
+                                        ]
+                                    )
+                                ]
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Card(
+                                        [
+                                            dbc.CardHeader(
+                                                html.H4(
+                                                    [
+                                                        "Functions of ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                        " under active development:",
+                                                    ],
+                                                    style={
+                                                        "fontSize": "1vw",
+                                                    },
+                                                )
+                                            ),
+                                            dbc.CardBody([not_working_ul]),
+                                        ]
+                                    )
+                                ]
+                            ),
+                        ]
+                    ),
+                    dbc.Row(
+                        dbc.Col(
+                            html.Img(
+                                src="assets/images/starbase-map.png",
+                                width="100%",
+                            )
+                        )
+                    ),
+                    dbc.Row(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader(
+                                    [html.H4("Data Availability")],
+                                    style={"fontSize": "2vw"},
+                                ),
+                                dbc.CardBody(
+                                    [
+                                        html.P(
+                                            [
+                                                "We have been maintaining ",
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
                                                 ),
-                                                html.Div(
-                                                    style={"textAlign": "center"},
-                                                    children=[
-                                                        dbc.Button(
-                                                            html.P(
-                                                                [
-                                                                    "Download the latest version of ",
-                                                                    html.Span(
-                                                                        "starbase",
-                                                                        className="logo-text",
-                                                                    ),
-                                                                    ".",
-                                                                ],
-                                                                style={
-                                                                    "fontSize": "0.6vw"
-                                                                },
+                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                            ],
+                                            style={"fontSize": "0.6vw"},
+                                        ),
+                                        html.Div(
+                                            style={"textAlign": "center"},
+                                            children=[
+                                                dbc.Button(
+                                                    html.P(
+                                                        [
+                                                            "Download the latest version of ",
+                                                            html.Span(
+                                                                "starbase",
+                                                                className="logo-text",
                                                             ),
-                                                            id="dl_package",
-                                                            color="primary",
-                                                            class_name="mr-1",
-                                                        )
-                                                    ],
-                                                ),
-                                            ]
+                                                            ".",
+                                                        ],
+                                                        style={"fontSize": "0.6vw"},
+                                                    ),
+                                                    id="dl_package",
+                                                    color="primary",
+                                                    class_name="mr-1",
+                                                )
+                                            ],
                                         ),
                                     ]
-                                )
-                            ),
-                        ],
-                        md=5,
-                        align="center",
+                                ),
+                            ]
+                        )
                     ),
                 ],
             ),
-        ]
+        ],
     )
 
 

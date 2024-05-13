@@ -13,127 +13,116 @@ from src.pages import (
     ABOUT_URL,
 )
 
-SIDEBAR_STYLE = {
-    "position": "fixed",
-    "top": 0,
-    "left": 0,
-    "bottom": 0,
-    "width": "16rem",
-    "padding": "2rem 1rem",
-    "background-color": "#f8f9fa",
-}
-
 navbar = dbc.Navbar(
-    dbc.Container(
-        [
-            dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
-            dbc.Collapse(
-                dbc.Row(
-                    align="center",
-                    className="g-0",
-                    children=[
-                        dbc.Col(
-                            width={"size": 12, "offset": 2},
-                            children=[
-                                dbc.NavbarSimple(
-                                    fluid=True,
-                                    children=[
-                                        dbc.NavItem(
-                                            dbc.NavLink(
-                                                "Home", href=HOME_URL, active="exact"
-                                            )
+    [
+        dbc.Container(
+            fluid=True,
+            children=[
+                dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
+                dbc.Collapse(
+                    [
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                html.P(
+                                    ["Home"],
+                                    className="nav-item-text",
+                                ),
+                                href=HOME_URL,
+                                active="exact",
+                                className="nav-item-link",
+                            )
+                        ),
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                html.P(
+                                    [
+                                        html.Span(
+                                            "starbase",
+                                            className="logo-text",
                                         ),
-                                        dbc.NavItem(
-                                            dbc.NavLink(
-                                                html.P(
-                                                    [
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " Wiki",
-                                                    ]
-                                                ),
-                                                href=WIKI_URL,
-                                                active="exact",
-                                            )
-                                        ),
-                                        dbc.NavItem(
-                                            dbc.NavLink(
-                                                html.P(
-                                                    [
-                                                        "Explore ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                    ]
-                                                ),
-                                                href=EXPLORE_URL,
-                                                active="exact",
-                                            )
-                                        ),
-                                        dbc.NavItem(
-                                            dbc.NavLink(
-                                                html.P(
-                                                    [
-                                                        "BLAST/hmmersearch ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                    ]
-                                                ),
-                                                href=BLAST_URL,
-                                                active="exact",
-                                            )
-                                        ),
-                                        # dbc.NavItem(dbc.NavLink("Genome Browser", href=IGV_URL, active="exact")),
-                                        # dbc.NavItem(dbc.NavLink("Starfish", href=STARFISH_URL, active="exact")),
-                                        dbc.NavItem(
-                                            dbc.NavLink(
-                                                html.P(
-                                                    [
-                                                        "Submit to ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                    ]
-                                                ),
-                                                href=SUBMIT_URL,
-                                                active="exact",
-                                            )
-                                        ),
-                                        dbc.NavItem(
-                                            dbc.NavLink(
-                                                "About", href=ABOUT_URL, active="exact"
-                                            )
+                                        " Wiki",
+                                    ],
+                                    className="nav-item-text",
+                                ),
+                                href=WIKI_URL,
+                                active="exact",
+                                className="nav-item-link",
+                            )
+                        ),
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                html.P(
+                                    [
+                                        "Explore ",
+                                        html.Span(
+                                            "starbase",
+                                            className="logo-text",
                                         ),
                                     ],
-                                    # vertical=True,
-                                    # pills=True,
-                                    style={
-                                        "fontSize": "1vw",
-                                    },
-                                )
-                            ],
-                        )
+                                    className="nav-item-text",
+                                ),
+                                href=EXPLORE_URL,
+                                active="exact",
+                                className="nav-item-link",
+                            )
+                        ),
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                html.P(
+                                    [
+                                        "BLAST/hmmersearch ",
+                                        html.Span(
+                                            "starbase",
+                                            className="logo-text",
+                                        ),
+                                    ],
+                                    className="nav-item-text",
+                                ),
+                                href=BLAST_URL,
+                                active="exact",
+                                className="nav-item-link",
+                            )
+                        ),
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                html.P(
+                                    [
+                                        "Submit to ",
+                                        html.Span(
+                                            "starbase",
+                                            className="logo-text",
+                                        ),
+                                    ],
+                                    className="nav-item-text",
+                                ),
+                                href=SUBMIT_URL,
+                                active="exact",
+                                className="nav-item-link",
+                            )
+                        ),
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                html.P(["About"], className="nav-item-text"),
+                                href=ABOUT_URL,
+                                active="exact",
+                                className="nav-item-link",
+                            )
+                        ),
                     ],
+                    id="navbar-collapse",
+                    is_open=False,
+                    navbar=True,
+                    className="justify-content-start",
                 ),
-                id="navbar-collapse",
-                is_open=False,
-                navbar=True,
-            ),
-        ]
-    ),
+            ],
+        ),
+    ]
 )
 
 
 def sidebar():
     return html.Div(
         [navbar],
-        # style=SIDEBAR_STYLE,
     )
 
 
