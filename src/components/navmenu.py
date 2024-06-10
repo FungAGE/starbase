@@ -162,7 +162,7 @@ def toggle_navbar_collapse(n, is_open):
 #         html.Script("""
 #             var blasterjs = require("biojs-vis-blasterjs")
 #             var instance = new blasterjs({
-#                 string: "assets/blast.out",
+#                 string: "tmp/blast.out",
 #                 multipleAlignments: "blast-multiple-alignments",
 #                 alignmentsTable: "blast-alignments-table",
 #                 singleAlignment: "blast-single-alignment",

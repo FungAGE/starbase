@@ -33,12 +33,13 @@ app = Dash(
     title="starbase",
     external_stylesheets=external_stylesheets,
     external_scripts=external_scripts,
+    # meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 
 
 def serve_app_layout():
     return html.Div(
-        [navmenu.sidebar(), html.P(dash.page_container, style=CONTENT_STYLE)]
+        [navmenu.sidebar(), html.P(dash.page_container, style=CONTENT_STYLE)],
     )
 
 
