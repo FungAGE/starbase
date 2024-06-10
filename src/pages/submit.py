@@ -17,331 +17,280 @@ import pandas as pd
 dash.register_page(__name__)
 
 # Define form layout
-form = html.Div(
-    [
-        dbc.Container(
-            fluid=True,
-            children=[
-                dbc.Row(
-                    justify="center",
-                    align="center",
-                    children=[
-                        dbc.Col(
-                            width=8,
-                            className="align-self-center",
-                            children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            html.H5(
-                                                [
-                                                    "Submission of multiple Starships to ",
-                                                    html.Span(
-                                                        "starbase",
-                                                        className="logo-text",
-                                                    ),
-                                                ],
-                                                style={"font-size": "1vw"},
-                                            )
-                                        ),
-                                        dbc.CardBody(
+layout = (
+    dbc.Container(
+        fluid=True,
+        className="justify-content-start",
+        children=[
+            dbc.Row(
+                children=[
+                    dbc.Col(
+                        width=8,
+                        children=[
+                            dbc.Card(
+                                [
+                                    dbc.CardHeader(
+                                        html.H5(
                                             [
-                                                html.Div(
-                                                    [
-                                                        html.P(
-                                                            [
-                                                                "Unfortunately, we can only handle submission for one Starship at a time. If you have a batch of Starships that you'd like to submit, please send the submission via ",
-                                                                html.A(
-                                                                    "email.",
-                                                                    href="mailto:adrian.e.forsythe@gmail.com",
-                                                                ),
-                                                            ]
-                                                        ),
-                                                    ]
-                                                )
-                                            ],
-                                            style={"font-size": "0.6vw"},
-                                        ),
-                                    ]
-                                )
-                            ],
-                        )
-                    ],
-                    class_name="mb-3",
-                ),
-                dbc.Row(
-                    justify="center",
-                    align="center",
-                    children=[
-                        dbc.Col(
-                            width=8,
-                            className="align-self-center",
-                            children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            html.H5(
-                                                [
-                                                    "Submit individual Starships to ",
-                                                    html.Span(
-                                                        "starbase",
-                                                        className="logo-text",
-                                                    ),
-                                                ],
-                                                style={"font-size": "1vw"},
-                                            )
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                html.Div(
-                                                    [
-                                                        html.H5(
-                                                            [
-                                                                "Fields in ",
-                                                                html.Span(
-                                                                    "red",
-                                                                    style={
-                                                                        "color": "red"
-                                                                    },
-                                                                ),
-                                                                " = manditory.",
-                                                            ],
-                                                            style={"font-size": "1vw"},
-                                                        ),
-                                                        html.H5(
-                                                            [
-                                                                "Upload Starship sequence:"
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        dcc.Upload(
-                                                            id="upload-sequence",
-                                                            children=html.Div(
-                                                                id="output-sequence-upload"
-                                                            ),
-                                                            style={
-                                                                "color": "red",
-                                                                "width": "50%",
-                                                                "height": "60px",
-                                                                "lineHeight": "60px",
-                                                                "borderWidth": "1px",
-                                                                "borderStyle": "dashed",
-                                                                "borderRadius": "5px",
-                                                                "textAlign": "center",
-                                                                "margin": "10px",
-                                                            },
-                                                            multiple=False,
-                                                            accept=".fa, .fas, .fasta, .fna",
-                                                        ),
-                                                        dcc.Loading(
-                                                            id="loading-1",
-                                                            type="default",
-                                                            children=html.Div(
-                                                                id="loading-output-1"
-                                                            ),
-                                                        ),
-                                                        html.H5(
-                                                            [
-                                                                "Upload gene annotations associated with Starship sequence (GFF[3] format):"
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        dcc.Upload(
-                                                            id="upload-annotations",
-                                                            children=html.Div(
-                                                                id="output-annotation-upload"
-                                                            ),
-                                                            accept=".gff, .gff3",
-                                                            multiple=False,
-                                                            style={
-                                                                "width": "50%",
-                                                                "height": "60px",
-                                                                "lineHeight": "60px",
-                                                                "borderWidth": "1px",
-                                                                "borderStyle": "dashed",
-                                                                "borderRadius": "5px",
-                                                                "textAlign": "center",
-                                                                "margin": "10px",
-                                                            },
-                                                        ),
-                                                        dcc.Loading(
-                                                            id="loading-2",
-                                                            type="default",
-                                                            children=html.Div(
-                                                                id="loading-output-2"
-                                                            ),
-                                                        ),
-                                                        html.Br(),
-                                                        html.H5(
-                                                            ["Starship metadata:"],
-                                                            style={"font-size": "1vw"},
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "Name of curator: ",
-                                                                dcc.Input(
-                                                                    id="uploader",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "How were Starships annotated? (i.e. starfish): ",
-                                                                dcc.Input(
-                                                                    id="evidence",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "Enter genus name: ",
-                                                                dcc.Input(
-                                                                    id="genus",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "Enter species name: ",
-                                                                dcc.Input(
-                                                                    id="species",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.Br(),
-                                                        html.Br(),
-                                                        html.H5(
-                                                            "Coordinates of Starship in host genome:"
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "Host genome contig/scaffold/chromosome ID: ",
-                                                                dcc.Input(
-                                                                    id="hostchr",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "Start coordinate of Starship: ",
-                                                                dcc.Input(
-                                                                    id="shipstart",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.P(
-                                                            [
-                                                                "End coordinate for Starship: ",
-                                                                dcc.Input(
-                                                                    id="shipend",
-                                                                    type="text",
-                                                                    style={
-                                                                        "width": "15%"
-                                                                    },
-                                                                    required=True,
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.Br(),
-                                                        html.Br(),
-                                                        html.H5(
-                                                            "Additional information:"
-                                                        ),
-                                                        dcc.Textarea(
-                                                            id="comment",
-                                                            placeholder="Any comments about the Starship features, annotations, or host genome?",
-                                                            style={
-                                                                "height": "100px",
-                                                                "width": "50%",
-                                                            },
-                                                            required=False,
-                                                        ),
-                                                        html.Br(),
-                                                        html.Br(),
-                                                        dbc.Button(
-                                                            html.P(
-                                                                ["Submit"],
-                                                                style={
-                                                                    "font-size": "1vw"
-                                                                },
-                                                            ),
-                                                            id="submit-ship",
-                                                            n_clicks=0,
-                                                        ),
-                                                    ]
+                                                "Submission of multiple Starships to ",
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
                                                 ),
-                                            ]
-                                        ),
-                                    ]
-                                )
-                            ],
-                        )
-                    ],
-                ),
-            ],
-            class_name="mt-4",
-        ),
-    ],
+                                            ],
+                                            style={"font-size": "1vw"},
+                                        )
+                                    ),
+                                    dbc.CardBody(
+                                        [
+                                            html.Div(
+                                                [
+                                                    html.P(
+                                                        [
+                                                            "Unfortunately, we can only handle submission for one Starship at a time. If you have a batch of Starships that you'd like to submit, please send the submission via ",
+                                                            html.A(
+                                                                "email.",
+                                                                href="mailto:adrian.e.forsythe@gmail.com",
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ]
+                                            )
+                                        ],
+                                        style={"font-size": "0.6vw"},
+                                    ),
+                                ]
+                            )
+                        ],
+                    )
+                ],
+                class_name="mb-3",
+            ),
+            dbc.Row(
+                children=[
+                    dbc.Col(
+                        width=8,
+                        children=[
+                            dbc.Card(
+                                [
+                                    dbc.CardHeader(
+                                        html.H5(
+                                            [
+                                                "Submit individual Starships to ",
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
+                                                ),
+                                            ],
+                                            style={"font-size": "1vw"},
+                                        )
+                                    ),
+                                    dbc.CardBody(
+                                        [
+                                            html.Div(
+                                                [
+                                                    html.H5(
+                                                        [
+                                                            "Fields in ",
+                                                            html.Span(
+                                                                "red",
+                                                                style={"color": "red"},
+                                                            ),
+                                                            " = manditory.",
+                                                        ],
+                                                        style={"font-size": "1vw"},
+                                                    ),
+                                                    html.H5(
+                                                        ["Upload Starship sequence:"],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    dcc.Upload(
+                                                        id="upload-sequence",
+                                                        children=html.Div(
+                                                            id="output-sequence-upload"
+                                                        ),
+                                                        style={
+                                                            "color": "red",
+                                                            "width": "50%",
+                                                            "height": "60px",
+                                                            "lineHeight": "60px",
+                                                            "borderWidth": "1px",
+                                                            "borderStyle": "dashed",
+                                                            "borderRadius": "5px",
+                                                            "textAlign": "center",
+                                                            "margin": "10px",
+                                                        },
+                                                        multiple=False,
+                                                        accept=".fa, .fas, .fasta, .fna",
+                                                    ),
+                                                    dcc.Loading(
+                                                        id="loading-1",
+                                                        type="default",
+                                                        children=html.Div(
+                                                            id="loading-output-1"
+                                                        ),
+                                                    ),
+                                                    html.H5(
+                                                        [
+                                                            "Upload gene annotations associated with Starship sequence (GFF[3] format):"
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    dcc.Upload(
+                                                        id="upload-annotations",
+                                                        children=html.Div(
+                                                            id="output-annotation-upload"
+                                                        ),
+                                                        accept=".gff, .gff3",
+                                                        multiple=False,
+                                                        style={
+                                                            "width": "50%",
+                                                            "height": "60px",
+                                                            "lineHeight": "60px",
+                                                            "borderWidth": "1px",
+                                                            "borderStyle": "dashed",
+                                                            "borderRadius": "5px",
+                                                            "textAlign": "center",
+                                                            "margin": "10px",
+                                                        },
+                                                    ),
+                                                    dcc.Loading(
+                                                        id="loading-2",
+                                                        type="default",
+                                                        children=html.Div(
+                                                            id="loading-output-2"
+                                                        ),
+                                                    ),
+                                                    html.Br(),
+                                                    html.H5(
+                                                        ["Starship metadata:"],
+                                                        style={"font-size": "1vw"},
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "Name of curator: ",
+                                                            dcc.Input(
+                                                                id="uploader",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "How were Starships annotated? (i.e. starfish): ",
+                                                            dcc.Input(
+                                                                id="evidence",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "Enter genus name: ",
+                                                            dcc.Input(
+                                                                id="genus",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "Enter species name: ",
+                                                            dcc.Input(
+                                                                id="species",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.Br(),
+                                                    html.Br(),
+                                                    html.H5(
+                                                        "Coordinates of Starship in host genome:"
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "Host genome contig/scaffold/chromosome ID: ",
+                                                            dcc.Input(
+                                                                id="hostchr",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "Start coordinate of Starship: ",
+                                                            dcc.Input(
+                                                                id="shipstart",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.P(
+                                                        [
+                                                            "End coordinate for Starship: ",
+                                                            dcc.Input(
+                                                                id="shipend",
+                                                                type="text",
+                                                                style={"width": "15%"},
+                                                                required=True,
+                                                            ),
+                                                        ],
+                                                        style={"font-size": "0.6vw"},
+                                                    ),
+                                                    html.Br(),
+                                                    html.Br(),
+                                                    html.H5("Additional information:"),
+                                                    dcc.Textarea(
+                                                        id="comment",
+                                                        placeholder="Any comments about the Starship features, annotations, or host genome?",
+                                                        style={
+                                                            "height": "100px",
+                                                            "width": "50%",
+                                                        },
+                                                        required=False,
+                                                    ),
+                                                    html.Br(),
+                                                    html.Br(),
+                                                    dbc.Button(
+                                                        html.P(
+                                                            ["Submit"],
+                                                            style={"font-size": "1vw"},
+                                                        ),
+                                                        id="submit-ship",
+                                                        n_clicks=0,
+                                                    ),
+                                                ]
+                                            ),
+                                        ]
+                                    ),
+                                ]
+                            )
+                        ],
+                    )
+                ],
+            ),
+        ],
+        class_name="mt-4",
+    ),
 )
-
-# Define app layout
-layout = html.Div([dbc.Container(form, class_name="mt-4")])
-
 
 @callback(Output("loading-output-1", "children"), Input("upload-sequence", "value"))
 def input_triggers_spinner(value):
