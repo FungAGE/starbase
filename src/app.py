@@ -19,6 +19,7 @@ external_stylesheets = [
 ]
 
 external_scripts = [
+    {"src": "https://cdn.tailwindcss.com"},
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "/assets/html2canvas.js",
     "/assets/blaster.min.js",

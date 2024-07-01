@@ -1,8 +1,32 @@
 import dash
-import dash_bootstrap_components as dbc
 from dash import html
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
+
+index_string = """
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset="UTF-8">
+        <title>Dash App</title>
+        <link href="/assets/output.css" rel="stylesheet">
+    </head>
+    <body class="bg-gray-100">
+        <div id="react-entry-point">
+            <script type="text/javascript">
+                window.PlotlyConfig = {MathJaxConfig: 'local'};
+            </script>
+        </div>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+"""
 
 
 def mod_home_ui():
@@ -37,137 +61,154 @@ def mod_home_ui():
         },
     )
 
-    return dbc.Container(
-        fluid=True,
-        className="justify-content-start",
+    return html.Div(
+        className="container mx-auto p-4",
         children=[
-            dbc.Col(
-                width={"size": 6},
+            html.Div(
+                className="flex flex-col items-start md:items-center",
                 children=[
-                    dbc.Row(
-                        html.H1(
-                            [
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                    style={
-                                        "fontSize": "7vw",
-                                    },
-                                ),
-                                html.Br(),
-                                "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
-                            ],
-                            style={
-                                "fontSize": "2vw",
-                                "textAlign": "center",
-                            },
-                        )
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    dbc.Card(
-                                        [
-                                            dbc.CardHeader(
-                                                html.H4(
-                                                    [
-                                                        "What can I currently use ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " for?",
-                                                    ],
-                                                    style={
-                                                        "fontSize": "1vw",
-                                                    },
-                                                )
-                                            ),
-                                            dbc.CardBody([working_ul]),
-                                        ]
-                                    )
-                                ]
+                    html.Div(
+                        className="w-full md:w-auto",
+                        children=[
+                            html.H1(
+                                children=[
+                                    html.Span(
+                                        "starbase",
+                                        className="logo-text",
+                                        style={"fontSize": "7vw"},
+                                    ),
+                                    html.Br(),
+                                    "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                                ],
+                                className="text-left md:text-center text-2xl md:text-4xl",
                             ),
-                            dbc.Col(
-                                [
-                                    dbc.Card(
-                                        [
-                                            dbc.CardHeader(
-                                                html.H4(
-                                                    [
-                                                        "Functions of ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " under active development:",
-                                                    ],
-                                                    style={
-                                                        "fontSize": "1vw",
-                                                    },
-                                                )
-                                            ),
-                                            dbc.CardBody([not_working_ul]),
-                                        ]
-                                    )
-                                ]
-                            ),
-                        ]
-                    ),
-                    dbc.Row(
-                        dbc.Col(
-                            html.Img(
-                                src="assets/images/starbase-map.png",
-                                width="100%",
-                            )
-                        )
-                    ),
-                    dbc.Row(
-                        dbc.Card(
-                            [
-                                dbc.CardHeader(
-                                    [html.H4("Data Availability")],
-                                    style={"fontSize": "2vw"},
-                                ),
-                                dbc.CardBody(
-                                    [
-                                        html.P(
-                                            [
-                                                "We have been maintaining ",
-                                                html.Span(
-                                                    "starbase",
-                                                    className="logo-text",
-                                                ),
-                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                            ],
-                                            style={"fontSize": "0.6vw"},
-                                        ),
-                                        html.Div(
-                                            style={"textAlign": "center"},
-                                            children=[
-                                                dbc.Button(
-                                                    html.P(
-                                                        [
-                                                            "Download the latest version of ",
-                                                            html.Span(
-                                                                "starbase",
-                                                                className="logo-text",
-                                                            ),
-                                                            ".",
+                            html.Div(
+                                className="flex flex-col md:flex-row",
+                                children=[
+                                    html.Div(
+                                        className="w-full md:w-1/2 p-2",
+                                        children=[
+                                            html.Div(
+                                                className="bg-white shadow rounded-lg",
+                                                children=[
+                                                    html.Div(
+                                                        className="bg-gray-200 p-4 rounded-t-lg",
+                                                        children=[
+                                                            html.H4(
+                                                                children=[
+                                                                    "What can I currently use ",
+                                                                    html.Span(
+                                                                        "starbase",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    " for?",
+                                                                ],
+                                                                className="text-left md:text-center text-sm md:text-base",
+                                                            )
                                                         ],
-                                                        style={"fontSize": "0.6vw"},
                                                     ),
-                                                    id="dl_package",
-                                                    color="primary",
-                                                    class_name="mr-1",
-                                                )
-                                            ],
-                                        ),
-                                    ]
-                                ),
-                            ]
-                        )
+                                                    html.Div(
+                                                        className="p-4",
+                                                        children=[working_ul],
+                                                    ),
+                                                ],
+                                            )
+                                        ],
+                                    ),
+                                    html.Div(
+                                        className="w-full md:w-1/2 p-2",
+                                        children=[
+                                            html.Div(
+                                                className="bg-white shadow rounded-lg",
+                                                children=[
+                                                    html.Div(
+                                                        className="bg-gray-200 p-4 rounded-t-lg",
+                                                        children=[
+                                                            html.H4(
+                                                                children=[
+                                                                    "Functions of ",
+                                                                    html.Span(
+                                                                        "starbase",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    " under active development:",
+                                                                ],
+                                                                className="text-left md:text-center text-sm md:text-base",
+                                                            )
+                                                        ],
+                                                    ),
+                                                    html.Div(
+                                                        className="p-4",
+                                                        children=[not_working_ul],
+                                                    ),
+                                                ],
+                                            )
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                className="flex justify-center my-4",
+                                children=[
+                                    html.Img(
+                                        src="assets/images/starbase-map.png",
+                                        className="w-full",
+                                    )
+                                ],
+                            ),
+                            html.Div(
+                                className="bg-white shadow rounded-lg",
+                                children=[
+                                    html.Div(
+                                        className="bg-gray-200 p-4 rounded-t-lg",
+                                        children=[
+                                            html.H4(
+                                                "Data Availability",
+                                                className="text-left md:text-center text-lg md:text-2xl",
+                                            )
+                                        ],
+                                    ),
+                                    html.Div(
+                                        className="p-4",
+                                        children=[
+                                            html.P(
+                                                children=[
+                                                    "We have been maintaining ",
+                                                    html.Span(
+                                                        "starbase",
+                                                        className="logo-text",
+                                                    ),
+                                                    " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                ],
+                                                className="text-left md:text-center text-xs md:text-sm",
+                                            ),
+                                            html.Div(
+                                                className="text-center mt-4",
+                                                children=[
+                                                    html.Button(
+                                                        children=[
+                                                            html.P(
+                                                                children=[
+                                                                    "Download the latest version of ",
+                                                                    html.Span(
+                                                                        "starbase",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    ".",
+                                                                ],
+                                                                className="text-left md:text-center text-xs md:text-sm",
+                                                            )
+                                                        ],
+                                                        id="dl_package",
+                                                        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
+                                                    )
+                                                ],
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ],
                     ),
                 ],
             ),
