@@ -2,6 +2,7 @@
 import dash
 import dash_bootstrap_components as dbc
 from dash import dash_table, dcc, html, callback
+from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 import dash_bio as dashbio
 
@@ -14,10 +15,13 @@ import base64
 from datetime import date
 import subprocess
 import json
-import urllib.request as urlreq
 import pandas as pd
 
-from Bio.Blast.Applications import NcbiblastnCommandline, NcbitblastnCommandline
+from Bio.Blast.Applications import (
+    NcbiblastnCommandline,
+    NcbitblastnCommandline,
+    NcbiblastpCommandline,
+)
 from Bio import SeqIO, SearchIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
@@ -69,73 +73,121 @@ layout = html.Div(
                     align="center",
                     children=[
                         dbc.Col(
-                            width=4,
+                            width=3,
                             className="align-self-center",
                             children=[
-                                dbc.Card(
+                                dbc.Stack(
                                     [
-                                        dbc.CardHeader(
-                                            html.H2(
-                                                "Search protein/nucleotide sequences for Starships and Starship-associated genes."
-                                            ),
-                                        ),
-                                        dbc.CardBody(
+                                        dbc.Card(
                                             [
-                                                dcc.Textarea(
-                                                    id="query-text",
-                                                    placeholder="Paste FASTA sequence here...",
-                                                    rows=15,
-                                                    style={
-                                                        "width": "100%",
-                                                    },
-                                                ),
-                                                html.Br(),
-                                                html.Br(),
-                                                html.H3(
-                                                    ["Or"],
-                                                    style={"textAlign": "center"},
-                                                ),
-                                                html.Br(),
-                                                dcc.Upload(
-                                                    id="query-upload",
-                                                    children=html.Div(
-                                                        id="query-sequence-upload"
+                                                dbc.CardHeader(
+                                                    html.H2(
+                                                        "Search protein/nucleotide sequences for Starships and Starship-associated genes."
                                                     ),
-                                                    style={
-                                                        "width": "100%",
-                                                        "height": "75px",
-                                                        "lineHeight": "75px",
-                                                        "borderWidth": "2px",
-                                                        "borderStyle": "dashed",
-                                                        "borderRadius": "5px",
-                                                        "justify-content": "center",
-                                                    },
-                                                    multiple=False,
-                                                    accept=".fa, .fas, .fasta, .fna",
+                                                ),
+                                                dbc.CardBody(
+                                                    [
+                                                        dbc.Stack(
+                                                            [
+                                                                dcc.Textarea(
+                                                                    id="query-text",
+                                                                    placeholder="Paste FASTA sequence here...",
+                                                                    rows=15,
+                                                                    style={
+                                                                        "width": "100%",
+                                                                    },
+                                                                ),
+                                                                html.H3(
+                                                                    ["Or"],
+                                                                    style={
+                                                                        "textAlign": "center"
+                                                                    },
+                                                                ),
+                                                                dcc.Upload(
+                                                                    id="query-upload",
+                                                                    children=html.Div(
+                                                                        id="query-sequence-upload"
+                                                                    ),
+                                                                    style={
+                                                                        "width": "100%",
+                                                                        "height": "75px",
+                                                                        "lineHeight": "75px",
+                                                                        "borderWidth": "2px",
+                                                                        "borderStyle": "dashed",
+                                                                        "borderRadius": "5px",
+                                                                        "justify-content": "center",
+                                                                    },
+                                                                    multiple=False,
+                                                                    accept=".fa, .fas, .fasta, .fna",
+                                                                ),
+                                                                html.Hr(),
+                                                                html.H4(
+                                                                    "Choose Starship database version:"
+                                                                ),
+                                                                dcc.RadioItems(
+                                                                    id="input-db",
+                                                                    value="hq",
+                                                                    options=[
+                                                                        {
+                                                                            "label": "Gold-standard Starships",
+                                                                            "value": "hq",
+                                                                        },
+                                                                        {
+                                                                            "label": "All Starships",
+                                                                            "value": "all",
+                                                                        },
+                                                                    ],
+                                                                ),
+                                                                html.H4(
+                                                                    "Screening of Starship-associated genes:"
+                                                                ),
+                                                                dcc.Checklist(
+                                                                    id="input-genes",
+                                                                    value="tyr",
+                                                                    options=[
+                                                                        {
+                                                                            "label": "tyr (captain gene)",
+                                                                            "value": "tyr",
+                                                                        },
+                                                                        {
+                                                                            "label": "freB",
+                                                                            "value": "freB",
+                                                                        },
+                                                                        {
+                                                                            "label": "DUF3723",
+                                                                            "value": "DUF3723",
+                                                                        },
+                                                                        {
+                                                                            "label": "nlr",
+                                                                            "value": "nlr",
+                                                                        },
+                                                                        {
+                                                                            "label": "plp",
+                                                                            "value": "plp",
+                                                                        },
+                                                                    ],
+                                                                ),
+                                                            ],
+                                                            gap=3,
+                                                        )
+                                                    ]
                                                 ),
                                             ]
                                         ),
-                                    ]
-                                ),
-                                html.Br(),
-                                dbc.Row(
-                                    justify="center",
-                                    align="center",
-                                    children=[
-                                        dbc.Col(
-                                            width=4,
-                                            className="align-self-center",
+                                        dbc.Button(
                                             children=[
-                                                dbc.Button(
-                                                    "Submit BLAST/hmmer Search",
-                                                    id="submit-button",
-                                                    n_clicks=0,
-                                                    style={"textAlign": "center"},
+                                                "Launch",
+                                                html.I(
+                                                    className="bi bi-rocket-takeoff me-2"
                                                 ),
                                             ],
+                                            id="submit-button",
+                                            n_clicks=0,
+                                            style={"textAlign": "center"},
                                         ),
                                     ],
-                                ),
+                                    gap=3,
+                                )
                             ],
                         ),
                         dbc.Col(
@@ -166,9 +218,8 @@ tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
 
 
 def parse_fasta(contents, filename):
-    nseq = 1
-    for sequence in contents:
-        nseq += 1
+    sequences = list(contents)
+    nseq = len(sequences)
 
     # Update the height attribute of the style based on the content height
     return [
@@ -190,22 +241,31 @@ def parse_fasta(contents, filename):
 )
 def update_fasta_upload(seq_content, seq_filename):
     if seq_content is None:
-        # Return the default style if no content is uploaded
         return [
             html.Div(html.P(["Upload a FASTA file"], style={"textAlign": "center"}))
         ]
     else:
         try:
-            # "," is the delimeter for splitting content_type from content_string
+            # "," is the delimiter for splitting content_type from content_string
             content_type, content_string = seq_content.split(",")
-            query_string = str(base64.b64decode(seq_content))
-            sequences = SeqIO.parse(io.StringIO(query_string), "fasta")
+            decoded_string = base64.b64decode(content_string).decode("utf-8")
+            sequences = SeqIO.parse(io.StringIO(decoded_string), "fasta")
             children = parse_fasta(sequences, seq_filename)
             return children
 
         except Exception as e:
             print(e)
-            return html.Div(["There was an error processing this file."])
+            return [
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H4("Error:")),
+                        dbc.CardBody(
+                            html.H4("There was an error processing the FASTA sequence.")
+                        ),
+                    ],
+                    color="red",
+                )
+            ]
 
 
 @callback(
@@ -214,26 +274,41 @@ def update_fasta_upload(seq_content, seq_filename):
         Input("submit-button", "n_clicks"),
         Input("query-text", "value"),
         Input("query-upload", "contents"),
-        # Input("query-upload", "filename"),
+        Input("input-db", "value"),
+        Input("input-genes", "value"),
     ],
 )
-def run_main(n_clicks, query_text_input, query_file_contents):
-    global tmp_blast
-    if n_clicks > 0:
+def run_main(n_clicks, query_text_input, query_file_contents, input_db, input_genes):
+    if not n_clicks:
+        raise PreventUpdate
+
+    try:
         input_type, query_header, query_seq = check_input(
-            query_text_input,
-            query_file_contents,
+            query_text_input, query_file_contents
         )
 
-        query_type = guess_seq_type(query_seq)
+        if input_type in ("none", "both"):
+            return [
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H4("Invalid input:")),
+                        dbc.CardBody(
+                            html.H4(
+                                "Please provide either a query sequence in the text box, or upload a FASTA file"
+                            )
+                        ),
+                    ],
+                    color="red",
+                )
+            ]
 
-        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa").name
-        cleaned_query_seq = SeqRecord(Seq(query_seq), id=query_header, description="")
-        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
+        query_type = guess_seq_type(query_seq)
+        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
         blast_results = run_blast(
             seq_type=query_type,
-            db_type="ship",
+            input_db=input_db,
+            input_genes=input_genes,
             tmp_query_fasta=tmp_query_fasta,
             tmp_blast=tmp_blast,
             input_eval=0.01,
@@ -247,55 +322,34 @@ def run_main(n_clicks, query_text_input, query_file_contents):
             threads=2,
         )
 
-        # create results table with alignments
+        superfamily_card = hmmer_table(hmmer_results)
         ship_blast_table = blast_table(blast_results)
+        chords = blast_chords(blast_results)
 
-        if hmmer_results is not None:
-            superfamily_card = hmmer_table(hmmer_results)
-        else:
-            superfamily_card = """"""
-
-        # chord = blast_chords()
-
-        return html.Div(
-            [
-                dbc.Stack(
-                    [
-                        superfamily_card,
-                        ship_blast_table,
-                    ],
-                    gap=3,
-                )
-            ],
-            id="ship-blast-table-container",
+        output = html.Div(
+            dbc.Stack([chords, superfamily_card, ship_blast_table], gap=1)
         )
+        return [output]
 
-    else:
-        """"""
+    except Exception as e:
+        # Log the error and handle it appropriately
+        print(f"Error occurred: {e}")
+        raise PreventUpdate
+
+
+def write_temp_fasta(header, sequence):
+    cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+    tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
+    return tmp_query_fasta
 
 
 def check_input(query_text_input, query_file_contents):
     if query_text_input in ("", None) and query_file_contents is None:
-        return html.Div(
-            [
-                html.Div("No input provided:", style={"color": "red"}),
-                html.Div(
-                    "Please provide either a query sequence in the text box, or upload a fasta file",
-                    style={"color": "red"},
-                ),
-            ]
-        )
+        return "none", None, None
 
     elif query_text_input and query_file_contents:
-        return html.Div(
-            [
-                html.Div("Multiple inputs:", style={"color": "red"}),
-                html.Div(
-                    "Please provide either a query sequence in the text box, or upload a fasta file, not both",
-                    style={"color": "red"},
-                ),
-            ]
-        )
+        return "both", None, None
 
     elif query_text_input:
         input_type = "text"
@@ -389,7 +443,8 @@ def guess_seq_type(query_seq):
 
 def run_blast(
     seq_type=None,
-    db_type=None,
+    input_db="hq",
+    input_genes="tyr",
     tmp_query_fasta=None,
     tmp_blast=None,
     input_eval=None,
@@ -398,32 +453,51 @@ def run_blast(
 
     print("starting BLAST")
 
-    # Define paths to databases
+    # TODO: add another set of dirs for hq Starships and all Starships?
+    # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
+    # * that way, the user can switch back and forth between hq and all ships in the output, without having to run a new search
+
     db_list = {
         "ship": {"nucl": "database_folder/Starships/ships/fna/blastdb/concatenated.fa"},
         "gene": {
             "tyr": {
-                "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa"
+                "nucl": "database_folder/Starships/captain/tyr/fna/blastdb/concatenated.fa",
+                "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
+            },
+            "nlr": {
+                "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
+                "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+            },
+            "fre": {
+                "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
+                "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+            },
+            "plp": {
+                "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
+                "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+            },
+            "duf3723": {
+                "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
+                "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
             },
         },
     }
 
     # Determine blast program and database based on sequence type and blast type
-    if db_type == "ship":
-        blastdb = db_list["ship"]["nucl"]
+    blastdb = db_list["ship"]["nucl"]
 
     if seq_type == "nucl":
         blast_program = NcbiblastnCommandline
     else:
         blast_program = NcbitblastnCommandline
 
-    # if db_type == "gene":
-    #     if seq_type == "nucl":
-    #         blast_program = NcbiblastnCommandline
-    #         blastdb = db_list["gene"][gene_type]["nucl"]
-    #     else:
-    #         blast_program = NcbiblastpCommandline
-    #         blastdb = db_list["gene"][gene_type]["prot"]
+    if input_genes is not None:
+        if seq_type == "nucl":
+            blast_program = NcbiblastnCommandline
+            blastdb = db_list["gene"][input_genes]["nucl"]
+        else:
+            blast_program = NcbiblastpCommandline
+            blastdb = db_list["gene"][input_genes]["prot"]
 
     if os.path.exists(blastdb) and os.path.getsize(blastdb) > 0:
         print("Performing BLAST search...")
@@ -488,13 +562,13 @@ def run_hmmer(seq_type=None, input_eval=None, query_fasta=None, threads=None):
     # Run HMMER search
     tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
     hmmer_cmd = f"{hmmer_program} -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
-    print("Running hmmersearch...")
+    print("Running hmmsearch...")
     subprocess.run(hmmer_cmd, shell=True)
 
     # Parse HMMER output
     tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
     n_records = parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
-    print(f"Number of hmmersearch records: {n_records}")
+    print(f"Number of hmmsearch records: {n_records}")
 
     # extract sequence from results
     # extract_hmmer(tmp_hmmer_parsed)
@@ -581,128 +655,234 @@ def extract_hmmer(parsed_file):
             SeqIO.write(sequence, output_filename, "fasta")
 
 
-def blast_chords():
-    print("Making circos plot...")
-    # circos_data = df[["qseqid", "sseqid", "qstart", "qend"]]
-    # print(df)
+def circos_prep(blast_output, links_output, layout_output):
+    best_blast = blast_output.nsmallest(10, "evalue")
+    links = [
+        {
+            "source": {
+                "id": row["qseqid"],
+                "start": int(row["qstart"]),
+                "end": int(row["qend"]),
+            },
+            "target": {
+                "id": row["sseqid"],
+                "start": int(row["sstart"]),
+                "end": int(row["send"]),
+            },
+            # Use pident as the single numeric value for simplicity
+            "value": row["pident"],
+        }
+        for index, row in best_blast.iterrows()
+    ]
+    # Save to JSON file
+    with open(links_output, "w") as json_file:
+        json.dump(links, json_file, indent=4)
 
-    data = (
-        urlreq.urlopen("https://git.io/circos_graph_data.json").read().decode("utf-8")
-    )
+    # Determine unique sequence IDs and their lengths
+    sequence_lengths = {}
+    for index, row in best_blast.iterrows():
+        if row["qseqid"] not in sequence_lengths:
+            sequence_lengths[row["qseqid"]] = int(row["qend"])
+        else:
+            sequence_lengths[row["qseqid"]] = max(
+                sequence_lengths[row["qseqid"]], int(row["qend"])
+            )
 
-    circos_graph_data = json.loads(data)
+        if row["sseqid"] not in sequence_lengths:
+            sequence_lengths[row["sseqid"]] = int(row["send"])
+        else:
+            sequence_lengths[row["sseqid"]] = max(
+                sequence_lengths[row["sseqid"]], int(row["send"])
+            )
 
-    layout_config = {
-        "labels": {
-            "size": 10,
-            "color": "#4d4d4d",
-        },
-        "ticks": {
-            "color": "#4d4d4d",
-            "labelColor": "#4d4d4d",
-            "spacing": 10000000,
-            "labelSuffix": "Mb",
-            "labelDenominator": 1000000,
-            "labelSize": 10,
-        },
-    }
+    # Define colors for each chromosome block
+    colors = [
+        "#FF5733",
+        "#33FF57",
+        "#3357FF",
+        "#FF33A6",
+        "#33FFF1",
+        "#F1FF33",
+        "#B633FF",
+        "#33FFB6",
+        "#FFA633",
+        "#33A6FF",
+    ]
 
-    chords_config = {"color": "RdYlBu", "opacity": 0.8}
+    # Create Circos layout with colors
+    layout = [
+        {
+            "id": seq_id,
+            "len": length,
+            "color": colors[i % len(colors)],
+            "label": {"display": seq_id, "color": "#000000", "size": 14},
+        }
+        for i, (seq_id, length) in enumerate(sequence_lengths.items())
+    ]
 
-    circos_plot = dashbio.Circos(
-        layout=circos_graph_data["GRCh37"],
-        config=layout_config,
-        tracks=[
-            {
-                "type": "CHORDS",
-                "data": circos_graph_data["chords"],
-                "config": chords_config,
-            }
-        ],
-    )
+    # Save layout to JSON file
+    with open(layout_output, "w") as json_file:
+        json.dump(layout, json_file, indent=4)
 
-    return circos_plot
+
+def blast_chords(blast_output):
+    if blast_output is not None and not blast_output.empty:
+        tmp_links_json = tempfile.NamedTemporaryFile(suffix=".json").name
+        tmp_layout_json = tempfile.NamedTemporaryFile(suffix=".json").name
+
+        # Prepare data for Circos plot
+        circos_prep(blast_output, tmp_links_json, tmp_layout_json)
+
+        # Load the prepared JSON data
+        try:
+            with open(tmp_links_json) as f:
+                circos_graph_data = json.load(f)
+            with open(tmp_layout_json) as f:
+                circos_layout = json.load(f)
+        except Exception as e:
+            print(f"Error loading JSON data: {e}")
+            return html.Div(["Error loading plot data."])
+
+        # Check if the loaded data is not empty
+        if not circos_graph_data or not circos_layout:
+            return html.Div(["No valid data found for the BLAST search."])
+
+        print("Circos graph data:", circos_graph_data)
+        print("Circos layout data:", circos_layout)
+
+        # Minimal Circos plot configuration
+        try:
+            circos_plot = dashbio.Circos(
+                layout=circos_layout,
+                config={"innerRadius": 200, "outerRadius": 300},
+                tracks=[
+                    {
+                        "type": "chords",
+                        "data": circos_graph_data,
+                        "config": {
+                            "opacity": 0.7,
+                            "color": {
+                                "name": "source",
+                                "field": "id",
+                            },
+                            "tooltipContent": {
+                                "source": "source.id",
+                                "target": "target.id",
+                                "fields": [
+                                    {
+                                        "field": "value.pident",
+                                        "name": "Identity (%)",
+                                    },
+                                    {"field": "value.evalue", "name": "E-value"},
+                                    {
+                                        "field": "value.bitscore",
+                                        "name": "Bit Score",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                ],
+                id="blast-chord-plot",
+            )
+
+            return html.Div(circos_plot)
+
+        except Exception as e:
+            print(f"Error creating Circos plot: {e}")
+            return html.Div(["Error creating plot."])
+    else:
+        return html.Div(["No results found for the BLAST search."])
 
 
 # TODO: link in ship classification information for subjects here
 def blast_table(ship_blast_results):
-    tbl_dat = ship_blast_results
-    tbl = html.Div(
-        [
-            dbc.Button(
-                "Download BLAST results",
-                id="blast-dl-button",
-                n_clicks=0,
-                style={"textAlign": "center"},
-            ),
-            dcc.Download(id="blast-dl"),
-            html.Br(),
-            dash_table.DataTable(
-                columns=[
-                    {
-                        "name": i,
-                        "id": i,
-                        "deletable": False,
-                        "selectable": True,
-                    }
-                    for i in tbl_dat.columns
-                ],
-                data=tbl_dat.to_dict("records"),
-                hidden_columns=["qseqid", "qseq", "sseq"],
-                id="ship-blast-table",
-                editable=False,
-                sort_action="native",
-                sort_mode="multi",
-                row_selectable="single",
-                selected_rows=[0],  # Select the first row by default
-                row_deletable=False,
-                selected_columns=[],
-                page_action="native",
-                page_current=0,
-                page_size=10,
-                export_format="tsv",
-                css=[{"selector": ".show-hide", "rule": "display: none"}],
-            ),
-        ]
-    )
-    return tbl
+    if ship_blast_results is not None and not ship_blast_results.empty:
+        tbl_dat = ship_blast_results
+        tbl = html.Div(
+            [
+                dbc.Stack(
+                    [
+                        dash_table.DataTable(
+                            columns=[
+                                {
+                                    "name": i,
+                                    "id": i,
+                                    "deletable": False,
+                                    "selectable": True,
+                                }
+                                for i in tbl_dat.columns
+                            ],
+                            data=tbl_dat.to_dict("records"),
+                            hidden_columns=["qseqid", "qseq", "sseq"],
+                            id="ship-blast-table",
+                            editable=False,
+                            sort_action="native",
+                            sort_mode="multi",
+                            row_selectable="single",
+                            selected_rows=[0],  # Select the first row by default
+                            row_deletable=False,
+                            selected_columns=[],
+                            page_action="native",
+                            page_current=0,
+                            page_size=10,
+                            export_format="tsv",
+                            css=[{"selector": ".show-hide", "rule": "display: none"}],
+                        ),
+                        dbc.Button(
+                            "Download BLAST results",
+                            id="blast-dl-button",
+                            n_clicks=0,
+                            style={"textAlign": "center"},
+                        ),
+                        dcc.Download(id="blast-dl"),
+                    ],
+                    gap=1,
+                ),
+            ],
+        )
+        return tbl
+    raise PreventUpdate
 
 
 def hmmer_table(hmmer_results):
-    # Convert "evalue" column to numeric with errors='coerce'
-    hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
-
-    # Drop rows where "evalue" is NaN
-    hmmer_results.dropna(subset=["evalue"], inplace=True)
-
-    # Find the index of the minimum "evalue" for each "query_id"
-    idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
-
-    # Get corresponding "hit_IDs" for the minimum "evalue" indices
-    try:
-        superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
-    except IndexError:
-        superfamily = None
-
-    if superfamily is None:
-        return None
-    else:
-        superfamily_card = html.Div(
-            children=[
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            html.H4(f"Likely captain superfamily: {superfamily}")
-                        ),
-                    ],
-                    color="secondary",
-                    inverse=True,
-                ),
-                html.Hr(),
-            ],
-            style={"width": "33%"},
+    if hmmer_results is not None and not hmmer_results.empty:
+        # Convert "evalue" column to numeric with errors='coerce'
+        hmmer_results["evalue"] = pd.to_numeric(
+            hmmer_results["evalue"], errors="coerce"
         )
+
+        # Drop rows where "evalue" is NaN
+        hmmer_results.dropna(subset=["evalue"], inplace=True)
+
+        # Find the index of the minimum "evalue" for each "query_id"
+        idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
+
+        # Get corresponding "hit_IDs" for the minimum "evalue" indices
+        try:
+            superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
+        except IndexError:
+            superfamily = None
+
+        if superfamily is not None:
+            superfamily_card = html.Div(
+                children=[
+                    dbc.Card(
+                        [
+                            dbc.CardHeader(html.H4("Likely captain superfamily:")),
+                            dbc.CardBody(html.H4(superfamily)),
+                        ],
+                        color="secondary",
+                        inverse=True,
+                    ),
+                ],
+                style={"width": "33%"},
+            )
+        else:
+            superfamily_card = None
+
         return superfamily_card
+    raise PreventUpdate
 
 
 # Callback to update information about selected row
