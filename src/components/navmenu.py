@@ -8,7 +8,7 @@ from src.pages import (
     WIKI_URL,
     EXPLORE_URL,
     BLAST_URL,
-    # IGV_URL,
+    # MUMMER_URL,
     SUBMIT_URL,
     ABOUT_URL,
 )
@@ -83,6 +83,19 @@ navbar = dbc.Navbar(
                                 className="nav-item-link",
                             )
                         ),
+                        # dbc.NavItem(
+                        #     dbc.NavLink(
+                        #         html.P(
+                        #             [
+                        #                 "Mummer",
+                        #             ],
+                        #             className="nav-item-text",
+                        #         ),
+                        #         href=MUMMER_URL,
+                        #         active="exact",
+                        #         className="nav-item-link",
+                        #     )
+                        # ),
                         dbc.NavItem(
                             dbc.NavLink(
                                 html.P(
