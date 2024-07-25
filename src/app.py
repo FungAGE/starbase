@@ -20,8 +20,8 @@ external_stylesheets = [
 
 external_scripts = [
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
-    "/assets/html2canvas.js",
-    "/assets/blaster.min.js",
+    "/lib/html2canvas.js",
+    "/lib/blaster.min.js",
 ]
 
 server = Flask(__name__)
