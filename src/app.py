@@ -4,14 +4,7 @@ import dash
 from flask import Flask
 from src.components import navmenu
 
-CONTENT_STYLE = {
-    "margin-left": "18rem",
-    "margin-right": "2rem",
-    "padding": "2rem 1rem",
-}
-
 external_stylesheets = [
-    dbc.themes.FLATLY,
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
     "/assets/styles.css",
@@ -32,14 +25,15 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
-    external_scripts=external_scripts,
+    # external_scripts=external_scripts,
+    meta_tags=[
+        {"name": "viewport", "content": "width=device-width, initial-scale=1"},
+    ],
 )
 
 
 def serve_app_layout():
-    return html.Div(
-        [navmenu.sidebar(), html.P(dash.page_container, style=CONTENT_STYLE)]
-    )
+    return html.Div([navmenu.sidebar(), html.Div(dash.page_container)])
 
 
 app.layout = serve_app_layout
