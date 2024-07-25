@@ -33,7 +33,7 @@ app = Dash(
 
 
 def serve_app_layout():
-    return html.Div([navmenu.sidebar(), html.Div(dash.page_container)])
+    return html.Div([navmenu.navmenu(), html.Div(dash.page_container)])
 
 
 app.layout = serve_app_layout

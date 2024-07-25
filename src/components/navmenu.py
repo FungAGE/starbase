@@ -92,7 +92,7 @@ navbar = dbc.NavbarSimple(
 )
 
 
-def sidebar():
+def navmenu():
     return html.Div(
         [navbar],
         # style=SIDEBAR_STYLE,
