@@ -1,5 +1,7 @@
 import dash_bootstrap_components as dbc
 from dash import html
+from dash import callback
+from dash.dependencies import Output, Input, State
 
 from src.pages import (
     HOME_URL,
@@ -130,44 +132,130 @@ navbar = dbc.Navbar(
     ]
 )
 
+navbar = dbc.Navbar(
+    dbc.Container(
+        [
+            dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
+            dbc.Collapse(
+                dbc.Row(
+                    align="center",
+                    className="g-0",
+                    children=[
+                        dbc.Col(
+                            width={"size": 12, "offset": 2},
+                            children=[
+                                dbc.NavbarSimple(
+                                    fluid=True,
+                                    children=[
+                                        dbc.NavItem(
+                                            dbc.NavLink(
+                                                "Home", href=HOME_URL, active="exact"
+                                            )
+                                        ),
+                                        dbc.NavItem(
+                                            dbc.NavLink(
+                                                html.P(
+                                                    [
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                        " Wiki",
+                                                    ]
+                                                ),
+                                                href=WIKI_URL,
+                                                active="exact",
+                                            )
+                                        ),
+                                        dbc.NavItem(
+                                            dbc.NavLink(
+                                                html.P(
+                                                    [
+                                                        "Explore ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                    ]
+                                                ),
+                                                href=EXPLORE_URL,
+                                                active="exact",
+                                            )
+                                        ),
+                                        dbc.NavItem(
+                                            dbc.NavLink(
+                                                html.P(
+                                                    [
+                                                        "BLAST/hmmersearch ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                    ]
+                                                ),
+                                                href=BLAST_URL,
+                                                active="exact",
+                                            )
+                                        ),
+                                        # dbc.NavItem(dbc.NavLink("Genome Browser", href=IGV_URL, active="exact")),
+                                        # dbc.NavItem(dbc.NavLink("Starfish", href=STARFISH_URL, active="exact")),
+                                        dbc.NavItem(
+                                            dbc.NavLink(
+                                                html.P(
+                                                    [
+                                                        "Submit to ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                    ]
+                                                ),
+                                                href=SUBMIT_URL,
+                                                active="exact",
+                                            )
+                                        ),
+                                        dbc.NavItem(
+                                            dbc.NavLink(
+                                                "About", href=ABOUT_URL, active="exact"
+                                            )
+                                        ),
+                                    ],
+                                    # vertical=True,
+                                    # pills=True,
+                                    style={
+                                        "fontSize": "1vw",
+                                    },
+                                )
+                            ],
+                        )
+                    ],
+                ),
+                id="navbar-collapse",
+                is_open=False,
+                navbar=True,
+            ),
+        ]
+    ),
+)
+
 
 def sidebar():
     return html.Div(
-        [
-            html.Img(
-                src="assets/logos/favicon.svg",
-                style={"height": "12rem", "width": "12rem"},
-            ),
-            html.Hr(),
-            dbc.Nav(
-                [
-                    dbc.NavLink("Home", href=HOME_URL, active="exact"),
-                    dbc.NavLink("Wiki", href=WIKI_URL, active="exact"),
-                    dbc.NavLink(
-                        html.P(
-                            ["Explore ", html.Span("starbase", className="logo-text")]
-                        ),
-                        href=EXPLORE_URL,
-                        active="exact",
-                    ),
-                    dbc.NavLink("BLAST", href=BLAST_URL, active="exact"),
-                    # dbc.NavLink("Genome Browser", href=IGV_URL, active="exact"),
-                    # dbc.NavLink("Starfish", href=STARFISH_URL, active="exact"),
-                    dbc.NavLink(
-                        html.P(
-                            ["Submit to ", html.Span("starbase", className="logo-text")]
-                        ),
-                        href=SUBMIT_URL,
-                        active="exact",
-                    ),
-                    dbc.NavLink("About", href=ABOUT_URL, active="exact"),
-                ],
-                vertical=True,
-                pills=True,
-            ),
-        ],
-        style=SIDEBAR_STYLE,
+        [navbar],
+        # style=SIDEBAR_STYLE,
     )
+
+
+# add callback for toggling the collapse on small screens
+@callback(
+    Output("navbar-collapse", "is_open"),
+    [Input("navbar-toggler", "n_clicks")],
+    [State("navbar-collapse", "is_open")],
+)
+def toggle_navbar_collapse(n, is_open):
+    if n:
+        return not is_open
+    return is_open
 
 
 # def test_blast_ui():
