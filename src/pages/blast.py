@@ -24,142 +24,87 @@ from Bio.Seq import Seq
 
 dash.register_page(__name__)
 
-# # Define HTML layout including the input file and div elements
-# layout = html.Div(
-#     [
-#         dcc.Upload(
-#             id="blastinput",
-#             children=html.Div(["Drag and Drop or ", html.A("Select Files")]),
-#             multiple=True,
-#         ),
-#         html.Div(id="blast-multiple-alignments"),
-#         html.Div(id="blast-alignments-table"),
-#         html.Div(id="blast-single-alignment"),
-#     ]
-# )
-
-
-# # Define a callback to handle file uploads and initialize BlasterJS
-# @callback(
-#     Output("blast-multiple-alignments", "children"),
-#     Output("blast-alignments-table", "children"),
-#     Output("blast-single-alignment", "children"),
-#     Input("blastinput", "contents"),
-# )
-# def process_file(contents):
-#     if contents is None:
-#         raise PreventUpdate
-
-#     # Process file contents here, generate BlasterJS output
-
-#     # Dummy BlasterJS output for demonstration
-#     return (
-#         html.Div("Multiple Alignments"),
-#         html.Div("Alignments Table"),
-#         html.Div("Single Alignment"),
-#     )
-
-layout = html.Div(
-    [
-        dbc.Container(
-            fluid=True,
+layout = dbc.Container(
+    fluid=True,
+    children=[
+        dbc.Row(
+            justify="center",
+            align="center",
             children=[
-                dbc.Row(
-                    justify="center",
-                    align="center",
+                dbc.Col(
+                    style={"border": "1px solid black", "padding": "20px"},
+                    xs=12,
+                    lg=4,
+                    className="align-self-center",
                     children=[
-                        dbc.Col(
-                            width=4,
-                            className="align-self-center",
-                            children=[
-                                dbc.Card(
+                        dbc.Stack(
+                            [
+                                html.H3(
                                     [
-                                        dbc.CardHeader(
-                                            html.H2(
-                                                "Search protein/nucleotide sequences for Starships and Starship-associated genes."
-                                            ),
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                dcc.Textarea(
-                                                    id="query-text",
-                                                    placeholder="Paste FASTA sequence here...",
-                                                    rows=15,
-                                                    style={
-                                                        "width": "100%",
-                                                    },
-                                                ),
-                                                html.Br(),
-                                                html.Br(),
-                                                html.H3(
-                                                    ["Or"],
-                                                    style={"textAlign": "center"},
-                                                ),
-                                                html.Br(),
-                                                dcc.Upload(
-                                                    id="query-upload",
-                                                    children=html.Div(
-                                                        id="query-sequence-upload"
-                                                    ),
-                                                    style={
-                                                        "width": "100%",
-                                                        "height": "75px",
-                                                        "lineHeight": "75px",
-                                                        "borderWidth": "2px",
-                                                        "borderStyle": "dashed",
-                                                        "borderRadius": "5px",
-                                                        "justify-content": "center",
-                                                    },
-                                                    multiple=False,
-                                                    accept=".fa, .fas, .fasta, .fna",
-                                                ),
-                                            ]
-                                        ),
-                                    ]
-                                ),
-                                html.Br(),
-                                dbc.Row(
-                                    justify="center",
-                                    align="center",
-                                    children=[
-                                        dbc.Col(
-                                            width=4,
-                                            className="align-self-center",
-                                            children=[
-                                                dbc.Button(
-                                                    "Submit BLAST/hmmer Search",
-                                                    id="submit-button",
-                                                    n_clicks=0,
-                                                    style={"textAlign": "center"},
-                                                ),
-                                            ],
-                                        ),
+                                        "Search protein/nucleotide sequences for Starships and Starship-associated genes."
                                     ],
+                                    style={"textAlign": "center"},
+                                ),
+                                dcc.Textarea(
+                                    id="query-text",
+                                    placeholder="Paste FASTA sequence here...",
+                                    rows=5,
+                                    style={
+                                        "width": "100%",
+                                    },
+                                ),
+                                html.H3(
+                                    ["Or"],
+                                    style={"textAlign": "center"},
+                                ),
+                                dcc.Upload(
+                                    id="query-upload",
+                                    children=html.Div(id="query-sequence-upload"),
+                                    style={
+                                        "width": "100%",
+                                        "height": "75px",
+                                        "lineHeight": "75px",
+                                        "borderWidth": "2px",
+                                        "borderStyle": "dashed",
+                                        "borderRadius": "5px",
+                                        "justify-content": "center",
+                                    },
+                                    multiple=False,
+                                    accept=".fa, .fas, .fasta, .fna",
+                                ),
+                                dbc.Button(
+                                    html.H4("Submit BLAST"),
+                                    id="submit-button",
+                                    n_clicks=0,
+                                    style={"textAlign": "center"},
+                                    className="d-grid gap-2 col-6 mx-auto",
                                 ),
                             ],
+                            gap=3,
+                            direction="vertical",
+                        )
+                    ],
+                ),
+                dbc.Col(
+                    xs=12,
+                    lg=8,
+                    className="align-self-center",
+                    children=[
+                        dcc.Loading(
+                            id="loading-1",
+                            type="default",
+                            children=html.Div(id="output-container"),
                         ),
-                        dbc.Col(
-                            width=8,
-                            align="start",
-                            className="align-self-center",
-                            children=[
-                                dcc.Loading(
-                                    id="loading-1",
-                                    type="default",
-                                    children=html.Div(id="output-container"),
-                                ),
-                                dcc.Loading(
-                                    id="loading-2",
-                                    type="default",
-                                    children=html.Div(id="ship-aln-container"),
-                                ),
-                            ],
+                        dcc.Loading(
+                            id="loading-2",
+                            type="default",
+                            children=html.Div(id="ship-aln-container"),
                         ),
                     ],
                 ),
             ],
-        )
-    ]
+        ),
+    ],
 )
 
 tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
