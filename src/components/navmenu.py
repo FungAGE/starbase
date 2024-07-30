@@ -87,6 +87,11 @@ navbar = dbc.NavbarSimple(
     children=navbar_content,
     brand=html.Span("starbase", className="logo-text"),
     brand_href=HOME_URL,
+    brand_style={
+        "align-items": "center",
+        "justify-content": "center",
+        "textAlign": "left",
+    },
     color="primary",
     dark=True,
 )

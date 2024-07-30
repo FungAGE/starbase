@@ -41,31 +41,24 @@ def home_ui():
                             html.H1(
                                 [
                                     html.Span(
-                                        "starbase",
+                                        "starbase: ",
                                         className="logo-text",
                                     ),
-                                ],
-                                style={
-                                    "align-items": "center",
-                                    "justify-content": "center",
-                                    "fontSize": "7vw",
-                                    "textAlign": "center",
-                                },
-                            ),
-                            html.H2(
-                                [
                                     "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
                                 ],
                                 style={
                                     "align-items": "center",
                                     "justify-content": "center",
-                                    "textAlign": "center",
+                                    "textAlign": "left",
                                 },
                             ),
                         ],
-                        width={"size": 10, "offset": 0.5},
+                        lg=6,
+                        sm=12,
+                        width={"offset": 0.5},
                     ),
                     justify="center",
+                    style={"paddingTop": "20px"},
                 ),
                 dbc.Row(
                     dbc.Col(
@@ -156,7 +149,9 @@ def home_ui():
                             gap=4,
                             direction="vertical",
                         ),
-                        width={"size": 10, "offset": 0.5},
+                        lg=6,
+                        sm=10,
+                        width={"offset": 0.5},
                     ),
                     justify="center",
                 ),
