@@ -10,130 +10,136 @@ layout = html.Div(
         dbc.Container(
             fluid=True,
             children=[
-                dbc.Row(
-                    justify="center",
-                    align="center",
-                    children=[
-                        dbc.Col(
-                            width=6,
-                            className="align-self-center",
+                dbc.Stack(
+                    [
+                        dbc.Row(),
+                        dbc.Row(
+                            justify="center",
+                            align="center",
                             children=[
-                                html.H3(
-                                    [
-                                        html.Span(
-                                            "starbase",
-                                            className="logo-text",
-                                        ),
-                                        " was developed by the ",
-                                        html.A(
-                                            "FungAGE lab",
-                                            href="https://fungage.github.io/",
-                                        ),
-                                        " in collaboration with the Gluck-Thaler lab. The sourcecode for ",
-                                        html.Span(
-                                            "starbase",
-                                            className="logo-text",
-                                        ),
-                                        " webserver will soon be available on GitHub",
-                                    ]
-                                )
-                            ],
-                        ),
-                    ],
-                ),
-                html.Br(),
-                dbc.Row(
-                    justify="center",
-                    align="center",
-                    children=[
-                        dbc.Col(
-                            width=6,
-                            className="align-self-center",
-                            children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            html.H5(
-                                                ["Data Availability"],
-                                                style={
-                                                    "fontSize": "1vw",
-                                                },
-                                            )
-                                        ),
-                                        dbc.CardBody(
+                                dbc.Col(
+                                    lg=8,
+                                    sm=12,
+                                    className="align-self-center",
+                                    children=[
+                                        html.P(
                                             [
-                                                html.P(
-                                                    [
-                                                        "We have been maintaining ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                                    ],
-                                                    style={
-                                                        "fontSize": "0.6vw",
-                                                    },
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
                                                 ),
-                                                html.Div(
-                                                    [
-                                                        dbc.Button(
-                                                            html.P(
-                                                                [
-                                                                    "Download the latest version of ",
-                                                                    html.Span(
-                                                                        "starbase",
-                                                                        className="logo-text",
-                                                                    ),
-                                                                ],
-                                                                style={
-                                                                    "fontSize": "0.6vw",
-                                                                },
-                                                            ),
-                                                            id="dl_package",
-                                                            color="primary",
-                                                            className="mr-1",
-                                                        ),
-                                                    ],
-                                                    style={"textAlign": "center"},
+                                                " was developed by the ",
+                                                html.A(
+                                                    "FungAGE lab",
+                                                    href="https://fungage.github.io/",
                                                 ),
-                                            ]
-                                        ),
+                                                " in collaboration with the Gluck-Thaler lab. The sourcecode for ",
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
+                                                ),
+                                                " webserver will soon be available on GitHub",
+                                            ],
+                                            className="mr-1",
+                                        )
                                     ],
                                 ),
                             ],
-                        )
-                    ],
-                ),
-                html.Br(),
-                dbc.Row(
-                    justify="center",
-                    align="center",
-                    children=[
-                        dbc.Col(
-                            width=6,
-                            className="align-self-center",
+                        ),
+                        dbc.Row(
+                            justify="center",
                             align="center",
                             children=[
-                                dbc.Stack(
-                                    [
+                                dbc.Col(
+                                    lg=8,
+                                    sm=12,
+                                    className="align-self-center",
+                                    children=[
                                         dbc.Card(
                                             [
-                                                dbc.Row(
+                                                dbc.CardHeader(
+                                                    html.H2(
+                                                        ["Data Availability"],
+                                                    )
+                                                ),
+                                                dbc.CardBody(
                                                     [
-                                                        dbc.Col(
-                                                            dbc.CardImg(
-                                                                src="assets/images/aaron.png",
-                                                                className="img-fluid rounded-start",
-                                                            ),
-                                                            className="col-md-4",
+                                                        html.P(
+                                                            [
+                                                                "We have been maintaining ",
+                                                                html.Span(
+                                                                    "starbase",
+                                                                    className="logo-text",
+                                                                ),
+                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                            ],
+                                                            className="mr-1",
                                                         ),
-                                                        dbc.Col(
-                                                            dbc.CardBody(
-                                                                [
-                                                                    html.H4(
+                                                        html.Div(
+                                                            [
+                                                                dbc.Button(
+                                                                    html.P(
                                                                         [
-                                                                            "Aaron Vogan",
+                                                                            "Download the latest version of ",
+                                                                            html.Span(
+                                                                                "starbase",
+                                                                                className="logo-text",
+                                                                            ),
+                                                                        ],
+                                                                    ),
+                                                                    id="dl_package",
+                                                                    color="primary",
+                                                                    className="mr-1",
+                                                                ),
+                                                            ],
+                                                            style={
+                                                                "textAlign": "center"
+                                                            },
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                )
+                            ],
+                        ),
+                        dbc.Row(
+                            justify="center",
+                            align="center",
+                            children=[
+                                dbc.Col(
+                                    lg=8,
+                                    sm=12,
+                                    className="align-self-center",
+                                    align="center",
+                                    children=[
+                                        dbc.Stack(
+                                            [
+                                                dbc.Card(
+                                                    [
+                                                        dbc.Row(
+                                                            [
+                                                                dbc.Col(
+                                                                    dbc.CardImg(
+                                                                        src="assets/images/aaron.png",
+                                                                        className="img-fluid rounded-start",
+                                                                    ),
+                                                                    className="col-md-4",
+                                                                ),
+                                                                dbc.Col(
+                                                                    dbc.CardBody(
+                                                                        [
+                                                                            html.H3(
+                                                                                [
+                                                                                    "Aaron Vogan",
+                                                                                ],
+                                                                                className="card-title",
+                                                                            ),
+                                                                            html.P(
+                                                                                "FungAGE group leader",
+                                                                                className="card-text",
+                                                                            ),
                                                                             dbc.Button(
                                                                                 html.I(
                                                                                     className="bi bi-envelope"
@@ -143,44 +149,47 @@ layout = html.Div(
                                                                                 className="mr-1",
                                                                                 size="lg",
                                                                             ),
-                                                                        ],
-                                                                        className="card-title",
-                                                                        style={
-                                                                            "fontSize": "1vw",
-                                                                        },
+                                                                        ]
                                                                     ),
-                                                                    html.P(
-                                                                        "FungAGE group leader",
-                                                                        className="card-text",
-                                                                    ),
-                                                                ]
-                                                            ),
-                                                            className="col-md-8",
-                                                        ),
+                                                                    className="col-md-8",
+                                                                ),
+                                                            ],
+                                                            className="g-0 d-flex align-items-center",
+                                                        )
                                                     ],
-                                                    className="g-0 d-flex align-items-center",
-                                                )
-                                            ],
-                                            className="mb-3",
-                                            style={"maxWidth": "540px"},
-                                        ),
-                                        dbc.Card(
-                                            [
-                                                dbc.Row(
+                                                    className="mb-3",
+                                                    style={"maxWidth": "540px"},
+                                                ),
+                                                dbc.Card(
                                                     [
-                                                        dbc.Col(
-                                                            dbc.CardImg(
-                                                                src="assets/images/adrian.png",
-                                                                className="img-fluid rounded-start",
-                                                            ),
-                                                            className="col-md-4",
-                                                        ),
-                                                        dbc.Col(
-                                                            dbc.CardBody(
-                                                                [
-                                                                    html.H4(
+                                                        dbc.Row(
+                                                            [
+                                                                dbc.Col(
+                                                                    dbc.CardImg(
+                                                                        src="assets/images/adrian.png",
+                                                                        className="img-fluid rounded-start",
+                                                                    ),
+                                                                    className="col-md-4",
+                                                                ),
+                                                                dbc.Col(
+                                                                    dbc.CardBody(
                                                                         [
-                                                                            "Adrian Forsythe",
+                                                                            html.H3(
+                                                                                [
+                                                                                    "Adrian Forsythe",
+                                                                                ],
+                                                                                className="card-title",
+                                                                            ),
+                                                                            html.P(
+                                                                                [
+                                                                                    html.Span(
+                                                                                        "starbase",
+                                                                                        className="logo-text",
+                                                                                    ),
+                                                                                    " lead developer",
+                                                                                ],
+                                                                                className="card-text",
+                                                                            ),
                                                                             dbc.Button(
                                                                                 html.I(
                                                                                     className="bi bi-envelope"
@@ -190,53 +199,47 @@ layout = html.Div(
                                                                                 className="mr-1",
                                                                                 size="lg",
                                                                             ),
-                                                                        ],
-                                                                        className="card-title",
-                                                                        style={
-                                                                            "fontSize": "1vw",
-                                                                        },
+                                                                        ]
                                                                     ),
-                                                                    html.P(
-                                                                        [
-                                                                            html.Span(
-                                                                                "starbase",
-                                                                                className="logo-text",
-                                                                            ),
-                                                                            " lead developer",
-                                                                        ],
-                                                                        className="card-text",
-                                                                        style={
-                                                                            "fontSize": "0.6vw",
-                                                                        },
-                                                                    ),
-                                                                ]
-                                                            ),
-                                                            className="col-md-8",
-                                                        ),
+                                                                    className="col-md-8",
+                                                                ),
+                                                            ],
+                                                            className="g-0 d-flex align-items-center",
+                                                        )
                                                     ],
-                                                    className="g-0 d-flex align-items-center",
-                                                )
-                                            ],
-                                            className="mb-3",
-                                            style={"maxWidth": "540px"},
-                                        ),
-                                        dbc.Card(
-                                            [
-                                                dbc.Row(
+                                                    className="mb-3",
+                                                    style={"maxWidth": "540px"},
+                                                ),
+                                                dbc.Card(
                                                     [
-                                                        dbc.Col(
-                                                            dbc.CardImg(
-                                                                src="assets/images/emile.png",
-                                                                className="img-fluid rounded-start",
-                                                            ),
-                                                            className="col-md-4",
-                                                        ),
-                                                        dbc.Col(
-                                                            dbc.CardBody(
-                                                                [
-                                                                    html.H4(
+                                                        dbc.Row(
+                                                            [
+                                                                dbc.Col(
+                                                                    dbc.CardImg(
+                                                                        src="assets/images/emile.png",
+                                                                        className="img-fluid rounded-start",
+                                                                    ),
+                                                                    className="col-md-4",
+                                                                ),
+                                                                dbc.Col(
+                                                                    dbc.CardBody(
                                                                         [
-                                                                            "Emile Gluck-Thaler",
+                                                                            html.H3(
+                                                                                [
+                                                                                    "Emile Gluck-Thaler",
+                                                                                ],
+                                                                                className="card-title",
+                                                                            ),
+                                                                            html.P(
+                                                                                [
+                                                                                    html.Span(
+                                                                                        "starfish",
+                                                                                        className="logo-text",
+                                                                                    ),
+                                                                                    " lead developer, Gluck-Thaler lab group leader",
+                                                                                ],
+                                                                                className="card-text",
+                                                                            ),
                                                                             dbc.Button(
                                                                                 html.I(
                                                                                     className="bi bi-envelope"
@@ -246,43 +249,28 @@ layout = html.Div(
                                                                                 className="mr-1",
                                                                                 size="lg",
                                                                             ),
-                                                                        ],
-                                                                        className="card-title",
-                                                                        style={
-                                                                            "fontSize": "1vw",
-                                                                        },
+                                                                        ]
                                                                     ),
-                                                                    html.P(
-                                                                        [
-                                                                            html.Span(
-                                                                                "starfish",
-                                                                                className="logo-text",
-                                                                            ),
-                                                                            " lead developer, Gluck-Thaler lab group leader",
-                                                                        ],
-                                                                        className="card-text",
-                                                                        style={
-                                                                            "fontSize": "0.6vw",
-                                                                        },
-                                                                    ),
-                                                                ]
-                                                            ),
-                                                            className="col-md-8",
-                                                        ),
+                                                                    className="col-md-8",
+                                                                ),
+                                                            ],
+                                                            className="g-0 d-flex align-items-center",
+                                                        )
                                                     ],
-                                                    className="g-0 d-flex align-items-center",
-                                                )
+                                                    className="mb-3",
+                                                    style={"maxWidth": "540px"},
+                                                ),
                                             ],
-                                            className="mb-3",
-                                            style={"maxWidth": "540px"},
-                                        ),
+                                            gap=3,
+                                        )
                                     ],
-                                    gap=3,
                                 )
                             ],
-                        )
+                        ),
                     ],
-                ),
+                    gap=3,
+                    direction="vertical",
+                )
             ],
         ),
     ],

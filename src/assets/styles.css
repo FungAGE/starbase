@@ -8,3 +8,8 @@
 .logo-text {
   font-family: "Strasua", sans-serif;
 }
+
+.dash-table-container .row {
+  display: block;
+  margin: 0;
+}
