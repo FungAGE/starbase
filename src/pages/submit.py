@@ -29,7 +29,6 @@ form = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
                                 dbc.Card(
                                     [
@@ -78,7 +77,6 @@ form = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
                                 html.H2(
                                     [
@@ -89,7 +87,7 @@ form = html.Div(
                                         ),
                                     ],
                                 ),
-                                html.H5(
+                                html.H4(
                                     [
                                         "Fields in ",
                                         html.Span(
@@ -102,6 +100,7 @@ form = html.Div(
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
@@ -110,9 +109,8 @@ form = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
-                                html.H5(
+                                html.H4(
                                     ["Upload Starship sequence:"],
                                 ),
                                 dcc.Upload(
@@ -137,7 +135,7 @@ form = html.Div(
                                     type="default",
                                     children=html.Div(id="loading-output-1"),
                                 ),
-                                html.H5(
+                                html.H4(
                                     [
                                         "Upload gene annotations associated with Starship sequence (GFF[3] format):"
                                     ],
@@ -174,10 +172,9 @@ form = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
-                                html.H5(
-                                    ["Starship metadata:"],
+                                html.H4(
+                                    ["Starship Metadata"],
                                 ),
                                 html.P(
                                     [
@@ -189,7 +186,6 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -201,7 +197,6 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -213,7 +208,6 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -225,11 +219,11 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
@@ -238,9 +232,8 @@ form = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
-                                html.H5("Coordinates of Starship in host genome:"),
+                                html.H4("Coordinates of Starship in host genome:"),
                                 html.P(
                                     [
                                         "Host genome contig/scaffold/chromosome ID: ",
@@ -251,7 +244,6 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -263,7 +255,6 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -275,22 +266,21 @@ form = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
                     align="center",
                     children=[
                         dbc.Col(
-                            className="align-self-center",
                             lg=8,
                             sm=12,
                             children=[
-                                html.H5("Additional information:"),
+                                html.H4("Additional information:"),
                                 dcc.Textarea(
                                     id="comment",
                                     placeholder="Any comments about the Starship features, annotations, or host genome?",
@@ -303,18 +293,18 @@ form = html.Div(
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
                     align="center",
                     children=[
                         dbc.Col(
-                            className="align-self-center",
                             lg=8,
                             sm=12,
                             children=[
                                 dbc.Button(
-                                    html.H5(
+                                    html.H4(
                                         ["Submit"],
                                         style={
                                             "align-items": "center",
@@ -328,6 +318,7 @@ form = html.Div(
                             ],
                         ),
                     ],
+                    style={"padding": "10px"},
                 ),
             ],
         )
@@ -577,7 +568,7 @@ def submit_ship(
             conn.commit()
 
             return html.Div(
-                [html.H5(f"Successfully submitted '{seq_filename}' to starbase")]
+                [html.H4(f"Successfully submitted '{seq_filename}' to starbase")]
             )
 
         except sqlite3.Error as error:
