@@ -29,13 +29,12 @@ layout = dbc.Container(
     children=[
         dbc.Row(
             justify="center",
-            align="center",
+            align="top",
             children=[
                 dbc.Col(
-                    style={"border": "1px solid black", "padding": "20px"},
+                    style={"padding": "20px"},
                     xs=12,
                     lg=4,
-                    className="align-self-center",
                     children=[
                         dbc.Stack(
                             [
@@ -68,6 +67,7 @@ layout = dbc.Container(
                                         "borderStyle": "dashed",
                                         "borderRadius": "5px",
                                         "justify-content": "center",
+                                        "textAlign": "center",
                                     },
                                     multiple=False,
                                     accept=".fa, .fas, .fasta, .fna",
@@ -76,7 +76,10 @@ layout = dbc.Container(
                                     html.H4("Submit BLAST"),
                                     id="submit-button",
                                     n_clicks=0,
-                                    style={"textAlign": "center"},
+                                    style={
+                                        "textAlign": "center",
+                                        "justify-content": "center",
+                                    },
                                     className="d-grid gap-2 col-6 mx-auto",
                                 ),
                             ],
@@ -88,7 +91,7 @@ layout = dbc.Container(
                 dbc.Col(
                     xs=12,
                     lg=8,
-                    className="align-self-center",
+                    style={"padding": "20px"},
                     children=[
                         dcc.Loading(
                             id="loading-1",
@@ -119,8 +122,13 @@ def parse_fasta(contents, filename):
     return [
         html.Div(
             [
-                html.H6(f"File name: {filename}", style={"textAlign": "center"}),
-                html.H6(f"Number of sequences: {nseq}", style={"textAlign": "center"}),
+                html.P(
+                    f"File name: {filename}, Number of sequences: {nseq}",
+                    style={
+                        "justify-content": "center",
+                        "textAlign": "center",
+                    },
+                ),
             ],
         )
     ]
@@ -137,7 +145,15 @@ def update_fasta_upload(seq_content, seq_filename):
     if seq_content is None:
         # Return the default style if no content is uploaded
         return [
-            html.Div(html.P(["Upload a FASTA file"], style={"textAlign": "center"}))
+            html.Div(
+                html.P(
+                    ["Upload a FASTA file"],
+                    style={
+                        "justify-content": "center",
+                        "textAlign": "center",
+                    },
+                )
+            )
         ]
     else:
         try:
@@ -196,9 +212,9 @@ def run_main(n_clicks, query_text_input, query_file_contents):
         ship_blast_table = blast_table(blast_results)
 
         if hmmer_results is not None:
-            superfamily_card = hmmer_table(hmmer_results)
+            superfamily_text = hmmer_table(hmmer_results)
         else:
-            superfamily_card = """"""
+            superfamily_text = """"""
 
         # chord = blast_chords()
 
@@ -206,7 +222,7 @@ def run_main(n_clicks, query_text_input, query_file_contents):
             [
                 dbc.Stack(
                     [
-                        superfamily_card,
+                        superfamily_text,
                         ship_blast_table,
                     ],
                     gap=3,
@@ -574,14 +590,6 @@ def blast_table(ship_blast_results):
     tbl_dat = ship_blast_results
     tbl = html.Div(
         [
-            dbc.Button(
-                "Download BLAST results",
-                id="blast-dl-button",
-                n_clicks=0,
-                style={"textAlign": "center"},
-            ),
-            dcc.Download(id="blast-dl"),
-            html.Br(),
             dash_table.DataTable(
                 columns=[
                     {
@@ -608,6 +616,13 @@ def blast_table(ship_blast_results):
                 export_format="tsv",
                 css=[{"selector": ".show-hide", "rule": "display: none"}],
             ),
+            dbc.Button(
+                "Download BLAST results",
+                id="blast-dl-button",
+                n_clicks=0,
+                style={"textAlign": "center"},
+            ),
+            dcc.Download(id="blast-dl"),
         ]
     )
     return tbl
@@ -632,22 +647,10 @@ def hmmer_table(hmmer_results):
     if superfamily is None:
         return None
     else:
-        superfamily_card = html.Div(
-            children=[
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            html.H4(f"Likely captain superfamily: {superfamily}")
-                        ),
-                    ],
-                    color="secondary",
-                    inverse=True,
-                ),
-                html.Hr(),
-            ],
-            style={"width": "33%"},
+        superfamily_text = html.Div(
+            children=[html.H4(f"Likely captain superfamily: {superfamily}")]
         )
-        return superfamily_card
+        return superfamily_text
 
 
 # Callback to update information about selected row
