@@ -1,6 +1,8 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dash_table, dcc, html, callback
+from dash.dependencies import Output, Input
+
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
@@ -135,11 +137,11 @@ def home_ui():
                                                                     ".",
                                                                 ],
                                                             ),
-                                                            id="dl_package",
+                                                            id="dl-button",
                                                             color="primary",
                                                             class_name="mr-1",
-                                                            href="https://github.com/FungAGE/Starships/archive/refs/tags/beta.zip"
-                                                        )
+                                                        ),
+                                                        dcc.Download(id="dl-package"),
                                                     ],
                                                 ),
                                             ]
@@ -164,3 +166,13 @@ def home_ui():
 
 
 layout = home_ui()
+
+
+@callback(
+    Output("dl-button", "data"),
+    [Input("dl-package", "n_clicks")]
+)
+def generate_download(n_clicks):
+    if n_clicks is None:
+        return dash.no_update
+    return dcc.send_file("database_folder/Starships/ships/fna/blastdb/concatenated.fa")
