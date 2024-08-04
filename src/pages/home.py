@@ -138,6 +138,7 @@ def home_ui():
                                                             id="dl_package",
                                                             color="primary",
                                                             class_name="mr-1",
+                                                            href="https://github.com/FungAGE/Starships/archive/refs/tags/beta.zip"
                                                         )
                                                     ],
                                                 ),
