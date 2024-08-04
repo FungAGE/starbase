@@ -90,6 +90,7 @@ layout = html.Div(
                                                                     id="dl_package",
                                                                     color="primary",
                                                                     className="mr-1",
+                                                                    href="https://github.com/FungAGE/Starships/archive/refs/tags/beta.zip"
                                                                 ),
                                                             ],
                                                             style={
