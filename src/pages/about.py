@@ -6,11 +6,10 @@ from dash.dependencies import Output, Input
 
 dash.register_page(__name__)
 
-layout = dbc.Container(
-    fluid=True,
-    className="justify-content-start",
-    children=[
-        dbc.Row(
+layout = html.Div(
+    [
+        dbc.Container(
+            fluid=True,
             children=[
                 dbc.Stack(
                     [
@@ -22,6 +21,7 @@ layout = dbc.Container(
                                 dbc.Col(
                                     lg=8,
                                     sm=12,
+                                    className="align-self-center",
                                     children=[
                                         html.P(
                                             [
@@ -44,64 +44,6 @@ layout = dbc.Container(
                                             className="mr-1",
                                         )
                                     ],
-                                    className="mb-3",
-                                    style={"maxWidth": "540px"},
-                                ),
-                                dbc.Card(
-                                    [
-                                        dbc.Row(
-                                            [
-                                                dbc.Col(
-                                                    dbc.CardImg(
-                                                        src="assets/images/emile.png",
-                                                        className="img-fluid rounded-start",
-                                                    ),
-                                                    className="col-md-4",
-                                                ),
-                                                dbc.Col(
-                                                    dbc.CardBody(
-                                                        [
-                                                            html.H4(
-                                                                [
-                                                                    "Emile Gluck-Thaler",
-                                                                    dbc.Button(
-                                                                        html.I(
-                                                                            className="bi bi-envelope"
-                                                                        ),
-                                                                        href="mailto:emilegluckthaler@gmail.com",
-                                                                        color="teal",
-                                                                        className="mr-1",
-                                                                        size="lg",
-                                                                    ),
-                                                                ],
-                                                                className="card-title",
-                                                                style={
-                                                                    "fontSize": "1vw",
-                                                                },
-                                                            ),
-                                                            html.P(
-                                                                [
-                                                                    html.Span(
-                                                                        "starfish",
-                                                                        className="logo-text",
-                                                                    ),
-                                                                    " lead developer, Gluck-Thaler lab group leader",
-                                                                ],
-                                                                className="card-text",
-                                                                style={
-                                                                    "fontSize": "0.6vw",
-                                                                },
-                                                            ),
-                                                        ]
-                                                    ),
-                                                    className="col-md-8",
-                                                ),
-                                            ],
-                                            className="g-0 d-flex align-items-center",
-                                        )
-                                    ],
-                                    className="mb-3",
-                                    style={"maxWidth": "540px"},
                                 ),
                             ],
                         ),
@@ -112,6 +54,7 @@ layout = dbc.Container(
                                 dbc.Col(
                                     lg=8,
                                     sm=12,
+                                    className="align-self-center",
                                     children=[
                                         dbc.Card(
                                             [
@@ -135,7 +78,7 @@ layout = dbc.Container(
                                                         ),
                                                         html.Div(
                                                             [
-                                                                dbc.Button(
+                                                               dbc.Button(
                                                                     html.P(
                                                                         [
                                                                             "Download the latest version of ",
@@ -145,11 +88,12 @@ layout = dbc.Container(
                                                                             ),
                                                                         ],
                                                                     ),
-                                                                    id="dl_package",
+                                                                    id="dl-button",
                                                                     color="primary",
                                                                     className="mr-1",
                                                                 ),
-                                                            ],
+                                                               dcc.Download(id="dl-package"),
+                                                               ],
                                                             style={
                                                                 "textAlign": "center"
                                                             },
@@ -169,6 +113,8 @@ layout = dbc.Container(
                                 dbc.Col(
                                     lg=8,
                                     sm=12,
+                                    className="align-self-center",
+                                    align="center",
                                     children=[
                                         dbc.Stack(
                                             [
@@ -331,6 +277,7 @@ layout = dbc.Container(
         ),
     ],
 )
+
 @callback(
     Output("dl-button", "data"),
     [Input("dl-package", "n_clicks")]
