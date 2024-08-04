@@ -22,7 +22,6 @@ layout = dbc.Container(
                                 dbc.Col(
                                     lg=8,
                                     sm=12,
-                                    className="align-self-center",
                                     children=[
                                         html.P(
                                             [
@@ -113,7 +112,6 @@ layout = dbc.Container(
                                 dbc.Col(
                                     lg=8,
                                     sm=12,
-                                    className="align-self-center",
                                     children=[
                                         dbc.Card(
                                             [
@@ -171,8 +169,6 @@ layout = dbc.Container(
                                 dbc.Col(
                                     lg=8,
                                     sm=12,
-                                    className="align-self-center",
-                                    align="center",
                                     children=[
                                         dbc.Stack(
                                             [
