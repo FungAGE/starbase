@@ -9,12 +9,7 @@
   font-family: "Strasua", sans-serif;
 }
 
-.nav-item-link {
-  margin-left: 20px;
-  display: flex;
-  /* align-items: center; */
-}
-
-.nav-item-link .nav-link .nav-item-text {
-  font-size: 1vw; /* Adjust font size as needed */
+.dash-table-container .row {
+  display: block;
+  margin: 0;
 }
