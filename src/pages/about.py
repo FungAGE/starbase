@@ -1,6 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html, callback
+from dash.dependencies import Output, Input
 
 
 dash.register_page(__name__)
@@ -70,23 +71,22 @@ layout = dbc.Container(
                                         ),
                                         html.Div(
                                             [
-                                                dbc.Button(
-                                                    html.P(
-                                                        [
-                                                            "Download the latest version of ",
-                                                            html.Span(
-                                                                "starbase",
-                                                                className="logo-text",
+                                                        dbc.Button(
+                                                            html.P(
+                                                                [
+                                                                    "Download the latest version of ",
+                                                                    html.Span(
+                                                                        "starbase",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    ".",
+                                                                ],
                                                             ),
-                                                        ],
-                                                        style={
-                                                            "fontSize": "0.6vw",
-                                                        },
-                                                    ),
-                                                    id="dl_package",
-                                                    color="primary",
-                                                    className="mr-1",
-                                                ),
+                                                            id="dl-button",
+                                                            color="primary",
+                                                            class_name="mr-1",
+                                                        ),
+                                                        dcc.Download(id="dl-package"),
                                             ],
                                             style={"textAlign": "center"},
                                         ),
@@ -274,3 +274,11 @@ layout = dbc.Container(
         ),
     ],
 )
+@callback(
+    Output("dl-button", "data"),
+    [Input("dl-package", "n_clicks")]
+)
+def generate_download(n_clicks):
+    if n_clicks is None:
+        return dash.no_update
+    return dcc.send_file("database_folder/Starships/ships/fna/blastdb/concatenated.fa")

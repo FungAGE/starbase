@@ -1,11 +1,13 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dash_table, dcc, html, callback
+from dash.dependencies import Output, Input
+
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
 
-def mod_home_ui():
+def home_ui():
     working = [
         "Catalogue/Wiki of Starship Metadata",
         "Submission of new Starship sequences",
@@ -13,9 +15,6 @@ def mod_home_ui():
     ]
     working_ul = html.Ul(
         [html.Li(item) for item in working],
-        style={
-            "fontSize": "0.6vw",
-        },
     )
 
     not_working = [
@@ -32,147 +31,148 @@ def mod_home_ui():
     ]
     not_working_ul = html.Ul(
         [html.Li(item) for item in not_working],
-        style={
-            "fontSize": "0.6vw",
-        },
     )
 
-    return dbc.Container(
-        fluid=True,
-        className="justify-content-start",
-        children=[
-            dbc.Col(
-                width={"size": 6},
-                children=[
-                    dbc.Row(
-                        html.H1(
-                            [
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                    style={
-                                        "fontSize": "7vw",
-                                    },
-                                ),
-                                html.Br(),
-                                "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
-                            ],
-                            style={
-                                "fontSize": "2vw",
-                                "textAlign": "center",
-                            },
-                        )
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(
+    layout = (
+        dbc.Container(
+            fluid=True,
+            children=[
+                dbc.Row(
+                    dbc.Col(
+                        children=[
+                            html.H1(
                                 [
-                                    dbc.Card(
-                                        [
-                                            dbc.CardHeader(
-                                                html.H4(
-                                                    [
-                                                        "What can I currently use ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " for?",
-                                                    ],
-                                                    style={
-                                                        "fontSize": "1vw",
-                                                    },
-                                                )
-                                            ),
-                                            dbc.CardBody([working_ul]),
-                                        ]
-                                    )
-                                ]
+                                    html.Span(
+                                        "starbase: ",
+                                        className="logo-text",
+                                    ),
+                                    "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                                ],
+                                style={
+                                    "align-items": "center",
+                                    "justify-content": "center",
+                                    "textAlign": "left",
+                                },
                             ),
-                            dbc.Col(
-                                [
-                                    dbc.Card(
-                                        [
-                                            dbc.CardHeader(
-                                                html.H4(
-                                                    [
-                                                        "Functions of ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " under active development:",
-                                                    ],
-                                                    style={
-                                                        "fontSize": "1vw",
-                                                    },
-                                                )
-                                            ),
-                                            dbc.CardBody([not_working_ul]),
-                                        ]
-                                    )
-                                ]
-                            ),
-                        ]
+                        ],
+                        lg=6,
+                        sm=12,
+                        width={"offset": 0.5},
                     ),
-                    dbc.Row(
-                        dbc.Col(
-                            html.Img(
-                                src="assets/images/starbase-map.png",
-                                width="100%",
-                            )
-                        )
-                    ),
-                    dbc.Row(
-                        dbc.Card(
+                    justify="center",
+                    style={"paddingTop": "20px"},
+                ),
+                dbc.Row(
+                    dbc.Col(
+                        dbc.Stack(
                             [
-                                dbc.CardHeader(
-                                    [html.H4("Data Availability")],
-                                    style={"fontSize": "2vw"},
-                                ),
-                                dbc.CardBody(
+                                dbc.Card(
                                     [
-                                        html.P(
-                                            [
-                                                "We have been maintaining ",
-                                                html.Span(
-                                                    "starbase",
-                                                    className="logo-text",
-                                                ),
-                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                            ],
-                                            style={"fontSize": "0.6vw"},
-                                        ),
-                                        html.Div(
-                                            style={"textAlign": "center"},
-                                            children=[
-                                                dbc.Button(
-                                                    html.P(
-                                                        [
-                                                            "Download the latest version of ",
-                                                            html.Span(
-                                                                "starbase",
-                                                                className="logo-text",
-                                                            ),
-                                                            ".",
-                                                        ],
-                                                        style={"fontSize": "0.6vw"},
+                                        dbc.CardHeader(
+                                            html.H4(
+                                                [
+                                                    "What can I currently use ",
+                                                    html.Span(
+                                                        "starbase",
+                                                        className="logo-text",
                                                     ),
-                                                    id="dl_package",
-                                                    color="primary",
-                                                    class_name="mr-1",
-                                                )
-                                            ],
+                                                    " for?",
+                                                ],
+                                            )
+                                        ),
+                                        dbc.CardBody([working_ul]),
+                                    ]
+                                ),
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            html.H4(
+                                                [
+                                                    "Functions of ",
+                                                    html.Span(
+                                                        "starbase",
+                                                        className="logo-text",
+                                                    ),
+                                                    " under active development:",
+                                                ],
+                                            )
+                                        ),
+                                        dbc.CardBody([not_working_ul]),
+                                    ]
+                                ),
+                                html.Div(
+                                    html.Img(
+                                        src="assets/images/starbase-map.png",
+                                        width="100%",
+                                    )
+                                ),
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [html.H4("Data Availability")],
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                html.P(
+                                                    [
+                                                        "We have been maintaining ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                    ],
+                                                ),
+                                                html.Div(
+                                                    style={"textAlign": "center"},
+                                                    children=[
+                                                        dbc.Button(
+                                                            html.P(
+                                                                [
+                                                                    "Download the latest version of ",
+                                                                    html.Span(
+                                                                        "starbase",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    ".",
+                                                                ],
+                                                            ),
+                                                            id="dl-button",
+                                                            color="primary",
+                                                            class_name="mr-1",
+                                                        ),
+                                                        dcc.Download(id="dl-package"),
+                                                    ],
+                                                ),
+                                            ]
                                         ),
                                     ]
                                 ),
-                            ]
-                        )
+                            ],
+                            gap=4,
+                            direction="vertical",
+                        ),
+                        lg=6,
+                        sm=10,
+                        width={"offset": 0.5},
                     ),
-                ],
-            ),
-        ],
+                    justify="center",
+                ),
+            ],
+        ),
     )
 
+    return layout
 
-layout = mod_home_ui
+
+layout = home_ui()
+
+
+@callback(
+    Output("dl-button", "data"),
+    [Input("dl-package", "n_clicks")]
+)
+def generate_download(n_clicks):
+    if n_clicks is None:
+        return dash.no_update
+    return dcc.send_file("database_folder/Starships/ships/fna/blastdb/concatenated.fa")
