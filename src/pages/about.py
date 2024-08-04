@@ -1,14 +1,16 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html, callback
+from dash.dependencies import Output, Input
 
 
 dash.register_page(__name__)
 
-layout = html.Div(
-    [
-        dbc.Container(
-            fluid=True,
+layout = dbc.Container(
+    fluid=True,
+    className="justify-content-start",
+    children=[
+        dbc.Row(
             children=[
                 dbc.Stack(
                     [
@@ -43,6 +45,64 @@ layout = html.Div(
                                             className="mr-1",
                                         )
                                     ],
+                                    className="mb-3",
+                                    style={"maxWidth": "540px"},
+                                ),
+                                dbc.Card(
+                                    [
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dbc.CardImg(
+                                                        src="assets/images/emile.png",
+                                                        className="img-fluid rounded-start",
+                                                    ),
+                                                    className="col-md-4",
+                                                ),
+                                                dbc.Col(
+                                                    dbc.CardBody(
+                                                        [
+                                                            html.H4(
+                                                                [
+                                                                    "Emile Gluck-Thaler",
+                                                                    dbc.Button(
+                                                                        html.I(
+                                                                            className="bi bi-envelope"
+                                                                        ),
+                                                                        href="mailto:emilegluckthaler@gmail.com",
+                                                                        color="teal",
+                                                                        className="mr-1",
+                                                                        size="lg",
+                                                                    ),
+                                                                ],
+                                                                className="card-title",
+                                                                style={
+                                                                    "fontSize": "1vw",
+                                                                },
+                                                            ),
+                                                            html.P(
+                                                                [
+                                                                    html.Span(
+                                                                        "starfish",
+                                                                        className="logo-text",
+                                                                    ),
+                                                                    " lead developer, Gluck-Thaler lab group leader",
+                                                                ],
+                                                                className="card-text",
+                                                                style={
+                                                                    "fontSize": "0.6vw",
+                                                                },
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    className="col-md-8",
+                                                ),
+                                            ],
+                                            className="g-0 d-flex align-items-center",
+                                        )
+                                    ],
+                                    className="mb-3",
+                                    style={"maxWidth": "540px"},
                                 ),
                             ],
                         ),
@@ -90,7 +150,6 @@ layout = html.Div(
                                                                     id="dl_package",
                                                                     color="primary",
                                                                     className="mr-1",
-                                                                    href="https://github.com/FungAGE/Starships/archive/refs/tags/beta.zip"
                                                                 ),
                                                             ],
                                                             style={
@@ -276,3 +335,11 @@ layout = html.Div(
         ),
     ],
 )
+@callback(
+    Output("dl-button", "data"),
+    [Input("dl-package", "n_clicks")]
+)
+def generate_download(n_clicks):
+    if n_clicks is None:
+        return dash.no_update
+    return dcc.send_file("database_folder/Starships/ships/fna/blastdb/concatenated.fa")
