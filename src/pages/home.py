@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import dash_table, dcc, html, callback
+from dash import dcc, html, callback
 from dash.dependencies import Output, Input
 
 
@@ -167,10 +167,9 @@ def home_ui():
 
 layout = home_ui()
 
-
 @callback(
-    Output("dl-button", "data"),
-    [Input("dl-package", "n_clicks")]
+    Output("dl-package", "data"),
+    [Input("dl-button", "n_clicks")]
 )
 def generate_download(n_clicks):
     if n_clicks is None:

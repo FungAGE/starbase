@@ -137,7 +137,7 @@ layout = dbc.Container(
                                                         ),
                                                         html.Div(
                                                             [
-                                                                dbc.Button(
+                                                               dbc.Button(
                                                                     html.P(
                                                                         [
                                                                             "Download the latest version of ",
@@ -147,11 +147,12 @@ layout = dbc.Container(
                                                                             ),
                                                                         ],
                                                                     ),
-                                                                    id="dl_package",
+                                                                    id="dl-button",
                                                                     color="primary",
                                                                     className="mr-1",
                                                                 ),
-                                                            ],
+                                                               dcc.Download(id="dl-package"),
+                                                               ],
                                                             style={
                                                                 "textAlign": "center"
                                                             },
@@ -335,9 +336,10 @@ layout = dbc.Container(
         ),
     ],
 )
+
 @callback(
-    Output("dl-button", "data"),
-    [Input("dl-package", "n_clicks")]
+    Output("dl-package", "data"),
+    [Input("dl-button", "n_clicks")]
 )
 def generate_download(n_clicks):
     if n_clicks is None:
