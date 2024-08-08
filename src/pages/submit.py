@@ -17,7 +17,7 @@ import pandas as pd
 dash.register_page(__name__)
 
 # Define form layout
-form = html.Div(
+layout = html.Div(
     [
         dbc.Container(
             fluid=True,
