@@ -7,6 +7,39 @@ from Bio import Phylo
 import pandas as pd
 import plotly.graph_objs as go
 import numpy as np
+import re
+
+colors = {
+    "superfam01-1": "#8dd3c7",
+    "superfam01-2": "#ededa8",
+    "superfam01-3": "#adabc4",
+    "superfam01-4": "#33a02c",
+    "superfam01-5": "#fb8072",
+    "superfam02-1": "#80b1d3",
+    "superfam02-2": "#b3de69",
+    "superfam02-3": "#b0b0b0",
+    "superfam03-1": "#fdb45a",
+    "superfam03-2": "#fccde5",
+    "superfam03-3": "#ffed6f",
+    "superfam03-4": "#bc80bd",
+    "superfam03-5": "#ccebc5",
+}
+
+
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return f"rgb({r}, {g}, {b})"
+
+
+rgb_colors = {key: hex_to_rgb(value) for key, value in colors.items()}
+
+
+def is_rgb_string(s):
+    rgb_pattern = r"^rgb\(\s*(0|[1-9][0-9]?|[1-9][0-9][0-9]?|255)\s*,\s*(0|[1-9][0-9]?|[1-9][0-9][0-9]?|255)\s*,\s*(0|[1-9][0-9]?|[1-9][0-9][0-9]?|255)\s*\)$"
+    return bool(re.match(rgb_pattern, s))
 
 
 def get_x_coordinates(tree):
@@ -55,7 +88,7 @@ def get_clade_lines(
     x_curr=0,
     y_bot=0,
     y_top=0,
-    line_color="rgb(25,25,25)",
+    line_color=None,
     line_width=0.5,
 ):
     """define a shape of type 'line', for branch"""
@@ -73,18 +106,24 @@ def get_clade_lines(
 
 
 def draw_clade(
+    metadata,
+    rgb_colors,
     clade,
     x_start,
     line_shapes,
-    line_color="rgb(15,15,15)",
     line_width=1,
     x_coords=0,
     y_coords=0,
 ):
     """Recursively draw the tree branches, down from the given clade"""
-
     x_curr = x_coords[clade]
     y_curr = y_coords[clade]
+
+    if clade in metadata["tip"].tolist():
+        df = metadata[metadata["tip"] == clade]
+        line_color = df.loc[0, "color"]
+    else:
+        line_color = "rgb(25,25,25)"
 
     # Draw a horizontal line from start to here
     branch_line = get_clade_lines(
@@ -116,10 +155,18 @@ def draw_clade(
 
         # Draw descendants
         for child in clade:
-            draw_clade(child, x_curr, line_shapes, x_coords=x_coords, y_coords=y_coords)
+            draw_clade(
+                metadata,
+                rgb_colors,
+                child,
+                x_curr,
+                line_shapes,
+                x_coords=x_coords,
+                y_coords=y_coords,
+            )
 
 
-def create_tree(tree_file, metadata, superfamily):
+def create_tree(tree_file, metadata):
     tree = Phylo.read(tree_file, "newick")
     graph_title = "Captain Gene Phylogeny"
 
@@ -127,10 +174,11 @@ def create_tree(tree_file, metadata, superfamily):
     y_coords = get_y_coordinates(tree)
     line_shapes = []
     draw_clade(
+        metadata,
+        rgb_colors,
         tree.root,
         0,
         line_shapes,
-        line_color="rgb(25,25,25)",
         line_width=1,
         x_coords=x_coords,
         y_coords=y_coords,
@@ -140,17 +188,6 @@ def create_tree(tree_file, metadata, superfamily):
     Y = []
     text = []
 
-    axis = dict(
-        showline=False,
-        zeroline=False,
-        showgrid=False,
-        showticklabels=False,
-        title="",  # y title
-    )
-
-    label_legend = set(list(metadata[superfamily]))
-    nodes = []
-
     for cl in my_tree_clades:
         X.append(x_coords[cl])
         Y.append(y_coords[cl])
@@ -158,26 +195,33 @@ def create_tree(tree_file, metadata, superfamily):
 
     layout = dict(
         height=1200,
-        width=800,
+        width=1000,
         title=graph_title,
         # dragmode="select",
         autosize=True,
         automargin=True,
         showlegend=True,
         xaxis=dict(
-            showline=True,
+            range=[0, 6],
+            showline=False,
             zeroline=False,
-            showgrid=True,  # To visualize the vertical lines
-            ticklen=4,
-            showticklabels=True,
-            title="Branch Length",
+            showgrid=False,
+            showticklabels=False,
         ),
-        yaxis=axis,
+        yaxis=dict(
+            range=[0, 1250],
+            showline=False,
+            zeroline=False,
+            showgrid=False,
+            showticklabels=False,
+        ),
         hovermode="closest",
         shapes=line_shapes,
         legend={"x": 0, "y": 1},
         font=dict(family="Open Sans"),
     )
+
+    nodes = []
 
     fig = dict(data=nodes, layout=layout)
     return fig
@@ -185,9 +229,11 @@ def create_tree(tree_file, metadata, superfamily):
 
 def plot_tree():
     tree_file = "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
-    metadata = pd.read_csv("src/data/joined_ships.csv")
+    metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
+    metadata["color"] = metadata["superfam"].map(rgb_colors)
 
-    fig = create_tree(tree_file, metadata, "superfamily")
+    fig = create_tree(tree_file, metadata)
+
     layout = html.Div(
         [dcc.Graph(id="phylogeny-graph", className="div-card", figure=fig)]
     )

@@ -1,5 +1,5 @@
 import dash
-from dash import dash_table, dcc, html, callback
+from dash import dash_table, dcc, html, callback, clientside_callback
 from dash.dependencies import Output, Input, State
 import dash_bootstrap_components as dbc
 
@@ -10,11 +10,10 @@ from Bio import Phylo
 import plotly.graph_objects as go
 
 from src.components.tree import plot_tree
-from src.components.generate_tree import generate_tree
 
 dash.register_page(__name__)
 
-df = pd.read_csv("src/assets/joined_ships.csv")
+df = pd.read_csv("src/data/joined_ships.csv")
 df_sub = df[
     [
         "starshipID",
@@ -29,6 +28,19 @@ df_sub = df[
 ship_count = df[["starshipID"]].nunique()
 species = df["genus"] + "-" + df["species"]
 species_count = species.nunique()
+
+
+def load_svg(svg_file):
+    with open(svg_file, "r") as file:
+        svg_content = file.read()
+    return svg_content
+
+
+# Load the SVG content
+svg_content = load_svg(
+    "/home/adrian/Systematics/Starship_Database/starbase/tmp/test.svg"
+)
+
 
 layout = html.Div(
     [
@@ -223,25 +235,14 @@ layout = html.Div(
                             gap=4,
                             direction="vertical",
                         ),
-                        html.Div(
-                            [
-                                generate_tree(
-                                    tree_file="src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
-                                    nodes="CryptonF1RhMu",
-                                ),
-                                html.Div(id="node-info", style={"marginTop": 20}),
-                            ]
-                        ),
-                        # plot_tree(),
                         # html.Div(
                         #     [
-                        #         html.Img(
-                        #             src="assets/images/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile.png",
-                        #             width="50%",
-                        #         )
-                        #         # dcc.Graph(id="tree-fig"),
+                        #         html.H1("Interactable SVG in Dash"),
+                        #         html.Div(id="svg-container", children=svg_content),
+                        #         html.Div(id="output-container"),
                         #     ]
-                        # )
+                        # ),
+                        plot_tree(),
                     ],
                     direction="horizontal",
                     gap=1,
@@ -311,11 +312,37 @@ def update_sunburst(selected_rows):
     return ship_pie, tax_pie
 
 
-# Callback to handle node clicks (you need to implement custom JS in the HTML to send node data)
-@callback(Output("node-info", "children"), [Input("tree", "n_clicks")])
-def display_node_info(n_clicks):
-    # Placeholder: Return information about the clicked node
-    # This part requires custom JS in the HTML to capture the node click and send data to Dash
-    if n_clicks:
-        return f"Node clicked {n_clicks} times"
-    return "Click on a node to see details."
+# # Callback to handle node clicks (you need to implement custom JS in the HTML to send node data)
+# @callback(Output("node-info", "children"), [Input("tree", "n_clicks")])
+# def display_node_info(n_clicks):
+#     # Placeholder: Return information about the clicked node
+#     # This part requires custom JS in the HTML to capture the node click and send data to Dash
+#     if n_clicks:
+#         return f"Node clicked {n_clicks} times"
+#     return "Click on a node to see details."
+
+
+# JavaScript to listen for custom events and update Dash Store
+# clientside_callback(
+#     """
+#     function(n_clicks) {
+#         document.addEventListener('elementClicked', function(event) {
+#             var clickedElement = event.detail.id;
+#             var store = document.querySelector('[data-dash-is-loading="clicked-element"]');
+#             store.__value = clickedElement;
+#             store.dispatchEvent(new Event('change', { bubbles: true }));
+#         });
+#         return window.dash_clientside.no_update;
+#     }
+#     """,
+#     Output("clicked-element", "data"),
+#     Input("svg-container", "n_clicks"),
+# )
+
+
+# # Callback to handle interactions
+# @callback(Output("output-container", "children"), Input("clicked-element", "data"))
+# def update_output(clicked_element):
+#     if clicked_element is None:
+#         return "No SVG element clicked yet"
+#     return f"{clicked_element} was clicked"

@@ -865,26 +865,26 @@ def create_alignment_plot(ship_blast_results, selected_row):
         return fig
 
 
-# Callback to open the modal
-@callback(
-    Output("modal", "is_open"),
-    Input("open-modal-link", "n_clicks"),
-    State("modal", "is_open"),
-)
-def toggle_modal(n_clicks, is_open):
-    if n_clicks is not None:
-        if n_clicks:
-            return not is_open
-        return is_open
+# # Callback to open the modal
+# @callback(
+#     Output("modal", "is_open"),
+#     Input("open-modal-link", "n_clicks"),
+#     State("modal", "is_open"),
+# )
+# def toggle_modal(n_clicks, is_open):
+#     if n_clicks is not None:
+#         if n_clicks:
+#             return not is_open
+#         return is_open
 
 
-# Callback to close the modal
-@callback(
-    Output("modal", "is_open"),
-    Input("close-modal", "n_clicks"),
-    State("modal", "is_open"),
-)
-def close_modal(n_clicks, is_open):
-    if n_clicks:
-        return False
-    return is_open
+# # Callback to close the modal
+# @callback(
+#     Output("modal", "is_open"),
+#     Input("close-modal", "n_clicks"),
+#     State("modal", "is_open"),
+# )
+# def close_modal(n_clicks, is_open):
+#     if n_clicks:
+#         return False
+#     return is_open
