@@ -166,7 +166,28 @@ def draw_clade(
             )
 
 
-def create_tree(tree_file, metadata):
+def get_rectangle(
+    x_start,
+    x_end,
+    y_start,
+    y_end,
+    fill_color="rgba(0,0,0,0.1)",  # Semi-transparent color
+    border_color="rgba(0,0,0,0.5)",
+    line_width=1,
+):
+    """Define a rectangle shape"""
+    return dict(
+        type="rect",
+        x0=x_start,
+        x1=x_end,
+        y0=y_start,
+        y1=y_end,
+        fillcolor=fill_color,
+        line=dict(color=border_color, width=line_width),
+    )
+
+
+def create_tree(tree_file, metadata, highlight_names=None):
     tree = Phylo.read(tree_file, "newick")
     graph_title = "Captain Gene Phylogeny"
 
@@ -183,6 +204,26 @@ def create_tree(tree_file, metadata):
         x_coords=x_coords,
         y_coords=y_coords,
     )
+
+    # Draw rectangles for the specified names
+    if highlight_names:
+        x_start = (
+            min(x_coords[name] for name in highlight_names if name in x_coords) - 0.5
+        )  # Adjust as needed
+        x_end = max(x_coords.items[highlight_names]) + 0.5  # Adjust as needed
+        y_start = min(y_coords.items[highlight_names]) - 0.5  # Adjust as needed
+        y_end = max(y_coords.items[highlight_names]) + 0.5  # Adjust as needed
+        rectangle = get_rectangle(
+            x_start=x_start,
+            x_end=x_end,
+            y_start=y_start,
+            y_end=y_end,
+            fill_color="rgba(255,0,0,0.2)",  # Highlight color
+            border_color="rgba(255,0,0,0.8)",
+            line_width=2,
+        )
+        line_shapes.append(rectangle)
+
     my_tree_clades = x_coords.keys()
     X = []
     Y = []
@@ -197,7 +238,6 @@ def create_tree(tree_file, metadata):
         height=1200,
         width=1000,
         title=graph_title,
-        # dragmode="select",
         autosize=True,
         automargin=True,
         showlegend=True,
@@ -232,7 +272,10 @@ def plot_tree():
     metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
     metadata["color"] = metadata["superfam"].map(rgb_colors)
 
-    fig = create_tree(tree_file, metadata)
+    # Specify names to highlight
+    highlight_names = metadata[metadata["superfam"] == "superfam01-1"]["tip"].tolist()
+
+    fig = create_tree(tree_file, metadata, highlight_names=highlight_names)
 
     layout = html.Div(
         [dcc.Graph(id="phylogeny-graph", className="div-card", figure=fig)]

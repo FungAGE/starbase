@@ -235,14 +235,11 @@ layout = html.Div(
                             gap=4,
                             direction="vertical",
                         ),
-                        # html.Div(
-                        #     [
-                        #         html.H1("Interactable SVG in Dash"),
-                        #         html.Div(id="svg-container", children=svg_content),
-                        #         html.Div(id="output-container"),
-                        #     ]
-                        # ),
-                        plot_tree(),
+                        dcc.Loading(
+                            id="loading-3",
+                            type="default",
+                            children=[plot_tree()],
+                        ),
                     ],
                     direction="horizontal",
                     gap=1,
