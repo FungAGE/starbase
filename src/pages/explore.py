@@ -115,51 +115,42 @@ layout = html.Div(
                         dcc.Location(id="url", refresh=False),
                         dbc.Row(
                             justify="center",
-                            align="center",
+                            align="start",
                             children=[
                                 dbc.Col(
-                                    lg=3,
-                                    sm=8,
+                                    width=4,
                                     children=[
                                         dcc.Loading(
                                             id="loading-2",
                                             type="default",
-                                            children=[
-                                                dcc.Graph(
-                                                    id="pie-chart2",
-                                                    config={"displayModeBar": False},
-                                                ),
-                                            ],
-                                        )
+                                            children=dcc.Graph(
+                                                id="pie-chart2",
+                                                config={"displayModeBar": False},
+                                            ),
+                                        ),
                                     ],
                                 ),
                                 dbc.Col(
-                                    lg=3,
-                                    sm=8,
+                                    width=4,
                                     children=[
                                         dcc.Loading(
                                             id="loading-1",
                                             type="default",
-                                            children=[
-                                                dcc.Graph(
-                                                    id="pie-chart1",
-                                                    config={
-                                                        "displayModeBar": False,
-                                                    },
-                                                ),
-                                            ],
-                                        )
+                                            children=dcc.Graph(
+                                                id="pie-chart1",
+                                                config={"displayModeBar": False},
+                                            ),
+                                        ),
                                     ],
                                 ),
                             ],
                         ),
                         dbc.Row(
                             justify="center",
-                            align="center",
+                            align="start",
                             children=[
                                 dbc.Col(
-                                    lg=6,
-                                    sm=10,
+                                    width=8,
                                     children=[
                                         html.H2(
                                             [
@@ -170,18 +161,6 @@ layout = html.Div(
                                                 ),
                                             ]
                                         ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                        dbc.Row(
-                            justify="center",
-                            align="center",
-                            children=[
-                                dbc.Col(
-                                    lg=6,
-                                    sm=10,
-                                    children=[
                                         dash_table.DataTable(
                                             id="table",
                                             columns=[
@@ -205,11 +184,32 @@ layout = html.Div(
                                             selected_rows=[],
                                             page_action="native",
                                             page_current=0,
-                                            page_size=10,
+                                            page_size=25,
                                         ),
                                         html.Div(id="table-container"),
                                     ],
-                                ),
+                                )
+                            ],
+                        ),
+                        dbc.Row(
+                            justify="center",
+                            align="center",
+                            children=[
+                                dbc.Col(
+                                    sm=10,
+                                    lg=6,
+                                    children=[
+                                        html.Div(
+                                            [
+                                                html.Img(
+                                                    src="assets/images/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile.png",
+                                                    width="75%",
+                                                )
+                                                # dcc.Graph(id="tree-fig"),
+                                            ]
+                                        )
+                                    ],
+                                )
                             ],
                         ),
                     ],
@@ -217,97 +217,6 @@ layout = html.Div(
                     direction="vertical",
                 ),
             ],
-        ),
-        html.Br(),
-        dbc.Row(
-            children=[
-                dbc.Col(
-                    width=4,
-                    children=[
-                        dcc.Loading(
-                            id="loading-2",
-                            type="default",
-                            children=dcc.Graph(
-                                id="pie-chart2",
-                                config={"displayModeBar": False},
-                            ),
-                        ),
-                    ],
-                ),
-                dbc.Col(
-                    width=4,
-                    children=[
-                        dcc.Loading(
-                            id="loading-1",
-                            type="default",
-                            children=dcc.Graph(
-                                id="pie-chart1",
-                                config={"displayModeBar": False},
-                            ),
-                        ),
-                    ],
-                ),
-            ],
-        ),
-        html.Br(),
-        dbc.Row(
-            children=[
-                dbc.Col(
-                    width=8,
-                    children=[
-                        html.H2(
-                            [
-                                "All Starships in ",
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                ),
-                            ]
-                        ),
-                        dash_table.DataTable(
-                            id="table",
-                            columns=[
-                                {
-                                    "name": i,
-                                    "id": i,
-                                    "deletable": False,
-                                    "selectable": True,
-                                }
-                                for i in df_sub.columns
-                            ],
-                            data=df_sub.to_dict("records"),
-                            editable=False,
-                            filter_action="native",
-                            sort_action="native",
-                            sort_mode="multi",
-                            # column_selectable="single",
-                            row_selectable="multi",
-                            row_deletable=False,
-                            selected_columns=[],
-                            selected_rows=[],
-                            page_action="native",
-                            page_current=0,
-                            page_size=25,
-                        ),
-                        html.Div(id="table-container"),
-                    ],
-                )
-            ],
-        ),
-        dbc.Row(
-            dbc.Col(
-                [
-                    html.Div(
-                        [
-                            html.Img(
-                                src="assets/images/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.new_colored.treefile.png",
-                                width="50%",
-                            )
-                            # dcc.Graph(id="tree-fig"),
-                        ]
-                    )
-                ]
-            )
         ),
     ],
 )
