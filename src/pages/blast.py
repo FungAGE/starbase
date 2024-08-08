@@ -28,6 +28,33 @@ from Bio.Seq import Seq
 
 dash.register_page(__name__)
 
+db_list = {
+    "ship": {"nucl": "database_folder/Starships/ships/fna/blastdb/concatenated.fa"},
+    "gene": {
+        "tyr": {
+            "nucl": "database_folder/Starships/captain/tyr/fna/blastdb/concatenated.fa",
+            "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
+            "hmm": "database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm",
+        },
+        "nlr": {
+            "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
+            "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+        },
+        "fre": {
+            "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
+            "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+        },
+        "plp": {
+            "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
+            "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+        },
+        "duf3723": {
+            "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
+            "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+        },
+    },
+}
+
 layout = dbc.Container(
     fluid=True,
     children=[
@@ -77,13 +104,9 @@ layout = dbc.Container(
                                     accept=".fa, .fas, .fasta, .fna",
                                 ),
                                 dbc.Button(
-                                    html.H4("Submit BLAST"),
+                                    "Submit BLAST",
                                     id="submit-button",
                                     n_clicks=0,
-                                    style={
-                                        "textAlign": "center",
-                                        "justify-content": "center",
-                                    },
                                     className="d-grid gap-2 col-6 mx-auto",
                                 ),
                             ],
@@ -187,11 +210,10 @@ def update_fasta_upload(seq_content, seq_filename):
         Input("submit-button", "n_clicks"),
         Input("query-text", "value"),
         Input("query-upload", "contents"),
-        Input("input-db", "value"),
-        Input("input-genes", "value"),
     ],
 )
-def run_main(n_clicks, query_text_input, query_file_contents, input_db, input_genes):
+def run_main(n_clicks, query_text_input, query_file_contents):
+    global query_type
     if not n_clicks:
         raise PreventUpdate
 
@@ -199,7 +221,6 @@ def run_main(n_clicks, query_text_input, query_file_contents, input_db, input_ge
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-
         if input_type in ("none", "both"):
             return [
                 dbc.Card(
@@ -219,32 +240,25 @@ def run_main(n_clicks, query_text_input, query_file_contents, input_db, input_ge
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
         blast_results = run_blast(
-            seq_type=query_type,
-            input_db=input_db,
-            input_genes=input_genes,
             tmp_query_fasta=tmp_query_fasta,
             tmp_blast=tmp_blast,
             input_eval=0.01,
             threads=2,
         )
-
         hmmer_results = run_hmmer(
-            seq_type=query_type,
+            input_genes="tyr",
             input_eval=0.01,
             query_fasta=tmp_query_fasta,
             threads=2,
         )
 
-        superfamily_card = hmmer_table(hmmer_results)
         ship_blast_table = blast_table(blast_results)
-        chords = blast_chords(blast_results)
+        # chords = blast_chords(blast_results)
 
         if hmmer_results is not None:
             superfamily_text = hmmer_table(hmmer_results)
         else:
             superfamily_text = """"""
-
-        # chord = blast_chords()
 
         return html.Div(
             [
@@ -258,7 +272,6 @@ def run_main(n_clicks, query_text_input, query_file_contents, input_db, input_ge
             ],
             id="ship-blast-table-container",
         )
-        return [output]
 
     except Exception as e:
         # Log the error and handle it appropriately
@@ -275,7 +288,7 @@ def write_temp_fasta(header, sequence):
 
 def check_input(query_text_input, query_file_contents):
     if query_text_input in ("", None) and query_file_contents is None:
-        return "none", None, None
+        raise ValueError("No file contents provided.")
 
     elif query_text_input and query_file_contents:
         return "both", None, None
@@ -351,17 +364,14 @@ def guess_seq_type(query_seq):
     prot_char = set("ARNDBCEQZGHILKMFPSTWYV")
 
     if query_seq is not None:
-        # Count characters for deciding type later
-        nucl_count = sum(query_seq.count(nuc) for nuc in nucl_char)
-        prot_count = sum(query_seq.count(aa) for aa in prot_char)
-        # Guess if sequence is nucleotide or protein
-        # if prot_count > nucl_count:
-        if prot_count >= (0.1 * len(query_seq)):
-            query_type = "prot"
-            print("Query is protein sequence")
-        else:
+        nucl_count = sum(1 for nt in query_seq.upper() if nt in nucl_char)
+        prot_count = sum(1 for aa in query_seq.upper() if aa in prot_char)
+        if nucl_count == prot_count:
             query_type = "nucl"
             print("Query is nucleotide sequence")
+        else:
+            query_type = "prot"
+            print("Query is protein sequence")
 
         return query_type
     else:
@@ -371,62 +381,22 @@ def guess_seq_type(query_seq):
 
 
 def run_blast(
-    seq_type=None,
-    input_db="hq",
-    input_genes="tyr",
     tmp_query_fasta=None,
     tmp_blast=None,
     input_eval=None,
     threads=None,
 ):
-
-    print("starting BLAST")
-
     # TODO: add another set of dirs for hq Starships and all Starships?
     # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
     # * that way, the user can switch back and forth between hq and all ships in the output, without having to run a new search
 
-    db_list = {
-        "ship": {"nucl": "database_folder/Starships/ships/fna/blastdb/concatenated.fa"},
-        "gene": {
-            "tyr": {
-                "nucl": "database_folder/Starships/captain/tyr/fna/blastdb/concatenated.fa",
-                "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
-            },
-            "nlr": {
-                "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
-                "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-            },
-            "fre": {
-                "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
-                "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-            },
-            "plp": {
-                "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
-                "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-            },
-            "duf3723": {
-                "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
-                "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-            },
-        },
-    }
-
     # Determine blast program and database based on sequence type and blast type
     blastdb = db_list["ship"]["nucl"]
 
-    if seq_type == "nucl":
+    if query_type == "nucl":
         blast_program = NcbiblastnCommandline
     else:
         blast_program = NcbitblastnCommandline
-
-    if input_genes is not None:
-        if seq_type == "nucl":
-            blast_program = NcbiblastnCommandline
-            blastdb = db_list["gene"][input_genes]["nucl"]
-        else:
-            blast_program = NcbiblastpCommandline
-            blastdb = db_list["gene"][input_genes]["prot"]
 
     if os.path.exists(blastdb) and os.path.getsize(blastdb) > 0:
         print("Performing BLAST search...")
@@ -484,42 +454,52 @@ def run_blast(
     return df
 
 
-def run_hmmer(seq_type=None, input_eval=None, query_fasta=None, threads=None):
-    hmmer_program = "hmmsearch"
-    hmmer_db = "database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm"
+def run_hmmer(input_genes="tyr", input_eval=None, query_fasta=None, threads=None):
+    hmmer_db = None
+    if input_genes is not None:
+        if query_type == "prot":
+            hmmer_program = "hmmsearch"
+            hmmer_db = db_list["gene"][input_genes]["hmm"]
 
-    # Run HMMER search
-    tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-    hmmer_cmd = f"{hmmer_program} -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
-    print("Running hmmsearch...")
-    subprocess.run(hmmer_cmd, shell=True)
+            if os.path.exists(hmmer_db) and os.path.getsize(hmmer_db) > 0:
+                # Run HMMER search
+                tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
+                hmmer_cmd = f"{hmmer_program} -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
+                print("Running hmmsearch...")
+                subprocess.run(hmmer_cmd, shell=True)
 
-    # Parse HMMER output
-    tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-    n_records = parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
-    print(f"Number of hmmsearch records: {n_records}")
+                # Parse HMMER output
+                tmp_hmmer_parsed = tempfile.NamedTemporaryFile(
+                    suffix=".hmmer.parsed.txt"
+                ).name
+                n_records = parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
+                print(f"Number of hmmsearch records: {n_records}")
 
-    # extract sequence from results
-    # extract_hmmer(tmp_hmmer_parsed)
+                # extract sequence from results
+                # extract_hmmer(tmp_hmmer_parsed)
 
-    # Read parsed output into DataFrame
-    hmmer_results = pd.read_csv(
-        tmp_hmmer_parsed,
-        sep="\t",
-        names=[
-            "query_id",
-            "hit_IDs",
-            "aln_length",
-            "query_start",
-            "query_end",
-            "gaps",
-            "query_seq",
-            "subject_seq",
-            "evalue",
-            "bitscore",
-        ],
-    )
-    return hmmer_results
+                # Read parsed output into DataFrame
+                hmmer_results = pd.read_csv(
+                    tmp_hmmer_parsed,
+                    sep="\t",
+                    names=[
+                        "query_id",
+                        "hit_IDs",
+                        "aln_length",
+                        "query_start",
+                        "query_end",
+                        "gaps",
+                        "query_seq",
+                        "subject_seq",
+                        "evalue",
+                        "bitscore",
+                    ],
+                )
+                return hmmer_results
+            else:
+                raise ValueError("Issue accessing HMM database")
+    if hmmer_db is None:
+        return None
 
 
 # Parse the HMMER results
@@ -726,7 +706,6 @@ def blast_chords(blast_output):
 
 # TODO: link in ship classification information for subjects here
 def blast_table(ship_blast_results):
-    tbl_dat = ship_blast_results
     tbl = html.Div(
         [
             dash_table.DataTable(
@@ -737,9 +716,9 @@ def blast_table(ship_blast_results):
                         "deletable": False,
                         "selectable": True,
                     }
-                    for i in tbl_dat.columns
+                    for i in ship_blast_results.columns
                 ],
-                data=tbl_dat.to_dict("records"),
+                data=ship_blast_results.to_dict("records"),
                 hidden_columns=["qseqid", "qseq", "sseq"],
                 id="ship-blast-table",
                 editable=False,
@@ -754,6 +733,16 @@ def blast_table(ship_blast_results):
                 page_size=10,
                 export_format="tsv",
                 css=[{"selector": ".show-hide", "rule": "display: none"}],
+                style_table={
+                    "overflowX": "auto",
+                    "maxWidth": "100%",
+                },
+                style_cell={
+                    "minWidth": "150px",
+                    "width": "150px",
+                    "maxWidth": "150px",
+                    "whiteSpace": "normal",
+                },
             ),
             dbc.Button(
                 "Download BLAST results",
@@ -826,17 +815,24 @@ def blast_alignments(ship_blast_results, selected_row):
 
         with open(tmp_fasta.name, "r") as file:
             data = file.read()
+        if query_type == "nucl":
+            color = "nucleotide"
+        else:
+            color = "clustal2"
 
         aln = dashbio.AlignmentChart(
             id="alignment-viewer",
             data=data,
             height=200,
             tilewidth=30,
+            colorscale=color,
             # overview="slider",
             showconsensus=False,
             showconservation=False,
             showgap=False,
             showid=False,
+            ticksteps=5,
+            tickstart=0,
         )
 
         return aln

@@ -185,6 +185,16 @@ layout = html.Div(
                                             page_action="native",
                                             page_current=0,
                                             page_size=25,
+                                            style_table={
+                                                "overflowX": "auto",
+                                                "maxWidth": "100%",
+                                            },
+                                            style_cell={
+                                                "minWidth": "150px",
+                                                "width": "150px",
+                                                "maxWidth": "150px",
+                                                "whiteSpace": "normal",
+                                            },
                                         ),
                                         html.Div(id="table-container"),
                                     ],
