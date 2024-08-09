@@ -17,7 +17,7 @@ import pandas as pd
 dash.register_page(__name__)
 
 # Define form layout
-form = html.Div(
+layout = html.Div(
     [
         dbc.Container(
             fluid=True,
@@ -324,10 +324,6 @@ form = html.Div(
         )
     ],
 )
-
-# Define app layout
-layout = html.Div([dbc.Container(form, class_name="mt-4")])
-
 
 @callback(Output("loading-output-1", "children"), Input("upload-sequence", "value"))
 def input_triggers_spinner(value):
