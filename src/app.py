@@ -3,6 +3,7 @@ from dash import Dash, html
 import dash
 from flask import Flask
 from src.components import navmenu
+from src.components.callbacks import register_callbacks
 
 external_stylesheets = [
     dbc.icons.BOOTSTRAP,
@@ -37,6 +38,8 @@ def serve_app_layout():
 
 
 app.layout = serve_app_layout
+
+register_callbacks(app)
 
 if __name__ == "__main__":
     app.run_server()

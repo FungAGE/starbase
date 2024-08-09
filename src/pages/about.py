@@ -1,26 +1,23 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html
-
+from dash import dcc, html
 
 dash.register_page(__name__)
 
-layout = html.Div(
-    [
-        dbc.Container(
-            fluid=True,
+layout = dbc.Container(
+    fluid=True,
+    children=[
+        dbc.Row(
             children=[
                 dbc.Stack(
                     [
-                        dbc.Row(),
                         dbc.Row(
                             justify="center",
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=8,
+                                    lg=6,
                                     sm=12,
-                                    className="align-self-center",
                                     children=[
                                         html.P(
                                             [
@@ -33,7 +30,14 @@ layout = html.Div(
                                                     "FungAGE lab",
                                                     href="https://fungage.github.io/",
                                                 ),
-                                                " in collaboration with the Gluck-Thaler lab. The sourcecode for ",
+                                                " in collaboration with the Gluck-Thaler lab.",
+                                            ],
+                                            className="mr-1",
+                                            style={"font-size": "1vw"},
+                                        ),
+                                        html.P(
+                                            [
+                                                "The sourcecode for ",
                                                 html.Span(
                                                     "starbase",
                                                     className="logo-text",
@@ -41,7 +45,8 @@ layout = html.Div(
                                                 " webserver will soon be available on GitHub",
                                             ],
                                             className="mr-1",
-                                        )
+                                            style={"font-size": "1vw"},
+                                        ),
                                     ],
                                 ),
                             ],
@@ -51,9 +56,8 @@ layout = html.Div(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=8,
+                                    lg=6,
                                     sm=12,
-                                    className="align-self-center",
                                     children=[
                                         dbc.Card(
                                             [
@@ -74,6 +78,9 @@ layout = html.Div(
                                                                 " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
                                                             ],
                                                             className="mr-1",
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
                                                         ),
                                                         html.Div(
                                                             [
@@ -87,13 +94,17 @@ layout = html.Div(
                                                                             ),
                                                                         ],
                                                                     ),
-                                                                    id="dl_package",
+                                                                    id="dl-button",
                                                                     color="primary",
                                                                     className="mr-1",
                                                                 ),
+                                                                dcc.Download(
+                                                                    id="dl-package"
+                                                                ),
                                                             ],
                                                             style={
-                                                                "textAlign": "center"
+                                                                "textAlign": "center",
+                                                                "font-size": "0.6vw",
                                                             },
                                                         ),
                                                     ]
@@ -109,9 +120,8 @@ layout = html.Div(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=8,
+                                    lg=6,
                                     sm=12,
-                                    className="align-self-center",
                                     align="center",
                                     children=[
                                         dbc.Stack(
@@ -272,6 +282,7 @@ layout = html.Div(
                     direction="vertical",
                 )
             ],
+            style={"padding": "20px"},
         ),
     ],
 )
