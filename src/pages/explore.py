@@ -1,13 +1,11 @@
 import dash
-from dash import dash_table, dcc, html, callback, clientside_callback
-from dash.dependencies import Output, Input, State
+from dash import dash_table, dcc, html, callback
+from dash.dependencies import Output, Input
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
 import pandas as pd
 import plotly.express as px
-
-from Bio import Phylo
-import plotly.graph_objects as go
 
 from src.components.tree import plot_tree
 
@@ -17,6 +15,7 @@ df = pd.read_csv("src/data/joined_ships.csv")
 df_sub = df[
     [
         "starshipID",
+        "captain_superfamily",
         "starship_family",
         "starship_navis",
         "starship_haplotype",
@@ -28,19 +27,6 @@ df_sub = df[
 ship_count = df[["starshipID"]].nunique()
 species = df["genus"] + "-" + df["species"]
 species_count = species.nunique()
-
-
-def load_svg(svg_file):
-    with open(svg_file, "r") as file:
-        svg_content = file.read()
-    return svg_content
-
-
-# Load the SVG content
-svg_content = load_svg(
-    "/home/adrian/Systematics/Starship_Database/starbase/tmp/test.svg"
-)
-
 
 layout = html.Div(
     [
@@ -238,7 +224,13 @@ layout = html.Div(
                         dcc.Loading(
                             id="loading-3",
                             type="default",
-                            children=[plot_tree()],
+                            children=[
+                                dcc.Graph(
+                                    id="phylogeny-graph",
+                                    className="div-card",
+                                    figure=plot_tree(),
+                                )
+                            ],
                         ),
                     ],
                     direction="horizontal",
@@ -309,37 +301,20 @@ def update_sunburst(selected_rows):
     return ship_pie, tax_pie
 
 
-# # Callback to handle node clicks (you need to implement custom JS in the HTML to send node data)
-# @callback(Output("node-info", "children"), [Input("tree", "n_clicks")])
-# def display_node_info(n_clicks):
-#     # Placeholder: Return information about the clicked node
-#     # This part requires custom JS in the HTML to capture the node click and send data to Dash
-#     if n_clicks:
-#         return f"Node clicked {n_clicks} times"
-#     return "Click on a node to see details."
+@callback(
+    Output("phylogeny-graph", "figure"),
+    [
+        Input("table", "derived_virtual_data"),
+        Input("table", "derived_virtual_selected_rows"),
+    ],
+)
+def update_phylogeny_tree(data, selected_row):
+    if not selected_row:
+        raise PreventUpdate
+    else:
+        df = pd.DataFrame(data)
+        row = df.iloc[selected_row]
+        highlight_clades = list(set(row["captain_superfamily"].tolist()))
 
-
-# JavaScript to listen for custom events and update Dash Store
-# clientside_callback(
-#     """
-#     function(n_clicks) {
-#         document.addEventListener('elementClicked', function(event) {
-#             var clickedElement = event.detail.id;
-#             var store = document.querySelector('[data-dash-is-loading="clicked-element"]');
-#             store.__value = clickedElement;
-#             store.dispatchEvent(new Event('change', { bubbles: true }));
-#         });
-#         return window.dash_clientside.no_update;
-#     }
-#     """,
-#     Output("clicked-element", "data"),
-#     Input("svg-container", "n_clicks"),
-# )
-
-
-# # Callback to handle interactions
-# @callback(Output("output-container", "children"), Input("clicked-element", "data"))
-# def update_output(clicked_element):
-#     if clicked_element is None:
-#         return "No SVG element clicked yet"
-#     return f"{clicked_element} was clicked"
+        fig = plot_tree(highlight_clades)
+        return fig

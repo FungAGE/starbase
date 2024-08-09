@@ -26,20 +26,16 @@ colors = {
 }
 
 
-def hex_to_rgb(hex_color):
+def hex_to_rgba(hex_color):
     hex_color = hex_color.lstrip("#")
     r = int(hex_color[0:2], 16)
     g = int(hex_color[2:4], 16)
     b = int(hex_color[4:6], 16)
-    return f"rgb({r}, {g}, {b})"
+    a = 0.6
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
-rgb_colors = {key: hex_to_rgb(value) for key, value in colors.items()}
-
-
-def is_rgb_string(s):
-    rgb_pattern = r"^rgb\(\s*(0|[1-9][0-9]?|[1-9][0-9][0-9]?|255)\s*,\s*(0|[1-9][0-9]?|[1-9][0-9][0-9]?|255)\s*,\s*(0|[1-9][0-9]?|[1-9][0-9][0-9]?|255)\s*\)$"
-    return bool(re.match(rgb_pattern, s))
+rgb_colors = {key: hex_to_rgba(value) for key, value in colors.items()}
 
 
 def get_x_coordinates(tree):
@@ -187,13 +183,87 @@ def get_rectangle(
     )
 
 
-def create_tree(tree_file, metadata, highlight_names=None):
+def get_text_label(
+    x,
+    y,
+    text,
+    font_size=12,
+    font_color="black",
+    x_anchor="center",
+    y_anchor="middle",
+):
+    """Define a text annotation"""
+    return dict(
+        x=x,
+        y=y,
+        text=text,
+        showarrow=False,
+        font=dict(size=font_size, color=font_color),
+        xanchor=x_anchor,
+        yanchor=y_anchor,
+    )
+
+
+def create_tree(tree_file, metadata, highlight_clade=None):
     tree = Phylo.read(tree_file, "newick")
     graph_title = "Captain Gene Phylogeny"
 
     x_coords = get_x_coordinates(tree)
     y_coords = get_y_coordinates(tree)
     line_shapes = []
+    text_labels = []
+
+    for superfam_clade in highlight_clade:
+        # Filter the metadata for the current clade
+        df = metadata[metadata["superfam"] == superfam_clade]
+
+        if df.empty:
+            continue
+
+        highlight_names = df["tip"].tolist()
+
+        if "color" in df.columns and not df["color"].isna().all():
+            color = df.iloc[0]["color"]  # Use iloc for safe indexing
+        else:
+            print(f"Color information missing for clade: {superfam_clade}")
+            color = "rgba(25, 25, 25, 0.6)"
+
+        # Draw rectangles for the specified names
+        x_coord_list = []
+        for clade, value in x_coords.items():
+            if clade.name in highlight_names:
+                x_coord_list.append(value)
+        y_coord_list = []
+        for clade, value in y_coords.items():
+            if clade.name in highlight_names:
+                y_coord_list.append(value)
+        x_start = min(x_coord_list) - 1
+        x_end = max(x_coord_list)
+        y_start = min(y_coord_list) - 0.5
+        y_end = max(y_coord_list) + 0.5
+
+        rectangle = get_rectangle(
+            x_start=x_start,
+            x_end=x_end,
+            y_start=y_start,
+            y_end=y_end,
+            fill_color=color,  # Highlight color
+            border_color=color,
+            line_width=2,
+        )
+        line_shapes.append(rectangle)
+
+        text_label = get_text_label(
+            x=(x_end + x_start) / 2,
+            y=(y_end + y_start) / 2,
+            text=superfam_clade,
+            font_size=24,
+            font_color="black",
+            x_anchor="center",
+            y_anchor="middle",
+        )
+        text_labels.append(text_label)
+
     draw_clade(
         metadata,
         rgb_colors,
@@ -204,25 +274,6 @@ def create_tree(tree_file, metadata, highlight_names=None):
         x_coords=x_coords,
         y_coords=y_coords,
     )
-
-    # Draw rectangles for the specified names
-    if highlight_names:
-        x_start = (
-            min(x_coords[name] for name in highlight_names if name in x_coords) - 0.5
-        )  # Adjust as needed
-        x_end = max(x_coords.items[highlight_names]) + 0.5  # Adjust as needed
-        y_start = min(y_coords.items[highlight_names]) - 0.5  # Adjust as needed
-        y_end = max(y_coords.items[highlight_names]) + 0.5  # Adjust as needed
-        rectangle = get_rectangle(
-            x_start=x_start,
-            x_end=x_end,
-            y_start=y_start,
-            y_end=y_end,
-            fill_color="rgba(255,0,0,0.2)",  # Highlight color
-            border_color="rgba(255,0,0,0.8)",
-            line_width=2,
-        )
-        line_shapes.append(rectangle)
 
     my_tree_clades = x_coords.keys()
     X = []
@@ -255,6 +306,7 @@ def create_tree(tree_file, metadata, highlight_names=None):
             showgrid=False,
             showticklabels=False,
         ),
+        annotations=text_labels,
         hovermode="closest",
         shapes=line_shapes,
         legend={"x": 0, "y": 1},
@@ -264,43 +316,31 @@ def create_tree(tree_file, metadata, highlight_names=None):
     nodes = []
 
     fig = dict(data=nodes, layout=layout)
+
     return fig
 
 
-def plot_tree():
+def plot_tree(highlight_clade=None):
+    if highlight_clade is None:
+        highlight_clade = [
+            "superfam01-1",
+            "superfam01-2",
+            "superfam01-3",
+            "superfam01-4",
+            "superfam01-5",
+            "superfam02-1",
+            "superfam02-2",
+            "superfam02-3",
+            "superfam03-1",
+            "superfam03-2",
+            "superfam03-3",
+            "superfam03-4",
+            "superfam03-5",
+        ]
+
     tree_file = "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
     metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
     metadata["color"] = metadata["superfam"].map(rgb_colors)
 
-    # Specify names to highlight
-    highlight_names = metadata[metadata["superfam"] == "superfam01-1"]["tip"].tolist()
-
-    fig = create_tree(tree_file, metadata, highlight_names=highlight_names)
-
-    layout = html.Div(
-        [dcc.Graph(id="phylogeny-graph", className="div-card", figure=fig)]
-    )
-    return layout
-
-
-# @callback(
-#     Output("phylogeny-graph", "figure"),
-#     [
-#         Input("table", "derived_virtual_data"),
-#         Input("table", "derived_virtual_selected_rows"),
-
-#     ],
-# )
-# def update_phylogeny_tree(data,selected_row):
-
-#     if tree_file_filtred in tree_fig:
-#         fig = tree_fig[tree_file_filtred]
-#     else:
-#         if ord_by_elt == "Country" or ord_by_elt == "Division" or ord_by_elt == "Date":
-#             fig = create_tree(
-#                 virus_name, tree_file_filtred, metadata_file_filtred, ord_by_elt
-#             )
-
-#         tree_fig[tree_file_filtred] = fig
-
-#     return fig
+    fig = create_tree(tree_file, metadata, highlight_clade)
+    return fig
