@@ -1,6 +1,6 @@
 # Select base image (can be ubuntu, python, shiny etc)
 FROM python:3.9
-MAINTAINER Adrian Forsythe <adrian.e.forsythe@gmail.com>
+LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 
 # Create user name and home directory variables. 
 # The variables are later used as $USER and $HOME. 

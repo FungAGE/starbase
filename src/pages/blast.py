@@ -1,4 +1,3 @@
-# import subprocess
 import dash
 import dash_bootstrap_components as dbc
 from dash import dash_table, dcc, html, callback
@@ -25,6 +24,9 @@ from Bio.Blast.Applications import (
 from Bio import SeqIO, SearchIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
+
+import plotly.io as pio
+import plotly.graph_objects as go
 
 dash.register_page(__name__)
 
@@ -129,6 +131,11 @@ layout = dbc.Container(
                             id="loading-2",
                             type="default",
                             children=html.Div(id="ship-aln-container"),
+                        ),
+                        dcc.Loading(
+                            id="loading-3",
+                            type="default",
+                            children=html.Div(dcc.Graph(id="lastz-plot")),
                         ),
                     ],
                 ),
@@ -256,7 +263,7 @@ def run_main(n_clicks, query_text_input, query_file_contents):
         # chords = blast_chords(blast_results)
 
         if hmmer_results is not None:
-            superfamily_text = hmmer_table(hmmer_results)
+            superfamily_text = gene_hmmsearch(hmmer_results)
         else:
             superfamily_text = """"""
 
@@ -723,7 +730,7 @@ def blast_table(ship_blast_results):
                 id="ship-blast-table",
                 editable=False,
                 sort_action="native",
-                sort_mode="multi",
+                sort_mode="single",
                 row_selectable="single",
                 selected_rows=[0],  # Select the first row by default
                 row_deletable=False,
@@ -756,7 +763,7 @@ def blast_table(ship_blast_results):
     return tbl
 
 
-def hmmer_table(hmmer_results):
+def gene_hmmsearch(hmmer_results):
     # Convert "evalue" column to numeric with errors='coerce'
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
 
@@ -776,7 +783,23 @@ def hmmer_table(hmmer_results):
         return None
     else:
         superfamily_text = html.Div(
-            children=[html.H4(f"Likely captain superfamily: {superfamily}")]
+            [
+                dcc.Markdown(
+                    f"[Likely captain superfamily: {superfamily}",
+                    id="open-modal-link",
+                ),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader(dbc.ModalTitle("Modal Title")),
+                        dbc.ModalBody("This is the content of the modal."),
+                        dbc.ModalFooter(
+                            dbc.Button("Close", id="close-modal", className="ml-auto")
+                        ),
+                    ],
+                    id="modal",
+                    is_open=False,
+                ),
+            ],
         )
         return superfamily_text
 
@@ -790,8 +813,7 @@ def hmmer_table(hmmer_results):
     ],
 )
 def blast_alignments(ship_blast_results, selected_row):
-
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False)
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
     # Convert ship_blast_results to a Pandas DataFrame
     ship_blast_results_df = pd.DataFrame(ship_blast_results)
@@ -862,3 +884,138 @@ def download_tsv(n_clicks, rows, columns):
         )
     except Exception as e:
         return f"Error: {str(e)}"
+
+
+def run_lastz(query_type, seqs, output_file):
+    """
+    Runs LASTZ to align two sequences and writes the output to a specified file.
+    """
+    lastdb_output = tempfile.NamedTemporaryFile(suffix=".db", delete=True)
+    if query_type == "nucl":
+        db_command = f"lastdb {lastdb_output.name} {seqs}"
+    elif query_type == "prot":
+        db_command = f"lastdb -p -c {lastdb_output.name} {seqs}"
+
+    else:
+        db_command = None
+
+    if db_command is not None:
+        subprocess.run(db_command, shell=True, check=True)
+        command = f"lastal {lastdb_output.name} {seqs} -f BLASTTAB > {output_file}"
+        subprocess.run(command, shell=True, check=True)
+
+
+def parse_lastz_output(output_file):
+    """
+    Parses the LASTZ output file and returns a DataFrame with relevant data.
+    """
+    columns = [
+        "query_id",
+        "subject_id",
+        "pident",
+        "aln_len",
+        "mismatch",
+        "gap_opens",
+        "qstart",
+        "qend",
+        "sstart",
+        "send",
+        "evalue",
+        "bitscore",
+    ]
+    df = pd.read_csv(output_file, sep="\t", header=0, comment="#", names=columns)
+    df["qstart"] = pd.to_numeric(df["qstart"], errors="coerce")
+    df["sstart"] = pd.to_numeric(df["sstart"], errors="coerce")
+    df["qend"] = pd.to_numeric(df["qend"], errors="coerce")
+    df["send"] = pd.to_numeric(df["send"], errors="coerce")
+
+    return df
+
+
+@callback(
+    Output("lastz-plot", "figure"),
+    [
+        Input("ship-blast-table", "derived_virtual_data"),
+        Input("ship-blast-table", "derived_virtual_selected_rows"),
+    ],
+)
+def create_alignment_plot(ship_blast_results, selected_row):
+    """
+    Creates a Plotly scatter plot from the alignment DataFrame and saves it as a PNG.
+    """
+    tmp_fasta_clean = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
+    lastz_output = tempfile.NamedTemporaryFile(suffix=".tsv", delete=True)
+
+    # Convert ship_blast_results to a Pandas DataFrame
+    ship_blast_results_df = pd.DataFrame(ship_blast_results)
+
+    if selected_row is None:
+        return None
+    else:
+        row = ship_blast_results_df.iloc[selected_row]
+        qseq = re.sub("-", "", row["qseq"].iloc[0])
+        qseqid = row["qseqid"].iloc[0]
+        sseq = re.sub("-", "", row["sseq"].iloc[0])
+        sseqid = row["sseqid"].iloc[0]
+
+        # Write the specific row to the file
+        with open(tmp_fasta_clean.name, "w") as f:
+            f.write(f">{qseqid}\n")
+            f.write(f"{qseq}\n")
+            f.write(f">{sseqid}\n")
+            f.write(f"{sseq}\n")
+
+        # Run LASTZ alignment
+        run_lastz(query_type, tmp_fasta_clean.name, lastz_output.name)
+        print(lastz_output.name)
+
+        # Parse LASTZ output
+        lastz_df = parse_lastz_output(lastz_output.name)
+        print(lastz_df.head(10))
+
+        # Extract individual columns and prepare the data for plotting
+        x_values = []
+        y_values = []
+
+        for _, row in lastz_df.iterrows():
+            x_values.append(row["qstart"])
+            x_values.append(row["qend"])
+            y_values.append(row["sstart"])
+            y_values.append(row["send"])
+
+        # Create the scatter plot using Plotly Graph Objects
+        fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode="lines"))
+
+        # Add layout details
+        fig.update_layout(
+            title="LASTZ Alignment",
+            xaxis_title=qseqid,
+            yaxis_title=sseqid,
+        )
+
+        return fig
+
+
+# # Callback to open the modal
+# @callback(
+#     Output("modal", "is_open"),
+#     Input("open-modal-link", "n_clicks"),
+#     State("modal", "is_open"),
+# )
+# def toggle_modal(n_clicks, is_open):
+#     if n_clicks is not None:
+#         if n_clicks:
+#             return not is_open
+#         return is_open
+
+
+# # Callback to close the modal
+# @callback(
+#     Output("modal", "is_open"),
+#     Input("close-modal", "n_clicks"),
+#     State("modal", "is_open"),
+# )
+# def close_modal(n_clicks, is_open):
+#     if n_clicks:
+#         return False
+#     return is_open
