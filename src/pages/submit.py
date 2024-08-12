@@ -114,8 +114,8 @@ form = html.Div(
                                     ["Upload Starship sequence:"],
                                 ),
                                 dcc.Upload(
-                                    id="upload-sequence",
-                                    children=html.Div(id="output-sequence-upload"),
+                                    id="fasta-upload",
+                                    children=html.Div(id="fasta-sequence-upload"),
                                     style={
                                         "color": "red",
                                         "width": "50%",
@@ -141,9 +141,9 @@ form = html.Div(
                                     ],
                                 ),
                                 dcc.Upload(
-                                    id="upload-annotations",
-                                    children=html.Div(id="output-annotation-upload"),
-                                    accept=".gff, .gff3",
+                                    id="upload-gff",
+                                    children=html.Div(id="output-gff-upload"),
+                                    accept=".gff, .gff3, .tsv",
                                     multiple=False,
                                     style={
                                         "width": "50%",
@@ -311,6 +311,7 @@ form = html.Div(
                                             "justify-content": "center",
                                             "textAlign": "center",
                                         },
+                                        className="d-grid gap-2 col-6 mx-auto",
                                     ),
                                     id="submit-ship",
                                     n_clicks=0,
@@ -329,7 +330,7 @@ form = html.Div(
 layout = html.Div([dbc.Container(form, class_name="mt-4")])
 
 
-@callback(Output("loading-output-1", "children"), Input("upload-sequence", "value"))
+@callback(Output("loading-output-1", "children"), Input("upload-fasta", "value"))
 def input_triggers_spinner(value):
     time.sleep(1)
     return value
@@ -341,121 +342,15 @@ def input_triggers_nested(value):
     return value
 
 
-def parse_fasta(contents, filename):
-    if contents:
-        # Assume that the user uploaded a FASTA file
-        sequences = SeqIO.parse(io.StringIO(contents), "fasta")
-
-        records = []
-        nseq = 1
-        for sequence in sequences:
-            records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
-            nseq += 1
-
-        # Update the height attribute of the style based on the content height
-        return [
-            html.Div(
-                [
-                    html.H6(f"File name: {filename}"),
-                    html.H6(f"Number of sequences: {nseq}"),
-                ],
-            )
-        ]
-
-    else:
-        # Return the default style if no content is uploaded
-        return [
-            html.Div(
-                [
-                    "Drag and Drop or ",
-                    html.A("Select a File"),
-                ],
-            )
-        ]
-
-
-def parse_gff(contents, filename):
-    if contents:
-        content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
-        # Assume that the user uploaded a TSV file
-        gff = pd.read_csv(io.StringIO(decoded.decode("utf-8")), sep="\t")
-        # cols = [
-        #     "seqid",
-        #     "source",
-        #     "type",
-        #     "start",
-        #     "end",
-        #     "score",
-        #     "strand",
-        #     "phase",
-        #     "attributes",
-        # ]
-
-        # annotations = pd.DataFrame(gff)
-        nanno = len(gff)
-
-        return html.Div(
-            [
-                html.H6(f"File name: {filename}"),
-                html.H6(f"Number of annotations: {nanno}"),
-            ]
-        )
-
-    else:
-        return [
-            html.Div(
-                [
-                    "Drag and Drop or ",
-                    html.A("Select a File"),
-                ]
-            ),
-        ]
-
-
-@callback(
-    Output("output-sequence-upload", "children"),
-    [
-        Input("upload-sequence", "contents"),
-        Input("upload-sequence", "filename"),
-    ],
-)
-def update_fasta_upload(seq_content, seq_filename):
-    try:
-        children = parse_fasta(seq_content, seq_filename)
-        return children
-
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."])
-
-
-@callback(
-    Output("output-annotation-upload", "children"),
-    [
-        Input("upload-annotations", "contents"),
-        Input("upload-annotations", "filename"),
-    ],
-)
-def update_anno_upload(anno_content, anno_filename):
-    try:
-        children = parse_gff(anno_content, anno_filename)
-        return children
-
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."])
-
-
 @callback(
     Output("output-data-upload", "children"),
     [
-        Input("upload-sequence", "contents"),
-        Input("upload-sequence", "filename"),
-        Input("upload-sequence", "last_modified"),
-        Input("upload-annotations", "contents"),
-        Input("upload-annotations", "filename"),
-        Input("upload-annotations", "last_modified"),
+        Input("upload-fasta", "contents"),
+        Input("upload-fasta", "filename"),
+        Input("upload-fasta", "last_modified"),
+        Input("upload-gff", "contents"),
+        Input("upload-gff", "filename"),
+        Input("upload-gff", "last_modified"),
         Input("uploader", "value"),
         Input("evidence", "value"),
         Input("genus", "value"),
@@ -485,6 +380,7 @@ def submit_ship(
     n_clicks,
 ):
     if n_clicks > 0 and seq_content is not None:
+        print("button clicked...")
         try:
             # Create SQLite database connection
             conn = sqlite3.connect("database_folder/starbase.sqlite")
