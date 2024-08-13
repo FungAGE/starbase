@@ -29,7 +29,6 @@ layout = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
                                 dbc.Card(
                                     [
@@ -78,7 +77,6 @@ layout = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
                                 html.H2(
                                     [
@@ -89,7 +87,7 @@ layout = html.Div(
                                         ),
                                     ],
                                 ),
-                                html.H5(
+                                html.H4(
                                     [
                                         "Fields in ",
                                         html.Span(
@@ -102,6 +100,7 @@ layout = html.Div(
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
@@ -110,9 +109,8 @@ layout = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
-                                html.H5(
+                                html.H4(
                                     ["Upload Starship sequence:"],
                                 ),
                                 dcc.Upload(
@@ -137,7 +135,7 @@ layout = html.Div(
                                     type="default",
                                     children=html.Div(id="loading-output-1"),
                                 ),
-                                html.H5(
+                                html.H4(
                                     [
                                         "Upload gene annotations associated with Starship sequence (GFF[3] format):"
                                     ],
@@ -174,10 +172,9 @@ layout = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
-                                html.H5(
-                                    ["Starship metadata:"],
+                                html.H4(
+                                    ["Starship Metadata"],
                                 ),
                                 html.P(
                                     [
@@ -189,7 +186,6 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -201,7 +197,6 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -213,7 +208,6 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -225,11 +219,11 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
@@ -238,9 +232,8 @@ layout = html.Div(
                         dbc.Col(
                             lg=8,
                             sm=12,
-                            className="align-self-center",
                             children=[
-                                html.H5("Coordinates of Starship in host genome:"),
+                                html.H4("Coordinates of Starship in host genome:"),
                                 html.P(
                                     [
                                         "Host genome contig/scaffold/chromosome ID: ",
@@ -251,7 +244,6 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -263,7 +255,6 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                                 html.P(
                                     [
@@ -275,22 +266,21 @@ layout = html.Div(
                                             required=True,
                                         ),
                                     ],
-                                    style={"font-size": "1vw"},
                                 ),
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
                     align="center",
                     children=[
                         dbc.Col(
-                            className="align-self-center",
                             lg=8,
                             sm=12,
                             children=[
-                                html.H5("Additional information:"),
+                                html.H4("Additional information:"),
                                 dcc.Textarea(
                                     id="comment",
                                     placeholder="Any comments about the Starship features, annotations, or host genome?",
@@ -303,18 +293,18 @@ layout = html.Div(
                             ],
                         )
                     ],
+                    style={"padding": "10px"},
                 ),
                 dbc.Row(
                     justify="center",
                     align="center",
                     children=[
                         dbc.Col(
-                            className="align-self-center",
                             lg=8,
                             sm=12,
                             children=[
                                 dbc.Button(
-                                    html.H5(
+                                    html.H4(
                                         ["Submit"],
                                         style={
                                             "align-items": "center",
@@ -348,6 +338,7 @@ layout = html.Div(
                             ],
                         ),
                     ],
+                    style={"padding": "10px"},
                 ),
             ],
         )

@@ -8,7 +8,7 @@ def run_lastz(sequence1, sequence2, output_file):
     """
     Runs LASTZ to align two sequences and writes the output to a specified file.
     """
-    command = f"lastz --format=general --output={output_file} {sequence1} {sequence2}"
+    command = f"lastz {sequence1} {sequence2} --format=general --output={output_file}"
     subprocess.run(command, shell=True, check=True)
 
 
@@ -68,15 +68,11 @@ def create_alignment_plot(df, output_image_file):
         yaxis_title="Sequence End",
     )
 
-    # Save the figure as a PNG file
-    pio.write_image(fig, output_image_file)
-
 
 # Example usage:
-sequence1 = "tmp/aspfum3_s01174.fna"
-sequence2 = "tmp/aspfum3_s01168.fna"
+sequence1 = "tmp/seq1.fa"
+sequence2 = "tmp/seq2.fa"
 output_file = "tmp/lastz_output.txt"
-output_image_file = "tmp/alignment_plot.png"
 
 # Run LASTZ alignment
 run_lastz(sequence1, sequence2, output_file)
