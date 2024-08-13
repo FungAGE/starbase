@@ -17,7 +17,7 @@ import pandas as pd
 dash.register_page(__name__)
 
 # Define form layout
-form = html.Div(
+layout = html.Div(
     [
         dbc.Container(
             fluid=True,
@@ -325,21 +325,6 @@ form = html.Div(
         )
     ],
 )
-
-# Define app layout
-layout = html.Div([dbc.Container(form, class_name="mt-4")])
-
-
-@callback(Output("loading-output-1", "children"), Input("upload-fasta", "value"))
-def input_triggers_spinner(value):
-    time.sleep(1)
-    return value
-
-
-@callback(Output("loading-output-2", "children"), Input("loading-input-2", "value"))
-def input_triggers_nested(value):
-    time.sleep(1)
-    return value
 
 
 @callback(

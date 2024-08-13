@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
@@ -135,10 +135,11 @@ def home_ui():
                                                                     ".",
                                                                 ],
                                                             ),
-                                                            id="dl_package",
+                                                            id="dl-button",
                                                             color="primary",
                                                             class_name="mr-1",
-                                                        )
+                                                        ),
+                                                        dcc.Download(id="dl-package"),
                                                     ],
                                                 ),
                                             ]
