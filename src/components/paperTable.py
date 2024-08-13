@@ -57,6 +57,7 @@ table = dbc.Card(
                                 "width": "150px",
                                 "maxWidth": "150px",
                                 "overflow": "hidden",
+                                "overflowX": "auto",
                                 "textOverflow": "ellipsis",
                             },
                         )

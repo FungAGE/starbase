@@ -45,9 +45,8 @@ layout = dbc.Container(
             style={"paddingTop": "20px", "paddingBottom": "20px"},
             children=[
                 dbc.Col(
-                    lg=6,
+                    lg=8,
                     sm=12,
-                    width={"offset": 0.5},
                     children=[
                         dbc.Stack(
                             [
@@ -59,11 +58,7 @@ layout = dbc.Container(
                                         ),
                                         "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
                                     ],
-                                    style={
-                                        "align-items": "center",
-                                        "justify-content": "center",
-                                        "textAlign": "left",
-                                    },
+                                    className="text-center",
                                 ),
                                 dbc.Stack(
                                     [
@@ -86,13 +81,13 @@ layout = dbc.Container(
                                                         working_buttons,
                                                         direction="horizontal",
                                                         gap=3,
-                                                        style={"alignItems": "center"},
+                                                        className="justify-content-center",
                                                     )
                                                 ),
                                             ],
+                                            className="w-100 mb-3",
                                             style={
-                                                "width": "50%",
-                                                "height": 150,
+                                                "minHeight": "150px",
                                             },
                                         ),
                                         dbc.Card(
@@ -111,14 +106,14 @@ layout = dbc.Container(
                                                 ),
                                                 dbc.CardBody([not_working_ul]),
                                             ],
+                                            className="w-100",
                                             style={
-                                                "width": "50%",
-                                                "height": 150,
+                                                "minHeight": "150px",
                                             },
                                         ),
                                     ],
-                                    direction="horizontal",
-                                    gap=1,
+                                    direction="vertical",
+                                    gap=3,
                                 ),
                                 dbc.Card(
                                     [
@@ -169,17 +164,19 @@ layout = dbc.Container(
                                                                 "backgroundColor": "white",
                                                                 "margin": "auto",
                                                                 "display": "block",
-                                                                "width": "85%",
+                                                                "width": "100%",
+                                                                "maxWidth": "500px",
                                                             },
                                                         )
                                                     ],
-                                                    className="box-body",
+                                                    className="text-center",
                                                 ),
                                             ]
                                         ),
                                     ],
                                     color="primary",
                                     inverse=True,
+                                    className="mt-3",
                                     style={
                                         "width": "100%",
                                     },
@@ -218,14 +215,15 @@ layout = dbc.Container(
                                                             ),
                                                             id="dl-button",
                                                             color="primary",
-                                                            class_name="mr-1",
+                                                            className="mx-auto",
                                                         ),
                                                         dcc.Download(id="dl-package"),
                                                     ],
                                                 ),
                                             ]
                                         ),
-                                    ]
+                                    ],
+                                    className="mt-3",
                                 ),
                             ],
                             gap=4,
