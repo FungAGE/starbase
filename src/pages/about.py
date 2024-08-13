@@ -35,82 +35,6 @@ layout = dbc.Container(
                                             className="mr-1",
                                             style={"font-size": "1vw"},
                                         ),
-                                        html.P(
-                                            [
-                                                "The sourcecode for ",
-                                                html.Span(
-                                                    "starbase",
-                                                    className="logo-text",
-                                                ),
-                                                " webserver will soon be available on GitHub",
-                                            ],
-                                            className="mr-1",
-                                            style={"font-size": "1vw"},
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                        dbc.Row(
-                            justify="center",
-                            align="center",
-                            children=[
-                                dbc.Col(
-                                    lg=6,
-                                    sm=12,
-                                    children=[
-                                        dbc.Card(
-                                            [
-                                                dbc.CardHeader(
-                                                    html.H2(
-                                                        ["Data Availability"],
-                                                    )
-                                                ),
-                                                dbc.CardBody(
-                                                    [
-                                                        html.P(
-                                                            [
-                                                                "We have been maintaining ",
-                                                                html.Span(
-                                                                    "starbase",
-                                                                    className="logo-text",
-                                                                ),
-                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                                            ],
-                                                            className="mr-1",
-                                                            style={
-                                                                "font-size": "0.6vw"
-                                                            },
-                                                        ),
-                                                        html.Div(
-                                                            [
-                                                                dbc.Button(
-                                                                    html.P(
-                                                                        [
-                                                                            "Download the latest version of ",
-                                                                            html.Span(
-                                                                                "starbase",
-                                                                                className="logo-text",
-                                                                            ),
-                                                                        ],
-                                                                    ),
-                                                                    id="dl-button",
-                                                                    color="primary",
-                                                                    className="mr-1",
-                                                                ),
-                                                                dcc.Download(
-                                                                    id="dl-package"
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "textAlign": "center",
-                                                                "font-size": "0.6vw",
-                                                            },
-                                                        ),
-                                                    ]
-                                                ),
-                                            ],
-                                        ),
                                     ],
                                 )
                             ],
@@ -273,6 +197,88 @@ layout = dbc.Container(
                                             ],
                                             gap=3,
                                         )
+                                    ],
+                                )
+                            ],
+                        ),
+                        dbc.Row(
+                            justify="center",
+                            align="center",
+                            children=[
+                                dbc.Col(
+                                    lg=6,
+                                    sm=12,
+                                    children=[
+                                        html.P(
+                                            [
+                                                "The sourcecode for ",
+                                                html.Span(
+                                                    "starbase",
+                                                    className="logo-text",
+                                                ),
+                                                " webserver will soon be available on GitHub",
+                                            ],
+                                            className="mr-1",
+                                            style={"font-size": "1vw"},
+                                        ),
+                                        html.Div(
+                                            html.Img(
+                                                src="assets/images/starbase-map.png",
+                                                width="100%",
+                                            )
+                                        ),
+                                        dbc.Card(
+                                            [
+                                                dbc.CardHeader(
+                                                    html.H2(
+                                                        ["Data Availability"],
+                                                    )
+                                                ),
+                                                dbc.CardBody(
+                                                    [
+                                                        html.P(
+                                                            [
+                                                                "We have been maintaining ",
+                                                                html.Span(
+                                                                    "starbase",
+                                                                    className="logo-text",
+                                                                ),
+                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                            ],
+                                                            className="mr-1",
+                                                            style={
+                                                                "font-size": "0.6vw"
+                                                            },
+                                                        ),
+                                                        html.Div(
+                                                            [
+                                                                dbc.Button(
+                                                                    html.P(
+                                                                        [
+                                                                            "Download the latest version of ",
+                                                                            html.Span(
+                                                                                "starbase",
+                                                                                className="logo-text",
+                                                                            ),
+                                                                        ],
+                                                                    ),
+                                                                    id="dl-button",
+                                                                    color="primary",
+                                                                    className="mr-1",
+                                                                ),
+                                                                dcc.Download(
+                                                                    id="dl-package"
+                                                                ),
+                                                            ],
+                                                            style={
+                                                                "textAlign": "center",
+                                                                "font-size": "0.6vw",
+                                                            },
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
+                                        ),
                                     ],
                                 )
                             ],

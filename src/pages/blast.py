@@ -57,6 +57,9 @@ db_list = {
     },
 }
 
+tree_file = "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
+metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
+
 layout = dbc.Container(
     fluid=True,
     children=[
@@ -66,7 +69,7 @@ layout = dbc.Container(
             children=[
                 dbc.Col(
                     style={"padding": "20px"},
-                    xs=12,
+                    sm=10,
                     lg=4,
                     children=[
                         dbc.Stack(
@@ -118,7 +121,7 @@ layout = dbc.Container(
                     ],
                 ),
                 dbc.Col(
-                    xs=12,
+                    sm=10,
                     lg=8,
                     style={"padding": "20px"},
                     children=[
@@ -204,25 +207,25 @@ def run_main(n_clicks, query_text_input, query_file_contents):
             if superfamily is not None:
                 superfamily_text = html.Div(
                     [
-                        dcc.Markdown(
+                        html.H4(
                             f"Likely captain superfamily: {superfamily}",
                         ),
                     ],
                 )
-                superfamily_tree = dcc.Graph(
-                    id="blast-phylogeny",
-                    className="div-card",
-                    figure=plot_tree(highlight_clade=superfamily),
-                )
+                # superfamily_tree = dcc.Graph(
+                #     id="blast-phylogeny",
+                #     className="div-card",
+                #     figure=plot_tree(tree_file, metadata, highlight_clades=superfamily),
+                # )
 
         else:
             superfamily_text = """"""
-            superfamily_tree = """"""
+            # superfamily_tree = """"""
 
         return html.Div(
             [
                 dbc.Stack(
-                    [ship_blast_table, superfamily_text, superfamily_tree],
+                    [superfamily_text, ship_blast_table],
                     gap=3,
                 )
             ],
@@ -323,13 +326,13 @@ def guess_seq_type(query_seq):
         nucl_count = sum(1 for nt in query_seq.upper() if nt in nucl_char)
         prot_count = sum(1 for aa in query_seq.upper() if aa in prot_char)
         if nucl_count == prot_count:
-            query_type = "nucl"
+            query_guess = "nucl"
             print("Query is nucleotide sequence")
         else:
-            query_type = "prot"
+            query_guess = "prot"
             print("Query is protein sequence")
 
-        return query_type
+        return query_guess
     else:
         # Handle the case where query_seq is None
         print("Error: query_seq is None")
@@ -679,9 +682,10 @@ def blast_table(ship_blast_results):
                 id="ship-blast-table",
                 editable=False,
                 sort_action="native",
+                sort_by=[{"column_id": "pident", "direction": "desc"}],
                 sort_mode="single",
                 row_selectable="single",
-                selected_rows=[0],  # Select the first row by default
+                selected_rows=[],
                 row_deletable=False,
                 selected_columns=[],
                 page_action="native",
@@ -746,46 +750,42 @@ def blast_alignments(ship_blast_results, selected_row):
     # Convert ship_blast_results to a Pandas DataFrame
     ship_blast_results_df = pd.DataFrame(ship_blast_results)
 
-    if selected_row is not None:
-        row_sel = selected_row
-    else:
-        row_sel = 0
+    if selected_row:
+        try:
+            row = ship_blast_results_df.iloc[selected_row]
+        except IndexError:
+            row = None
+        if row is not None:
+            # Write the specific row to the file
+            with open(tmp_fasta.name, "w") as f:
+                f.write(f">{row['qseqid'].iloc[0]}\n")
+                f.write(f"{row['qseq'].iloc[0]}\n")
+                f.write(f">{row['sseqid'].iloc[0]}\n")
+                f.write(f"{row['sseq'].iloc[0]}\n")
 
-    try:
-        row = ship_blast_results_df.iloc[row_sel]
-    except IndexError:
-        row = None
-    if row is not None:
-        # Write the specific row to the file
-        with open(tmp_fasta.name, "w") as f:
-            f.write(f">{row['qseqid'].iloc[0]}\n")
-            f.write(f"{row['qseq'].iloc[0]}\n")
-            f.write(f">{row['sseqid'].iloc[0]}\n")
-            f.write(f"{row['sseq'].iloc[0]}\n")
+            with open(tmp_fasta.name, "r") as file:
+                data = file.read()
+            if query_type == "nucl":
+                color = "nucleotide"
+            else:
+                color = "clustal2"
 
-        with open(tmp_fasta.name, "r") as file:
-            data = file.read()
-        if query_type == "nucl":
-            color = "nucleotide"
-        else:
-            color = "clustal2"
+            aln = dashbio.AlignmentChart(
+                id="alignment-viewer",
+                data=data,
+                height=200,
+                tilewidth=30,
+                colorscale=color,
+                # overview="slider",
+                showconsensus=False,
+                showconservation=False,
+                showgap=False,
+                showid=False,
+                ticksteps=5,
+                tickstart=0,
+            )
 
-        aln = dashbio.AlignmentChart(
-            id="alignment-viewer",
-            data=data,
-            height=200,
-            tilewidth=30,
-            colorscale=color,
-            # overview="slider",
-            showconsensus=False,
-            showconservation=False,
-            showgap=False,
-            showid=False,
-            ticksteps=5,
-            tickstart=0,
-        )
-
-        return aln
+            return aln
 
 
 # Define callback to download TSV
@@ -814,7 +814,7 @@ def download_tsv(n_clicks, rows, columns):
         return f"Error: {str(e)}"
 
 
-def run_lastz(query_type, seqs, output_file):
+def run_lastz(seqs, output_file):
     """
     Runs LASTZ to align two sequences and writes the output to a specified file.
     """
@@ -894,12 +894,10 @@ def create_alignment_plot(ship_blast_results, selected_row):
             f.write(f"{sseq}\n")
 
         # Run LASTZ alignment
-        run_lastz(query_type, tmp_fasta_clean.name, lastz_output.name)
-        print(lastz_output.name)
+        run_lastz(tmp_fasta_clean.name, lastz_output.name)
 
         # Parse LASTZ output
         lastz_df = parse_lastz_output(lastz_output.name)
-        print(lastz_df.head(10))
 
         # Extract individual columns and prepare the data for plotting
         x_values = []
@@ -922,6 +920,19 @@ def create_alignment_plot(ship_blast_results, selected_row):
         )
 
         return fig
+
+
+@callback(
+    Output("ship-blast-table", "selected_rows"),
+    Input(
+        "ship-blast-table", "data"
+    ),  # This will trigger when the table data is loaded
+)
+def update_selected_rows(data):
+    # Default to selecting the first row after sorting
+    if data:
+        return [0]  # Selects the first row (0-indexed)
+    return []
 
 
 # # Callback to open the modal
