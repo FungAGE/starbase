@@ -25,8 +25,8 @@ from Bio import SeqIO, SearchIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 
-import plotly.io as pio
 import plotly.graph_objects as go
+from src.components.tree import plot_tree
 
 dash.register_page(__name__)
 
@@ -90,8 +90,8 @@ layout = dbc.Container(
                                     style={"textAlign": "center"},
                                 ),
                                 dcc.Upload(
-                                    id="query-upload",
-                                    children=html.Div(id="query-sequence-upload"),
+                                    id="fasta-upload",
+                                    children=html.Div(id="fasta-sequence-upload"),
                                     style={
                                         "width": "100%",
                                         "height": "75px",
@@ -147,76 +147,13 @@ layout = dbc.Container(
 tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
 
 
-def parse_fasta(contents, filename):
-    sequences = list(contents)
-    nseq = len(sequences)
-
-    # Update the height attribute of the style based on the content height
-    return [
-        html.Div(
-            [
-                html.P(
-                    f"File name: {filename}, Number of sequences: {nseq}",
-                    style={
-                        "justify-content": "center",
-                        "textAlign": "center",
-                    },
-                ),
-            ],
-        )
-    ]
-
-
-@callback(
-    Output("query-sequence-upload", "children"),
-    [
-        Input("query-upload", "contents"),
-        Input("query-upload", "filename"),
-    ],
-)
-def update_fasta_upload(seq_content, seq_filename):
-    if seq_content is None:
-        return [
-            html.Div(
-                html.P(
-                    ["Upload a FASTA file"],
-                    style={
-                        "justify-content": "center",
-                        "textAlign": "center",
-                    },
-                )
-            )
-        ]
-    else:
-        try:
-            # "," is the delimiter for splitting content_type from content_string
-            content_type, content_string = seq_content.split(",")
-            decoded_string = base64.b64decode(content_string).decode("utf-8")
-            sequences = SeqIO.parse(io.StringIO(decoded_string), "fasta")
-            children = parse_fasta(sequences, seq_filename)
-            return children
-
-        except Exception as e:
-            print(e)
-            return [
-                dbc.Card(
-                    [
-                        dbc.CardHeader(html.H4("Error:")),
-                        dbc.CardBody(
-                            html.H4("There was an error processing the FASTA sequence.")
-                        ),
-                    ],
-                    color="red",
-                )
-            ]
-
-
 @callback(
     Output("output-container", "children"),
     [
         Input("submit-button", "n_clicks"),
         Input("query-text", "value"),
-        Input("query-upload", "contents"),
+        Input("fasta-upload", "contents"),
+        # Input("fasta-upload", "filename"),
     ],
 )
 def run_main(n_clicks, query_text_input, query_file_contents):
@@ -263,17 +200,29 @@ def run_main(n_clicks, query_text_input, query_file_contents):
         # chords = blast_chords(blast_results)
 
         if hmmer_results is not None:
-            superfamily_text = gene_hmmsearch(hmmer_results)
+            superfamily = gene_hmmsearch(hmmer_results)
+            if superfamily is not None:
+                superfamily_text = html.Div(
+                    [
+                        dcc.Markdown(
+                            f"Likely captain superfamily: {superfamily}",
+                        ),
+                    ],
+                )
+                superfamily_tree = dcc.Graph(
+                    id="blast-phylogeny",
+                    className="div-card",
+                    figure=plot_tree(highlight_clade=superfamily),
+                )
+
         else:
             superfamily_text = """"""
+            superfamily_tree = """"""
 
         return html.Div(
             [
                 dbc.Stack(
-                    [
-                        superfamily_text,
-                        ship_blast_table,
-                    ],
+                    [ship_blast_table, superfamily_text, superfamily_tree],
                     gap=3,
                 )
             ],
@@ -779,29 +728,8 @@ def gene_hmmsearch(hmmer_results):
     except IndexError:
         superfamily = None
 
-    if superfamily is None:
-        return None
-    else:
-        superfamily_text = html.Div(
-            [
-                dcc.Markdown(
-                    f"[Likely captain superfamily: {superfamily}",
-                    id="open-modal-link",
-                ),
-                dbc.Modal(
-                    [
-                        dbc.ModalHeader(dbc.ModalTitle("Modal Title")),
-                        dbc.ModalBody("This is the content of the modal."),
-                        dbc.ModalFooter(
-                            dbc.Button("Close", id="close-modal", className="ml-auto")
-                        ),
-                    ],
-                    id="modal",
-                    is_open=False,
-                ),
-            ],
-        )
-        return superfamily_text
+    if superfamily is not None:
+        return superfamily
 
 
 # Callback to update information about selected row
