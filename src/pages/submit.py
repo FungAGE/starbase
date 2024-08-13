@@ -33,7 +33,7 @@ layout = html.Div(
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
-                                            html.H2(
+                                            html.H3(
                                                 [
                                                     "Submission of multiple Starships to ",
                                                     html.Span(
@@ -56,19 +56,21 @@ layout = html.Div(
                                                                 ),
                                                             ],
                                                             style={
-                                                                "fontSize": "1vw",
+                                                                "fontSize": "0.7vw",
                                                             },
                                                         ),
                                                     ]
                                                 )
                                             ],
                                         ),
-                                    ]
+                                    ],
+                                    style={"width": "75%"},
                                 )
                             ],
                         )
                     ],
                     class_name="mb-3",
+                    style={"paddingTop": "20px"},
                 ),
                 dbc.Row(
                     justify="center",
@@ -78,7 +80,7 @@ layout = html.Div(
                             lg=8,
                             sm=12,
                             children=[
-                                html.H2(
+                                html.H3(
                                     [
                                         "Submit individual Starships to ",
                                         html.Span(
@@ -178,11 +180,13 @@ layout = html.Div(
                                 ),
                                 html.P(
                                     [
-                                        "Name of curator: ",
+                                        "Email of curator: ",
                                         dcc.Input(
                                             id="uploader",
-                                            type="text",
+                                            type="email",
                                             style={"width": "15%"},
+                                            className="form-control",
+                                            placeholder="Enter email",
                                             required=True,
                                         ),
                                     ],
@@ -194,6 +198,7 @@ layout = html.Div(
                                             id="evidence",
                                             type="text",
                                             style={"width": "15%"},
+                                            className="form-control",
                                             required=True,
                                         ),
                                     ],
@@ -205,6 +210,7 @@ layout = html.Div(
                                             id="genus",
                                             type="text",
                                             style={"width": "15%"},
+                                            className="form-control",
                                             required=True,
                                         ),
                                     ],
@@ -216,6 +222,7 @@ layout = html.Div(
                                             id="species",
                                             type="text",
                                             style={"width": "15%"},
+                                            className="form-control",
                                             required=True,
                                         ),
                                     ],
@@ -241,6 +248,7 @@ layout = html.Div(
                                             id="hostchr",
                                             type="text",
                                             style={"width": "15%"},
+                                            className="form-control",
                                             required=True,
                                         ),
                                     ],
@@ -250,8 +258,9 @@ layout = html.Div(
                                         "Start coordinate of Starship: ",
                                         dcc.Input(
                                             id="shipstart",
-                                            type="text",
+                                            type="number",
                                             style={"width": "15%"},
+                                            className="form-control",
                                             required=True,
                                         ),
                                     ],
@@ -261,8 +270,9 @@ layout = html.Div(
                                         "End coordinate for Starship: ",
                                         dcc.Input(
                                             id="shipend",
-                                            type="text",
+                                            type="number",
                                             style={"width": "15%"},
+                                            className="form-control",
                                             required=True,
                                         ),
                                     ],
@@ -345,112 +355,6 @@ layout = html.Div(
         )
     ],
 )
-
-
-def parse_fasta(contents, filename):
-    if contents:
-        # Assume that the user uploaded a FASTA file
-        sequences = SeqIO.parse(io.StringIO(contents), "fasta")
-
-        records = []
-        nseq = 1
-        for sequence in sequences:
-            records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
-            nseq += 1
-
-        # Update the height attribute of the style based on the content height
-        return [
-            html.Div(
-                [
-                    html.H6(f"File name: {filename}"),
-                    html.H6(f"Number of sequences: {nseq}"),
-                ],
-            )
-        ]
-
-    else:
-        # Return the default style if no content is uploaded
-        return [
-            html.Div(
-                [
-                    "Drag and Drop or ",
-                    html.A("Select a File"),
-                ],
-            )
-        ]
-
-
-def parse_gff(contents, filename):
-    if contents:
-        content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
-        # Assume that the user uploaded a TSV file
-        gff = pd.read_csv(io.StringIO(decoded.decode("utf-8")), sep="\t")
-        # cols = [
-        #     "seqid",
-        #     "source",
-        #     "type",
-        #     "start",
-        #     "end",
-        #     "score",
-        #     "strand",
-        #     "phase",
-        #     "attributes",
-        # ]
-
-        # annotations = pd.DataFrame(gff)
-        nanno = len(gff)
-
-        return html.Div(
-            [
-                html.H6(f"File name: {filename}"),
-                html.H6(f"Number of annotations: {nanno}"),
-            ]
-        )
-
-    else:
-        return [
-            html.Div(
-                [
-                    "Drag and Drop or ",
-                    html.A("Select a File"),
-                ]
-            ),
-        ]
-
-
-@callback(
-    Output("output-sequence-upload", "children"),
-    [
-        Input("upload-sequence", "contents"),
-        Input("upload-sequence", "filename"),
-    ],
-)
-def update_fasta_upload(seq_content, seq_filename):
-    try:
-        children = parse_fasta(seq_content, seq_filename)
-        return children
-
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."])
-
-
-@callback(
-    Output("output-annotation-upload", "children"),
-    [
-        Input("upload-annotations", "contents"),
-        Input("upload-annotations", "filename"),
-    ],
-)
-def update_anno_upload(anno_content, anno_filename):
-    try:
-        children = parse_gff(anno_content, anno_filename)
-        return children
-
-    except Exception as e:
-        print(e)
-        return html.Div(["There was an error processing this file."])
 
 
 @callback(
