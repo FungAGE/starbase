@@ -41,7 +41,7 @@ def parse_fasta(contents, filename):
     sequences = SeqIO.parse(io.StringIO(contents), "fasta")
 
     records = []
-    nseq = 1
+    nseq = 0
     for sequence in sequences:
         records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
         nseq += 1
@@ -91,9 +91,8 @@ def update_fasta_upload(app):
             try:
                 # "," is the delimeter for splitting content_type from content_string
                 content_type, content_string = seq_content.split(",")
-                query_string = str(base64.b64decode(seq_content))
-                sequences = SeqIO.parse(io.StringIO(query_string), "fasta")
-                children = parse_fasta(sequences, seq_filename)
+                query_string = base64.b64decode(content_string).decode("utf-8")
+                children = parse_fasta(query_string, seq_filename)
                 return children
 
             except Exception as e:
