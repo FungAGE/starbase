@@ -114,8 +114,8 @@ layout = html.Div(
                                     ["Upload Starship sequence:"],
                                 ),
                                 dcc.Upload(
-                                    id="upload-sequence",
-                                    children=html.Div(id="output-sequence-upload"),
+                                    id="fasta-upload",
+                                    children=html.Div(id="fasta-sequence-upload"),
                                     style={
                                         "color": "red",
                                         "width": "50%",
@@ -141,9 +141,9 @@ layout = html.Div(
                                     ],
                                 ),
                                 dcc.Upload(
-                                    id="upload-annotations",
-                                    children=html.Div(id="output-annotation-upload"),
-                                    accept=".gff, .gff3",
+                                    id="upload-gff",
+                                    children=html.Div(id="output-gff-upload"),
+                                    accept=".gff, .gff3, .tsv",
                                     multiple=False,
                                     style={
                                         "width": "50%",
@@ -311,6 +311,7 @@ layout = html.Div(
                                             "justify-content": "center",
                                             "textAlign": "center",
                                         },
+                                        className="d-grid gap-2 col-6 mx-auto",
                                     ),
                                     id="submit-ship",
                                     n_clicks=0,
@@ -344,18 +345,6 @@ layout = html.Div(
         )
     ],
 )
-
-
-@callback(Output("loading-output-1", "children"), Input("upload-sequence", "value"))
-def input_triggers_spinner(value):
-    time.sleep(1)
-    return value
-
-
-@callback(Output("loading-output-2", "children"), Input("loading-input-2", "value"))
-def input_triggers_nested(value):
-    time.sleep(1)
-    return value
 
 
 def parse_fasta(contents, filename):
@@ -467,12 +456,12 @@ def update_anno_upload(anno_content, anno_filename):
 @callback(
     [Output("modal", "is_open"), Output("output-data-upload", "children")],
     [
-        Input("upload-sequence", "contents"),
-        Input("upload-sequence", "filename"),
-        Input("upload-sequence", "last_modified"),
-        Input("upload-annotations", "contents"),
-        Input("upload-annotations", "filename"),
-        Input("upload-annotations", "last_modified"),
+        Input("upload-fasta", "contents"),
+        Input("upload-fasta", "filename"),
+        Input("upload-fasta", "last_modified"),
+        Input("upload-gff", "contents"),
+        Input("upload-gff", "filename"),
+        Input("upload-gff", "last_modified"),
         Input("uploader", "value"),
         Input("evidence", "value"),
         Input("genus", "value"),
