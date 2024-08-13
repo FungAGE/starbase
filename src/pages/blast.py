@@ -69,16 +69,17 @@ layout = dbc.Container(
             children=[
                 dbc.Col(
                     style={"padding": "20px"},
-                    sm=10,
+                    sm=12,
                     lg=4,
                     children=[
                         dbc.Stack(
                             [
                                 html.H3(
-                                    [
-                                        "Search protein/nucleotide sequences for Starships and Starship-associated genes."
-                                    ],
-                                    style={"textAlign": "center"},
+                                    "Search protein/nucleotide sequences for Starships and Starship-associated genes.",
+                                    style={
+                                        "textAlign": "center",
+                                        "fontSize": "1.25rem",
+                                    },
                                 ),
                                 dcc.Textarea(
                                     id="query-text",
@@ -86,15 +87,24 @@ layout = dbc.Container(
                                     rows=5,
                                     style={
                                         "width": "100%",
+                                        "fontSize": "1rem",
+                                        "padding": "10px",
                                     },
                                 ),
                                 html.H3(
-                                    ["Or"],
-                                    style={"textAlign": "center"},
+                                    "Or",
+                                    style={
+                                        "textAlign": "center",
+                                        "fontSize": "1.25rem",
+                                    },
                                 ),
                                 dcc.Upload(
                                     id="fasta-upload",
-                                    children=html.Div(id="fasta-sequence-upload"),
+                                    children=html.Div(
+                                        "Drag and drop or click to select a FASTA file.",
+                                        id="fasta-sequence-upload",
+                                        style={"fontSize": "1rem"},
+                                    ),
                                     style={
                                         "width": "100%",
                                         "height": "75px",
@@ -102,8 +112,11 @@ layout = dbc.Container(
                                         "borderWidth": "2px",
                                         "borderStyle": "dashed",
                                         "borderRadius": "5px",
-                                        "justify-content": "center",
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "justifyContent": "center",
                                         "textAlign": "center",
+                                        "padding": "10px",
                                     },
                                     multiple=False,
                                     accept=".fa, .fas, .fasta, .fna",
@@ -113,15 +126,16 @@ layout = dbc.Container(
                                     id="submit-button",
                                     n_clicks=0,
                                     className="d-grid gap-2 col-6 mx-auto",
+                                    style={"fontSize": "1rem"},
                                 ),
                             ],
-                            gap=3,
+                            gap=4,
                             direction="vertical",
                         )
                     ],
                 ),
                 dbc.Col(
-                    sm=10,
+                    sm=12,
                     lg=8,
                     style={"padding": "20px"},
                     children=[
@@ -146,6 +160,7 @@ layout = dbc.Container(
         ),
     ],
 )
+
 
 tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
 
@@ -279,22 +294,11 @@ def parse_fasta_from_file(file_contents):
         if not file_contents:
             raise ValueError("No file contents provided.")
         split_contents = file_contents.split(",")
-
-        # Extract the header from the first line
-        header = split_contents[0].strip()  # Remove leading/trailing whitespace
-
-        # Join the remaining lines to form the sequence
+        header = split_contents[0].strip()
         sequence = "".join(split_contents[1:])
-
-        # Decode the base64 encoded sequence
         decoded_sequence = base64.b64decode(sequence).decode("utf-8")
-
-        # Parse the decoded sequence as FASTA
         query = SeqIO.read(StringIO(decoded_sequence), "fasta")
-
-        # Extract header and sequence from the single record
         header, seq = query.id, str(query.seq)
-
         return header, seq
 
     except Exception as e:
@@ -694,6 +698,7 @@ def blast_table(ship_blast_results):
                 export_format="tsv",
                 css=[{"selector": ".show-hide", "rule": "display: none"}],
                 style_table={
+                    "overflow": "hidden",
                     "overflowX": "auto",
                     "maxWidth": "100%",
                 },
@@ -708,7 +713,8 @@ def blast_table(ship_blast_results):
                 "Download BLAST results",
                 id="blast-dl-button",
                 n_clicks=0,
-                style={"textAlign": "center"},
+                style={"textAlign": "center", "fontSize": "1rem"},
+                className="d-grid gap-2 col-6 mx-auto",
             ),
             dcc.Download(id="blast-dl"),
         ]
@@ -745,6 +751,8 @@ def gene_hmmsearch(hmmer_results):
     ],
 )
 def blast_alignments(ship_blast_results, selected_row):
+    global query_type
+
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
     # Convert ship_blast_results to a Pandas DataFrame

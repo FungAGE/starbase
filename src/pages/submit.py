@@ -16,7 +16,7 @@ import pandas as pd
 
 dash.register_page(__name__)
 
-# Define form layout
+
 layout = html.Div(
     [
         dbc.Container(
@@ -56,7 +56,7 @@ layout = html.Div(
                                                                 ),
                                                             ],
                                                             style={
-                                                                "fontSize": "0.7vw",
+                                                                "fontSize": "1rem",
                                                             },
                                                         ),
                                                     ]
@@ -64,7 +64,7 @@ layout = html.Div(
                                             ],
                                         ),
                                     ],
-                                    style={"width": "75%"},
+                                    className="w-100 w-lg-75",
                                 )
                             ],
                         )
@@ -88,6 +88,7 @@ layout = html.Div(
                                             className="logo-text",
                                         ),
                                     ],
+                                    className="text-center",
                                 ),
                                 html.H4(
                                     [
@@ -98,6 +99,7 @@ layout = html.Div(
                                         ),
                                         " = manditory.",
                                     ],
+                                    className="text-center",
                                 ),
                             ],
                         )
@@ -120,7 +122,7 @@ layout = html.Div(
                                     children=html.Div(id="fasta-sequence-upload"),
                                     style={
                                         "color": "red",
-                                        "width": "50%",
+                                        "width": "100%",
                                         "height": "60px",
                                         "lineHeight": "60px",
                                         "borderWidth": "1px",
@@ -148,7 +150,7 @@ layout = html.Div(
                                     accept=".gff, .gff3, .tsv",
                                     multiple=False,
                                     style={
-                                        "width": "50%",
+                                        "width": "100%",
                                         "height": "60px",
                                         "lineHeight": "60px",
                                         "borderWidth": "1px",
@@ -184,7 +186,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="uploader",
                                             type="email",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             placeholder="Enter email",
                                             required=True,
@@ -197,7 +199,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="evidence",
                                             type="text",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             required=True,
                                         ),
@@ -209,7 +211,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="genus",
                                             type="text",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             required=True,
                                         ),
@@ -221,7 +223,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="species",
                                             type="text",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             required=True,
                                         ),
@@ -247,7 +249,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="hostchr",
                                             type="text",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             required=True,
                                         ),
@@ -259,7 +261,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="shipstart",
                                             type="number",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             required=True,
                                         ),
@@ -271,7 +273,7 @@ layout = html.Div(
                                         dcc.Input(
                                             id="shipend",
                                             type="number",
-                                            style={"width": "15%"},
+                                            style={"width": "100%"},
                                             className="form-control",
                                             required=True,
                                         ),
@@ -296,7 +298,7 @@ layout = html.Div(
                                     placeholder="Any comments about the Starship features, annotations, or host genome?",
                                     style={
                                         "height": "100px",
-                                        "width": "50%",
+                                        "width": "100%",
                                     },
                                     required=False,
                                 ),
@@ -316,15 +318,11 @@ layout = html.Div(
                                 dbc.Button(
                                     html.H4(
                                         ["Submit"],
-                                        style={
-                                            "align-items": "center",
-                                            "justify-content": "center",
-                                            "textAlign": "center",
-                                        },
-                                        className="d-grid gap-2 col-6 mx-auto",
+                                        className="text-center",
                                     ),
                                     id="submit-ship",
                                     n_clicks=0,
+                                    className="d-grid gap-2 col-6 mx-auto",
                                 ),
                                 dbc.Modal(
                                     [

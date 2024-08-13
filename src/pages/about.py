@@ -16,7 +16,7 @@ layout = dbc.Container(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=6,
+                                    lg=8,
                                     sm=12,
                                     children=[
                                         html.P(
@@ -32,8 +32,8 @@ layout = dbc.Container(
                                                 ),
                                                 " in collaboration with the Gluck-Thaler lab.",
                                             ],
-                                            className="mr-1",
-                                            style={"font-size": "1vw"},
+                                            className="text-center",
+                                            style={"font-size": "1rem"},
                                         ),
                                     ],
                                 )
@@ -44,7 +44,7 @@ layout = dbc.Container(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=6,
+                                    lg=8,
                                     sm=12,
                                     align="center",
                                     children=[
@@ -59,15 +59,16 @@ layout = dbc.Container(
                                                                         src="assets/images/aaron.png",
                                                                         className="img-fluid rounded-start",
                                                                     ),
-                                                                    className="col-md-4",
+                                                                    width={
+                                                                        "size": 4,
+                                                                        "order": 1,
+                                                                    },
                                                                 ),
                                                                 dbc.Col(
                                                                     dbc.CardBody(
                                                                         [
                                                                             html.H3(
-                                                                                [
-                                                                                    "Aaron Vogan",
-                                                                                ],
+                                                                                "Aaron Vogan",
                                                                                 className="card-title",
                                                                             ),
                                                                             html.P(
@@ -80,19 +81,24 @@ layout = dbc.Container(
                                                                                 ),
                                                                                 href="mailto:aaron.vogan@ebc.uu.se",
                                                                                 color="teal",
-                                                                                className="mr-1",
                                                                                 size="lg",
+                                                                                className="me-2",
                                                                             ),
                                                                         ]
                                                                     ),
-                                                                    className="col-md-8",
+                                                                    width={
+                                                                        "size": 8,
+                                                                        "order": 2,
+                                                                    },
                                                                 ),
                                                             ],
                                                             className="g-0 d-flex align-items-center",
                                                         )
                                                     ],
                                                     className="mb-3",
-                                                    style={"maxWidth": "540px"},
+                                                    style={
+                                                        "maxWidth": "100%",
+                                                    },
                                                 ),
                                                 dbc.Card(
                                                     [
@@ -103,15 +109,16 @@ layout = dbc.Container(
                                                                         src="assets/images/adrian.png",
                                                                         className="img-fluid rounded-start",
                                                                     ),
-                                                                    className="col-md-4",
+                                                                    width={
+                                                                        "size": 4,
+                                                                        "order": 1,
+                                                                    },
                                                                 ),
                                                                 dbc.Col(
                                                                     dbc.CardBody(
                                                                         [
                                                                             html.H3(
-                                                                                [
-                                                                                    "Adrian Forsythe",
-                                                                                ],
+                                                                                "Adrian Forsythe",
                                                                                 className="card-title",
                                                                             ),
                                                                             html.P(
@@ -130,19 +137,24 @@ layout = dbc.Container(
                                                                                 ),
                                                                                 href="mailto:adrian.e.forsythe@gmail.com",
                                                                                 color="teal",
-                                                                                className="mr-1",
                                                                                 size="lg",
+                                                                                className="me-2",
                                                                             ),
                                                                         ]
                                                                     ),
-                                                                    className="col-md-8",
+                                                                    width={
+                                                                        "size": 8,
+                                                                        "order": 2,
+                                                                    },
                                                                 ),
                                                             ],
                                                             className="g-0 d-flex align-items-center",
                                                         )
                                                     ],
                                                     className="mb-3",
-                                                    style={"maxWidth": "540px"},
+                                                    style={
+                                                        "maxWidth": "100%",
+                                                    },
                                                 ),
                                                 dbc.Card(
                                                     [
@@ -153,15 +165,16 @@ layout = dbc.Container(
                                                                         src="assets/images/emile.png",
                                                                         className="img-fluid rounded-start",
                                                                     ),
-                                                                    className="col-md-4",
+                                                                    width={
+                                                                        "size": 4,
+                                                                        "order": 1,
+                                                                    },
                                                                 ),
                                                                 dbc.Col(
                                                                     dbc.CardBody(
                                                                         [
                                                                             html.H3(
-                                                                                [
-                                                                                    "Emile Gluck-Thaler",
-                                                                                ],
+                                                                                "Emile Gluck-Thaler",
                                                                                 className="card-title",
                                                                             ),
                                                                             html.P(
@@ -180,19 +193,24 @@ layout = dbc.Container(
                                                                                 ),
                                                                                 href="mailto:emilegluckthaler@gmail.com",
                                                                                 color="teal",
-                                                                                className="mr-1",
                                                                                 size="lg",
+                                                                                className="me-2",
                                                                             ),
                                                                         ]
                                                                     ),
-                                                                    className="col-md-8",
+                                                                    width={
+                                                                        "size": 8,
+                                                                        "order": 2,
+                                                                    },
                                                                 ),
                                                             ],
                                                             className="g-0 d-flex align-items-center",
                                                         )
                                                     ],
                                                     className="mb-3",
-                                                    style={"maxWidth": "540px"},
+                                                    style={
+                                                        "maxWidth": "100%",
+                                                    },
                                                 ),
                                             ],
                                             gap=3,
@@ -206,32 +224,33 @@ layout = dbc.Container(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=6,
+                                    lg=8,
                                     sm=12,
                                     children=[
                                         html.P(
                                             [
-                                                "The sourcecode for ",
+                                                "The source code for ",
                                                 html.Span(
                                                     "starbase",
                                                     className="logo-text",
                                                 ),
                                                 " webserver will soon be available on GitHub",
                                             ],
-                                            className="mr-1",
-                                            style={"font-size": "1vw"},
+                                            className="text-center",
+                                            style={"font-size": "1rem"},
                                         ),
                                         html.Div(
                                             html.Img(
                                                 src="assets/images/starbase-map.png",
-                                                width="100%",
+                                                className="img-fluid",
                                             )
                                         ),
                                         dbc.Card(
                                             [
                                                 dbc.CardHeader(
                                                     html.H2(
-                                                        ["Data Availability"],
+                                                        "Data Availability",
+                                                        className="text-center",
                                                     )
                                                 ),
                                                 dbc.CardBody(
@@ -243,48 +262,40 @@ layout = dbc.Container(
                                                                     "starbase",
                                                                     className="logo-text",
                                                                 ),
-                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
                                                             ],
-                                                            className="mr-1",
                                                             style={
-                                                                "font-size": "0.6vw"
+                                                                "font-size": "0.875rem"
                                                             },
                                                         ),
                                                         html.Div(
                                                             [
                                                                 dbc.Button(
-                                                                    html.P(
-                                                                        [
-                                                                            "Download the latest version of ",
-                                                                            html.Span(
-                                                                                "starbase",
-                                                                                className="logo-text",
-                                                                            ),
-                                                                        ],
-                                                                    ),
+                                                                    "Download the latest version of starbase.",
                                                                     id="dl-button",
                                                                     color="primary",
-                                                                    className="mr-1",
+                                                                    className="mt-2",
                                                                 ),
                                                                 dcc.Download(
                                                                     id="dl-package"
                                                                 ),
                                                             ],
+                                                            className="text-center",
                                                             style={
-                                                                "textAlign": "center",
-                                                                "font-size": "0.6vw",
+                                                                "font-size": "0.875rem",
                                                             },
                                                         ),
                                                     ]
                                                 ),
                                             ],
+                                            className="mt-4",
                                         ),
                                     ],
                                 )
                             ],
                         ),
                     ],
-                    gap=3,
+                    gap=4,
                     direction="vertical",
                 )
             ],
