@@ -1,13 +1,6 @@
-import dash
-from dash import dash_table, dcc, html, callback
-from dash.dependencies import Output, Input, State
-import dash_bootstrap_components as dbc
-
 from Bio import Phylo
 import pandas as pd
 import plotly.graph_objs as go
-import numpy as np
-import re
 
 tree_file = "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
 metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
@@ -292,7 +285,7 @@ def superfam_highlight(
         return rectangle, scatter, text_label
 
 
-def plot_tree(tree_file, metadata, highlight_clades):
+def plot_tree(tree_file, metadata, highlight_clades=default_highlight_clades):
     tree = Phylo.read(tree_file, "newick")
 
     graph_title = "Captain Gene Phylogeny"
