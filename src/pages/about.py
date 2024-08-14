@@ -44,9 +44,8 @@ layout = dbc.Container(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=8,
+                                    lg=6,
                                     sm=12,
-                                    align="center",
                                     children=[
                                         dbc.Stack(
                                             [
@@ -58,6 +57,10 @@ layout = dbc.Container(
                                                                     dbc.CardImg(
                                                                         src="assets/images/aaron.png",
                                                                         className="img-fluid rounded-start",
+                                                                        style={
+                                                                            "height": "100%",
+                                                                            "object-fit": "cover",
+                                                                        },
                                                                     ),
                                                                     width={
                                                                         "size": 4,
@@ -95,7 +98,7 @@ layout = dbc.Container(
                                                             className="g-0 d-flex align-items-center",
                                                         )
                                                     ],
-                                                    className="mb-3",
+                                                    className="d-grid col-6 mx-auto",
                                                     style={
                                                         "maxWidth": "100%",
                                                     },
@@ -108,6 +111,10 @@ layout = dbc.Container(
                                                                     dbc.CardImg(
                                                                         src="assets/images/adrian.png",
                                                                         className="img-fluid rounded-start",
+                                                                        style={
+                                                                            "height": "100%",
+                                                                            "object-fit": "cover",
+                                                                        },
                                                                     ),
                                                                     width={
                                                                         "size": 4,
@@ -151,10 +158,8 @@ layout = dbc.Container(
                                                             className="g-0 d-flex align-items-center",
                                                         )
                                                     ],
-                                                    className="mb-3",
-                                                    style={
-                                                        "maxWidth": "100%",
-                                                    },
+                                                    className="d-grid col-6 mx-auto",
+                                                    style={"maxWidth": "100%"},
                                                 ),
                                                 dbc.Card(
                                                     [
@@ -164,6 +169,10 @@ layout = dbc.Container(
                                                                     dbc.CardImg(
                                                                         src="assets/images/emile.png",
                                                                         className="img-fluid rounded-start",
+                                                                        style={
+                                                                            "height": "100%",
+                                                                            "object-fit": "cover",
+                                                                        },
                                                                     ),
                                                                     width={
                                                                         "size": 4,
@@ -207,10 +216,8 @@ layout = dbc.Container(
                                                             className="g-0 d-flex align-items-center",
                                                         )
                                                     ],
-                                                    className="mb-3",
-                                                    style={
-                                                        "maxWidth": "100%",
-                                                    },
+                                                    className="d-grid col-6 mx-auto",
+                                                    style={"maxWidth": "100%"},
                                                 ),
                                             ],
                                             gap=3,
@@ -224,7 +231,7 @@ layout = dbc.Container(
                             align="center",
                             children=[
                                 dbc.Col(
-                                    lg=8,
+                                    lg=6,
                                     sm=12,
                                     children=[
                                         html.P(
