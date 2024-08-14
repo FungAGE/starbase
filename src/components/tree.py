@@ -240,6 +240,8 @@ def superfam_highlight(
             if "color" in df.columns and not df["color"].isna().all()
             else "rgba(25, 25, 25, 0.6)"
         )
+    else:
+        highlight_names = default_highlight_clades
 
     if x_coords is not None and y_coords is not None:
         x_coord_list = [
@@ -322,7 +324,7 @@ def plot_tree(tree_file, metadata, highlight_clades=default_highlight_clades):
 
     layout = dict(
         height=1200,
-        width=1000,
+        # width=1000,
         title=graph_title,
         autosize=True,
         showlegend=False,

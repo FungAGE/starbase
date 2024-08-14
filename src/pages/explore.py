@@ -206,13 +206,14 @@ layout = html.Div(
                                     type="default",
                                     children=[
                                         dcc.Graph(
-                                            id="phylogeny-graph",
+                                            id="phylogeny",
                                             className="div-card",
                                             # figure=plot_tree(tree_file, metadata, None),
                                         ),
                                     ],
                                 ),
                             ],
+                            className="justify-content-center",
                         ),
                     ],
                 )
@@ -222,6 +223,8 @@ layout = html.Div(
             id="initial-data",
             data=df.to_dict("records"),
         ),
+        dcc.Store(id="phylogeny-cache"),
+        dcc.Store(id="pie-chart-cache"),
     ]
 )
 
@@ -267,10 +270,21 @@ tax_title = "Starships by Order/Family"
 
 
 @callback(
-    [Output("pie-chart1", "figure"), Output("pie-chart2", "figure")],
+    [
+        Output("initial-phylogeny", "data"),
+    ],
+    Input("reset-button", "n_clicks"),
+)
+def cache_phylogeny(n_clicks):
+    tree = plot_tree(tree_file, metadata)
+    return tree
+
+
+@callback(
+    Output("pie-chart-cache", "data"),  # Cache pie charts data
     [
         Input("reset-button", "n_clicks"),
-        Input("phylogeny-graph", "clickData"),
+        Input("phylogeny", "clickData"),
         Input("pie-chart1", "clickData"),
         Input("pie-chart2", "clickData"),
         Input("table", "derived_virtual_data"),
@@ -292,7 +306,7 @@ def update_sunburst(
 
     if phylo_clickData:
         selected_clades = [phylo_clickData["points"][0]["text"]]
-        plot_df = df_initial[df_initial["captain_superfamily"].isin(selected_clades)]
+        plot_df = df[df["captain_superfamily"].isin(selected_clades)]
 
     if selected1:
         path1 = [point["label"] for point in selected1["points"]]
@@ -310,14 +324,25 @@ def update_sunburst(
     ship_pie = pie_plot(plot_df, ship_groups, ship_title)
     tax_pie = pie_plot(plot_df, tax_groups, tax_title)
 
-    return ship_pie, tax_pie
+    # Cache both pie charts
+    return {"ship_pie": ship_pie, "tax_pie": tax_pie}
 
 
 @callback(
-    Output("phylogeny-graph", "figure"),
+    [Output("pie-chart1", "figure"), Output("pie-chart2", "figure")],
+    [Input("pie-chart-cache", "data")],
+)
+def display_cached_pie_charts(cached_data):
+    if cached_data is not None:
+        return cached_data["ship_pie"], cached_data["tax_pie"]
+    return {}, {}  # Placeholder if no data yet
+
+
+@callback(
+    Output("phylogeny-cache", "data"),
     [
         Input("reset-button", "n_clicks"),
-        Input("phylogeny-graph", "clickData"),
+        Input("phylogeny", "clickData"),
         Input("pie-chart1", "clickData"),
         Input("pie-chart2", "clickData"),
         Input("table", "derived_virtual_data"),
@@ -338,7 +363,7 @@ def update_phylogeny_tree(
     selected_clades = default_highlight_clades
 
     if n_clicks:
-        return plot_tree(tree_file, metadata)  # Reset to original tree
+        return plot_tree(tree_file, metadata)
 
     if phylo_clickData:
         selected_clades.append(phylo_clickData["points"][0]["text"])
@@ -361,6 +386,13 @@ def update_phylogeny_tree(
 
     fig = plot_tree(tree_file, metadata, selected_clades)
     return fig
+
+
+@callback(Output("phylogeny", "figure"), [Input("phylogeny-cache", "data")])
+def display_cached_phylogeny(cached_fig):
+    if cached_fig is not None:
+        return cached_fig
+    return {}
 
 
 @callback(
