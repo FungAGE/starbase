@@ -8,14 +8,11 @@ from src.components.callbacks import dl_package, update_fasta_upload, update_gff
 external_stylesheets = [
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
-    "/assets/styles.css",
-    # "https://codepen.io/chriddyp/pen/bWLwgP.css",
+    "/assets/lib/styles.css",
 ]
 
 external_scripts = [
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
-    "/lib/html2canvas.js",
-    "/lib/blaster.min.js",
 ]
 
 server = Flask(__name__)
