@@ -19,3 +19,4 @@ openpyxl==3.1.2
 python-dotenv>=0.21.0
 Jinja2<3.1
 biopython==1.79
+logomaker
