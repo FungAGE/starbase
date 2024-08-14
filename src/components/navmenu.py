@@ -3,7 +3,7 @@ from dash import html
 
 from src.pages import (
     HOME_URL,
-    # WIKI_URL,
+    WIKI_URL,
     EXPLORE_URL,
     BLAST_URL,
     SUBMIT_URL,
@@ -12,19 +12,19 @@ from src.pages import (
 
 
 navbar_content = [
-    # dbc.NavItem(
-    #     dbc.NavLink(
-    #         html.P(
-    #             [
-    #                 "Wiki",
-    #             ],
-    #             className="nav-item-text",
-    #         ),
-    #         href=WIKI_URL,
-    #         active="exact",
-    #         className="nav-item-link",
-    #     )
-    # ),
+    dbc.NavItem(
+        dbc.NavLink(
+            html.P(
+                [
+                    "Wiki",
+                ],
+                className="nav-item-text",
+            ),
+            href=WIKI_URL,
+            active="exact",
+            className="nav-item-link",
+        )
+    ),
     dbc.NavItem(
         dbc.NavLink(
             html.P(
