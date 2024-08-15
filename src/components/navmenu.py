@@ -40,7 +40,7 @@ navbar_content = [
     dbc.NavItem(
         dbc.NavLink(
             html.P(
-                ["PGV"],
+                ["Starship Viewer"],
                 className="nav-item-text",
             ),
             href=PGV_URL,

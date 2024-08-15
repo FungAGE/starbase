@@ -1,7 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html, callback
-from dash.dependencies import Output, Input
+from dash import dcc, html, callback
+from dash.dependencies import Output, Input, State
 
 import os
 import tempfile
@@ -59,11 +59,37 @@ layout = dbc.Container(
                     lg=8,
                     children=[
                         make_table(filtered_df, specified_columns),
-                        html.Div(id="pgv-figure"),
+                        dbc.Button(
+                            "Show Starship(s) in Viewer",
+                            id="update-button",
+                            n_clicks=0,
+                            className="d-grid gap-2 col-6 mx-auto",
+                            style={"fontSize": "1rem"},
+                        ),
                     ],
                 )
             ],
-        )
+        ),
+        dbc.Row(
+            justify="center",
+            align="top",
+            children=[
+                dbc.Col(
+                    style={"padding": "20px"},
+                    sm=12,
+                    lg=8,
+                    children=[
+                        dcc.Loading(
+                            id="loading-1",
+                            type="default",
+                            children=[
+                                html.Div(id="pgv-figure"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+        ),
     ],
 )
 
@@ -197,59 +223,68 @@ def multi_pgv(gff_files, fna_files, tmp_file):
 
 @callback(
     Output("pgv-figure", "children"),
-    [
-        Input("table", "derived_virtual_data"),
-        Input("table", "derived_virtual_selected_rows"),
-    ],
+    Input("update-button", "n_clicks"),
+    State("table", "selected_rows"),
+    State("table", "data"),
 )
-def update_pgv(table_data, selected_rows):
-    tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
+def update_pgv(n_clicks, selected_rows, table_data):
+    if n_clicks > 0:
+        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
 
-    if table_data and selected_rows is not None:
-        table_df = pd.DataFrame(table_data)
+        if table_data and selected_rows is not None:
+            table_df = pd.DataFrame(table_data)
 
-        # Check if selected_rows are within the DataFrame index
-        if len(selected_rows) > 0 and all(idx < len(table_df) for idx in selected_rows):
-            rows = table_df.iloc[selected_rows]
+            # Check if selected_rows are within the DataFrame index
+            if isinstance(selected_rows, list) and all(
+                isinstance(idx, int) for idx in selected_rows
+            ):
+                try:
+                    # Ensure selected indices are within the bounds of the DataFrame
+                    rows = table_df.iloc[selected_rows]
+                except IndexError:
+                    return html.Div("Index out of bounds")
 
-            # Ensure the columns exist in the DataFrame
-            if "gff3" in rows.columns and "fna" in rows.columns:
-                valid_gffs = rows["gff3"].dropna().tolist()
-                valid_fna = rows["fna"].dropna().tolist()
+                # Ensure the columns exist in the DataFrame
+                if "gff3" in rows.columns and "fna" in rows.columns:
+                    gffs = rows["gff3"].dropna().tolist()
+                    fna = rows["fna"].dropna().tolist()
 
-                if len(selected_rows) > 1:
-                    if len(selected_rows) > 4:
-                        return """"""
+                    # Call the appropriate function based on number of selections
+                    if len(selected_rows) > 1:
+                        if len(selected_rows) > 4:
+                            return html.Div("Select up to four Starships to compare.")
+                        else:
+                            multi_pgv(gffs, fna, tmp_pgv)
+                    elif len(selected_rows) == 1:
+                        gff_file = rows.iloc[0]["gff3"]
+                        single_pgv(gff_file, tmp_pgv)
                     else:
-                        multi_pgv(valid_gffs, valid_fna, tmp_pgv)
-                elif len(selected_rows) == 1:
-                    gff_file = rows.iloc[0]["gff3"]
-                    single_pgv(gff_file, tmp_pgv)
-                else:
-                    return """"""
+                        return html.Div("No valid selection.")
 
-                return html.Div(
-                    [
-                        html.Iframe(
-                            srcDoc=open(
-                                tmp_pgv, "r"
-                            ).read(),  # Embed the content of the HTML file
-                            style={
-                                "width": "100%",
-                                "height": "500px",
-                                "border": "none",
-                            },
+                    # Ensure the file is written and read correctly
+                    with open(tmp_pgv, "r") as file:
+                        return html.Div(
+                            [
+                                html.Iframe(
+                                    srcDoc=file.read(),
+                                    style={
+                                        "width": "100%",
+                                        "height": "500px",
+                                        "border": "none",
+                                    },
+                                )
+                            ]
                         )
-                    ]
-                )
+                else:
+                    return html.Div("Required columns are missing from the data.")
             else:
-                # Handle case where columns are missing
-                return "Required columns are missing from the data."
+                return html.Div("Invalid row selection.")
         else:
-            # Handle case where selected rows are out of bounds
-            return "Selected rows are out of bounds."
+            return html.Div("Select Starship(s) to visualize.")
     else:
-        return """"""
+        return html.Div(
+            "Select the Starship(s) in the table above to and click the button to visualize."
+        )
 
 
 # inject_svg_to_html(
