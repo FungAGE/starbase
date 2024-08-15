@@ -1,26 +1,16 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import dash_table, dcc, html, callback
-from dash.exceptions import PreventUpdate
-from dash.dependencies import Output, Input, State
-import dash_bio as dashbio
+from dash import html, callback
+from dash.dependencies import Output, Input
 
-import io
-from io import StringIO
 import os
-import re
 import tempfile
-import base64
-from datetime import date
-import subprocess
-import json
 import pandas as pd
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
 from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
-from pygenomeviz.parser import Genbank
 from pygenomeviz.align import Blast, AlignCoord
 from jinja2 import Template
 
@@ -31,17 +21,30 @@ dash.register_page(__name__)
 
 ColorCycler.set_cmap("tab10")
 
-df_sub = df[
-    [
-        "starshipID",
-        "captain_superfamily",
-        "starship_family",
-        "starship_navis",
-        "starship_haplotype",
-        "genus",
-        "species",
-    ]
+specified_columns = [
+    "starshipID",
+    "captain_superfamily",
+    "starship_family",
+    "starship_navis",
+    "starship_haplotype",
+    "genus",
+    "species",
 ]
+
+df_sub = df[specified_columns]
+
+
+def is_valid_file(file_path):
+    if isinstance(file_path, str) and os.path.isfile(file_path):
+        return os.path.getsize(file_path) > 0
+    return False
+
+
+df["valid_gff3"] = df["gff3"].apply(lambda x: x if is_valid_file(x) else None)
+df["valid_fna"] = df["fna"].apply(lambda x: x if is_valid_file(x) else None)
+
+filtered_df = df.dropna(subset=["valid_gff3"])
+filtered_df = filtered_df.drop(columns=["valid_gff3", "valid_fna"])
 
 layout = dbc.Container(
     fluid=True,
@@ -54,7 +57,10 @@ layout = dbc.Container(
                     style={"padding": "20px"},
                     sm=12,
                     lg=8,
-                    children=[make_table(df_sub)],
+                    children=[
+                        make_table(filtered_df, specified_columns),
+                        html.Div(id="pgv-figure"),
+                    ],
                 )
             ],
         )
@@ -77,7 +83,7 @@ def plot_legend(gv):
             Line2D([], [], marker=">", color="grey", label="Others", ms=12, ls="none"),
         ],
         fontsize=12,
-        title="Groups",
+        title="Starship Gene",
         title_fontsize=12,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
@@ -89,11 +95,10 @@ def plot_legend(gv):
 def add_gene_feature(gene, track):
     # Get gene name in GFF attributes column (e.g. `gene=araD;`)
     gene_name = str(gene.qualifiers.get("Alias", [""])[0])
-    print(gene_name)
 
     start = gene.location.start
     end = gene.location.end
-    strand = gene.strand
+    strand = gene.location.strand
 
     # Set user-defined feature color based on gene name
     if "tyr" in gene_name:
@@ -128,7 +133,7 @@ def inject_svg_to_html(svg_file, html_template_file, output_html_file):
     print(f"HTML with embedded SVG saved to {output_html_file}")
 
 
-def single_pgv(gff_file):
+def single_pgv(gff_file, tmp_file):
     gff = Gff(gff_file)
 
     gv = GenomeViz()
@@ -144,13 +149,14 @@ def single_pgv(gff_file):
         gene_features = gff.get_seqid2features(feature_type="gene")[seqid]
         for gene in gene_features:
             add_gene_feature(gene, track)
-    gv.savefig_html("tmp/gff_features.html")
+    fig = plot_legend(gv)
+    gv.savefig_html(tmp_file, fig)
 
 
 # single_pgv("tmp/gff/altals1_s00058.gff")
 
 
-def multi_pgv(gff_files, fna_files):
+def multi_pgv(gff_files, fna_files, tmp_file):
 
     gff_list = list(map(Gff, gff_files))
 
@@ -158,6 +164,7 @@ def multi_pgv(gff_files, fna_files):
     gv.set_scale_bar()
 
     for gff in gff_list:
+
         track = gv.add_feature_track(gff.name, gff.get_seqid2size(), align_label=False)
         for seqid, features in gff.get_seqid2features("gene").items():
             segment = track.get_segment(seqid)
@@ -184,25 +191,65 @@ def multi_pgv(gff_files, fna_files):
         gv.set_colorbar([color, inverted_color], vmin=min_ident)
 
     fig = plot_legend(gv)
-    gv.savefig_html("tmp/genbank_comparison_by_blast.html", fig)
+    gv.savefig_html(tmp_file, fig)
     # gv.savefig("tmp/genbank_comparison_by_blast.svg")
 
 
 @callback(
-    Output("pgv-figure", "figure"),
+    Output("pgv-figure", "children"),
     [
         Input("table", "derived_virtual_data"),
         Input("table", "derived_virtual_selected_rows"),
     ],
 )
 def update_pgv(table_data, selected_rows):
-    if selected_rows:
+    tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
+
+    if table_data and selected_rows is not None:
         table_df = pd.DataFrame(table_data)
-        rows = df.iloc[selected_rows]
-        gff_files = rows["gff3"].tolist()
-        fna_files = 
-        if selected_rows > 1:
-            multi_pgv(gff_files,fna_files)
+
+        # Check if selected_rows are within the DataFrame index
+        if len(selected_rows) > 0 and all(idx < len(table_df) for idx in selected_rows):
+            rows = table_df.iloc[selected_rows]
+
+            # Ensure the columns exist in the DataFrame
+            if "gff3" in rows.columns and "fna" in rows.columns:
+                valid_gffs = rows["gff3"].dropna().tolist()
+                valid_fna = rows["fna"].dropna().tolist()
+
+                if len(selected_rows) > 1:
+                    if len(selected_rows) > 4:
+                        return """"""
+                    else:
+                        multi_pgv(valid_gffs, valid_fna, tmp_pgv)
+                elif len(selected_rows) == 1:
+                    gff_file = rows.iloc[0]["gff3"]
+                    single_pgv(gff_file, tmp_pgv)
+                else:
+                    return """"""
+
+                return html.Div(
+                    [
+                        html.Iframe(
+                            srcDoc=open(
+                                tmp_pgv, "r"
+                            ).read(),  # Embed the content of the HTML file
+                            style={
+                                "width": "100%",
+                                "height": "500px",
+                                "border": "none",
+                            },
+                        )
+                    ]
+                )
+            else:
+                # Handle case where columns are missing
+                return "Required columns are missing from the data."
+        else:
+            # Handle case where selected rows are out of bounds
+            return "Selected rows are out of bounds."
+    else:
+        return """"""
 
 
 # inject_svg_to_html(
@@ -260,7 +307,7 @@ def update_pgv(table_data, selected_rows):
 #             # Get necessary feature details
 #             start = feature.location.start
 #             end = feature.location.end
-#             strand = feature.strand
+#             strand = feature.location.strand
 
 #             # Set color for the feature based on some condition (you can customize this)
 #             if "tyr" in feature.qualifiers.get("Alias", [""])[0]:

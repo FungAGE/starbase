@@ -7,17 +7,17 @@ from src.components.shipTable import make_table
 
 dash.register_page(__name__)
 
-df_sub = df[
-    [
-        "starshipID",
-        "captain_superfamily",
-        "starship_family",
-        "starship_navis",
-        "starship_haplotype",
-        "genus",
-        "species",
-    ]
+specified_columns = [
+    "starshipID",
+    "captain_superfamily",
+    "starship_family",
+    "starship_navis",
+    "starship_haplotype",
+    "genus",
+    "species",
 ]
+
+df_sub = df[specified_columns]
 
 
 layout = dbc.Container(
@@ -33,7 +33,7 @@ layout = dbc.Container(
                             lg=8,
                             sm=12,
                             style={"padding": "20px"},
-                            children=[make_table(df_sub)],
+                            children=[make_table(df, specified_columns)],
                         )
                     ],
                 ),
