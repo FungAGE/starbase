@@ -13,6 +13,7 @@ import plotly.express as px
 from src.components.tree import plot_tree, tree_file, metadata, default_highlight_clades
 from src.components.shipTable import make_table
 from src.data.joined_ships import df
+from src.utils.sunburst_plot import create_sunburst_plot
 
 dash.register_page(__name__)
 
@@ -233,40 +234,6 @@ layout = html.Div(
 )
 
 
-def agg_df(df, groups):
-    agg = df.groupby(groups).starshipID.agg(
-        count="count", nunique="nunique", duplicates=lambda x: x.size - x.nunique()
-    )
-
-    agg = agg.reset_index()
-
-    return agg
-
-
-def pie_plot(df, path, title):
-    selection = agg_df(df, path)
-
-    pie = px.sunburst(
-        selection,
-        path=path,
-        values="count",
-    )
-
-    pie.update_layout(
-        autosize=True,
-        title_font=dict(size=24),
-        title={
-            "text": title,
-            "y": 1,
-            "x": 0.5,
-            "xanchor": "center",
-            "yanchor": "top",
-        },
-        margin=dict(t=50, l=0, r=0, b=0),
-    )
-    return pie
-
-
 ship_groups = ["starship_family", "starship_navis"]
 ship_title = "Starships by Superfamily/Navis"
 tax_groups = ["order", "family"]
@@ -325,8 +292,8 @@ def update_sunburst(
     if n_clicks:
         plot_df = df
 
-    ship_pie = pie_plot(plot_df, ship_groups, ship_title)
-    tax_pie = pie_plot(plot_df, tax_groups, tax_title)
+    ship_pie = create_sunburst_plot(plot_df, ship_groups, ship_title)
+    tax_pie = create_sunburst_plot(plot_df, tax_groups, tax_title)
 
     # Cache both pie charts
     return {"ship_pie": ship_pie, "tax_pie": tax_pie}
