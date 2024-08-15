@@ -358,9 +358,9 @@ layout = html.Div(
 @callback(
     [Output("modal", "is_open"), Output("output-data-upload", "children")],
     [
-        Input("upload-fasta", "contents"),
-        Input("upload-fasta", "filename"),
-        Input("upload-fasta", "last_modified"),
+        Input("fasta-upload", "contents"),
+        Input("fasta-upload", "filename"),
+        Input("fasta-upload", "last_modified"),
         Input("upload-gff", "contents"),
         Input("upload-gff", "filename"),
         Input("upload-gff", "last_modified"),
