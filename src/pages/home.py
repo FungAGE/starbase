@@ -60,66 +60,144 @@ layout = dbc.Container(
                                     ],
                                     className="text-center",
                                 ),
-                                dbc.Stack(
+                                dbc.Row(
                                     [
-                                        dbc.Card(
-                                            [
-                                                dbc.CardHeader(
-                                                    html.H4(
-                                                        [
-                                                            "What can I currently use ",
-                                                            html.Span(
-                                                                "starbase",
-                                                                className="logo-text",
-                                                            ),
-                                                            " for?",
-                                                        ],
-                                                    )
-                                                ),
-                                                dbc.CardBody(
-                                                    dbc.Stack(
-                                                        working_buttons,
-                                                        direction="horizontal",
-                                                        gap=3,
-                                                        className="justify-content-center",
-                                                    )
+                                        dbc.Col(
+                                            lg=4,
+                                            sm=12,
+                                            children=[
+                                                dbc.Card(
+                                                    [
+                                                        dbc.CardHeader(
+                                                            [
+                                                                html.H4(
+                                                                    [
+                                                                        "What can I currently use ",
+                                                                        html.Span(
+                                                                            "starbase",
+                                                                            className="logo-text",
+                                                                        ),
+                                                                        " for?",
+                                                                    ],
+                                                                )
+                                                            ],
+                                                            style={"height": "75px"},
+                                                        ),
+                                                        dbc.CardBody(
+                                                            [
+                                                                dbc.Stack(
+                                                                    working_buttons,
+                                                                    direction="horizontal",
+                                                                    gap=3,
+                                                                    className="justify-content-center",
+                                                                )
+                                                            ],
+                                                            className="d-flex align-items-center",
+                                                        ),
+                                                    ],
+                                                    className="w-100 mb-3",
+                                                    style={"height": "300px"},
                                                 ),
                                             ],
-                                            className="w-100 mb-3",
-                                            style={
-                                                "minHeight": "150px",
-                                            },
                                         ),
-                                        dbc.Card(
-                                            [
-                                                dbc.CardHeader(
-                                                    html.H4(
-                                                        [
-                                                            "Functions of ",
-                                                            html.Span(
-                                                                "starbase",
-                                                                className="logo-text",
-                                                            ),
-                                                            " under active development:",
-                                                        ],
-                                                    )
+                                        dbc.Col(
+                                            lg=4,
+                                            sm=12,
+                                            children=[
+                                                dbc.Card(
+                                                    [
+                                                        dbc.CardHeader(
+                                                            [
+                                                                html.H4(
+                                                                    [
+                                                                        "Functions of ",
+                                                                        html.Span(
+                                                                            "starbase",
+                                                                            className="logo-text",
+                                                                        ),
+                                                                        " under active development:",
+                                                                    ],
+                                                                )
+                                                            ],
+                                                            style={"height": "75px"},
+                                                        ),
+                                                        dbc.CardBody(
+                                                            [not_working_ul],
+                                                            className="d-flex align-items-center",
+                                                        ),
+                                                    ],
+                                                    className="w-100",
+                                                    style={"height": "300px"},
                                                 ),
-                                                dbc.CardBody([not_working_ul]),
                                             ],
-                                            className="w-100",
-                                            style={
-                                                "minHeight": "150px",
-                                            },
                                         ),
-                                    ],
-                                    direction="vertical",
-                                    gap=3,
+                                        dbc.Col(
+                                            lg=4,
+                                            sm=12,
+                                            children=[
+                                                dbc.Card(
+                                                    [
+                                                        dbc.CardHeader(
+                                                            [
+                                                                html.H4(
+                                                                    "Data Availability"
+                                                                )
+                                                            ],
+                                                            style={"height": "75px"},
+                                                        ),
+                                                        dbc.CardBody(
+                                                            [
+                                                                html.P(
+                                                                    [
+                                                                        "We have been maintaining ",
+                                                                        html.Span(
+                                                                            "starbase",
+                                                                            className="logo-text",
+                                                                        ),
+                                                                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                                    ],
+                                                                ),
+                                                                html.Div(
+                                                                    style={
+                                                                        "textAlign": "center"
+                                                                    },
+                                                                    children=[
+                                                                        dbc.Button(
+                                                                            html.P(
+                                                                                [
+                                                                                    "Download the latest version of ",
+                                                                                    html.Span(
+                                                                                        "starbase",
+                                                                                        className="logo-text",
+                                                                                    ),
+                                                                                    ".",
+                                                                                ],
+                                                                            ),
+                                                                            id="dl-button",
+                                                                            color="primary",
+                                                                            className="mx-auto",
+                                                                        ),
+                                                                        dcc.Download(
+                                                                            id="dl-package"
+                                                                        ),
+                                                                    ],
+                                                                ),
+                                                            ],
+                                                        ),
+                                                    ],
+                                                    style={"height": "300px"},
+                                                    className="w-100",
+                                                ),
+                                            ],
+                                        ),
+                                    ]
                                 ),
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
                                             html.H4(
                                                 ["What is a Starship?"],
+                                                style={"height": "75px"},
                                             ),
                                         ),
                                         dbc.CardBody(
@@ -171,7 +249,7 @@ layout = dbc.Container(
                                                     ],
                                                     className="text-center",
                                                 ),
-                                            ]
+                                            ],
                                         ),
                                     ],
                                     color="primary",
@@ -182,49 +260,6 @@ layout = dbc.Container(
                                     },
                                 ),
                                 table,
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [html.H4("Data Availability")],
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                html.P(
-                                                    [
-                                                        "We have been maintaining ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    style={"textAlign": "center"},
-                                                    children=[
-                                                        dbc.Button(
-                                                            html.P(
-                                                                [
-                                                                    "Download the latest version of ",
-                                                                    html.Span(
-                                                                        "starbase",
-                                                                        className="logo-text",
-                                                                    ),
-                                                                    ".",
-                                                                ],
-                                                            ),
-                                                            id="dl-button",
-                                                            color="primary",
-                                                            className="mx-auto",
-                                                        ),
-                                                        dcc.Download(id="dl-package"),
-                                                    ],
-                                                ),
-                                            ]
-                                        ),
-                                    ],
-                                    className="mt-3",
-                                ),
                             ],
                             gap=4,
                             direction="vertical",
