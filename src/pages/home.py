@@ -49,7 +49,7 @@ layout = dbc.Container(
             style={"paddingTop": "20px", "paddingBottom": "20px"},
             children=[
                 dbc.Col(
-                    lg=8,
+                    lg=6,
                     sm=12,
                     children=[
                         dbc.Stack(
@@ -85,7 +85,10 @@ layout = dbc.Container(
                                                                     ],
                                                                 )
                                                             ],
-                                                            style={"height": "75px"},
+                                                            style={
+                                                                "height": "75px",
+                                                                "justify-content": "center",
+                                                            },
                                                         ),
                                                         dbc.CardBody(
                                                             [
@@ -100,7 +103,7 @@ layout = dbc.Container(
                                                         ),
                                                     ],
                                                     className="w-100 mb-3",
-                                                    style={"height": "300px"},
+                                                    style={"height": "250px"},
                                                 ),
                                             ],
                                         ),
@@ -123,7 +126,10 @@ layout = dbc.Container(
                                                                     ],
                                                                 )
                                                             ],
-                                                            style={"height": "75px"},
+                                                            style={
+                                                                "height": "75px",
+                                                                "justify-content": "center",
+                                                            },
                                                         ),
                                                         dbc.CardBody(
                                                             [not_working_ul],
@@ -131,7 +137,7 @@ layout = dbc.Container(
                                                         ),
                                                     ],
                                                     className="w-100",
-                                                    style={"height": "300px"},
+                                                    style={"height": "250px"},
                                                 ),
                                             ],
                                         ),
@@ -147,7 +153,10 @@ layout = dbc.Container(
                                                                     "Data Availability"
                                                                 )
                                                             ],
-                                                            style={"height": "75px"},
+                                                            style={
+                                                                "height": "75px",
+                                                                "justify-content": "center",
+                                                            },
                                                         ),
                                                         dbc.CardBody(
                                                             [
@@ -189,7 +198,7 @@ layout = dbc.Container(
                                                             ],
                                                         ),
                                                     ],
-                                                    style={"height": "300px"},
+                                                    style={"height": "350px"},
                                                     className="w-100",
                                                 ),
                                             ],
