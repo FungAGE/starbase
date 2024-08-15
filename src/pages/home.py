@@ -206,52 +206,64 @@ layout = dbc.Container(
                                         ),
                                         dbc.CardBody(
                                             [
-                                                html.P(
+                                                dbc.Row(
                                                     [
-                                                        "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
-                                                        html.Span(
-                                                            "Paecilomyces",
-                                                            style={
-                                                                "font-style": "italic"
-                                                            },
+                                                        dbc.Col(
+                                                            lg=6,
+                                                            sm=12,
+                                                            children=[
+                                                                html.P(
+                                                                    [
+                                                                        "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
+                                                                        html.Span(
+                                                                            "Paecilomyces",
+                                                                            style={
+                                                                                "font-style": "italic"
+                                                                            },
+                                                                        ),
+                                                                        " cheese making in ",
+                                                                        html.Span(
+                                                                            "Penicillium",
+                                                                            style={
+                                                                                "font-style": "italic",
+                                                                            },
+                                                                        ),
+                                                                        ", and enable the transfer of formaldehyde resistance in ",
+                                                                        html.Span(
+                                                                            "Aspergillus nidulans",
+                                                                            style={
+                                                                                "font-style": "italic",
+                                                                            },
+                                                                        ),
+                                                                        " and ",
+                                                                        html.Span(
+                                                                            "Penicillium chrysogenum.",
+                                                                            style={
+                                                                                "font-style": "italic",
+                                                                            },
+                                                                        ),
+                                                                    ],
+                                                                ),
+                                                            ],
                                                         ),
-                                                        " cheese making in ",
-                                                        html.Span(
-                                                            "Penicillium",
-                                                            style={
-                                                                "font-style": "italic",
-                                                            },
+                                                        dbc.Col(
+                                                            lg=6,
+                                                            sm=12,
+                                                            children=[
+                                                                dbc.CardImg(
+                                                                    src="assets/images/starship-model.png",
+                                                                    style={
+                                                                        "backgroundColor": "white",
+                                                                        "margin": "auto",
+                                                                        "display": "block",
+                                                                        "height": "100%",
+                                                                        "object-fit": "cover",
+                                                                    },
+                                                                    className="text-center",
+                                                                )
+                                                            ],
                                                         ),
-                                                        ", and enable the transfer of formaldehyde resistance in ",
-                                                        html.Span(
-                                                            "Aspergillus nidulans",
-                                                            style={
-                                                                "font-style": "italic",
-                                                            },
-                                                        ),
-                                                        " and ",
-                                                        html.Span(
-                                                            "Penicillium chrysogenum.",
-                                                            style={
-                                                                "font-style": "italic",
-                                                            },
-                                                        ),
-                                                    ],
-                                                ),
-                                                html.Div(
-                                                    children=[
-                                                        html.Img(
-                                                            src="assets/images/starship-model.png",
-                                                            style={
-                                                                "backgroundColor": "white",
-                                                                "margin": "auto",
-                                                                "display": "block",
-                                                                "width": "100%",
-                                                                "maxWidth": "500px",
-                                                            },
-                                                        )
-                                                    ],
-                                                    className="text-center",
+                                                    ]
                                                 ),
                                             ],
                                         ),
