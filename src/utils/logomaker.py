@@ -17,6 +17,10 @@ def are_all_strings_same_length(strings):
 
 
 def make_logo(seqs):
+
+    if not seqs:  # If all sequences are empty, return None
+        return None
+
     temp_in_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False)
     temp_out_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False)
 
