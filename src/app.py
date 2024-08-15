@@ -9,10 +9,14 @@ external_stylesheets = [
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
     "/assets/lib/styles.css",
+    "https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
+    "/assets/lib/micromodal.css",
 ]
 
 external_scripts = [
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
+    "https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
+    "https://unpkg.com/micromodal/dist/micromodal.min.js",
 ]
 
 server = Flask(__name__)

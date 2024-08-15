@@ -16,17 +16,17 @@ from src.data.joined_ships import df
 
 dash.register_page(__name__)
 
-df_sub = df[
-    [
-        "starshipID",
-        "captain_superfamily",
-        "starship_family",
-        "starship_navis",
-        "starship_haplotype",
-        "genus",
-        "species",
-    ]
+specified_columns = [
+    "starshipID",
+    "captain_superfamily",
+    "starship_family",
+    "starship_navis",
+    "starship_haplotype",
+    "genus",
+    "species",
 ]
+
+df_sub = df[specified_columns]
 
 ship_count = df[["starshipID"]].nunique()
 species = df["genus"] + "-" + df["species"]
@@ -190,7 +190,7 @@ layout = html.Div(
                                                                 ),
                                                             ]
                                                         ),
-                                                        make_table(df_sub),
+                                                        make_table(df,specified_columns),
                                                     ],
                                                 ),
                                             ],
