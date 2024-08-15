@@ -1,7 +1,14 @@
 from dash import dash_table, html
 
 
-def make_table(df):
+def make_table(df, columns=None):
+    if columns is None:
+        df_columns = set(df.columns)
+        specified_columns_set = set(columns)
+        hide_columns = df_columns - specified_columns_set
+    else:
+        hide_columns = """"""
+
     table = html.Div(
         [
             dash_table.DataTable(
@@ -13,7 +20,7 @@ def make_table(df):
                         "deletable": False,
                         "selectable": True,
                     }
-                    for i in df.columns
+                    for i in columns
                 ],
                 data=df.to_dict("records"),
                 editable=False,
