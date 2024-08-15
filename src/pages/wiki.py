@@ -1,3 +1,6 @@
+import warnings
+
+warnings.filterwarnings("ignore")
 import dash
 from dash import Input, Output, State, html, dcc, callback, callback_context
 from dash.dependencies import Output, Input, State
@@ -29,8 +32,8 @@ unique_categories = df["starship_family"].dropna().unique()
 
 def create_cards(category):
     if category == "nan":
-        button = """"""
-        card = """"""
+        button = ""
+        card = ""
     else:
         filtered_df = df[df["starship_family"] == category]
         n_ships = len(filtered_df["checksum"].dropna().unique())
@@ -46,6 +49,7 @@ def create_cards(category):
 
         uplogo = make_logo(upTIRs)
         downlogo = make_logo(downTIRs)
+
         button = dbc.Button(
             f"{category}",
             id={"type": "collapse-button", "index": category},
@@ -54,30 +58,47 @@ def create_cards(category):
             n_clicks=0,
         )
 
-        card = dbc.Collapse(
-            dbc.Card(
-                dbc.CardBody(
+        # Build card body content dynamically
+        card_body_contents = [
+            html.H5(f"Total Number of Starships in {category}: {n_ships}"),
+            html.H5(f"Maximum Starship Size (bp): {max_size}"),
+            html.H5(f"Minimum Starship Size (bp): {min_size}"),
+            dcc.Graph(figure=sunburst),
+        ]
+
+        if uplogo:
+            card_body_contents.append(
+                dbc.Row(
                     [
-                        html.H5(f"Total Number of Starships in {category}: {n_ships}"),
-                        html.H5(f"Maximum Starship Size (bp): {max_size}"),
-                        html.H5(f"Minimum Starship Size (bp): {min_size}"),
-                        dcc.Graph(figure=sunburst),
+                        html.H5(f"Sequence logo of upstream TIRs in {category}"),
                         html.Img(
                             src=f"data:image/png;base64,{uplogo}",
                             style={"width": "50%"},
                         ),
+                    ]
+                )
+            )
+
+        if downlogo:
+            card_body_contents.append(
+                dbc.Row(
+                    [
+                        html.H5(f"Sequence logo of downstream TIRs in {category}"),
                         html.Img(
                             src=f"data:image/png;base64,{downlogo}",
                             style={"width": "50%"},
                         ),
                     ]
                 )
-            ),
+            )
+
+        card = dbc.Collapse(
+            dbc.Card(dbc.CardBody(card_body_contents)),
             id={"type": "collapse", "index": category},
             is_open=False,
         )
 
-    return [button, card, uplogo, downlogo]
+    return [button, card]
 
 
 layout = dbc.Container(
@@ -85,12 +106,37 @@ layout = dbc.Container(
     children=[
         dbc.Row(
             justify="center",
+            align="middle",
+            style={"paddingTop": "20px"},
+            children=[
+                dbc.Col(
+                    lg=6,
+                    sm=12,
+                    children=[
+                        html.H1(
+                            [
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
+                                ),
+                                " Wiki",
+                            ]
+                        ),
+                        html.H2(
+                            "Summary and characteristics of each Starship superfamily"
+                        ),
+                    ],
+                )
+            ],
+        ),
+        dbc.Row(
+            justify="center",
             align="start",
             style={"paddingTop": "20px"},
             children=[
                 dbc.Col(
                     lg=6,
-                    sm=8,
+                    sm=12,
                     children=[
                         dbc.Stack(
                             children=[
@@ -102,9 +148,9 @@ layout = dbc.Container(
                             gap=3,
                         )
                     ],
-                )
+                ),
             ],
-        )
+        ),
     ],
 )
 
