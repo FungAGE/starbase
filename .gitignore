@@ -161,4 +161,4 @@ cython_debug/
 
 tmp/
 
-database_folder/
+database_folder/**
