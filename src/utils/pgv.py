@@ -1,11 +1,65 @@
+import dash
+import dash_bootstrap_components as dbc
+from dash import dash_table, dcc, html, callback
+from dash.exceptions import PreventUpdate
+from dash.dependencies import Output, Input, State
+import dash_bio as dashbio
+
+import io
+from io import StringIO
+import os
+import re
+import tempfile
+import base64
+from datetime import date
+import subprocess
+import json
+import pandas as pd
+
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
 from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
 from pygenomeviz.parser import Genbank
 from pygenomeviz.align import Blast, AlignCoord
+from jinja2 import Template
+
+from src.components.shipTable import make_table
+from src.data.joined_ships import df
+
+dash.register_page(__name__)
 
 ColorCycler.set_cmap("tab10")
+
+df_sub = df[
+    [
+        "starshipID",
+        "captain_superfamily",
+        "starship_family",
+        "starship_navis",
+        "starship_haplotype",
+        "genus",
+        "species",
+    ]
+]
+
+layout = dbc.Container(
+    fluid=True,
+    children=[
+        dbc.Row(
+            justify="center",
+            align="top",
+            children=[
+                dbc.Col(
+                    style={"padding": "20px"},
+                    sm=12,
+                    lg=8,
+                    children=[make_table(df_sub)],
+                )
+            ],
+        )
+    ],
+)
 
 
 def plot_legend(gv):
@@ -50,9 +104,6 @@ def add_gene_feature(gene, track):
         color = "grey"
 
     track.add_feature(start, end, strand, color=color, label_type="gene")
-
-
-from jinja2 import Template
 
 
 def inject_svg_to_html(svg_file, html_template_file, output_html_file):
@@ -133,26 +184,33 @@ def multi_pgv(gff_files, fna_files):
         gv.set_colorbar([color, inverted_color], vmin=min_ident)
 
     fig = plot_legend(gv)
-    # gv.savefig_html("genbank_comparison_by_blast.html", fig)
-    gv.savefig("tmp/genbank_comparison_by_blast.svg")
+    gv.savefig_html("tmp/genbank_comparison_by_blast.html", fig)
+    # gv.savefig("tmp/genbank_comparison_by_blast.svg")
 
 
-multi_pgv(
+@callback(
+    Output("pgv-figure", "figure"),
     [
-        "tmp/gff/altals1_s00058.gff",
-        "tmp/gff/altalt7_s00064.gff",
-    ],
-    [
-        "/home/adrian/Systematics/Starship_Database/Starships/ships/fna/fna/altals1_s00058.fna",
-        "/home/adrian/Systematics/Starship_Database/Starships/ships/fna/fna/altalt7_s00064.fna",
+        Input("table", "derived_virtual_data"),
+        Input("table", "derived_virtual_selected_rows"),
     ],
 )
+def update_pgv(table_data, selected_rows):
+    if selected_rows:
+        table_df = pd.DataFrame(table_data)
+        rows = df.iloc[selected_rows]
+        gff_files = rows["gff3"].tolist()
+        fna_files = 
+        if selected_rows > 1:
+            multi_pgv(gff_files,fna_files)
 
-inject_svg_to_html(
-    "tmp/genbank_comparison_by_blast.svg",
-    "/home/adrian/anaconda3/lib/python3.8/site-packages/pygenomeviz/viewer/pgv-viewer-template.html",
-    "tmp/genbank_comparison_by_blast.html",
-)
+
+# inject_svg_to_html(
+#     "tmp/genbank_comparison_by_blast.svg",
+#     "/home/adrian/anaconda3/lib/python3.8/site-packages/pygenomeviz/viewer/pgv-viewer-template.html",
+#     "tmp/genbank_comparison_by_blast.html",
+# )
+
 # from Bio.SeqFeature import SeqFeature
 
 # def to_stack_features(features: list[SeqFeature]) -> list[list[SeqFeature]]:
