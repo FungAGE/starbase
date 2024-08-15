@@ -58,43 +58,49 @@ layout = dbc.Container(
                                                         dbc.Row(
                                                             [
                                                                 dbc.Col(
-                                                                    dbc.CardImg(
-                                                                        src="assets/images/aaron.png",
-                                                                        className="img-fluid rounded-start",
-                                                                        style={
-                                                                            "height": "100%",
-                                                                            "object-fit": "cover",
-                                                                        },
-                                                                    ),
+                                                                    lg=6,
+                                                                    sm=8,
+                                                                    children=[
+                                                                        dbc.CardImg(
+                                                                            src="assets/images/aaron.png",
+                                                                            className="img-fluid rounded-start",
+                                                                            style={
+                                                                                "height": "100%",
+                                                                                "object-fit": "cover",
+                                                                            },
+                                                                        )
+                                                                    ],
                                                                     width={
-                                                                        "size": 4,
                                                                         "order": 1,
                                                                     },
                                                                 ),
                                                                 dbc.Col(
-                                                                    dbc.CardBody(
-                                                                        [
-                                                                            html.H3(
-                                                                                "Aaron Vogan",
-                                                                                className="card-title",
-                                                                            ),
-                                                                            html.P(
-                                                                                "FungAGE group leader",
-                                                                                className="card-text",
-                                                                            ),
-                                                                            dbc.Button(
-                                                                                html.I(
-                                                                                    className="bi bi-envelope"
+                                                                    lg=6,
+                                                                    sm=4,
+                                                                    children=[
+                                                                        dbc.CardBody(
+                                                                            [
+                                                                                html.H3(
+                                                                                    "Aaron Vogan",
+                                                                                    className="card-title",
                                                                                 ),
-                                                                                href="mailto:aaron.vogan@ebc.uu.se",
-                                                                                color="teal",
-                                                                                size="lg",
-                                                                                className="me-2",
-                                                                            ),
-                                                                        ]
-                                                                    ),
+                                                                                html.P(
+                                                                                    "FungAGE group leader",
+                                                                                    className="card-text",
+                                                                                ),
+                                                                                dbc.Button(
+                                                                                    html.I(
+                                                                                        className="bi bi-envelope"
+                                                                                    ),
+                                                                                    href="mailto:aaron.vogan@ebc.uu.se",
+                                                                                    color="teal",
+                                                                                    size="lg",
+                                                                                    className="me-2",
+                                                                                ),
+                                                                            ]
+                                                                        )
+                                                                    ],
                                                                     width={
-                                                                        "size": 8,
                                                                         "order": 2,
                                                                     },
                                                                 ),
@@ -112,16 +118,19 @@ layout = dbc.Container(
                                                         dbc.Row(
                                                             [
                                                                 dbc.Col(
-                                                                    dbc.CardImg(
-                                                                        src="assets/images/adrian.png",
-                                                                        className="img-fluid rounded-start",
-                                                                        style={
-                                                                            "height": "100%",
-                                                                            "object-fit": "cover",
-                                                                        },
-                                                                    ),
+                                                                    sm=4,
+                                                                    lg=6,
+                                                                    children=[
+                                                                        dbc.CardImg(
+                                                                            src="assets/images/adrian.png",
+                                                                            className="img-fluid rounded-start",
+                                                                            style={
+                                                                                "height": "100%",
+                                                                                "object-fit": "cover",
+                                                                            },
+                                                                        )
+                                                                    ],
                                                                     width={
-                                                                        "size": 4,
                                                                         "order": 1,
                                                                     },
                                                                 ),
@@ -154,7 +163,6 @@ layout = dbc.Container(
                                                                         ]
                                                                     ),
                                                                     width={
-                                                                        "size": 8,
                                                                         "order": 2,
                                                                     },
                                                                 ),
@@ -170,16 +178,19 @@ layout = dbc.Container(
                                                         dbc.Row(
                                                             [
                                                                 dbc.Col(
-                                                                    dbc.CardImg(
-                                                                        src="assets/images/emile.png",
-                                                                        className="img-fluid rounded-start",
-                                                                        style={
-                                                                            "height": "100%",
-                                                                            "object-fit": "cover",
-                                                                        },
-                                                                    ),
+                                                                    sm=4,
+                                                                    lg=6,
+                                                                    children=[
+                                                                        dbc.CardImg(
+                                                                            src="assets/images/emile.png",
+                                                                            className="img-fluid rounded-start",
+                                                                            style={
+                                                                                "height": "100%",
+                                                                                "object-fit": "cover",
+                                                                            },
+                                                                        )
+                                                                    ],
                                                                     width={
-                                                                        "size": 4,
                                                                         "order": 1,
                                                                     },
                                                                 ),
@@ -212,7 +223,6 @@ layout = dbc.Container(
                                                                         ]
                                                                     ),
                                                                     width={
-                                                                        "size": 8,
                                                                         "order": 2,
                                                                     },
                                                                 ),
