@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 from Bio import Phylo
 import pandas as pd
 import plotly.graph_objs as go

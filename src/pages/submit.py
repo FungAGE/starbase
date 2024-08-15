@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings("ignore")
+
 import base64
 
 import dash
@@ -6,13 +10,7 @@ from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
 import sqlite3
 
-from Bio import SeqIO
-
-import time
 import datetime
-import io
-
-import pandas as pd
 
 dash.register_page(__name__)
 
