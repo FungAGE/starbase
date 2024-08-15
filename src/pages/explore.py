@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings("ignore")
+
 import dash
 from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State

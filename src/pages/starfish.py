@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings("ignore")
+
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc

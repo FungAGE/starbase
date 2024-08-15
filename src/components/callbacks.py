@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import dash
 from dash import dcc, callback, html
 from dash.dependencies import Output, Input
@@ -5,7 +8,6 @@ import base64
 import pandas as pd
 from Bio import SeqIO
 import io
-from io import StringIO
 
 
 def parse_gff(contents, filename):
