@@ -3,11 +3,7 @@ from dash import dash_table, html
 
 def make_table(df, columns=None):
     if columns is None:
-        df_columns = set(df.columns)
-        specified_columns_set = set(columns)
-        hide_columns = df_columns - specified_columns_set
-    else:
-        hide_columns = """"""
+        columns = df.columns
 
     table = html.Div(
         [
@@ -27,7 +23,6 @@ def make_table(df, columns=None):
                 filter_action="native",
                 sort_action="native",
                 sort_mode="multi",
-                # column_selectable="single",
                 row_selectable="multi",
                 row_deletable=False,
                 selected_columns=[],

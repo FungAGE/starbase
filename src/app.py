@@ -3,7 +3,12 @@ from dash import Dash, html
 import dash
 from flask import Flask
 from src.components import navmenu
-from src.components.callbacks import dl_package, update_fasta_upload, update_gff_upload
+from src.components.callbacks import (
+    dl_package,
+    update_fasta_upload,
+    update_gff_upload,
+    update_dataset,
+)
 
 external_stylesheets = [
     dbc.icons.BOOTSTRAP,
@@ -43,6 +48,7 @@ app.layout = serve_app_layout
 dl_package(app)
 update_fasta_upload(app)
 update_gff_upload(app)
+update_dataset(app)
 
 if __name__ == "__main__":
     app.run_server()
