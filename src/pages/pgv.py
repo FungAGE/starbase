@@ -23,15 +23,12 @@ ColorCycler.set_cmap("tab10")
 
 specified_columns = [
     "starshipID",
-    "captain_superfamily",
     "starship_family",
     "starship_navis",
     "starship_haplotype",
     "genus",
     "species",
 ]
-
-df_sub = df[specified_columns]
 
 
 def is_valid_file(file_path):
@@ -84,6 +81,10 @@ layout = dbc.Container(
                             type="default",
                             children=[
                                 html.Div(id="pgv-figure"),
+                                html.Div(
+                                    id="pgv-figure-error-message",
+                                    style={"color": "red"},
+                                ),
                             ],
                         )
                     ],
@@ -156,8 +157,6 @@ def inject_svg_to_html(svg_file, html_template_file, output_html_file):
     with open(output_html_file, "w") as output_file:
         output_file.write(rendered_html)
 
-    print(f"HTML with embedded SVG saved to {output_html_file}")
-
 
 def single_pgv(gff_file, tmp_file):
     gff = Gff(gff_file)
@@ -167,7 +166,6 @@ def single_pgv(gff_file, tmp_file):
     # gv.set_scale_bar(ymargin=0.5)
 
     seq_size = gff.get_seqid2size()
-    print(seq_size)
 
     for seqid, size in gff.get_seqid2size().items():
         track = gv.add_feature_track(seqid, size, labelsize=15)
@@ -177,9 +175,6 @@ def single_pgv(gff_file, tmp_file):
             add_gene_feature(gene, track)
     fig = plot_legend(gv)
     gv.savefig_html(tmp_file, fig)
-
-
-# single_pgv("tmp/gff/altals1_s00058.gff")
 
 
 def multi_pgv(gff_files, fna_files, tmp_file):
