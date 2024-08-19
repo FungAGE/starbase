@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import dash
@@ -8,6 +9,9 @@ import base64
 import pandas as pd
 from Bio import SeqIO
 import io
+import dash_bootstrap_components as dbc
+
+from src.data.joined_ships import df
 
 
 def parse_gff(contents, filename):
@@ -123,3 +127,53 @@ def update_gff_upload(app):
             except Exception as e:
                 print(e)
                 return html.Div(["There was an error processing this file."])
+
+
+def update_dataset(app):
+
+    @app.callback(
+        [
+            Output("initial-data", "data"),
+            Output("ship-card-header", "children"),
+            Output("ship-count", "children"),
+            Output("species-card-header", "children"),
+            Output("species-count", "children"),
+        ],
+        [Input("curated-input", "value")],
+    )
+    def curated_switch(switches_value):
+        df_filtered = df.copy()
+        curated_status = ""
+
+        if switches_value == 1:
+            df_filtered = df_filtered[df_filtered["curated_status"] == "curated"]
+            curated_status = "curated "
+
+        ship_count = df_filtered[["starshipID"]].nunique()[0]
+        species = df_filtered["genus"] + "-" + df_filtered["species"]
+        species_count = species.nunique()
+
+        df_json = df_filtered.to_json(orient="split")
+        ship_card_header = (
+            html.H4(
+                html.P(
+                    [
+                        f"Total number {curated_status}of Starships in ",
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
+                        ),
+                        ":",
+                    ]
+                ),
+                className="card-title",
+            ),
+        )
+        species_card_header = (
+            html.H4(
+                f"Fungal species with {curated_status}Starships",
+                className="card-title",
+            ),
+        )
+
+        return df_json, ship_card_header, ship_count, species_card_header, species_count

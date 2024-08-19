@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
 from Bio import Phylo
@@ -8,37 +9,23 @@ import plotly.graph_objs as go
 tree_file = "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
 metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
 
-colors = {
-    "superfam01-1": "#8dd3c7",
-    "superfam01-2": "#ededa8",
-    "superfam01-3": "#adabc4",
-    "superfam01-4": "#33a02c",
-    "superfam01-5": "#fb8072",
-    "superfam02-1": "#80b1d3",
-    "superfam02-2": "#b3de69",
-    "superfam02-3": "#b0b0b0",
-    "superfam03-1": "#fdb45a",
-    "superfam03-2": "#fccde5",
-    "superfam03-3": "#ffed6f",
-    "superfam03-4": "#bc80bd",
-    "superfam03-5": "#ccebc5",
+default_highlight_colors = {
+    "Phoenix": "#00cc96",
+    "Hephaestus": "#ab63fa",
+    "Tardis": "#ff6692",
+    "Serenity": "#fecb52",
+    "Prometheus": "#636efa",
+    "Enterprise": "#ef553b",
+    "Galactica": "#19d3f3",
+    "Moya": "#ff97ff",
+    "Arwing": "#ffa15a",
+    "Voyager": "#b6e880",
+    "TBD": "#f7a799",
+    "superfam03-3": "#bbbbbb",
+    "superfam03-2": "#bbbbbb",
 }
 
-default_highlight_clades = [
-    "superfam01-1",
-    "superfam01-2",
-    "superfam01-3",
-    "superfam01-4",
-    "superfam01-5",
-    "superfam02-1",
-    "superfam02-2",
-    "superfam02-3",
-    "superfam03-1",
-    "superfam03-2",
-    "superfam03-3",
-    "superfam03-4",
-    "superfam03-5",
-]
+default_highlight_clades = default_highlight_colors.keys()
 
 
 def hex_to_rgba(hex_color):
@@ -50,7 +37,9 @@ def hex_to_rgba(hex_color):
     return f"rgba({r}, {g}, {b}, {a})"
 
 
-rgb_colors = {key: hex_to_rgba(value) for key, value in colors.items()}
+rgb_colors = {
+    key: hex_to_rgba(value) for key, value in default_highlight_colors.items()
+}
 
 metadata["color"] = metadata["superfam"].map(rgb_colors)
 
@@ -233,14 +222,14 @@ def superfam_highlight(
     x_coords=None,
     y_coords=None,
 ):
-    df = metadata[metadata["superfam"] == superfam_clade]
+    superfam_df = metadata[metadata["superfam"] == superfam_clade]
 
-    if not df.empty:
-        highlight_names = df["tip"].tolist()
+    if not superfam_df.empty:
+        highlight_names = superfam_df["tip"].tolist()
 
         color = (
-            df.iloc[0]["color"]
-            if "color" in df.columns and not df["color"].isna().all()
+            superfam_df.iloc[0]["color"]
+            if "color" in superfam_df.columns and not superfam_df["color"].isna().all()
             else "rgba(25, 25, 25, 0.6)"
         )
     else:
@@ -290,7 +279,7 @@ def superfam_highlight(
         return rectangle, scatter, text_label
 
 
-def plot_tree(tree_file, metadata, highlight_clades=default_highlight_clades):
+def plot_tree(tree_file, metadata, highlight_clades=None):
     tree = Phylo.read(tree_file, "newick")
 
     graph_title = "Captain Gene Phylogeny"
@@ -312,7 +301,7 @@ def plot_tree(tree_file, metadata, highlight_clades=default_highlight_clades):
         y_coords=y_coords,
     )
 
-    if highlight_clades is not None:
+    if highlight_clades is not None and len(highlight_clades) > 0:
         for superfam_clade in highlight_clades:
             rectangle, scatter, text_label = superfam_highlight(
                 metadata,
