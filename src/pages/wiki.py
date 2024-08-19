@@ -39,9 +39,9 @@ def create_cards(category):
         upTIRs = filtered_df["upTIR"].dropna().tolist()
         downTIRs = filtered_df["downTIR"].dropna().tolist()
         sunburst = create_sunburst_plot(
-            filtered_df,
-            ["genus", "species"],
-            f"Genus/Species Distribution for {category}",
+            df=filtered_df,
+            groups=["genus", "species"],
+            title=f"Genus/Species Distribution for {category}",
         )
 
         uplogo = make_logo(upTIRs)
@@ -119,9 +119,7 @@ layout = dbc.Container(
                                 " Wiki",
                             ]
                         ),
-                        html.H2(
-                            "Summary and characteristics of each Starship superfamily"
-                        ),
+                        html.H2("Summary and characteristics of each Starship family"),
                     ],
                 )
             ],

@@ -11,12 +11,12 @@ def agg_df(df, groups):
     return agg
 
 
-def create_sunburst_plot(df, path, title):
-    selection = agg_df(df, path)
+def create_sunburst_plot(df, groups, title):
+    selection = agg_df(df, groups)
 
     pie = px.sunburst(
         selection,
-        path=path,
+        path=groups,
         values="count",
     )
 
