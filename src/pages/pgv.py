@@ -120,14 +120,16 @@ def plot_legend(gv):
 
 
 def add_gene_feature(gene, track):
-    # Get gene name in GFF attributes column (e.g. `gene=araD;`)
     gene_name = str(gene.qualifiers.get("Alias", [""])[0])
 
-    start = gene.location.start
-    end = gene.location.end
+    start = int(gene.location.start)
+    end = int(gene.location.end)
     strand = gene.location.strand
 
-    # Set user-defined feature color based on gene name
+    # BUG: there is still an issue with SeqFeature end coordinates being less than start coordinates
+    if end < start:
+        start, end = end, start
+
     if "tyr" in gene_name:
         color = "tomato"
     elif any(substring in gene_name for substring in ["fre", "DUF3723", "nlr", "plp"]):
@@ -135,7 +137,12 @@ def add_gene_feature(gene, track):
     else:
         color = "grey"
 
-    track.add_feature(start, end, strand, color=color, label_type="gene")
+    track.add_feature(
+        start=start, end=end, strand=strand, color=color, label_type="gene"
+    )
+    print(f"Gene: {gene_name}, Start: {start}, End: {end}, Strand: {strand}")
+
+    return track
 
 
 def inject_svg_to_html(svg_file, html_template_file, output_html_file):
@@ -164,8 +171,6 @@ def single_pgv(gff_file, tmp_file):
     gv = GenomeViz()
     gv.set_scale_xticks()
     # gv.set_scale_bar(ymargin=0.5)
-
-    seq_size = gff.get_seqid2size()
 
     for seqid, size in gff.get_seqid2size().items():
         track = gv.add_feature_track(seqid, size, labelsize=15)
