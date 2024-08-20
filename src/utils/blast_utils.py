@@ -501,7 +501,7 @@ def blast_table(ship_blast_results):
                 sort_by=[{"column_id": "pident", "direction": "desc"}],
                 sort_mode="single",
                 row_selectable="single",
-                selected_rows=[],
+                selected_rows=[0],
                 row_deletable=False,
                 selected_columns=[],
                 page_action="native",
@@ -513,6 +513,7 @@ def blast_table(ship_blast_results):
                     "overflow": "hidden",
                     "overflowX": "auto",
                     "maxWidth": "100%",
+                    "padding": "10px",
                 },
                 style_cell={
                     "minWidth": "150px",
@@ -526,7 +527,7 @@ def blast_table(ship_blast_results):
                 id="blast-dl-button",
                 n_clicks=0,
                 style={"textAlign": "center", "fontSize": "1rem"},
-                className="d-grid gap-2 col-6 mx-auto",
+                className="d-grid gap-2 col-4 mx-auto",
             ),
             dcc.Download(id="blast-dl"),
         ]
@@ -534,17 +535,19 @@ def blast_table(ship_blast_results):
     return tbl
 
 
-def gene_hmmsearch(hmmer_results):
+def select_ship_family(hmmer_results):
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
     hmmer_results.dropna(subset=["evalue"], inplace=True)
     idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
     try:
         superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
+        aln_length = hmmer_results.loc[idx_min_evalue, "aln_length"].iloc[0]
+        evalue = hmmer_results.loc[idx_min_evalue, "evalue"].iloc[0]
     except IndexError:
-        superfamily = None
+        superfamily, aln_length, evalue = None, None, None
 
     if superfamily is not None:
-        return superfamily
+        return superfamily, aln_length, evalue
 
 
 def run_lastz(query_type, seqs, output_file):
