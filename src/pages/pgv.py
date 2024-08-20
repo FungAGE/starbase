@@ -60,7 +60,7 @@ layout = dbc.Container(
                             "Show Starship(s) in Viewer",
                             id="update-button",
                             n_clicks=0,
-                            className="d-grid gap-2 col-6 mx-auto",
+                            className="d-grid gap-2 col-4 mx-auto",
                             style={"fontSize": "1rem"},
                         ),
                     ],
@@ -102,12 +102,20 @@ def plot_legend(gv):
     _ = fig.legend(
         handles=[
             Line2D(
-                [], [], marker=">", color="tomato", label="captain", ms=12, ls="none"
+                [], [], marker=">", color="#dc267fff", label="captain", ms=12, ls="none"
             ),
             Line2D(
-                [], [], marker=">", color="lime", label="auxillary", ms=12, ls="none"
+                [],
+                [],
+                marker=">",
+                color="#785ef0ff",
+                label="auxillary",
+                ms=12,
+                ls="none",
             ),
-            Line2D([], [], marker=">", color="grey", label="Others", ms=12, ls="none"),
+            Line2D(
+                [], [], marker=">", color="#ffb000ff", label="Others", ms=12, ls="none"
+            ),
         ],
         fontsize=12,
         title="Starship Gene",
@@ -131,16 +139,15 @@ def add_gene_feature(gene, track):
         start, end = end, start
 
     if "tyr" in gene_name:
-        color = "tomato"
+        color = "#dc267fff"
     elif any(substring in gene_name for substring in ["fre", "DUF3723", "nlr", "plp"]):
-        color = "lime"
+        color = "#785ef0ff"
     else:
-        color = "grey"
+        color = "#ffb000ff"
 
     track.add_feature(
-        start=start, end=end, strand=strand, color=color, label_type="gene"
+        start=start, end=end, strand=strand, lw=1, color=color, label_type="gene"
     )
-    print(f"Gene: {gene_name}, Start: {start}, End: {end}, Strand: {strand}")
 
     return track
 
@@ -276,13 +283,13 @@ def update_pgv(n_clicks, selected_rows, table_data):
                             ]
                         )
                 else:
-                    return html.Div("Required columns are missing from the data.")
+                    return html.H4("Required columns are missing from the data.")
             else:
-                return html.Div("Invalid row selection.")
+                return html.H4("Invalid row selection.")
         else:
-            return html.Div("Select Starship(s) to visualize.")
+            return html.H4("Select Starship(s) to visualize.")
     else:
-        return html.Div(
+        return html.H4(
             "Select the Starship(s) in the table above to and click the button to visualize."
         )
 
