@@ -6,10 +6,45 @@ import os
 import base64
 import tempfile
 import matplotlib.pyplot as plt
+import plotly.express as px
 
 import logomaker as lm
 
 from Bio.Align.Applications import ClustalwCommandline
+
+
+def agg_df(df, groups):
+    agg = df.groupby(groups).starshipID.agg(
+        count="count", nunique="nunique", duplicates=lambda x: x.size - x.nunique()
+    )
+
+    agg = agg.reset_index()
+
+    return agg
+
+
+def create_sunburst_plot(df, groups, title):
+    selection = agg_df(df, groups)
+
+    pie = px.sunburst(
+        selection,
+        path=groups,
+        values="count",
+    )
+
+    pie.update_layout(
+        autosize=True,
+        title_font=dict(size=24),
+        title={
+            "text": title,
+            "y": 1,
+            "x": 0.5,
+            "xanchor": "center",
+            "yanchor": "top",
+        },
+        margin=dict(t=50, l=0, r=0, b=0),
+    )
+    return pie
 
 
 def are_all_strings_same_length(strings):

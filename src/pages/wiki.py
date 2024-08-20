@@ -6,8 +6,8 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from src.data.joined_ships import df
-from src.utils.sunburst_plot import create_sunburst_plot
-from src.utils.logomaker import make_logo
+from src.utils.plot_utils import create_sunburst_plot
+from src.utils.plot_utils import make_logo
 
 dash.register_page(__name__)
 
