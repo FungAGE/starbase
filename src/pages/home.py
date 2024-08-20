@@ -74,7 +74,7 @@ layout = dbc.Container(
                                                     [
                                                         dbc.CardHeader(
                                                             [
-                                                                html.H4(
+                                                                html.H3(
                                                                     [
                                                                         "What can I currently use ",
                                                                         html.Span(
@@ -115,7 +115,7 @@ layout = dbc.Container(
                                                     [
                                                         dbc.CardHeader(
                                                             [
-                                                                html.H4(
+                                                                html.H3(
                                                                     [
                                                                         "Functions of ",
                                                                         html.Span(
@@ -149,7 +149,7 @@ layout = dbc.Container(
                                                     [
                                                         dbc.CardHeader(
                                                             [
-                                                                html.H4(
+                                                                html.H3(
                                                                     "Data Availability"
                                                                 )
                                                             ],
@@ -208,7 +208,7 @@ layout = dbc.Container(
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
-                                            html.H4(
+                                            html.H3(
                                                 ["What is a Starship?"],
                                                 style={"height": "75px"},
                                             ),
