@@ -14,7 +14,7 @@ from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord
 from jinja2 import Template
 
-from src.components.shipTable import make_table
+from src.components.tables import make_ship_table
 from src.data.joined_ships import df
 
 dash.register_page(__name__)
@@ -55,7 +55,7 @@ layout = dbc.Container(
                     sm=12,
                     lg=8,
                     children=[
-                        make_table(filtered_df, specified_columns),
+                        make_ship_table(filtered_df, specified_columns),
                         dbc.Button(
                             "Show Starship(s) in Viewer",
                             id="update-button",

@@ -3,15 +3,15 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import dash
-from dash import dcc, html, callback, MATCH
-from dash.dependencies import Output, Input, State
+from dash import dcc, html, callback
+from dash.dependencies import Output, Input
 import dash_bootstrap_components as dbc
 
 import pandas as pd
 from src.data.joined_ships import df
-from src.components.tree import plot_tree, tree_file, metadata, default_highlight_clades
-from src.components.shipTable import make_table
-from src.utils.sunburst_plot import create_sunburst_plot
+from src.utils.tree import plot_tree, tree_file, metadata, default_highlight_clades
+from src.components.tables import make_ship_table
+from src.utils.plot_utils import create_sunburst_plot
 
 dash.register_page(__name__)
 
@@ -374,4 +374,4 @@ def update_table(cached_data, n_clicks, clickData1, clickData2):
     if n_clicks:
         filtered_df = initial_df
 
-    return make_table(filtered_df, specified_columns)
+    return make_ship_table(filtered_df, specified_columns)

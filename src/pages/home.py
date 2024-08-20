@@ -5,7 +5,7 @@ warnings.filterwarnings("ignore")
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html
-from src.components.paperTable import table
+from src.components.tables import make_paper_table
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
@@ -284,7 +284,7 @@ layout = dbc.Container(
                                         "width": "100%",
                                     },
                                 ),
-                                table,
+                                make_paper_table(),
                             ],
                             gap=4,
                             direction="vertical",
