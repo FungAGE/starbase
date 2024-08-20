@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore")
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import dash_table, dcc, html, callback
+from dash import dash_table, dcc, html, callback, MATCH
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 import dash_bio as dashbio
@@ -109,19 +109,7 @@ layout = dbc.Container(
                                         id="fasta-sequence-upload",
                                         style={"fontSize": "1rem"},
                                     ),
-                                    style={
-                                        "width": "100%",
-                                        "height": "75px",
-                                        "lineHeight": "75px",
-                                        "borderWidth": "2px",
-                                        "borderStyle": "dashed",
-                                        "borderRadius": "5px",
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "justifyContent": "center",
-                                        "textAlign": "center",
-                                        "padding": "10px",
-                                    },
+                                    className="upload-box",
                                     multiple=False,
                                     accept=".fa, .fas, .fasta, .fna",
                                 ),
@@ -146,12 +134,18 @@ layout = dbc.Container(
                         dcc.Loading(
                             id="loading-1",
                             type="default",
-                            children=html.Div(id="output-container"),
+                            children=[
+                                html.Div(id="output-container"),
+                                html.Div(id="output-container-error-message"),
+                            ],
                         ),
                         dcc.Loading(
                             id="loading-2",
                             type="default",
-                            children=html.Div(id="ship-aln-container"),
+                            children=[
+                                html.Div(id="ship-aln-container"),
+                                html.Div(id="ship-aln-container-error-message"),
+                            ],
                         ),
                         # dcc.Loading(
                         #     id="loading-3",
@@ -170,7 +164,10 @@ tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
 
 
 @callback(
-    Output("output-container", "children"),
+    [
+        Output("output-container", "children"),
+        Output("output-container-error-message", "children"),
+    ],
     [
         Input("submit-button", "n_clicks"),
         Input("query-text", "value"),
@@ -227,7 +224,7 @@ def run_main(n_clicks, query_text_input, query_file_contents):
                 superfamily_text = html.Div(
                     [
                         html.H4(
-                            f"Likely captain superfamily: {superfamily}",
+                            f"Likely captain family: {superfamily}",
                         ),
                     ],
                 )
@@ -241,20 +238,21 @@ def run_main(n_clicks, query_text_input, query_file_contents):
             superfamily_text = """"""
             # superfamily_tree = """"""
 
-        return html.Div(
-            [
-                dbc.Stack(
-                    [superfamily_text, ship_blast_table],
-                    gap=3,
-                )
-            ],
-            id="ship-blast-table-container",
+        return (
+            html.Div(
+                [
+                    dbc.Stack(
+                        [superfamily_text, ship_blast_table],
+                        gap=3,
+                    )
+                ],
+                id="ship-blast-table-container",
+            ),
+            "",
         )
 
     except Exception as e:
-        # Log the error and handle it appropriately
-        print(f"Error occurred: {e}")
-        raise PreventUpdate
+        return None, f"Error: {str(e)}"
 
 
 def write_temp_fasta(header, sequence):
@@ -727,16 +725,9 @@ def blast_table(ship_blast_results):
 
 
 def gene_hmmsearch(hmmer_results):
-    # Convert "evalue" column to numeric with errors='coerce'
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
-
-    # Drop rows where "evalue" is NaN
     hmmer_results.dropna(subset=["evalue"], inplace=True)
-
-    # Find the index of the minimum "evalue" for each "query_id"
     idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
-
-    # Get corresponding "hit_IDs" for the minimum "evalue" indices
     try:
         superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
     except IndexError:
@@ -748,56 +739,60 @@ def gene_hmmsearch(hmmer_results):
 
 # Callback to update information about selected row
 @callback(
-    Output("ship-aln-container", "children"),
+    [
+        Output("ship-aln-container", "children"),
+        Output("ship-aln-container-error-message", "children"),
+    ],
     [
         Input("ship-blast-table", "derived_virtual_data"),
         Input("ship-blast-table", "derived_virtual_selected_rows"),
     ],
 )
 def blast_alignments(ship_blast_results, selected_row):
-    global query_type
+    try:
+        global query_type
 
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
+        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
-    # Convert ship_blast_results to a Pandas DataFrame
-    ship_blast_results_df = pd.DataFrame(ship_blast_results)
+        ship_blast_results_df = pd.DataFrame(ship_blast_results)
 
-    if selected_row:
-        try:
-            row = ship_blast_results_df.iloc[selected_row]
-        except IndexError:
-            row = None
-        if row is not None:
-            # Write the specific row to the file
-            with open(tmp_fasta.name, "w") as f:
-                f.write(f">{row['qseqid'].iloc[0]}\n")
-                f.write(f"{row['qseq'].iloc[0]}\n")
-                f.write(f">{row['sseqid'].iloc[0]}\n")
-                f.write(f"{row['sseq'].iloc[0]}\n")
+        if selected_row:
+            try:
+                row = ship_blast_results_df.iloc[selected_row]
+            except IndexError:
+                row = None
+            if row is not None:
+                with open(tmp_fasta.name, "w") as f:
+                    f.write(f">{row['qseqid'].iloc[0]}\n")
+                    f.write(f"{row['qseq'].iloc[0]}\n")
+                    f.write(f">{row['sseqid'].iloc[0]}\n")
+                    f.write(f"{row['sseq'].iloc[0]}\n")
 
-            with open(tmp_fasta.name, "r") as file:
-                data = file.read()
-            if query_type == "nucl":
-                color = "nucleotide"
-            else:
-                color = "clustal2"
+                with open(tmp_fasta.name, "r") as file:
+                    data = file.read()
+                if query_type == "nucl":
+                    color = "nucleotide"
+                else:
+                    color = "clustal2"
 
-            aln = dashbio.AlignmentChart(
-                id="alignment-viewer",
-                data=data,
-                height=200,
-                tilewidth=30,
-                colorscale=color,
-                # overview="slider",
-                showconsensus=False,
-                showconservation=False,
-                showgap=False,
-                showid=False,
-                ticksteps=5,
-                tickstart=0,
-            )
+                aln = dashbio.AlignmentChart(
+                    id="alignment-viewer",
+                    data=data,
+                    height=200,
+                    tilewidth=30,
+                    colorscale=color,
+                    # overview="slider",
+                    showconsensus=False,
+                    showconservation=False,
+                    showgap=False,
+                    showid=False,
+                    ticksteps=5,
+                    tickstart=0,
+                )
 
-            return aln
+                return aln
+    except Exception as e:
+        return None, f"Error: {str(e)}"
 
 
 # Define callback to download TSV
@@ -810,32 +805,26 @@ def download_tsv(n_clicks, rows, columns):
     if n_clicks == 0:
         return None
 
-    try:
-        df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
-        tsv_string = df.to_csv(sep="\t", index=False)
-        tsv_bytes = io.BytesIO(tsv_string.encode())
-        b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
+    df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
+    tsv_string = df.to_csv(sep="\t", index=False)
+    tsv_bytes = io.BytesIO(tsv_string.encode())
+    b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
 
-        today = date.today().strftime("%Y-%m-%d")
+    today = date.today().strftime("%Y-%m-%d")
 
-        return dict(
-            content=f"data:text/tab-separated-values;base64,{b64}",
-            filename=f"starbase_blast_{today}.tsv",
-        )
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return dict(
+        content=f"data:text/tab-separated-values;base64,{b64}",
+        filename=f"starbase_blast_{today}.tsv",
+    )
 
 
 @callback(
     Output("ship-blast-table", "selected_rows"),
-    Input(
-        "ship-blast-table", "data"
-    ),  # This will trigger when the table data is loaded
+    Input("ship-blast-table", "data"),
 )
 def update_selected_rows(data):
-    # Default to selecting the first row after sorting
     if data:
-        return [0]  # Selects the first row (0-indexed)
+        return [0]
     return []
 
 

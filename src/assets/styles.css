@@ -14,11 +14,6 @@
   margin: 0;
 }
 
-.form-control {
-  width: 100%;
-  padding: 10px;
-}
-
 .upload-box {
   width: 100%;
   height: 60px;
@@ -30,10 +25,102 @@
   margin: 10px;
 }
 
+/* Container to hold the entire content of the app */
+.container {
+  width: 100%;
+  max-width: 3000px; /* Limits the width on larger screens */
+  margin: 0 auto; /* Centers the content */
+  padding: 0 20px; /* Adds padding on smaller screens */
+}
+
+/* Grid Layout with two columns (for larger screens) */
+.two-column-layout {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.column {
+  flex: 1; /* Makes columns take equal width */
+  padding: 10px;
+}
+
+/* Single column layout for mobile devices */
+@media screen and (max-width: 768px) {
+  .two-column-layout {
+    flex-direction: column;
+  }
+}
+
+/* Responsive form controls */
+.form-control {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
 .text-red {
   color: red;
 }
 
 .form-label {
   padding: 10px;
+}
+
+/* Button styling with responsiveness */
+.button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%; /* Full-width button on mobile */
+}
+
+.button:hover {
+  background-color: #0056b3;
+}
+
+/* Responsive text classes */
+.text-large {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.text-small {
+  font-size: 14px;
+}
+
+/* Image responsiveness */
+.responsive-img {
+  width: 100%;
+  height: auto;
+  max-width: 400px;
+}
+
+/* Padding for larger elements */
+.section-padding {
+  padding: 20px 0;
+}
+
+/* Hide elements on smaller screens */
+.hide-on-mobile {
+  display: none;
+}
+
+@media screen and (min-width: 769px) {
+  .hide-on-mobile {
+    display: block;
+  }
+}
+
+/* For larger elements that shrink on small screens */
+.auto-resize {
+  width: 100%;
+  max-width: 500px;
+  height: auto;
 }
