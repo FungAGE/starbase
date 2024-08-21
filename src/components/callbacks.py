@@ -10,8 +10,7 @@ import pandas as pd
 from Bio import SeqIO
 import io
 import dash_bootstrap_components as dbc
-
-from src.data.joined_ships import df
+import sqlite3
 
 
 def parse_gff(contents, filename):
@@ -129,20 +128,53 @@ def update_gff_upload(app):
                 return html.Div(["There was an error processing this file."])
 
 
+def load_ship_metadata(app):
+    @app.callback(
+        Output("joined-ships", "data"),  # Output to dcc.Store
+        Input("url", "href"),  # Trigger the callback when the URL changes
+    )
+    def starship_metadata_table(url):
+        if url:
+            try:
+                conn = sqlite3.connect("database_folder/starbase.sqlite")
+
+                query = """
+                SELECT j.*, o.order, o.family
+                FROM joined_ships j
+                JOIN genome_taxonomy o ON j.taxid = o.taxID
+                """
+                df = pd.read_sql_query(query, conn)
+
+                data = df.to_dict(orient="records")
+
+                return data
+
+            except sqlite3.Error as error:
+                print("Failed to retrieve data from SQLite table:", error)
+                return None
+
+            finally:
+                if conn:
+                    conn.close()
+
+        return None
+
+
 def update_dataset(app):
 
     @app.callback(
         [
-            Output("initial-data", "data"),
+            Output("curated-dataset", "data"),
             Output("ship-card-header", "children"),
             Output("ship-count", "children"),
             Output("species-card-header", "children"),
             Output("species-count", "children"),
         ],
-        [Input("curated-input", "value")],
+        [Input("joined-ships", "data"), Input("curated-input", "value")],
     )
-    def curated_switch(switches_value):
-        df_filtered = df.copy()
+    def curated_switch(cached_data, switches_value):
+        initial_df = pd.DataFrame(cached_data)
+        df_filtered = initial_df.copy()
         curated_status = ""
 
         if switches_value == 1:
@@ -153,7 +185,7 @@ def update_dataset(app):
         species = df_filtered["genus"] + "-" + df_filtered["species"]
         species_count = species.nunique()
 
-        df_json = df_filtered.to_json(orient="split")
+        data = df_filtered.to_dict(orient="records")
         ship_card_header = (
             html.H4(
                 html.P(
@@ -176,4 +208,4 @@ def update_dataset(app):
             ),
         )
 
-        return df_json, ship_card_header, ship_count, species_card_header, species_count
+        return data, ship_card_header, ship_count, species_card_header, species_count

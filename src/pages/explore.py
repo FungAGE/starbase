@@ -8,7 +8,6 @@ from dash.dependencies import Output, Input
 import dash_bootstrap_components as dbc
 
 import pandas as pd
-from src.data.joined_ships import df
 from src.utils.tree import plot_tree, tree_file, metadata, default_highlight_clades
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot
@@ -104,10 +103,7 @@ tax_card = (
 layout = html.Div(
     [
         dcc.Location(id="url", refresh=False),
-        dcc.Store(
-            id="initial-data",
-            data=df.to_dict("records"),
-        ),
+        dcc.Store("curated-dataset"),
         # dcc.Store(id="phylogeny-cache"),
         # dcc.Store(id="pie-chart-cache"),
         dbc.Container(
@@ -257,7 +253,7 @@ layout = html.Div(
         Output("pie-chart2", "figure"),
     ],
     [
-        Input("initial-data", "data"),
+        Input("curated-dataset", "data"),
         Input("reset-button", "n_clicks"),
         Input("explore-phylogeny", "clickData"),
         Input("pie-chart1", "clickData"),
@@ -275,7 +271,7 @@ def update_sunburst(
     table_data,
     selected_rows,
 ):
-    initial_df = pd.read_json(cached_data, orient="split")
+    initial_df = pd.DataFrame(cached_data)
     plot_df = initial_df
 
     if phylo_clickData:
@@ -304,7 +300,7 @@ def update_sunburst(
 @callback(
     Output("explore-phylogeny", "figure"),
     [
-        Input("initial-data", "data"),
+        Input("curated-dataset", "data"),
         Input("reset-button", "n_clicks"),
         Input("explore-phylogeny", "clickData"),
         Input("pie-chart1", "clickData"),
@@ -322,8 +318,7 @@ def update_phylogeny_tree(
     table_data,
     selected_rows,
 ):
-    initial_df = pd.read_json(cached_data, orient="split")
-
+    initial_df = pd.DataFrame(cached_data)
     selected_clades = []
 
     if n_clicks:
@@ -355,14 +350,14 @@ def update_phylogeny_tree(
 @callback(
     Output("explore-table", "children"),
     [
-        Input("initial-data", "data"),
+        Input("curated-dataset", "data"),
         Input("reset-button", "n_clicks"),
         Input("pie-chart1", "clickData"),
         Input("pie-chart2", "clickData"),
     ],
 )
 def update_table(cached_data, n_clicks, clickData1, clickData2):
-    initial_df = pd.read_json(cached_data, orient="split")
+    initial_df = pd.DataFrame(cached_data)
     filtered_df = initial_df
 
     if clickData1:
@@ -374,4 +369,4 @@ def update_table(cached_data, n_clicks, clickData1, clickData2):
     if n_clicks:
         filtered_df = initial_df
 
-    return make_ship_table(filtered_df, specified_columns)
+    return make_ship_table(filtered_df, "table", specified_columns)
