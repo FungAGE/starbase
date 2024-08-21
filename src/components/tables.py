@@ -7,14 +7,14 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 
 
-def make_ship_table(df, columns=None):
+def make_ship_table(df, id, columns=None):
     if columns is None:
         columns = df.columns
 
     table = html.Div(
         [
             dash_table.DataTable(
-                id="table",
+                id=id,
                 columns=[
                     {
                         "name": i,

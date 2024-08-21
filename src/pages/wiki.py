@@ -2,17 +2,19 @@ import warnings
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html
+from dash import dcc, html, callback
+from dash.dependencies import Output, Input
 import dash_bootstrap_components as dbc
 
-from src.data.joined_ships import df
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.plot_utils import make_logo
+
+import pandas as pd
 
 dash.register_page(__name__)
 
 
-def create_accordion_item(category):
+def create_accordion_item(df, category):
     if category == "nan":
         return None
     else:
@@ -20,16 +22,16 @@ def create_accordion_item(category):
         n_ships = len(filtered_df["checksum"].dropna().unique())
         min_size = min(filtered_df["size"].dropna())
         max_size = max(filtered_df["size"].dropna())
-        upTIRs = filtered_df["upTIR"].dropna().tolist()
-        downTIRs = filtered_df["downTIR"].dropna().tolist()
+        upDRs = filtered_df["upDR"].dropna().tolist()
+        downDRs = filtered_df["downDR"].dropna().tolist()
         sunburst = create_sunburst_plot(
             df=filtered_df,
             groups=["genus", "species"],
             title=f"Genus/Species Distribution for {category}",
         )
 
-        uplogo = make_logo(upTIRs)
-        downlogo = make_logo(downTIRs)
+        uplogo = make_logo(upDRs)
+        downlogo = make_logo(downDRs)
 
         accordion_content = [
             html.H5(f"Total Number of Starships in {category}: {n_ships}"),
@@ -42,7 +44,7 @@ def create_accordion_item(category):
             accordion_content.append(
                 dbc.Row(
                     [
-                        html.H5(f"Sequence logo of upstream TIRs in {category}"),
+                        html.H5(f"Sequence logo of upstream DRs in {category}"),
                         html.Img(
                             src=f"data:image/png;base64,{uplogo}",
                             style={"width": "50%"},
@@ -55,7 +57,7 @@ def create_accordion_item(category):
             accordion_content.append(
                 dbc.Row(
                     [
-                        html.H5(f"Sequence logo of downstream TIRs in {category}"),
+                        html.H5(f"Sequence logo of downstream DRs in {category}"),
                         html.Img(
                             src=f"data:image/png;base64,{downlogo}",
                             style={"width": "50%"},
@@ -76,7 +78,7 @@ def create_accordion(df):
     assert isinstance(unique_categories, list), "unique_categories must be a list"
 
     accordion_items = [
-        create_accordion_item(category)
+        create_accordion_item(df, category)
         for category in unique_categories
         if category != "nan"
     ]
@@ -91,6 +93,7 @@ def create_accordion(df):
 layout = dbc.Container(
     fluid=True,
     children=[
+        dcc.Location(id="url", refresh=False),
         dbc.Row(
             justify="center",
             align="middle",
@@ -124,7 +127,7 @@ layout = dbc.Container(
                     sm=12,
                     children=[
                         dbc.Stack(
-                            children=create_accordion(df),
+                            children=html.Div(id="accordion"),
                             direction="vertical",
                             gap=3,
                         )
@@ -134,3 +137,13 @@ layout = dbc.Container(
         ),
     ],
 )
+
+
+@callback(
+    Output("accordion", "children"),
+    [Input("joined-ships", "data"), Input("url", "href")],
+)
+def load_data(cached_data, href):
+    if href:
+        initial_df = pd.read_json(cached_data, orient="split")
+        create_accordion(initial_df)

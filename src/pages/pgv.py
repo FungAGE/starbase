@@ -15,35 +15,15 @@ from pygenomeviz.align import Blast, AlignCoord
 from jinja2 import Template
 
 from src.components.tables import make_ship_table
-from src.data.joined_ships import df
 
 dash.register_page(__name__)
 
 ColorCycler.set_cmap("tab10")
 
-specified_columns = [
-    "starshipID",
-    "starship_family",
-    "genus",
-    "species",
-]
-
-
-def is_valid_file(file_path):
-    if isinstance(file_path, str) and os.path.isfile(file_path):
-        return os.path.getsize(file_path) > 0
-    return False
-
-
-df["valid_gff3"] = df["gff3"].apply(lambda x: x if is_valid_file(x) else None)
-df["valid_fna"] = df["fna"].apply(lambda x: x if is_valid_file(x) else None)
-
-filtered_df = df.dropna(subset=["valid_gff3"])
-filtered_df = filtered_df.drop(columns=["valid_gff3", "valid_fna"])
-
 layout = dbc.Container(
     fluid=True,
     children=[
+        dcc.Location(id="url", refresh=False),
         dbc.Row(
             justify="center",
             align="top",
@@ -53,7 +33,7 @@ layout = dbc.Container(
                     sm=12,
                     lg=8,
                     children=[
-                        make_ship_table(filtered_df, specified_columns),
+                        html.Div(id="pgv-table"),
                         dbc.Button(
                             "Show Starship(s) in Viewer",
                             id="update-button",
@@ -237,49 +217,54 @@ def multi_pgv(gff_files, fna_files, tmp_file):
 @callback(
     Output("pgv-figure", "children"),
     Input("update-button", "n_clicks"),
-    State("table", "selected_rows"),
-    State("table", "data"),
+    [
+        State("pgv-table", "selected_rows"),
+        State("pgv-table", "data"),
+    ],
 )
 def update_pgv(n_clicks, selected_rows, table_data):
     if n_clicks > 0:
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
 
         if table_data and selected_rows is not None:
-            table_df = pd.DataFrame(table_data)
+            try:
+                table_df = pd.DataFrame(table_data)
 
-            # Check if selected_rows are within the DataFrame index
-            if isinstance(selected_rows, list) and all(
-                isinstance(idx, int) for idx in selected_rows
-            ):
-                try:
-                    # Ensure selected indices are within the bounds of the DataFrame
-                    rows = table_df.iloc[selected_rows]
-                except IndexError:
-                    return html.Div("Index out of bounds")
+                if isinstance(selected_rows, list) and all(
+                    isinstance(idx, int) for idx in selected_rows
+                ):
+                    try:
+                        rows = table_df.iloc[selected_rows]
+                    except IndexError as e:
+                        return html.Div("Index out of bounds")
 
-                # Ensure the columns exist in the DataFrame
-                if "gff3" in rows.columns and "fna" in rows.columns:
-                    gffs = rows["gff3"].dropna().tolist()
-                    fna = rows["fna"].dropna().tolist()
+                    if "gff3" in rows.columns and "fna" in rows.columns:
+                        gffs = rows["gff3"].dropna().tolist()
+                        fna = rows["fna"].dropna().tolist()
 
-                    # Call the appropriate function based on number of selections
-                    if len(selected_rows) > 1:
-                        if len(selected_rows) > 4:
-                            return html.Div("Select up to four Starships to compare.")
+                        if len(selected_rows) > 1:
+                            if len(selected_rows) > 4:
+                                return html.Div(
+                                    "Select up to four Starships to compare."
+                                )
+                            else:
+                                multi_pgv(gffs, fna, tmp_pgv)
+                        elif len(selected_rows) == 1:
+                            gff_file = rows.iloc[0]["gff3"]
+                            single_pgv(gff_file, tmp_pgv)
                         else:
-                            multi_pgv(gffs, fna, tmp_pgv)
-                    elif len(selected_rows) == 1:
-                        gff_file = rows.iloc[0]["gff3"]
-                        single_pgv(gff_file, tmp_pgv)
-                    else:
-                        return html.Div("No valid selection.")
+                            return html.Div("No valid selection.")
 
-                    # Ensure the file is written and read correctly
-                    with open(tmp_pgv, "r") as file:
+                        try:
+                            with open(tmp_pgv, "r") as file:
+                                pgv_content = file.read()
+                        except IOError:
+                            return html.Div("Failed to read the temporary file.")
+
                         return html.Div(
                             [
                                 html.Iframe(
-                                    srcDoc=file.read(),
+                                    srcDoc=pgv_content,
                                     style={
                                         "width": "100%",
                                         "height": "500px",
@@ -288,16 +273,56 @@ def update_pgv(n_clicks, selected_rows, table_data):
                                 )
                             ]
                         )
+                    else:
+                        return html.H4("Required columns are missing from the data.")
                 else:
-                    return html.H4("Required columns are missing from the data.")
-            else:
-                return html.H4("Invalid row selection.")
+                    return html.H4("Invalid row selection.")
+            except Exception as e:
+                print("Exception:", e)
+                return html.H4("Error processing data.")
         else:
             return html.H4("Select Starship(s) to visualize.")
     else:
         return html.H4(
-            "Select the Starship(s) in the table above to and click the button to visualize."
+            "Select the Starship(s) in the table above and click the button to visualize."
         )
+
+
+def is_valid_file(file_path):
+    if isinstance(file_path, str) and os.path.isfile(file_path):
+        return os.path.getsize(file_path) > 0
+    return False
+
+
+@callback(
+    Output("pgv-table", "children"),
+    [
+        Input("joined-ships", "data"),
+        Input("url", "href"),
+    ],
+)
+def load_ship_table(cached_data, href):
+    if href:
+        initial_df = pd.DataFrame(cached_data)
+
+        specified_columns = [
+            "starshipID",
+            "starship_family",
+            "genus",
+            "species",
+        ]
+
+        initial_df["valid_gff3"] = initial_df["gff3"].apply(
+            lambda x: x if is_valid_file(x) else None
+        )
+        initial_df["valid_fna"] = initial_df["fna"].apply(
+            lambda x: x if is_valid_file(x) else None
+        )
+
+        filtered_df = initial_df.dropna(subset=["valid_gff3"])
+        filtered_df = filtered_df.drop(columns=["valid_gff3", "valid_fna"])
+        table = make_ship_table(filtered_df, "pgv-table", specified_columns)
+        return table
 
 
 # inject_svg_to_html(

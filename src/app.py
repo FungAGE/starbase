@@ -1,12 +1,13 @@
 import dash_bootstrap_components as dbc
-from dash import Dash, html
 import dash
+from dash import Dash, html, dcc
 from flask import Flask
 from src.components import navmenu
 from src.components.callbacks import (
     dl_package,
     update_fasta_upload,
     update_gff_upload,
+    load_ship_metadata,
     update_dataset,
 )
 
@@ -40,15 +41,23 @@ app = Dash(
 
 
 def serve_app_layout():
-    return html.Div([navmenu.navmenu(), html.Div(dash.page_container)])
+    return html.Div(
+        [
+            navmenu.navmenu(),
+            html.Div(dash.page_container),
+            dcc.Location(id="url", refresh=False),
+            dcc.Store(id="joined-ships"),
+        ]
+    )
 
-
-app.layout = serve_app_layout
 
 dl_package(app)
 update_fasta_upload(app)
 update_gff_upload(app)
+load_ship_metadata(app)
 update_dataset(app)
+
+app.layout = serve_app_layout
 
 if __name__ == "__main__":
     app.run_server()
