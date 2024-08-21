@@ -24,8 +24,6 @@ ColorCycler.set_cmap("tab10")
 specified_columns = [
     "starshipID",
     "starship_family",
-    "starship_navis",
-    "starship_haplotype",
     "genus",
     "species",
 ]
@@ -127,16 +125,18 @@ def plot_legend(gv):
     return fig
 
 
-def add_gene_feature(gene, track):
-    gene_name = str(gene.qualifiers.get("Alias", [""])[0])
+def add_gene_feature(gene, track, idx=None):
 
     start = int(gene.location.start)
     end = int(gene.location.end)
     strand = gene.location.strand
+    gene_name = str(gene.qualifiers.get("Alias", [""])[0])
+    attributes = gene.qualifiers
 
     # BUG: there is still an issue with SeqFeature end coordinates being less than start coordinates
-    if end < start:
-        start, end = end, start
+    if (end < start) and idx is not None:
+        gene.reverse_complement(id=True, name=True, description=True)
+        # start, end = end, start
 
     if "tyr" in gene_name:
         color = "#dc267fff"
@@ -146,7 +146,13 @@ def add_gene_feature(gene, track):
         color = "#ffb000ff"
 
     track.add_feature(
-        start=start, end=end, strand=strand, lw=1, color=color, label_type="gene"
+        start=start,
+        end=end,
+        strand=strand,
+        lw=1,
+        color=color,
+        label_type="gene",
+        extra_tooltip=attributes,
     )
 
     return track
@@ -199,10 +205,10 @@ def multi_pgv(gff_files, fna_files, tmp_file):
     for gff in gff_list:
 
         track = gv.add_feature_track(gff.name, gff.get_seqid2size(), align_label=False)
-        for seqid, features in gff.get_seqid2features("gene").items():
+        for idx, (seqid, features) in enumerate(gff.get_seqid2features("gene").items()):
             segment = track.get_segment(seqid)
             for gene in features:
-                add_gene_feature(gene, segment)
+                add_gene_feature(gene, segment, idx)
 
     # Run BLAST alignment & filter by user-defined threshold
     align_coords = Blast(fna_files, seqtype="protein").run()
