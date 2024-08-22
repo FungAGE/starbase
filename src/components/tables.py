@@ -75,45 +75,51 @@ def make_paper_table(data="src/data/papers.csv"):
     paper_table = dbc.Card(
         [
             dbc.CardHeader(
-                html.H3(
-                    "Manuscripts Characterizing Starships",
+                html.Div(
+                    ["Manuscripts Characterizing Starships"],
+                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
                 )
             ),
             dbc.CardBody(
                 [
-                    html.P(
-                        [
-                            dash_table.DataTable(
-                                data=sub_df.to_dict("records"),
-                                sort_action="none",
-                                columns=[
-                                    {
-                                        "name": i,
-                                        "id": i,
-                                        "deletable": False,
-                                        "selectable": False,
-                                        "presentation": "markdown",
-                                    }
-                                    for i in sub_df.columns
-                                ],
-                                id="papers-table",
-                                markdown_options={"html": True},
-                                style_data={
-                                    "whiteSpace": "normal",
-                                    "height": "auto",
-                                    "minWidth": "150px",
-                                    "width": "150px",
-                                    "maxWidth": "150px",
-                                    "overflow": "hidden",
-                                    "overflowX": "auto",
-                                    "textOverflow": "ellipsis",
-                                },
-                            )
+                    dash_table.DataTable(
+                        data=sub_df.to_dict("records"),
+                        sort_action="none",
+                        columns=[
+                            {
+                                "name": i,
+                                "id": i,
+                                "deletable": False,
+                                "selectable": False,
+                                "presentation": "markdown",
+                            }
+                            for i in sub_df.columns
                         ],
-                        className="box-body",
+                        id="papers-table",
+                        markdown_options={"html": True},
+                        style_table={
+                            "overflowX": "auto",  # Enable horizontal scrolling
+                        },
+                        style_data={
+                            "whiteSpace": "normal",  # Allow text to wrap
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                        },
+                        style_cell={
+                            "minWidth": "120px",  # Minimum column width
+                            "maxWidth": "100%",  # Maximum column width
+                            "textAlign": "left",  # Align text to the left
+                            "padding": "5px",  # Add padding for better spacing
+                        },
+                        style_header={
+                            "backgroundColor": "lightgrey",
+                            "fontWeight": "bold",
+                            "textAlign": "left",
+                        },
                     ),
                 ]
             ),
         ]
     )
+
     return paper_table

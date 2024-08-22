@@ -25,42 +25,6 @@
   margin: 10px;
 }
 
-/* Container to hold the entire content of the app */
-.container {
-  width: 100%;
-  max-width: 3000px; /* Limits the width on larger screens */
-  margin: 0 auto; /* Centers the content */
-  padding: 0 20px; /* Adds padding on smaller screens */
-}
-
-/* Grid Layout with two columns (for larger screens) */
-.two-column-layout {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.column {
-  flex: 1; /* Makes columns take equal width */
-  padding: 10px;
-}
-
-/* Single column layout for mobile devices */
-@media screen and (max-width: 768px) {
-  .two-column-layout {
-    flex-direction: column;
-  }
-}
-
-/* Responsive form controls */
-.form-control {
-  width: 100%;
-  padding: 10px;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
 .text-red {
   color: red;
 }
@@ -81,8 +45,9 @@
   width: 100%; /* Full-width button on mobile */
 }
 
-.button:hover {
-  background-color: #0056b3;
+/* Text sizing for different screen sizes */
+.text-custom {
+  font-size: 1rem; /* Default font size */
 }
 
 /* Responsive text classes */
@@ -99,7 +64,7 @@
 .responsive-img {
   width: 100%;
   height: auto;
-  max-width: 400px;
+  max-width: 1000px;
 }
 
 /* Padding for larger elements */
@@ -112,15 +77,88 @@
   display: none;
 }
 
+/* For larger elements that shrink on small screens */
+.auto-resize {
+  width: 100%;
+  max-width: 500px;
+  height: auto;
+}
+
+/* Column widths for different screen sizes */
+.col-custom {
+  flex: 1 1 100%; /* Default to full width */
+}
+
+/* Ensure card header scales with text size and prevents overflow */
+.card-header-custom {
+  display: flex;
+  align-items: center; /* Center align items vertically */
+  padding: 1rem; /* Adjust padding as needed */
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+  overflow-wrap: break-word; /* Ensure long words break and wrap */
+}
+
 @media screen and (min-width: 769px) {
   .hide-on-mobile {
     display: block;
   }
 }
 
-/* For larger elements that shrink on small screens */
-.auto-resize {
-  width: 100%;
-  max-width: 500px;
-  height: auto;
+@media (min-width: 576px) {
+  /* Small screens and up */
+  .col-custom-sm {
+    flex: 1 1 50%; /* 50% width on small screens */
+    padding: 1rem;
+  }
+
+  /* Small screens and up */
+  .text-custom-sm {
+    font-size: 1.2rem; /* Larger font size on small screens */
+  }
+  .card-header-custom {
+    padding: 1.2rem;
+  }
+}
+
+@media (min-width: 768px) {
+  /* Medium screens and up */
+  .col-custom-md {
+    flex: 1 1 33.33%; /* 33.33% width on medium screens */
+    padding: 1.5rem;
+  }
+  /* Medium screens and up */
+  .text-custom-md {
+    font-size: 1.4rem; /* Larger font size on medium screens */
+  }
+  .card-header-custom {
+    padding: 1.4rem;
+  }
+}
+
+@media (min-width: 992px) {
+  /* Large screens and up */
+  .col-custom-lg {
+    flex: 1 1 25%; /* 25% width on large screens */
+    padding: 2rem;
+  }
+  .text-custom-lg {
+    font-size: 1.6rem; /* Larger font size on large screens */
+  }
+  .card-header-custom {
+    padding: 1.6rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  /* Extra large screens and up */
+  .col-custom-xl {
+    flex: 1 1 20%; /* 20% width on extra large screens */
+    padding: 2.5rem;
+  }
+  .text-custom-xl {
+    font-size: 1.8rem; /* Larger font size on extra large screens */
+  }
+  .card-header-custom {
+    padding: 1.8rem;
+  }
 }
