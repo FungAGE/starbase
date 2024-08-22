@@ -307,7 +307,7 @@ def load_ship_table(cached_data, href):
 
         specified_columns = [
             "starshipID",
-            "starship_family",
+            "familyName",
             "genus",
             "species",
         ]

@@ -139,9 +139,10 @@ def load_ship_metadata(app):
                 conn = sqlite3.connect("database_folder/starbase.sqlite")
 
                 query = """
-                SELECT j.*, o.order, o.family
+                SELECT j.*, o."order", o.family, f.familyName, f.type_element_reference
                 FROM joined_ships j
                 JOIN genome_taxonomy o ON j.taxid = o.taxID
+                JOIN family_names f ON j.ship_family_id = f.id
                 """
                 df = pd.read_sql_query(query, conn)
 
@@ -169,43 +170,50 @@ def update_dataset(app):
             Output("ship-count", "children"),
             Output("species-card-header", "children"),
             Output("species-count", "children"),
+            Output("curated-status", "data"),
         ],
         [Input("joined-ships", "data"), Input("curated-input", "value")],
     )
     def curated_switch(cached_data, switches_value):
         initial_df = pd.DataFrame(cached_data)
-        df_filtered = initial_df.copy()
-        curated_status = ""
 
-        if switches_value == 1:
-            df_filtered = df_filtered[df_filtered["curated_status"] == "curated"]
+        if switches_value:
+            df_filtered = initial_df[initial_df["curated_status"] == "curated"]
             curated_status = "curated "
+        else:
+            df_filtered = initial_df
+            curated_status = ""
 
-        ship_count = df_filtered[["starshipID"]].nunique()[0]
+        ship_count = df_filtered["starshipID"].nunique()
         species = df_filtered["genus"] + "-" + df_filtered["species"]
         species_count = species.nunique()
 
         data = df_filtered.to_dict(orient="records")
-        ship_card_header = (
-            html.H4(
-                html.P(
-                    [
-                        f"Total number {curated_status}of Starships in ",
-                        html.Span(
-                            "starbase",
-                            className="logo-text",
-                        ),
-                        ":",
-                    ]
-                ),
-                className="card-title",
+
+        ship_card_header = html.H4(
+            html.P(
+                [
+                    f"Total number {curated_status}of Starships in ",
+                    html.Span(
+                        "starbase",
+                        className="logo-text",
+                    ),
+                    ":",
+                ]
             ),
+            className="card-title",
         )
-        species_card_header = (
-            html.H4(
-                f"Fungal species with {curated_status}Starships",
-                className="card-title",
-            ),
+        species_card_header = html.H4(
+            f"Fungal species with {curated_status}Starships",
+            className="card-title",
         )
 
-        return data, ship_card_header, ship_count, species_card_header, species_count
+        # Return the filtered data, card headers, and counts
+        return (
+            data,
+            ship_card_header,
+            ship_count,
+            species_card_header,
+            species_count,
+            curated_status,
+        )

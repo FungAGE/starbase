@@ -62,8 +62,9 @@ def make_logo(seqs):
     # Write sequences to the temporary input file
     with open(temp_in_file.name, "w") as file:
         for idx, seq in enumerate(seqs):
-            header = f">seq{idx + 1}"
-            file.write(f"{header}\n{seq}\n")
+            if seq != ".":
+                header = f">seq{idx + 1}"
+                file.write(f"{header}\n{seq}\n")
 
     if os.path.exists(temp_in_file.name) and os.path.getsize(temp_in_file.name) > 0:
 
