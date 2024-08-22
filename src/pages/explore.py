@@ -16,14 +16,14 @@ dash.register_page(__name__)
 
 specified_columns = [
     "starshipID",
-    "starship_family",
+    "familyName",
     "starship_navis",
     "starship_haplotype",
     "genus",
     "species",
 ]
 
-ship_groups = ["starship_family", "starship_navis"]
+ship_groups = ["familyName", "starship_navis"]
 ship_title = "Starships by Family/Navis"
 tax_groups = ["order", "family"]
 tax_title = "Starships by Order/Family"
@@ -37,21 +37,16 @@ curated_switch = dbc.Row(
             lg=6,
             sm=8,
             children=[
-                dbc.RadioItems(
-                    options=[
-                        {"label": "Use just curated Starships", "value": 1},
-                    ],
-                    value=[],
+                dbc.Switch(
                     id="curated-input",
-                    switch=True,
-                    inline=True,
-                    label_style={
-                        "fontSize": "24px",
-                    },  # Controls label size
+                    label="Use just curated Starships",
+                    value=False,
                     style={
-                        "fontSize": "20px",
+                        "display": "flex",
+                        "alignItems": "baseline",
                         "transform": "scale(1.5)",
-                    },  # Controls radio button size
+                        "justify-content": "center",
+                    },
                 ),
             ],
         )
@@ -103,7 +98,8 @@ tax_card = (
 layout = html.Div(
     [
         dcc.Location(id="url", refresh=False),
-        dcc.Store("curated-dataset"),
+        dcc.Store(id="curated-dataset"),
+        dcc.Store(id="curated-status"),
         # dcc.Store(id="phylogeny-cache"),
         # dcc.Store(id="pie-chart-cache"),
         dbc.Container(
@@ -276,7 +272,7 @@ def update_sunburst(
 
     if phylo_clickData:
         selected_clades = [phylo_clickData["points"][0]["text"]]
-        plot_df = initial_df[initial_df["starship_family"].isin(selected_clades)]
+        plot_df = initial_df[initial_df["familyName"].isin(selected_clades)]
 
     if selected1:
         path1 = [point["label"] for point in selected1["points"]]
@@ -330,18 +326,18 @@ def update_phylogeny_tree(
     if selected_rows:
         table_df = pd.DataFrame(table_data)
         rows = table_df.iloc[selected_rows]
-        for row in rows["starship_family"]:
+        for row in rows["familyName"]:
             selected_clades.append(row)
 
     if clickData1:
         path1 = [point["label"] for point in clickData1["points"]]
         selection_df = initial_df[initial_df[ship_groups[0]].isin(path1)]
-        selected_clades = selection_df["starship_family"].unique()
+        selected_clades = selection_df["familyName"].unique()
 
     if clickData2:
         path2 = [point["label"] for point in clickData2["points"]]
         selection_df = initial_df[initial_df[tax_groups[0]].isin(path2)]
-        selected_clades = selection_df["starship_family"].unique()
+        selected_clades = selection_df["familyName"].unique()
     print(selected_clades)
     fig = plot_tree(tree_file, metadata, selected_clades)
     return fig

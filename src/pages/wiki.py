@@ -18,12 +18,13 @@ def create_accordion_item(df, category):
     if category == "nan":
         return None
     else:
-        filtered_df = df[df["starship_family"] == category]
+        filtered_df = df[df["familyName"] == category]
         n_ships = len(filtered_df["checksum"].dropna().unique())
         min_size = min(filtered_df["size"].dropna())
         max_size = max(filtered_df["size"].dropna())
         upDRs = filtered_df["upDR"].dropna().tolist()
         downDRs = filtered_df["downDR"].dropna().tolist()
+        type_element_reference = filtered_df["type_element_reference"].dropna().unique()
         sunburst = create_sunburst_plot(
             df=filtered_df,
             groups=["genus", "species"],
@@ -37,34 +38,47 @@ def create_accordion_item(df, category):
             html.H5(f"Total Number of Starships in {category}: {n_ships}"),
             html.H5(f"Maximum Starship Size (bp): {max_size}"),
             html.H5(f"Minimum Starship Size (bp): {min_size}"),
-            dcc.Graph(figure=sunburst),
         ]
 
-        if uplogo:
+        if type_element_reference is not None:
             accordion_content.append(
-                dbc.Row(
-                    [
-                        html.H5(f"Sequence logo of upstream DRs in {category}"),
-                        html.Img(
-                            src=f"data:image/png;base64,{uplogo}",
-                            style={"width": "50%"},
-                        ),
-                    ]
+                html.H5(
+                    f"Reference for defining type element in family: {type_element_reference}"
                 )
             )
 
-        if downlogo:
-            accordion_content.append(
-                dbc.Row(
-                    [
-                        html.H5(f"Sequence logo of downstream DRs in {category}"),
-                        html.Img(
-                            src=f"data:image/png;base64,{downlogo}",
-                            style={"width": "50%"},
-                        ),
-                    ]
-                )
+        accordion_content.append(dcc.Graph(figure=sunburst))
+
+        if uplogo:
+            uplogo_img = dbc.Col(
+                lg=6,
+                sm=12,
+                children=[
+                    html.H5(f"Sequence logo of upstream DRs in {category}"),
+                    html.Img(
+                        src=f"data:image/png;base64,{uplogo}",
+                        style={"width": "100%"},
+                    ),
+                ],
             )
+        if downlogo:
+            downlogo_img = dbc.Col(
+                lg=6,
+                sm=12,
+                children=[
+                    html.H5(f"Sequence logo of downstream DRs in {category}"),
+                    html.Img(
+                        src=f"data:image/png;base64,{downlogo}",
+                        style={"width": "100%"},
+                    ),
+                ],
+            )
+        if uplogo and downlogo:
+            accordion_content.append(dbc.Row([uplogo_img, downlogo_img]))
+        elif uplogo and not downlogo:
+            accordion_content.append(dbc.Row([uplogo_img]))
+        elif downlogo and not uplogo:
+            accordion_content.append(dbc.Row([downlogo_img]))
 
         return dbc.AccordionItem(
             title=category,
@@ -74,7 +88,7 @@ def create_accordion_item(df, category):
 
 
 def create_accordion(df):
-    unique_categories = df["starship_family"].dropna().unique().tolist()
+    unique_categories = df["familyName"].dropna().unique().tolist()
     assert isinstance(unique_categories, list), "unique_categories must be a list"
 
     accordion_items = [
@@ -126,11 +140,17 @@ layout = dbc.Container(
                     lg=6,
                     sm=12,
                     children=[
-                        dbc.Stack(
-                            children=html.Div(id="accordion"),
-                            direction="vertical",
-                            gap=3,
-                        )
+                        dcc.Loading(
+                            id="wiki-loading",
+                            type="default",
+                            children=[
+                                dbc.Stack(
+                                    children=html.Div(id="accordion"),
+                                    direction="vertical",
+                                    gap=3,
+                                )
+                            ],
+                        ),
                     ],
                 ),
             ],
@@ -144,6 +164,7 @@ layout = dbc.Container(
     [Input("joined-ships", "data"), Input("url", "href")],
 )
 def load_data(cached_data, href):
-    if href:
-        initial_df = pd.read_json(cached_data, orient="split")
-        create_accordion(initial_df)
+    if cached_data:
+        initial_df = pd.DataFrame(cached_data)
+        return create_accordion(initial_df)
+    return []
