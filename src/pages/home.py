@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore")
 
 import dash
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 from dash import dcc, html
 from src.components.tables import make_paper_table
 
@@ -49,15 +50,12 @@ not_working_ul = html.Ul(
     ],
 )
 
-layout = dbc.Container(
+layout = dmc.Container(
     fluid=True,
     children=[
-        dbc.Row(
-            justify="center",
-            align="top",
-            style={"padding": "20px"},
+        dmc.Center(
             children=[
-                html.Div(
+                dmc.Title(
                     [
                         html.Span(
                             "starbase: ",
@@ -65,20 +63,20 @@ layout = dbc.Container(
                         ),
                         "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
                     ],
-                    className="text-center text-custom text-custom-xl",
+                    className="text-center",
+                    style={"paddingTop": "20px"},
+                    # className="text-center text-custom text-custom-xl",
                 ),
             ],
         ),
-        dbc.Row(
+        dmc.Grid(
             justify="center",
-            align="top",
+            align="center",
+            style={"paddingTop": "20px"},
+            gutter="xl",
             children=[
-                dbc.Col(
-                    xs=12,
-                    sm=6,
-                    md=6,
-                    lg=4,
-                    xl=4,
+                dmc.GridCol(
+                    span="content",
                     children=[
                         dbc.Card(
                             [
@@ -117,12 +115,8 @@ layout = dbc.Container(
                         ),
                     ],
                 ),
-                dbc.Col(
-                    xs=12,
-                    sm=6,
-                    md=6,
-                    lg=4,
-                    xl=4,
+                dmc.GridCol(
+                    span="content",
                     children=[
                         dbc.Card(
                             [
@@ -153,12 +147,8 @@ layout = dbc.Container(
                         ),
                     ],
                 ),
-                dbc.Col(
-                    xs=12,
-                    sm=10,
-                    md=8,
-                    lg=4,
-                    xl=4,
+                dmc.GridCol(
+                    span=8,
                     children=[
                         dbc.Card(
                             [
@@ -173,7 +163,7 @@ layout = dbc.Container(
                                 ),
                                 dbc.CardBody(
                                     [
-                                        html.Div(
+                                        dmc.Text(
                                             [
                                                 "We have been maintaining ",
                                                 html.Span(
@@ -200,7 +190,7 @@ layout = dbc.Container(
                                                     ),
                                                     id="dl-button",
                                                     color="primary",
-                                                    className="mx-auto",
+                                                    class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
                                                 ),
                                                 dcc.Download(id="dl-package"),
                                             ],
@@ -214,19 +204,16 @@ layout = dbc.Container(
                     ],
                 ),
             ],
-            className="g-3",
         ),
-        dbc.Row(
+        dmc.Grid(
             justify="center",
-            align="top",
+            align="center",
             style={"paddingTop": "20px"},
+            gutter="xl",
+            grow=True,
             children=[
-                dbc.Col(
-                    xs=12,
-                    sm=10,
-                    md=10,
-                    lg=6,
-                    xl=6,
+                dmc.GridCol(
+                    span="content",
                     children=[
                         dbc.Card(
                             [
@@ -241,15 +228,10 @@ layout = dbc.Container(
                                 ),
                                 dbc.CardBody(
                                     [
-                                        dbc.Row(
+                                        dmc.Grid(
                                             [
-                                                dbc.Col(
-                                                    className="col-custom",
-                                                    xs=12,
-                                                    sm=10,
-                                                    md=10,
-                                                    lg=6,
-                                                    xl=6,
+                                                dmc.GridCol(
+                                                    span="content",
                                                     children=[
                                                         html.Div(
                                                             [
@@ -289,24 +271,15 @@ layout = dbc.Container(
                                                         ),
                                                     ],
                                                 ),
-                                                dbc.Col(
-                                                    className="col-custom",
-                                                    xs=12,
-                                                    sm=8,
-                                                    md=8,
-                                                    lg=4,
-                                                    xl=4,
+                                                dmc.GridCol(
+                                                    span="content",
                                                     children=[
-                                                        dbc.CardImg(
+                                                        dmc.Image(
                                                             src="assets/images/starship-model.png",
                                                             style={
                                                                 "backgroundColor": "white",
-                                                                "margin": "auto",
-                                                                "display": "block",
-                                                                "height": "100%",
-                                                                "object-fit": "cover",
+                                                                "maxWidth": "1000px",
                                                             },
-                                                            className="responsive-img",
                                                         )
                                                     ],
                                                 ),
@@ -324,18 +297,13 @@ layout = dbc.Container(
                         ),
                     ],
                 ),
-                dbc.Col(
-                    xs=12,
-                    sm=10,
-                    md=10,
-                    lg=6,
-                    xl=6,
+                dmc.GridCol(
+                    span="content",
                     children=[
                         make_paper_table(),
                     ],
                 ),
             ],
-            className="g-3",
         ),
     ],
 )
