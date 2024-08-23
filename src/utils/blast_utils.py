@@ -105,10 +105,10 @@ def guess_seq_type(query_seq):
         prot_count = sum(1 for aa in query_seq.upper() if aa in prot_char)
         if nucl_count == prot_count:
             query_guess = "nucl"
-            print("Query is nucleotide sequence")
+            # print("Query is nucleotide sequence")
         else:
             query_guess = "prot"
-            print("Query is protein sequence")
+            # print("Query is protein sequence")
 
         return query_guess
     else:
@@ -138,10 +138,10 @@ def clean_lines(query_list):
     # Guess if sequence is nucleotide or protein
     if prot_count >= (0.1 * len(cleaned_seq)):
         query_type = "prot"
-        print("Query is protein sequence")
+        # print("Query is protein sequence")
     else:
         query_type = "nucl"
-        print("Query is nucleotide sequence")
+        # print("Query is nucleotide sequence")
 
     return {**query_list, "query_type": query_type, "cleaned_query": cleaned_seq}
 
@@ -149,7 +149,7 @@ def clean_lines(query_list):
 def run_blast(
     db_list=None,
     query_type=None,
-    tmp_query_fasta=None,
+    query_fasta=None,
     tmp_blast=None,
     input_eval=None,
     threads=None,
@@ -167,10 +167,10 @@ def run_blast(
         blast_program = NcbitblastnCommandline
 
     if os.path.exists(blastdb) and os.path.getsize(blastdb) > 0:
-        print("Performing BLAST search...")
+        # print("Performing BLAST search...")
         # Perform the BLAST search
         blast_cline = blast_program(
-            query=tmp_query_fasta,
+            query=query_fasta,
             db=blastdb,
             evalue=input_eval,
             out=tmp_blast,
@@ -228,65 +228,45 @@ def run_hmmer(
     input_genes="tyr",
     input_eval=None,
     query_fasta=None,
+    tmp_hmmer=None,
+    tmp_hmmer_parsed=None,
     threads=None,
 ):
-    hmmer_db = None
-    if input_genes is not None:
-        if query_type == "prot":
-            hmmer_program = "hmmsearch"
-            hmmer_db = db_list["gene"][input_genes]["hmm"]
+    hmmer_db = ""
+    if input_genes:
+        hmmer_program = "hmmsearch"
+        hmmer_db = db_list["gene"][input_genes]["hmm"][query_type]
 
-            if os.path.exists(hmmer_db) and os.path.getsize(hmmer_db) > 0:
-                # Run HMMER search
-                tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-                hmmer_cmd = f"{hmmer_program} -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
-                print("Running hmmsearch...")
-                subprocess.run(hmmer_cmd, shell=True)
+        if os.path.exists(hmmer_db) and os.path.getsize(hmmer_db) > 0:
+            # Run HMMER search
+            hmmer_cmd = f"{hmmer_program} -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
+            subprocess.run(hmmer_cmd, shell=True)
 
-                # Parse HMMER output
-                tmp_hmmer_parsed = tempfile.NamedTemporaryFile(
-                    suffix=".hmmer.parsed.txt"
-                ).name
-                n_records = parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
-                print(f"Number of hmmsearch records: {n_records}")
+            parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
 
-                # extract sequence from results
-                # extract_hmmer(tmp_hmmer_parsed)
+            # extract sequence from results
+            # extract_hmmer(tmp_hmmer_parsed)
 
-                # Read parsed output into DataFrame
-                hmmer_results = pd.read_csv(
-                    tmp_hmmer_parsed,
-                    sep="\t",
-                    names=[
-                        "query_id",
-                        "hit_IDs",
-                        "aln_length",
-                        "query_start",
-                        "query_end",
-                        "gaps",
-                        "query_seq",
-                        "subject_seq",
-                        "evalue",
-                        "bitscore",
-                    ],
-                )
-                return hmmer_results
-            else:
-                raise ValueError("Issue accessing HMM database")
+            # Read parsed output into DataFrame
+            hmmer_results = pd.read_csv(
+                tmp_hmmer_parsed,
+                sep="\t",
+            )
+
+            return hmmer_results
+        else:
+            raise ValueError("Issue accessing HMM database")
     if hmmer_db is None:
         return None
 
 
 # Parse the HMMER results
 def parse_hmmer(hmmer_output_file, parsed_file):
-    print("Parsing hmmer output...")
     with open(parsed_file, "w") as tsv_file:
         tsv_file.write(
             "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
         )
-        n_records = 0
         for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
-            n_records = +1
             for hit in record.hits:
                 for hsp in hit.hsps:
                     query_seq = str(hsp.query.seq)
@@ -300,7 +280,6 @@ def parse_hmmer(hmmer_output_file, parsed_file):
                     tsv_file.write(
                         f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
                     )
-        return n_records
 
 
 def extract_hmmer(parsed_file):
@@ -431,8 +410,8 @@ def blast_chords(blast_output):
         if not circos_graph_data or not circos_layout:
             return html.Div(["No valid data found for the BLAST search."])
 
-        print("Circos graph data:", circos_graph_data)
-        print("Circos layout data:", circos_layout)
+        # print("Circos graph data:", circos_graph_data)
+        # print("Circos layout data:", circos_layout)
 
         # Minimal Circos plot configuration
         try:
@@ -498,7 +477,7 @@ def blast_table(ship_blast_results):
                 id="ship-blast-table",
                 editable=False,
                 sort_action="native",
-                sort_by=[{"column_id": "pident", "direction": "desc"}],
+                sort_by=[{"column_id": "evalue", "direction": "asc"}],
                 sort_mode="single",
                 row_selectable="single",
                 selected_rows=[0],
@@ -536,18 +515,31 @@ def blast_table(ship_blast_results):
 
 
 def select_ship_family(hmmer_results):
+    # Ensure evalue is numeric, drop rows with NaN in evalue
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
     hmmer_results.dropna(subset=["evalue"], inplace=True)
-    idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
+
+    # Check if the DataFrame is empty after dropping NaN values
+    if hmmer_results.empty:
+        return None, None, None
+
+    # Group by query_id and find the index of the minimum evalue
     try:
+        idx_min_evalue = hmmer_results.groupby("query_id")["evalue"].idxmin()
+
+        # Ensure idx_min_evalue is not empty
+        if idx_min_evalue.empty:
+            return None, None, None
+
+        # Get the superfamily, alignment length, and evalue for the best match
         superfamily = hmmer_results.loc[idx_min_evalue, "hit_IDs"].iloc[0]
         aln_length = hmmer_results.loc[idx_min_evalue, "aln_length"].iloc[0]
         evalue = hmmer_results.loc[idx_min_evalue, "evalue"].iloc[0]
-    except IndexError:
-        superfamily, aln_length, evalue = None, None, None
+    except (IndexError, KeyError) as e:
+        # Handle any errors like IndexError or missing columns
+        return None, None, None
 
-    if superfamily is not None:
-        return superfamily, aln_length, evalue
+    return superfamily, aln_length, evalue
 
 
 def run_lastz(query_type, seqs, output_file):

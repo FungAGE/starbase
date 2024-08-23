@@ -139,7 +139,7 @@ def load_ship_metadata(app):
                 conn = sqlite3.connect("database_folder/starbase.sqlite")
 
                 query = """
-                SELECT j.*, o."order", o.family, f.familyName, f.type_element_reference
+                SELECT j.*, o."order", o.family, f.longFamilyID, f.familyName, f.type_element_reference
                 FROM joined_ships j
                 JOIN genome_taxonomy o ON j.taxid = o.taxID
                 JOIN family_names f ON j.ship_family_id = f.id
