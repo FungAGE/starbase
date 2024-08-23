@@ -38,7 +38,10 @@ db_list = {
         "tyr": {
             "nucl": "database_folder/Starships/captain/tyr/fna/blastdb/concatenated.fa",
             "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
-            "hmm": "database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm",
+            "hmm": {
+                "nucl": "database_folder/Starships/captain/tyr/fna/hmm/YRsuperfamRefs.mafft.hmm",
+                "prot": "database_folder/Starships/captain/tyr/faa/hmm/YRsuperfams.p1-512.hmm",
+            },
         },
         "nlr": {
             "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
@@ -177,8 +180,8 @@ layout = dbc.Container(
     ],
     [
         Input("submit-button", "n_clicks"),
-        State("query-text", "value"),
-        State("fasta-upload", "contents"),
+        Input("query-text", "value"),
+        Input("fasta-upload", "contents"),
     ],
 )
 def preprocess(n_clicks, query_text_input, query_file_contents):
@@ -209,19 +212,18 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
     ],
 )
 def fetch_blast_hmmer_results(query_header, query_seq, query_type):
-    if not query_header or not query_seq or not query_type:
-        raise PreventUpdate
-
     try:
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
         tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
+        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
+        tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
 
         # Run BLAST
         blast_results = run_blast(
             db_list=db_list,
             query_type=query_type,
-            tmp_query_fasta=tmp_query_fasta,
+            query_fasta=tmp_query_fasta,
             tmp_blast=tmp_blast,
             input_eval=0.01,
             threads=2,
@@ -230,18 +232,23 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
             raise ValueError("BLAST returned no results!")
         blast_results_dict = blast_results.to_dict("records")
 
-        # Run HMMER
-        hmmer_results = run_hmmer(
-            db_list=db_list,
-            query_type=query_type,
-            input_genes="tyr",
-            input_eval=0.01,
-            query_fasta=tmp_query_fasta,
-            threads=2,
-        )
+        # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
+        if query_type == "prot":
+            # Run HMMER
+            hmmer_results = run_hmmer(
+                db_list=db_list,
+                query_type=query_type,
+                input_genes="tyr",
+                input_eval=0.01,
+                query_fasta=tmp_query_fasta,
+                tmp_hmmer=tmp_hmmer,
+                tmp_hmmer_parsed=tmp_hmmer_parsed,
+                threads=2,
+            )
 
-        if hmmer_results is not None:
-            # Convert HMMER results DataFrame to dict
+            if hmmer_results is None:
+                raise ValueError("hmmsearch returned no results!")
+
             hmmer_results_dict = hmmer_results.to_dict("records")
         else:
             hmmer_results_dict = None
@@ -249,6 +256,7 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
         return blast_results_dict, hmmer_results_dict
 
     except Exception as e:
+        print(f"Error: {str(e)}")
         return None, None
 
 
@@ -262,118 +270,130 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
         Input("blast-results-store", "data"),
         Input("hmmer-results-store", "data"),
     ],
+    [
+        State("submit-button", "n_clicks"),
+        State("joined-ships", "data"),
+        State("query-type-store", "data"),
+    ],
 )
-def update_ui(blast_results_dict, hmmer_results_dict):
-    if blast_results_dict:
-        # Render BLAST table
-        blast_results_df = pd.DataFrame(blast_results_dict)
-        ship_table = blast_table(blast_results_df)
+def update_ui(
+    blast_results_dict, hmmer_results_dict, n_clicks, cached_data, query_type
+):
+    ship_family = None
+    family = None
+    ship_family = None
+    ship_tree = None
+
+    if blast_results_dict is None and hmmer_results_dict is None:
+        raise PreventUpdate
+
+    if n_clicks:
+        initial_df = pd.DataFrame(cached_data)
+        if blast_results_dict:
+            # Render BLAST table
+            blast_results_df = pd.DataFrame(blast_results_dict)
+            ship_table = blast_table(blast_results_df)
 
         # Process HMMER results and render family and tree
-        ship_family = ""
-        ship_tree = ""
-
-        if hmmer_results_dict:
-            hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-            try:
-                superfamily, family_aln_length, family_evalue = select_ship_family(
-                    hmmer_results_df
-                )
-                if superfamily:
-                    ship_family = html.Div(
-                        [
-                            html.H4(
-                                [
-                                    f"Your sequence is likely in Starship family: {superfamily}",
-                                    f"(Alignment length ={family_aln_length}, evalue = {family_evalue})",
-                                ]
-                            )
-                        ]
-                    )
-                    ship_tree = dcc.Graph(
-                        # id="blast-phylogeny",
-                        className="div-card",
-                        figure=plot_tree(
-                            tree_file, metadata, highlight_clades=superfamily
-                        ),
-                    )
-            except Exception as e:
-                ship_family = html.Div(f"Error: {str(e)}")
+        if query_type == "nucl":
+            ship_family = dbc.Alert(
+                "hmmsearch will currently not be run for nucleotide queries",
+                color="warning",
+            )
         else:
-            ship_family = dbc.Alert("No captain sequence found.", color="warning")
+            if hmmer_results_dict:
+                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
+                try:
+                    superfamily, family_aln_length, family_evalue = select_ship_family(
+                        hmmer_results_df
+                    )
+                    if superfamily:
+                        try:
+                            family = initial_df[
+                                initial_df["longFamilyID"] == superfamily
+                            ]["familyName"].unique()[0]
+                            ship_family = dbc.Alert(
+                                [
+                                    f"Your sequence is likely in Starship family: {family}",
+                                    f" (Alignment length ={family_aln_length}, evalue = {family_evalue})",
+                                ],
+                                color="warning",
+                            )
+                            ship_tree = dcc.Graph(
+                                className="div-card",
+                                figure=plot_tree(
+                                    tree_file, metadata, highlight_clades=family
+                                ),
+                            )
+                        except Exception as e:
+                            print(f"Error: {e}")
+
+                except Exception as e:
+                    ship_family = html.Div(f"Error: {str(e)}")
+            else:
+                ship_family = dbc.Alert(
+                    "No captain sequence found (e-value threshold 0.01).",
+                    color="warning",
+                )
 
         return ship_family, ship_tree, ship_table
 
 
 @callback(
-    Output("ship-blast-table", "selected_rows"),
-    Input("ship-blast-table", "derived_virtual_data"),
-    Input("ship-blast-table", "derived_virtual_selected_rows"),
-)
-def update_selected_rows(data, selected_rows):
-    if not selected_rows or len(selected_rows) == 0:
-        return [0]
-    return selected_rows
-
-
-@callback(
-    [
-        Output("ship-aln", "children"),
-    ],
+    Output("ship-aln", "children"),
     [
         Input("ship-blast-table", "derived_virtual_data"),
         Input("ship-blast-table", "derived_virtual_selected_rows"),
-        Input("query-type-store", "data"),
     ],
+    State("query-type-store", "data"),
 )
 def blast_alignments(ship_blast_results, selected_row, query_type):
-    if ship_blast_results and selected_row and query_type:
+    try:
+        # Ensure selected_row is not empty
+        if not selected_row or len(selected_row) == 0:
+            return [None]
+
+        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
+        ship_blast_results_df = pd.DataFrame(ship_blast_results)
+
+        # Get the first selected row index
+        row_idx = selected_row[0]
+
         try:
-            # Ensure selected_row is not empty
-            if not selected_row or len(selected_row) == 0:
-                return None
+            row = ship_blast_results_df.iloc[row_idx]
+        except IndexError:
+            return ["Error: Selected row index out of bounds"]
 
-            tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-            ship_blast_results_df = pd.DataFrame(ship_blast_results)
+        # Write sequences to temp fasta file
+        with open(tmp_fasta.name, "w") as f:
+            f.write(f">{row['qseqid']}\n")
+            f.write(f"{row['qseq']}\n")
+            f.write(f">{row['sseqid']}\n")
+            f.write(f"{row['sseq']}\n")
 
-            # Get the first selected row index
-            row_idx = selected_row[0]
+        with open(tmp_fasta.name, "r") as file:
+            data = file.read()
 
-            try:
-                row = ship_blast_results_df.iloc[row_idx]
-            except IndexError:
-                return "Error: Selected row index out of bounds"
+        color = "nucleotide" if query_type == "nucl" else "clustal2"
 
-            # Write sequences to temp fasta file
-            with open(tmp_fasta.name, "w") as f:
-                f.write(f">{row['qseqid']}\n")
-                f.write(f"{row['qseq']}\n")
-                f.write(f">{row['sseqid']}\n")
-                f.write(f"{row['sseq']}\n")
+        aln = dashbio.AlignmentChart(
+            id="alignment-viewer",
+            data=data,
+            height=200,
+            tilewidth=30,
+            colorscale=color,
+            showconsensus=False,
+            showconservation=False,
+            showgap=False,
+            showid=False,
+            ticksteps=5,
+            tickstart=0,
+        )
 
-            with open(tmp_fasta.name, "r") as file:
-                data = file.read()
+        return [aln]
 
-            color = "nucleotide" if query_type == "nucl" else "clustal2"
-
-            aln = dashbio.AlignmentChart(
-                id="alignment-viewer",
-                data=data,
-                height=200,
-                tilewidth=30,
-                colorscale=color,
-                showconsensus=False,
-                showconservation=False,
-                showgap=False,
-                showid=False,
-                ticksteps=5,
-                tickstart=0,
-            )
-
-            return [aln]
-
-        except Exception as e:
-            return f"Error: {str(e)}"
+    except Exception as e:
+        return [f"Error: {str(e)}"]
 
 
 # Define callback to download TSV
