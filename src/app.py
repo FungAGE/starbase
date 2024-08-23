@@ -1,6 +1,7 @@
+import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 import dash
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
 from src.components import navmenu
 from src.components.callbacks import (
@@ -11,7 +12,10 @@ from src.components.callbacks import (
     update_dataset,
 )
 
+_dash_renderer._set_react_version("18.2.0")
+
 external_stylesheets = [
+    dmc.styles.ALL,
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
     "/assets/lib/styles.css",
@@ -41,13 +45,15 @@ app = Dash(
 
 
 def serve_app_layout():
-    return html.Div(
-        [
-            navmenu.navmenu(),
-            html.Div(dash.page_container),
-            dcc.Location(id="url", refresh=False),
-            dcc.Store(id="joined-ships"),
-        ]
+    return dmc.MantineProvider(
+        html.Div(
+            [
+                navmenu.navmenu(),
+                html.Div(dash.page_container),
+                dcc.Location(id="url", refresh=False),
+                dcc.Store(id="joined-ships"),
+            ]
+        )
     )
 
 
