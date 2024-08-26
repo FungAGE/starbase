@@ -14,6 +14,10 @@
   margin: 0;
 }
 
+.form-control {
+  padding: 10px;
+}
+
 .upload-box {
   width: 100%;
   height: 60px;
@@ -80,7 +84,7 @@
 /* For larger elements that shrink on small screens */
 .auto-resize {
   width: 100%;
-  max-width: 500px;
+  max-width: 600px;
   height: auto;
 }
 
@@ -118,6 +122,9 @@
   .card-header-custom {
     padding: 1.2rem;
   }
+  .form-control-sm {
+    width: 100%;
+  }
 }
 
 @media (min-width: 768px) {
@@ -133,6 +140,9 @@
   .card-header-custom {
     padding: 1.4rem;
   }
+  .form-control-md {
+    width: 100%;
+  }
 }
 
 @media (min-width: 992px) {
@@ -147,6 +157,9 @@
   .card-header-custom {
     padding: 1.6rem;
   }
+  .form-control-lg {
+    width: 50%;
+  }
 }
 
 @media (min-width: 1200px) {
@@ -160,5 +173,8 @@
   }
   .card-header-custom {
     padding: 1.8rem;
+  }
+  .form-control-xl {
+    width: 33%;
   }
 }
