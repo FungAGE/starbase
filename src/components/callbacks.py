@@ -36,10 +36,6 @@ def update_fasta_upload(app):
                 html.Div(
                     html.P(
                         ["Select a FASTA file to upload"],
-                        style={
-                            "justify-content": "center",
-                            "textAlign": "center",
-                        },
                     )
                 )
             ]
