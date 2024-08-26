@@ -1,5 +1,10 @@
+import warnings
+
+warnings.filterwarnings("ignore")
+
 import dash
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State
 
@@ -20,7 +25,7 @@ dash.register_page(__name__)
 
 ColorCycler.set_cmap("tab10")
 
-layout = dbc.Container(
+layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
@@ -320,7 +325,9 @@ def load_ship_table(cached_data, href):
         )
 
         filtered_df = initial_df.dropna(subset=["valid_gff3"])
+        filtered_df = filtered_df.drop_duplicates(subset="starshipID")
         filtered_df = filtered_df.drop(columns=["valid_gff3", "valid_fna"])
+
         table = make_ship_table(filtered_df, "pgv-table", specified_columns)
         return table
 
