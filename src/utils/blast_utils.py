@@ -26,6 +26,8 @@ from Bio.Seq import Seq
 
 import plotly.graph_objects as go
 
+from utils.parsing import parse_fasta_from_file, parse_fasta_from_text
+
 
 def write_temp_fasta(header, sequence):
     cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
@@ -50,50 +52,6 @@ def check_input(query_text_input, query_file_contents):
         header, query = parse_fasta_from_file(query_file_contents)
 
     return input_type, header, query
-
-
-def parse_fasta_from_text(text):
-    try:
-        queries = SeqIO.parse(StringIO(text), "fasta")
-        query = next(queries)
-        header, seq = query.id, query.seq
-        return header, seq
-    except Exception as e:
-        print(f"Error parsing text: {e}")
-        return None, None
-
-
-def parse_fasta_from_file(file_contents):
-    try:
-        if not file_contents:
-            raise ValueError("No file contents provided.")
-        split_contents = file_contents.split(",")
-        header = split_contents[0].strip()
-        sequence = "".join(split_contents[1:])
-        decoded_sequence = base64.b64decode(sequence).decode("utf-8")
-        query = SeqIO.read(StringIO(decoded_sequence), "fasta")
-        header, seq = query.id, str(query.seq)
-        return header, seq
-
-    except Exception as e:
-        print(f"Error parsing file: {e}")
-        return None, None
-
-        # nseq = 0
-        # for query in queries:
-        #     nseq += 1
-        #     # Stop if there are more than one sequence records
-        #     if nseq > 1:
-        #         raise ValueError(
-        #             "More than one sequence record found in the FASTA file."
-        #         )
-
-        #     # Extract header and sequence from the single record
-        #     header, seq = query.id, str(query.seq)
-        #     return header, seq
-
-        # # Handle the case where no sequence record was found
-        # raise ValueError("No sequence record found in the FASTA file.")
 
 
 def guess_seq_type(query_seq):

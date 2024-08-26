@@ -12,53 +12,7 @@ import io
 import dash_bootstrap_components as dbc
 import sqlite3
 
-
-def parse_gff(contents, filename):
-    content_type, content_string = contents.split(",")
-    decoded = base64.b64decode(content_string)
-    gff = pd.read_csv(io.StringIO(decoded.decode("utf-8")), sep="\t")
-    # cols = [
-    #     "seqid",
-    #     "source",
-    #     "type",
-    #     "start",
-    #     "end",
-    #     "score",
-    #     "strand",
-    #     "phase",
-    #     "attributes",
-    # ]
-
-    # annotations = pd.DataFrame(gff)
-    nanno = len(gff)
-
-    return [
-        html.Div(
-            [
-                html.H6(f"File name: {filename}"),
-                html.H6(f"Number of annotations: {nanno}"),
-            ]
-        )
-    ]
-
-
-def parse_fasta(contents, filename):
-    sequences = SeqIO.parse(io.StringIO(contents), "fasta")
-
-    records = []
-    nseq = 0
-    for sequence in sequences:
-        records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
-        nseq += 1
-
-    return [
-        html.Div(
-            [
-                html.H6(f"File name: {filename}"),
-                html.H6(f"Number of sequences: {nseq}"),
-            ],
-        )
-    ]
+from utils.parsing import parse_fasta, parse_gff
 
 
 def dl_package(app):
@@ -217,3 +171,6 @@ def update_dataset(app):
             species_count,
             curated_status,
         )
+
+def make_tree(app):
+    @app.callback()
