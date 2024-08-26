@@ -9,7 +9,6 @@ from src.components.callbacks import (
     update_fasta_upload,
     update_gff_upload,
     load_ship_metadata,
-    update_dataset,
 )
 
 _dash_renderer._set_react_version("18.2.0")
@@ -52,6 +51,8 @@ def serve_app_layout():
                 html.Div(dash.page_container),
                 dcc.Location(id="url", refresh=False),
                 dcc.Store(id="joined-ships"),
+                # dcc.Store(id="curated-dataset"),
+                # dcc.Store(id="curated-status"),
             ]
         )
     )
@@ -61,7 +62,10 @@ dl_package(app)
 update_fasta_upload(app)
 update_gff_upload(app)
 load_ship_metadata(app)
-update_dataset(app)
+# update_dataset(app)
+# make_tree(app)
+# make_sunburst(app)
+# make_table(app)
 
 app.layout = serve_app_layout
 

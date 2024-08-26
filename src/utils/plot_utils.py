@@ -23,7 +23,14 @@ def agg_df(df, groups):
     return agg
 
 
-def create_sunburst_plot(df, groups, title):
+def create_sunburst_plot(df, type):
+    if type == "ship":
+        groups = ["familyName", "starship_navis"]
+        title = "Starships by Family/Navis"
+    if type == "tax":
+        groups = ["order", "family"]
+        title = "Starships by Order/Family"
+
     selection = agg_df(df, groups)
 
     pie = px.sunburst(

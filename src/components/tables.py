@@ -9,7 +9,15 @@ import pandas as pd
 
 def make_ship_table(df, id, columns=None):
     if columns is None:
-        columns = df.columns
+        # columns = df.columns
+        columns = [
+            "starshipID",
+            "familyName",
+            "starship_navis",
+            "starship_haplotype",
+            "genus",
+            "species",
+        ]
 
     table = html.Div(
         [

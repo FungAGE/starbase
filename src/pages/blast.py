@@ -4,6 +4,8 @@ warnings.filterwarnings("ignore")
 
 import dash
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
+
 from dash import dcc, html, callback, MATCH
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
@@ -28,7 +30,7 @@ from src.utils.blast_utils import (
     select_ship_family,
     parse_lastz_output,
 )
-from src.utils.tree import plot_tree, tree_file, metadata, default_highlight_clades
+from src.utils.tree import plot_tree, default_highlight_clades
 
 dash.register_page(__name__)
 
@@ -63,7 +65,7 @@ db_list = {
 }
 
 
-layout = dbc.Container(
+layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Store(id="query-header-store"),
@@ -71,99 +73,87 @@ layout = dbc.Container(
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="hmmer-results-store"),
-        dbc.Row(
-            justify="center",
-            align="top",
+        dmc.Grid(
+            justify="start",
+            align="start",
+            style={"paddingTop": "20px"},
+            gutter="xl",
             children=[
-                dbc.Col(
-                    style={"padding": "20px"},
-                    sm=12,
-                    lg=4,
+                dmc.GridCol(
+                    span=4,
                     children=[
-                        dbc.Stack(
-                            [
-                                html.H3(
-                                    "Search protein/nucleotide sequences for Starships and Starship-associated genes.",
-                                    style={
-                                        "textAlign": "center",
-                                        "fontSize": "1.25rem",
-                                    },
-                                ),
-                                dcc.Textarea(
-                                    id="query-text",
-                                    placeholder="Paste FASTA sequence here...",
-                                    rows=5,
-                                    style={
-                                        "width": "100%",
-                                        "fontSize": "1rem",
-                                        "padding": "10px",
-                                    },
-                                ),
-                                html.H3(
-                                    "Or",
-                                    style={
-                                        "textAlign": "center",
-                                        "fontSize": "1.25rem",
-                                    },
-                                ),
-                                dcc.Upload(
-                                    id="fasta-upload",
-                                    children=html.Div(
-                                        "Drag and drop or click to select a FASTA file.",
-                                        id="fasta-sequence-upload",
-                                        style={"fontSize": "1rem"},
-                                    ),
-                                    className="upload-box",
-                                    multiple=False,
-                                    accept=".fa, .fas, .fasta, .fna",
-                                ),
-                                dbc.Button(
-                                    "Submit BLAST",
-                                    id="submit-button",
-                                    n_clicks=0,
-                                    className="d-grid gap-2 col-6 mx-auto",
-                                    style={"fontSize": "1rem"},
-                                ),
-                            ],
-                            gap=4,
-                            direction="vertical",
-                        )
+                        html.H3(
+                            "Search protein/nucleotide sequences for Starships and Starship-associated genes.",
+                            style={
+                                "textAlign": "center",
+                                "fontSize": "1.25rem",
+                            },
+                        ),
+                        dcc.Textarea(
+                            id="query-text",
+                            placeholder="Paste FASTA sequence here...",
+                            rows=5,
+                            style={
+                                "width": "100%",
+                                "fontSize": "1rem",
+                                "padding": "10px",
+                            },
+                        ),
+                        html.H3(
+                            "Or",
+                            style={
+                                "textAlign": "center",
+                                "fontSize": "1.25rem",
+                            },
+                        ),
+                        dcc.Upload(
+                            id="fasta-upload",
+                            children=html.Div(
+                                "Drag and drop or click to select a FASTA file.",
+                                id="fasta-sequence-upload",
+                                style={"fontSize": "1rem"},
+                            ),
+                            className="upload-box",
+                            multiple=False,
+                            accept=".fa, .fas, .fasta, .fna",
+                        ),
+                        dbc.Button(
+                            "Submit BLAST",
+                            id="submit-button",
+                            n_clicks=0,
+                            className="d-grid gap-2 col-6 mx-auto",
+                            style={"fontSize": "1rem"},
+                        ),
                     ],
                 ),
-                dbc.Col(
-                    sm=12,
-                    lg=8,
-                    style={"padding": "20px"},
+                dmc.GridCol(
+                    span=8,
                     children=[
-                        dbc.Row(
-                            [
-                                dcc.Loading(
-                                    id="family-loading",
-                                    type="default",
-                                    children=html.Div(id="ship-family"),
-                                ),
-                                dcc.Loading(
-                                    id="tree-loading",
-                                    type="default",
-                                    children=html.Div(id="blast-phylogeny"),
-                                ),
-                                dcc.Loading(
-                                    id="ship-blast-table-loading",
-                                    type="default",
-                                    children=html.Div(id="ship-blast-table"),
-                                ),
-                                dcc.Loading(
-                                    id="ship-aln-loading",
-                                    type="default",
-                                    children=html.Div(id="ship-aln"),
-                                ),
-                                # dcc.Loading(
-                                #     id="loading-4",
-                                #     type="default",
-                                #     children=html.Div(dcc.Graph(id="lastz-plot")),
-                                # ),
-                            ]
+                        dcc.Loading(
+                            id="family-loading",
+                            type="default",
+                            children=html.Div(id="ship-family"),
                         ),
+                        dcc.Loading(
+                            id="tree-loading",
+                            type="default",
+                            children=html.Div(id="blast-phylogeny"),
+                        ),
+                        dcc.Loading(
+                            id="ship-blast-table-loading",
+                            type="default",
+                            children=html.Div(id="ship-blast-table"),
+                        ),
+                        dcc.Loading(
+                            id="ship-aln-loading",
+                            type="default",
+                            children=html.Div(id="ship-aln"),
+                        ),
+                        # dcc.Loading(
+                        #     id="loading-4",
+                        #     type="default",
+                        #     children=html.Div(dcc.Graph(id="lastz-plot")),
+                        # ),
                     ],
                 ),
             ],
@@ -315,15 +305,13 @@ def update_ui(
                             ship_family = dbc.Alert(
                                 [
                                     f"Your sequence is likely in Starship family: {family}",
-                                    f" (Alignment length ={family_aln_length}, evalue = {family_evalue})",
+                                    f" (Alignment length = {family_aln_length}, evalue = {family_evalue})",
                                 ],
                                 color="warning",
                             )
                             ship_tree = dcc.Graph(
                                 className="div-card",
-                                figure=plot_tree(
-                                    tree_file, metadata, highlight_clades=family
-                                ),
+                                figure=plot_tree(highlight_clades=family),
                             )
                         except Exception as e:
                             print(f"Error: {e}")

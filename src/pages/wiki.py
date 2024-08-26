@@ -25,11 +25,7 @@ def create_accordion_item(df, category):
         upDRs = filtered_df["upDR"].dropna().tolist()
         downDRs = filtered_df["downDR"].dropna().tolist()
         type_element_reference = filtered_df["type_element_reference"].dropna().unique()
-        sunburst = create_sunburst_plot(
-            df=filtered_df,
-            groups=["genus", "species"],
-            title=f"Genus/Species Distribution for {category}",
-        )
+        sunburst = create_sunburst_plot(df=filtered_df, type="tax")
 
         uplogo = make_logo(upDRs)
         downlogo = make_logo(downDRs)

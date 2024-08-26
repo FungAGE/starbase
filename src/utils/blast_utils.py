@@ -26,7 +26,7 @@ from Bio.Seq import Seq
 
 import plotly.graph_objects as go
 
-from utils.parsing import parse_fasta_from_file, parse_fasta_from_text
+from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text
 
 
 def write_temp_fasta(header, sequence):
