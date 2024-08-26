@@ -20,7 +20,7 @@ default_highlight_colors = {
     "Moya": "#ff97ff",
     "Arwing": "#ffa15a",
     "Voyager": "#b6e880",
-    "TBD": "#f7a799",
+    "Family-11": "#f7a799",
     "superfam03-3": "#bbbbbb",
     "superfam03-2": "#bbbbbb",
 }
@@ -279,7 +279,7 @@ def superfam_highlight(
         return rectangle, scatter, text_label
 
 
-def plot_tree(tree_file, metadata, highlight_clades=None):
+def plot_tree(highlight_clades=None):
     tree = Phylo.read(tree_file, "newick")
 
     graph_title = "Captain Gene Phylogeny"
@@ -301,7 +301,9 @@ def plot_tree(tree_file, metadata, highlight_clades=None):
         y_coords=y_coords,
     )
 
-    if highlight_clades is not None and len(highlight_clades) > 0:
+    if highlight_clades is not None:
+        if highlight_clades == "all":
+            highlight_clades = default_highlight_clades
         for superfam_clade in highlight_clades:
             rectangle, scatter, text_label = superfam_highlight(
                 metadata,

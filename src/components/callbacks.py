@@ -4,15 +4,12 @@ warnings.filterwarnings("ignore")
 
 import dash
 from dash import dcc, callback, html
-from dash.dependencies import Output, Input
+from dash.dependencies import Output, Input, State
 import base64
 import pandas as pd
-from Bio import SeqIO
-import io
-import dash_bootstrap_components as dbc
 import sqlite3
 
-from utils.parsing import parse_fasta, parse_gff
+from src.utils.parsing import parse_fasta, parse_gff
 
 
 def dl_package(app):
@@ -91,7 +88,6 @@ def load_ship_metadata(app):
         if url:
             try:
                 conn = sqlite3.connect("database_folder/starbase.sqlite")
-
                 query = """
                 SELECT j.*, o."order", o.family, f.longFamilyID, f.familyName, f.type_element_reference
                 FROM joined_ships j
@@ -99,7 +95,6 @@ def load_ship_metadata(app):
                 JOIN family_names f ON j.ship_family_id = f.id
                 """
                 df = pd.read_sql_query(query, conn)
-
                 data = df.to_dict(orient="records")
 
                 return data
@@ -119,16 +114,13 @@ def update_dataset(app):
 
     @app.callback(
         [
-            Output("curated-dataset", "data"),
-            Output("ship-card-header", "children"),
-            Output("ship-count", "children"),
-            Output("species-card-header", "children"),
-            Output("species-count", "children"),
             Output("curated-status", "data"),
+            Output("curated-dataset", "data"),
         ],
-        [Input("joined-ships", "data"), Input("curated-input", "value")],
+        Input("curated-input", "value"),
+        State("joined-ships", "data"),
     )
-    def curated_switch(cached_data, switches_value):
+    def curated_switch(switches_value, cached_data):
         initial_df = pd.DataFrame(cached_data)
 
         if switches_value:
@@ -137,40 +129,9 @@ def update_dataset(app):
         else:
             df_filtered = initial_df
             curated_status = ""
-
-        ship_count = df_filtered["starshipID"].nunique()
-        species = df_filtered["genus"] + "-" + df_filtered["species"]
-        species_count = species.nunique()
-
         data = df_filtered.to_dict(orient="records")
 
-        ship_card_header = html.H4(
-            html.P(
-                [
-                    f"Total number {curated_status}of Starships in ",
-                    html.Span(
-                        "starbase",
-                        className="logo-text",
-                    ),
-                    ":",
-                ]
-            ),
-            className="card-title",
-        )
-        species_card_header = html.H4(
-            f"Fungal species with {curated_status}Starships",
-            className="card-title",
-        )
-
-        # Return the filtered data, card headers, and counts
         return (
-            data,
-            ship_card_header,
-            ship_count,
-            species_card_header,
-            species_count,
             curated_status,
+            data,
         )
-
-def make_tree(app):
-    @app.callback()
