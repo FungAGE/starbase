@@ -25,7 +25,7 @@ default_highlight_colors = {
     "superfam03-2": "#bbbbbb",
 }
 
-default_highlight_clades = default_highlight_colors.keys()
+default_highlight_families = default_highlight_colors.keys()
 
 
 def hex_to_rgba(hex_color):
@@ -218,11 +218,11 @@ def get_text_label(
 
 def superfam_highlight(
     metadata,
-    superfam_clade,
+    highlights,
     x_coords=None,
     y_coords=None,
 ):
-    superfam_df = metadata[metadata["superfam"] == superfam_clade]
+    superfam_df = metadata[metadata["superfam"] == highlights]
 
     if not superfam_df.empty:
         highlight_names = superfam_df["tip"].tolist()
@@ -232,8 +232,6 @@ def superfam_highlight(
             if "color" in superfam_df.columns and not superfam_df["color"].isna().all()
             else "rgba(25, 25, 25, 0.6)"
         )
-    else:
-        highlight_names = default_highlight_clades
 
     if x_coords is not None and y_coords is not None:
         x_coord_list = [
@@ -261,16 +259,16 @@ def superfam_highlight(
             y=[(y_start + y_end) / 2],
             mode="markers",
             marker=dict(size=10, color="rgba(255,255,255,0)"),
-            text=[superfam_clade],
+            text=[highlights],
             hoverinfo="text",
-            name=superfam_clade,
+            name=highlights,
         )
 
         text_label = get_text_label(
             # x=(x_end + x_start) / 2,
             x=7,
             y=(y_end + y_start) / 2,
-            text=superfam_clade,
+            text=highlights,
             font_size=24,
             font_color="black",
             x_anchor="center",
@@ -279,7 +277,7 @@ def superfam_highlight(
         return rectangle, scatter, text_label
 
 
-def plot_tree(highlight_clades=None):
+def plot_tree(highlight_families=None):
     tree = Phylo.read(tree_file, "newick")
 
     graph_title = "Captain Gene Phylogeny"
@@ -301,20 +299,21 @@ def plot_tree(highlight_clades=None):
         y_coords=y_coords,
     )
 
-    if highlight_clades is not None:
-        if highlight_clades == "all":
-            highlight_clades = default_highlight_clades
-        for superfam_clade in highlight_clades:
-            rectangle, scatter, text_label = superfam_highlight(
-                metadata,
-                superfam_clade,
-                x_coords=x_coords,
-                y_coords=y_coords,
-            )
-            line_shapes.append(rectangle)
-            scatter_points.append(scatter)
-            text_labels.append(text_label)
-        nodes = scatter_points
+    if highlight_families is not None and highlight_families == "all":
+        highlights = default_highlight_families
+    else:
+        highlights = [highlight_families]
+    for highlight in highlights:
+        rectangle, scatter, text_label = superfam_highlight(
+            metadata,
+            highlight,
+            x_coords=x_coords,
+            y_coords=y_coords,
+        )
+        line_shapes.append(rectangle)
+        scatter_points.append(scatter)
+        text_labels.append(text_label)
+    nodes = scatter_points
 
     layout = dict(
         height=1200,
@@ -339,7 +338,7 @@ def plot_tree(highlight_clades=None):
         shapes=line_shapes,
     )
 
-    if highlight_clades is not None:
+    if highlight_families is not None:
         legend = {"x": 0, "y": 1}
         annotations = text_labels
         font = dict(family="Open Sans")

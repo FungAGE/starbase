@@ -6,7 +6,7 @@ import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
-from dash import dcc, html, callback, MATCH
+from dash import dcc, html, callback, MATCH, no_update
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 import dash_bio as dashbio
@@ -30,7 +30,7 @@ from src.utils.blast_utils import (
     select_ship_family,
     parse_lastz_output,
 )
-from src.utils.tree import plot_tree, default_highlight_clades
+from src.utils.tree import plot_tree, default_highlight_families
 
 dash.register_page(__name__)
 
@@ -80,7 +80,10 @@ layout = dmc.Container(
             gutter="xl",
             children=[
                 dmc.GridCol(
-                    span=4,
+                    span={
+                        "sm": 12,
+                        "lg": 4,
+                    },
                     children=[
                         html.H3(
                             "Search protein/nucleotide sequences for Starships and Starship-associated genes.",
@@ -127,28 +130,63 @@ layout = dmc.Container(
                     ],
                 ),
                 dmc.GridCol(
-                    span=8,
+                    span={
+                        "sm": 12,
+                        "lg": 8,
+                    },
                     children=[
-                        dcc.Loading(
-                            id="family-loading",
-                            type="default",
-                            children=html.Div(id="ship-family"),
-                        ),
-                        dcc.Loading(
-                            id="tree-loading",
-                            type="default",
-                            children=html.Div(id="blast-phylogeny"),
-                        ),
-                        dcc.Loading(
-                            id="ship-blast-table-loading",
-                            type="default",
-                            children=html.Div(id="ship-blast-table"),
-                        ),
-                        dcc.Loading(
-                            id="ship-aln-loading",
-                            type="default",
-                            children=html.Div(id="ship-aln"),
-                        ),
+                        dmc.Grid(
+                            justify="start",
+                            align="start",
+                            grow=True,
+                            style={"paddingTop": "20px"},
+                            gutter="xl",
+                            children=[
+                                dmc.GridCol(
+                                    span={
+                                        "sm": 12,
+                                        "lg": 8,
+                                    },
+                                    children=[
+                                        dcc.Loading(
+                                            id="ship-blast-table-loading",
+                                            type="default",
+                                            children=html.Div(id="ship-blast-table"),
+                                        ),
+                                        dcc.Loading(
+                                            id="ship-aln-loading",
+                                            type="default",
+                                            children=html.Div(id="ship-aln"),
+                                        ),
+                                    ],
+                                ),
+                                dmc.GridCol(
+                                    span="content",
+                                    children=[
+                                        dcc.Loading(
+                                            id="family-loading",
+                                            type="default",
+                                            children=html.Div(id="ship-family"),
+                                        ),
+                                    ],
+                                ),
+                                dmc.GridCol(
+                                    span={
+                                        "sm": 12,
+                                        "lg": 8,
+                                    },
+                                    children=[
+                                        dcc.Loading(
+                                            id="tree-loading",
+                                            type="default",
+                                            children=html.Div(
+                                                id="blast-phylogeny",
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        )
                         # dcc.Loading(
                         #     id="loading-4",
                         #     type="default",
@@ -269,10 +307,10 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
 def update_ui(
     blast_results_dict, hmmer_results_dict, n_clicks, cached_data, query_type
 ):
-    ship_family = None
-    family = None
-    ship_family = None
-    ship_tree = None
+    ship_family = no_update
+    family = no_update
+    ship_family = no_update
+    ship_tree = no_update
 
     if blast_results_dict is None and hmmer_results_dict is None:
         raise PreventUpdate
@@ -298,23 +336,23 @@ def update_ui(
                         hmmer_results_df
                     )
                     if superfamily:
-                        try:
-                            family = initial_df[
-                                initial_df["longFamilyID"] == superfamily
-                            ]["familyName"].unique()[0]
-                            ship_family = dbc.Alert(
-                                [
-                                    f"Your sequence is likely in Starship family: {family}",
-                                    f" (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                                ],
-                                color="warning",
-                            )
-                            ship_tree = dcc.Graph(
+                        family = initial_df[initial_df["longFamilyID"] == superfamily][
+                            "familyName"
+                        ].unique()[0]
+                        ship_family = dbc.Alert(
+                            [
+                                f"Your sequence is likely in Starship family: {family}",
+                                f" (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                            ],
+                            color="warning",
+                        )
+                        ship_tree = (
+                            dcc.Graph(
+                                id="blast-phylogeny",
                                 className="div-card",
-                                figure=plot_tree(highlight_clades=family),
-                            )
-                        except Exception as e:
-                            print(f"Error: {e}")
+                                figure=plot_tree(highlight_families=family),
+                            ),
+                        )
 
                 except Exception as e:
                     ship_family = html.Div(f"Error: {str(e)}")

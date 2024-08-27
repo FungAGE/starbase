@@ -453,9 +453,6 @@ def blast_table(ship_blast_results):
                     "padding": "10px",
                 },
                 style_cell={
-                    "minWidth": "150px",
-                    "width": "150px",
-                    "maxWidth": "150px",
                     "whiteSpace": "normal",
                 },
             ),
