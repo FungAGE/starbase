@@ -101,6 +101,12 @@
   height: auto;
 }
 
+.auto-resize-900 {
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+}
+
 /* Column widths for different screen sizes */
 .col-custom {
   flex: 1 1 100%; /* Default to full width */
