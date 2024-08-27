@@ -46,7 +46,7 @@ def make_ship_table(df, id, columns=None):
                 page_size=10,
                 style_table={
                     "overflowX": "auto",
-                    "maxWidth": "95%",
+                    "maxWidth": "100%",
                 },
                 style_cell={
                     "minWidth": "150px",
@@ -55,8 +55,8 @@ def make_ship_table(df, id, columns=None):
                     "whiteSpace": "normal",
                 },
             ),
-            html.Div(id="table-container"),
-        ]
+        ],
+        className="auto-resize-750",
     )
     return table
 

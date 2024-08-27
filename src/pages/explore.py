@@ -14,6 +14,13 @@ from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
 
 dash.register_page(__name__)
 
+columns = [
+    "starshipID",
+    "familyName",
+    "genus",
+    "species",
+]
+
 curated_switch = dbc.Row(
     justify="center",
     align="start",
@@ -55,6 +62,7 @@ species_card = (
             "textAlign": "center",
             "fontSize": "1vw",
             "height": 150,
+            "paddingBottom": "10px",
         },
         color="secondary",
         inverse=True,
@@ -75,6 +83,7 @@ tax_card = (
             "textAlign": "center",
             "fontSize": "1vw",
             "height": 150,
+            "paddingBottom": "10px",
         },
         color="primary",
         inverse=True,
@@ -185,14 +194,16 @@ layout = html.Div(
                                                                     "starbase",
                                                                     className="logo-text",
                                                                 ),
-                                                            ]
+                                                            ],
+                                                            className="text-center",
                                                         ),
                                                         dcc.Loading(
                                                             id="loading-3",
                                                             type="default",
                                                             children=[
                                                                 html.Div(
-                                                                    id="explore-table"
+                                                                    id="explore-table",
+                                                                    className="center-content",
                                                                 ),
                                                             ],
                                                         ),
@@ -220,7 +231,7 @@ layout = html.Div(
                                         dcc.Graph(
                                             id="explore-phylogeny",
                                             className="div-card",
-                                            # figure=plot_tree(highlight_clades=None),
+                                            # figure=plot_tree(highlight_families=None),
                                         ),
                                         # html.Div(id="phylogeny-cache-error"),
                                     ],
@@ -334,8 +345,8 @@ def make_cache(cached_data):
     initial_df = pd.DataFrame(cached_data)
     ship_pie = create_sunburst_plot(df=initial_df, type="ship")
     tax_pie = create_sunburst_plot(df=initial_df, type="tax")
-    tree = plot_tree(highlight_clades="all")
-    table = make_ship_table(df=initial_df, id="explore-table", columns=None)
+    tree = plot_tree(highlight_families="all")
+    table = make_ship_table(df=initial_df, id="explore-table", columns=columns)
     return ship_pie, tax_pie, tree, table
 
 
@@ -422,7 +433,7 @@ def update_ui(
         pie2_output = create_sunburst_plot(plot_df, "tax")
         # tree_output = update_phylogeny(phylogeny_cache, path1)
         tree_output = plot_tree(path1)
-        table_output = make_ship_table(df=plot_df, id="explore-table", columns=None)
+        table_output = make_ship_table(df=plot_df, id="explore-table", columns=columns)
 
     # If pie-chart2 was clicked, update pie-chart1 and tree
     if clickData2:
@@ -432,7 +443,7 @@ def update_ui(
         pie2_output = no_update
         # tree_output = update_phylogeny(phylogeny_cache, path2)
         tree_output = plot_tree(path2)
-        table_output = make_ship_table(df=plot_df, id="explore-table", columns=None)
+        table_output = make_ship_table(df=plot_df, id="explore-table", columns=columns)
 
     # If phylogeny was clicked, update pie-chart1, pie-chart2, and table
     if clickData_phylo:
@@ -441,7 +452,7 @@ def update_ui(
         pie1_output = create_sunburst_plot(plot_df, "ship")
         pie2_output = create_sunburst_plot(plot_df, "tax")
         tree_output = no_update
-        table_output = make_ship_table(df=plot_df, id="explore-table", columns=None)
+        table_output = make_ship_table(df=plot_df, id="explore-table", columns=columns)
 
     # If table rows were selected, update pie-chart1, pie-chart2, and tree
     if table_rows:
