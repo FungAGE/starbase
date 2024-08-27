@@ -313,7 +313,7 @@ layout = dmc.Container(
                                             )
                                         ),
                                     ],
-                                    id="modal",
+                                    id="submit-modal",
                                     is_open=False,
                                 ),
                             ],
@@ -328,7 +328,7 @@ layout = dmc.Container(
 
 
 @callback(
-    [Output("modal", "is_open"), Output("output-data-upload", "children")],
+    [Output("submit-modal", "is_open"), Output("output-data-upload", "children")],
     [
         Input("fasta-upload", "contents"),
         Input("fasta-upload", "filename"),
@@ -348,7 +348,7 @@ layout = dmc.Container(
         Input("submit-ship", "n_clicks"),
         Input("close", "n_clicks"),
     ],
-    [State("modal", "is_open")],
+    [State("submit-modal", "is_open")],
 )
 def submit_ship(
     seq_content,
