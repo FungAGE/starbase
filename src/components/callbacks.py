@@ -76,16 +76,13 @@ def update_gff_upload(app):
 
 
 def load_ship_metadata(app):
-    @app.callback(
-        Output("joined-ships", "data"),  # Output to dcc.Store
-        Input("url", "href"),  # Trigger the callback when the URL changes
-    )
-    def starship_metadata_table(url):
+    @app.callback(Output("joined-ships", "data"), Input("url", "href"))
+    def ship_metadata(url):
         if url:
             try:
                 conn = sqlite3.connect("database_folder/starbase.sqlite")
                 query = """
-                SELECT j.*, o."order", o.family, f.longFamilyID, f.familyName, f.type_element_reference
+                SELECT j.*, o."order", o.family, f.longFamilyID, f.familyName
                 FROM joined_ships j
                 JOIN genome_taxonomy o ON j.taxid = o.taxID
                 JOIN family_names f ON j.ship_family_id = f.id
@@ -131,3 +128,31 @@ def update_dataset(app):
             curated_status,
             data,
         )
+
+
+def load_ship_papers(app):
+    @app.callback(
+        Output("paper-cache", "data"),
+        Input("url", "href"),
+    )
+    def ship_papers(url):
+        if url:
+            try:
+                conn = sqlite3.connect("database_folder/starbase.sqlite")
+                query = """
+                SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
+                FROM papers p
+                JOIN family_names f ON p.shortCitation = f.type_element_reference
+                """
+                df = pd.read_sql_query(query, conn)
+                data = df.to_dict(orient="records")
+
+                return data
+
+            except sqlite3.Error as error:
+                print("Failed to retrieve data from SQLite table:", error)
+                return None
+
+            finally:
+                if conn:
+                    conn.close()
