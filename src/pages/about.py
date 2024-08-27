@@ -141,7 +141,7 @@ layout = (
                                             ),
                                             " webserver will soon be available on GitHub",
                                         ],
-                                        className="text-center auto-resize",
+                                        className="text-center auto-resize-600",
                                         style={"font-size": "1rem"},
                                     )
                                 ],
@@ -150,7 +150,7 @@ layout = (
                             html.Div(
                                 html.Img(
                                     src="assets/images/starbase-map.png",
-                                    className="img-fluid auto-resize",
+                                    className="img-fluid auto-resize-600",
                                 )
                             ),
                             dbc.Card(
@@ -192,7 +192,7 @@ layout = (
                                         ]
                                     ),
                                 ],
-                                className="auto-resize",
+                                className="auto-resize-600",
                             ),
                         ],
                     ),

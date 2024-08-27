@@ -81,10 +81,23 @@
   display: none;
 }
 
+.center-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%; /* Ensure the height is 100% to center vertically */
+}
+
 /* For larger elements that shrink on small screens */
-.auto-resize {
+.auto-resize-600 {
   width: 100%;
   max-width: 600px;
+  height: auto;
+}
+
+.auto-resize-750 {
+  width: 100%;
+  max-width: 750px;
   height: auto;
 }
 

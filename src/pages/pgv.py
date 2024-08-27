@@ -29,49 +29,43 @@ layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
-        dbc.Row(
+        dmc.Grid(
             justify="center",
             align="top",
             children=[
-                dbc.Col(
-                    style={"padding": "20px"},
-                    sm=12,
-                    lg=8,
+                dmc.GridCol(
+                    style={"padding": "40px"},
+                    span={
+                        "sm": 12,
+                        "lg": 8,
+                    },
                     children=[
-                        html.Div(id="pgv-table"),
+                        html.Div(id="pgv-table", className="center-content"),
                         dbc.Button(
                             "Show Starship(s) in Viewer",
                             id="update-button",
                             n_clicks=0,
-                            className="d-grid gap-2 col-4 mx-auto",
+                            className="d-grid gap-2 mx-auto",
                             style={"fontSize": "1rem"},
                         ),
                     ],
-                )
-            ],
-        ),
-        dbc.Row(
-            justify="center",
-            align="top",
-            children=[
-                dbc.Col(
-                    style={"padding": "20px"},
-                    sm=12,
-                    lg=8,
+                ),
+                dmc.GridCol(
+                    style={"padding": "40px"},
+                    span={
+                        "sm": 12,
+                        "lg": 8,
+                    },
                     children=[
                         dcc.Loading(
                             id="loading-1",
                             type="default",
                             children=[
                                 html.Div(id="pgv-figure"),
-                                html.Div(
-                                    id="pgv-figure-error-message",
-                                    style={"color": "red"},
-                                ),
                             ],
                         )
                     ],
-                )
+                ),
             ],
         ),
     ],
@@ -249,7 +243,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
 
                         if len(selected_rows) > 1:
                             if len(selected_rows) > 4:
-                                return html.Div(
+                                output = html.P(
                                     "Select up to four Starships to compare."
                                 )
                             else:
@@ -258,39 +252,40 @@ def update_pgv(n_clicks, selected_rows, table_data):
                             gff_file = rows.iloc[0]["gff3"]
                             single_pgv(gff_file, tmp_pgv)
                         else:
-                            return html.Div("No valid selection.")
+                            output = html.P("No valid selection.")
 
                         try:
                             with open(tmp_pgv, "r") as file:
                                 pgv_content = file.read()
                         except IOError:
-                            return html.Div("Failed to read the temporary file.")
+                            output = html.P("Failed to read the temporary file.")
 
-                        return html.Div(
-                            [
-                                html.Iframe(
-                                    srcDoc=pgv_content,
-                                    style={
-                                        "width": "100%",
-                                        "height": "500px",
-                                        "border": "none",
-                                    },
-                                )
-                            ]
+                        output = html.Iframe(
+                            srcDoc=pgv_content,
+                            style={
+                                "width": "100%",
+                                "height": "100%",
+                                "border": "none",
+                            },
+                            className="auto-resize-750",
                         )
                     else:
-                        return html.H4("Required columns are missing from the data.")
+                        output = html.H4("Required columns are missing from the data.")
                 else:
-                    return html.H4("Invalid row selection.")
+                    output = html.H4("Invalid row selection.")
             except Exception as e:
                 print("Exception:", e)
-                return html.H4("Error processing data.")
+                output = html.H4("Error processing data.")
         else:
-            return html.H4("Select Starship(s) to visualize.")
+            output = html.H4("Select Starship(s) to visualize.")
     else:
-        return html.H4(
+        output = html.H4(
             "Select the Starship(s) in the table above and click the button to visualize."
         )
+    return html.Div(
+        [output],
+        className="center-content text-center",
+    )
 
 
 def is_valid_file(file_path):
