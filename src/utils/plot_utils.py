@@ -26,10 +26,13 @@ def agg_df(df, groups):
 def create_sunburst_plot(df, type):
     if type == "ship":
         groups = ["familyName", "starship_navis"]
+        groups = ["familyName"]
         title = "Starships by Family/Navis"
+        colors = px.colors.qualitative.Plotly
     if type == "tax":
         groups = ["order", "family"]
         title = "Starships by Order/Family"
+        colors = px.colors.qualitative.Set2
 
     selection = agg_df(df, groups)
 
@@ -37,6 +40,7 @@ def create_sunburst_plot(df, type):
         selection,
         path=groups,
         values="count",
+        color_discrete_sequence=colors,
     )
 
     pie.update_layout(
