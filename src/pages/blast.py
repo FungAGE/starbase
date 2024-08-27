@@ -68,6 +68,7 @@ db_list = {
 layout = dmc.Container(
     fluid=True,
     children=[
+        dcc.Location(id="url", refresh=False),
         dcc.Store(id="query-header-store"),
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
@@ -341,7 +342,15 @@ def update_ui(
                         ].unique()[0]
                         ship_family = dbc.Alert(
                             [
-                                f"Your sequence is likely in Starship family: {family}",
+                                "Your sequence is likely in Starship family:",
+                                html.Br(),
+                                dbc.Button(
+                                    family,
+                                    color="primary",
+                                    href=f"/wiki?page={family}",
+                                    external_link=False,
+                                ),
+                                html.Br(),
                                 f" (Alignment length = {family_aln_length}, evalue = {family_evalue})",
                             ],
                             color="warning",
@@ -443,31 +452,6 @@ def download_tsv(n_clicks, rows, columns):
         content=f"data:text/tab-separated-values;base64,{b64}",
         filename=f"starbase_blast_{today}.tsv",
     )
-
-
-# # Callback to open the modal
-# @callback(
-#     Output("modal", "is_open"),
-#     Input("open-modal-link", "n_clicks"),
-#     State("modal", "is_open"),
-# )
-# def toggle_modal(n_clicks, is_open):
-#     if n_clicks is not None:
-#         if n_clicks:
-#             return not is_open
-#         return is_open
-
-
-# # Callback to close the modal
-# @callback(
-#     Output("modal", "is_open"),
-#     Input("close-modal", "n_clicks"),
-#     State("modal", "is_open"),
-# )
-# def close_modal(n_clicks, is_open):
-#     if n_clicks:
-#         return False
-#     return is_open
 
 
 @callback(
