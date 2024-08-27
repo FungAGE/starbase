@@ -3,7 +3,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import dash
 from dash import dcc, html, callback
-from dash.dependencies import Output, Input
+from dash.dependencies import Output, Input, State
 import dash_bootstrap_components as dbc
 
 from src.utils.plot_utils import create_sunburst_plot
@@ -14,18 +14,19 @@ import pandas as pd
 dash.register_page(__name__)
 
 
-def create_accordion_item(df, category):
+def create_accordion_item(df, papers, category):
     if category == "nan":
         return None
     else:
-        filtered_df = df[df["familyName"] == category]
-        n_ships = len(filtered_df["checksum"].dropna().unique())
-        min_size = min(filtered_df["size"].dropna())
-        max_size = max(filtered_df["size"].dropna())
-        upDRs = filtered_df["upDR"].dropna().tolist()
-        downDRs = filtered_df["downDR"].dropna().tolist()
-        type_element_reference = filtered_df["type_element_reference"].dropna().unique()
-        sunburst = create_sunburst_plot(df=filtered_df, type="tax")
+        filtered_meta_df = df[df["familyName"] == category]
+        n_ships = len(filtered_meta_df["checksum"].dropna().unique())
+        min_size = min(filtered_meta_df["size"].dropna())
+        max_size = max(filtered_meta_df["size"].dropna())
+        upDRs = filtered_meta_df["upDR"].dropna().tolist()
+        downDRs = filtered_meta_df["downDR"].dropna().tolist()
+        filtered_papers_df = papers[papers["familyName"] == category]
+        type_element_reference = filtered_papers_df["type_element_reference"]
+        sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax")
 
         uplogo = make_logo(upDRs)
         downlogo = make_logo(downDRs)
@@ -37,10 +38,15 @@ def create_accordion_item(df, category):
         ]
 
         if type_element_reference is not None:
+
+            link = filtered_papers_df["Url"]
+            paper_link = html.Link(
+                type_element_reference,
+                href=link,
+            )
+
             accordion_content.append(
-                html.H5(
-                    f"Reference for defining type element in family: {type_element_reference}"
-                )
+                html.H5(["Reference for defining type element in family: ", paper_link])
             )
 
         accordion_content.append(dcc.Graph(figure=sunburst))
@@ -83,12 +89,12 @@ def create_accordion_item(df, category):
         )
 
 
-def create_accordion(df):
+def create_accordion(df, papers):
     unique_categories = df["familyName"].dropna().unique().tolist()
     assert isinstance(unique_categories, list), "unique_categories must be a list"
 
     accordion_items = [
-        create_accordion_item(df, category)
+        create_accordion_item(df, papers, category)
         for category in unique_categories
         if category != "nan"
     ]
@@ -156,11 +162,24 @@ layout = dbc.Container(
 
 
 @callback(
-    Output("accordion", "children"),
-    [Input("joined-ships", "data"), Input("url", "href")],
+    [Output("accordion", "children"), Output("accordion", "active_item")],
+    [
+        Input("url", "search"),
+        Input("joined-ships", "data"),
+        Input("paper-cache", "data"),
+    ],
+    [
+        State("accordion", "active_item"),
+    ],
 )
-def load_data(cached_data, href):
-    if cached_data:
-        initial_df = pd.DataFrame(cached_data)
-        return create_accordion(initial_df)
-    return []
+def load_data(search, cached_meta, cached_papers, active_item):
+    accordion = None
+    query_param = active_item
+
+    if cached_meta and cached_papers:
+        initial_df = pd.DataFrame(cached_meta)
+        paper_df = pd.DataFrame(cached_papers)
+        accordion = create_accordion(initial_df, paper_df)
+        if search:
+            query_param = search.split("=")[-1]
+    return accordion, query_param
