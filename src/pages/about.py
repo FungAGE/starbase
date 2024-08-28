@@ -27,7 +27,6 @@ card_dict = {
                 ),
                 " lead developer",
             ],
-            className="card-text",
         ),
         "email": "mailto:adrian.e.forsythe@gmail.com",
     },
@@ -40,9 +39,10 @@ card_dict = {
                     "starfish",
                     className="logo-text",
                 ),
-                " lead developer, Gluck-Thaler lab group leader",
+                " lead developer",
+                html.Br(),
+                "Gluck-Thaler lab group leader",
             ],
-            className="card-text",
         ),
         "email": "mailto:emilegluckthaler@gmail.com",
     },
@@ -50,45 +50,67 @@ card_dict = {
 
 
 def make_card(name):
-    card = dmc.Card(
+    card = dmc.GridCol(
+        # span={"xl": 4, "lg": 4, "md": 12, "sm": 12, "xs": 12},
+        span="content",
         children=[
-            dmc.CardSection(
-                [
-                    dmc.Image(
-                        src=card_dict[name]["img"],
-                        className="img-fluid rounded-start",
-                        style={
-                            "object-fit": "cover",
-                            "width": "100%",
-                        },
-                    ),
-                ],
-            ),
-            dmc.CardSection(
-                [
-                    dmc.Group(
+            dmc.Card(
+                children=[
+                    dmc.CardSection(
                         [
-                            dmc.Text(card_dict[name]["full_name"], size="lg"),
-                            dmc.Text(card_dict[name]["role"], c="dimmed", size="md"),
-                            dbc.Button(
-                                html.I(className="bi bi-envelope"),
-                                href=card_dict[name]["email"],
-                                color="teal",
-                                size="lg",
-                                className="me-2",
+                            dmc.Image(
+                                src=card_dict[name]["img"],
+                                className="img-fluid rounded-start",
+                                style={
+                                    "object-fit": "cover",
+                                    "width": "100%",
+                                    "height": "248px",
+                                },
                             ),
                         ],
-                        justify="center",
-                        mt="md",
-                        mb="xs",
+                    ),
+                    dmc.CardSection(
+                        [
+                            dmc.Stack(
+                                align="stretch",
+                                justify="space-around",
+                                children=[
+                                    dmc.Group(
+                                        justify="flex-start",
+                                        gap="xs",
+                                        children=[
+                                            dmc.Text(
+                                                card_dict[name]["full_name"],
+                                                size="lg",
+                                                style={"padding": "10px"},
+                                            ),
+                                            dbc.Button(
+                                                html.I(className="bi bi-envelope"),
+                                                href=card_dict[name]["email"],
+                                                color="teal",
+                                                size="lg",
+                                                className="me-2",
+                                            ),
+                                        ],
+                                    ),
+                                    dmc.Text(
+                                        card_dict[name]["role"],
+                                        c="dimmed",
+                                        size="md",
+                                        style={"padding": "10px"},
+                                    ),
+                                ],
+                            ),
+                        ],
+                        style={"height": "150px"},
                     ),
                 ],
-            ),
+                withBorder=True,
+                shadow="sm",
+                radius="md",
+                w=250,
+            )
         ],
-        withBorder=True,
-        shadow="sm",
-        radius="md",
-        w=250,
     )
     return card
 
@@ -102,34 +124,39 @@ layout = (
                 align="center",
                 style={"paddingTop": "20px"},
                 children=[
-                    dmc.Text(
-                        [
-                            html.Span(
-                                "starbase",
-                                className="logo-text",
+                    dmc.GridCol(
+                        span=10,
+                        children=[
+                            dmc.Text(
+                                [
+                                    html.Span(
+                                        "starbase",
+                                        className="logo-text",
+                                    ),
+                                    " was developed by the ",
+                                    html.A(
+                                        "FungAGE lab",
+                                        href="https://fungage.github.io/",
+                                    ),
+                                    " in collaboration with the Gluck-Thaler lab.",
+                                ],
+                                size="lg",
+                                className="text-center",
                             ),
-                            " was developed by the ",
-                            html.A(
-                                "FungAGE lab",
-                                href="https://fungage.github.io/",
-                            ),
-                            " in collaboration with the Gluck-Thaler lab.",
                         ],
-                        size="lg",
                     ),
                 ],
             ),
             dmc.Grid(
                 justify="center",
-                align="center",
-                style={"padding": "10px"},
+                align="stretch",
                 children=[
+                    make_card("aaron"),
+                    make_card("adrian"),
+                    make_card("emile"),
                     dmc.GridCol(
-                        span="content",
+                        span=10,
                         children=[
-                            make_card("aaron"),
-                            make_card("adrian"),
-                            make_card("emile"),
                             dmc.Text(
                                 [
                                     html.P(
@@ -141,58 +168,70 @@ layout = (
                                             ),
                                             " webserver will soon be available on GitHub",
                                         ],
-                                        className="text-center auto-resize-600",
-                                        style={"font-size": "1rem"},
+                                        className="text-center",
                                     )
                                 ],
                                 size="lg",
                             ),
-                            html.Div(
-                                html.Img(
-                                    src="assets/images/starbase-map.png",
-                                    className="img-fluid auto-resize-600",
-                                )
-                            ),
-                            dbc.Card(
+                            dmc.Center(
                                 [
-                                    dbc.CardHeader(
-                                        html.H2(
-                                            "Data Availability",
-                                            className="text-center",
+                                    html.Div(
+                                        html.Img(
+                                            src="assets/images/starbase-map.png",
+                                            className="auto-resize-750",
                                         )
                                     ),
-                                    dbc.CardBody(
+                                ]
+                            ),
+                            dmc.Center(
+                                [
+                                    dbc.Card(
                                         [
-                                            html.P(
+                                            dbc.CardHeader(
                                                 [
-                                                    "We have been maintaining ",
-                                                    html.Span(
-                                                        "starbase",
-                                                        className="logo-text",
-                                                    ),
-                                                    " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                    dmc.Text(
+                                                        "Data Availability",
+                                                        size="lg",
+                                                    )
                                                 ],
-                                                style={"font-size": "0.875rem"},
+                                                className="card-header-custom",
                                             ),
-                                            html.Div(
+                                            dbc.CardBody(
                                                 [
-                                                    dbc.Button(
-                                                        "Download the latest version of starbase.",
-                                                        id="dl-button",
-                                                        color="primary",
-                                                        className="mt-2",
+                                                    html.P(
+                                                        [
+                                                            "We have been maintaining ",
+                                                            html.Span(
+                                                                "starbase",
+                                                                className="logo-text",
+                                                            ),
+                                                            " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                        ],
+                                                        style={"font-size": "0.875rem"},
                                                     ),
-                                                    dcc.Download(id="dl-package"),
-                                                ],
-                                                className="text-center",
-                                                style={
-                                                    "font-size": "0.875rem",
-                                                },
+                                                    html.Div(
+                                                        [
+                                                            dbc.Button(
+                                                                "Download the latest version of starbase.",
+                                                                id="dl-button",
+                                                                color="primary",
+                                                                className="mt-2",
+                                                            ),
+                                                            dcc.Download(
+                                                                id="dl-package"
+                                                            ),
+                                                        ],
+                                                        className="text-center",
+                                                        style={
+                                                            "font-size": "0.875rem",
+                                                        },
+                                                    ),
+                                                ]
                                             ),
-                                        ]
+                                        ],
+                                        className="auto-resize-750",
                                     ),
-                                ],
-                                className="auto-resize-600",
+                                ]
                             ),
                         ],
                     ),
