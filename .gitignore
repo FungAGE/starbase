@@ -163,3 +163,9 @@ tmp/
 
 database_folder/**
 .dockerignore
+database_folder/starbase.sqlite
+database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm
+database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm.h3f
+database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm.h3i
+database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm.h3m
+database_folder/Starships/captain/tyr/hmm/YRsuperfams.p1-512.hmm.h3p
