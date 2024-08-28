@@ -29,6 +29,7 @@ from src.utils.blast_utils import (
     run_lastz,
     select_ship_family,
     parse_lastz_output,
+    blast_chords,
 )
 from src.utils.tree import plot_tree, default_highlight_families
 
@@ -63,6 +64,15 @@ db_list = {
         },
     },
 }
+
+
+def blast_family_button(family):
+    return dbc.Button(
+        family,
+        color="primary",
+        href=f"/wiki?page={family}",
+        external_link=False,
+    )
 
 
 layout = dmc.Container(
@@ -128,6 +138,14 @@ layout = dmc.Container(
                             className="d-grid gap-2 col-6 mx-auto",
                             style={"fontSize": "1rem"},
                         ),
+                        dcc.Loading(
+                            id="family-loading",
+                            type="default",
+                            children=html.Div(
+                                id="ship-family",
+                                style={"paddingTop": "20px"},
+                            ),
+                        ),
                     ],
                 ),
                 dmc.GridCol(
@@ -136,63 +154,21 @@ layout = dmc.Container(
                         "lg": 8,
                     },
                     children=[
-                        dmc.Grid(
-                            justify="start",
-                            align="start",
-                            grow=True,
-                            style={"paddingTop": "20px"},
-                            gutter="xl",
-                            children=[
-                                dmc.GridCol(
-                                    span={
-                                        "sm": 12,
-                                        "lg": 8,
-                                    },
-                                    children=[
-                                        dcc.Loading(
-                                            id="ship-blast-table-loading",
-                                            type="default",
-                                            children=html.Div(id="ship-blast-table"),
-                                        ),
-                                        dcc.Loading(
-                                            id="ship-aln-loading",
-                                            type="default",
-                                            children=html.Div(id="ship-aln"),
-                                        ),
-                                    ],
-                                ),
-                                dmc.GridCol(
-                                    span="content",
-                                    children=[
-                                        dcc.Loading(
-                                            id="family-loading",
-                                            type="default",
-                                            children=html.Div(id="ship-family"),
-                                        ),
-                                    ],
-                                ),
-                                dmc.GridCol(
-                                    span={
-                                        "sm": 12,
-                                        "lg": 8,
-                                    },
-                                    children=[
-                                        dcc.Loading(
-                                            id="tree-loading",
-                                            type="default",
-                                            children=html.Div(
-                                                id="blast-phylogeny",
-                                            ),
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        )
                         # dcc.Loading(
-                        #     id="loading-4",
+                        #     id="blast-chord-loading",
                         #     type="default",
-                        #     children=html.Div(dcc.Graph(id="lastz-plot")),
+                        #     children=[html.Div(id="blast-chord")],
                         # ),
+                        dcc.Loading(
+                            id="ship-blast-table-loading",
+                            type="default",
+                            children=html.Div(id="ship-blast-table"),
+                        ),
+                        dcc.Loading(
+                            id="ship-aln-loading",
+                            type="default",
+                            children=html.Div(id="ship-aln"),
+                        ),
                     ],
                 ),
             ],
@@ -292,8 +268,8 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
 @callback(
     [
         Output("ship-family", "children"),
-        Output("blast-phylogeny", "children"),
         Output("ship-blast-table", "children"),
+        # Output("blast-chord", "children"),
     ],
     [
         Input("blast-results-store", "data"),
@@ -309,9 +285,8 @@ def update_ui(
     blast_results_dict, hmmer_results_dict, n_clicks, cached_data, query_type
 ):
     ship_family = no_update
-    family = no_update
-    ship_family = no_update
-    ship_tree = no_update
+    ship_table = no_update
+    # blast_chord = no_update
 
     if blast_results_dict is None and hmmer_results_dict is None:
         raise PreventUpdate
@@ -322,8 +297,9 @@ def update_ui(
             # Render BLAST table
             blast_results_df = pd.DataFrame(blast_results_dict)
             ship_table = blast_table(blast_results_df)
+            # blast_chord = blast_chords(blast_results_df)
 
-        # Process HMMER results and render family and tree
+        # Process HMMER results and render family
         if query_type == "nucl":
             ship_family = dbc.Alert(
                 "hmmsearch will currently not be run for nucleotide queries",
@@ -342,27 +318,10 @@ def update_ui(
                         ].unique()[0]
                         ship_family = dbc.Alert(
                             [
-                                "Your sequence is likely in Starship family:",
-                                html.Br(),
-                                dbc.Button(
-                                    family,
-                                    color="primary",
-                                    href=f"/wiki?page={family}",
-                                    external_link=False,
-                                ),
-                                html.Br(),
-                                f" (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
                             ],
                             color="warning",
                         )
-                        ship_tree = (
-                            dcc.Graph(
-                                id="blast-phylogeny",
-                                className="div-card",
-                                figure=plot_tree(highlight_families=family),
-                            ),
-                        )
-
                 except Exception as e:
                     ship_family = html.Div(f"Error: {str(e)}")
             else:
@@ -371,7 +330,10 @@ def update_ui(
                     color="warning",
                 )
 
-        return ship_family, ship_tree, ship_table
+        return (
+            ship_family,
+            ship_table,
+        )  # blast_chord
 
 
 @callback(
