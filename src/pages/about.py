@@ -6,6 +6,7 @@ import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import dcc, html
+from src.components.callbacks import download_starbase_button
 
 dash.register_page(__name__)
 
@@ -209,23 +210,7 @@ layout = (
                                                         ],
                                                         style={"font-size": "0.875rem"},
                                                     ),
-                                                    html.Div(
-                                                        [
-                                                            dbc.Button(
-                                                                "Download the latest version of starbase.",
-                                                                id="dl-button",
-                                                                color="primary",
-                                                                className="mt-2",
-                                                            ),
-                                                            dcc.Download(
-                                                                id="dl-package"
-                                                            ),
-                                                        ],
-                                                        className="text-center",
-                                                        style={
-                                                            "font-size": "0.875rem",
-                                                        },
-                                                    ),
+                                                    download_starbase_button,
                                                 ]
                                             ),
                                         ],

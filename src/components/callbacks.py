@@ -4,12 +4,68 @@ warnings.filterwarnings("ignore")
 
 import dash
 from dash import dcc, callback, html
+import dash_bootstrap_components as dbc
+
 from dash.dependencies import Output, Input, State
 import base64
 import pandas as pd
 import sqlite3
 
 from src.utils.parsing import parse_fasta, parse_gff
+from src.components.tables import make_ship_table
+from src.utils.plot_utils import create_sunburst_plot
+from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
+
+
+download_ships_button = (
+    html.Div(
+        style={"textAlign": "center"},
+        children=[
+            dbc.Button(
+                html.Div(
+                    [
+                        "Download the latest version of ",
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
+                        ),
+                        ".",
+                    ],
+                ),
+                id="open-modal",
+                color="primary",
+                class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
+            ),
+        ],
+    ),
+)
+
+download_starbase_button = (
+    html.Div(
+        [
+            dbc.Button(
+                html.P(
+                    [
+                        "Download Starships from the latest version of ",
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
+                        ),
+                        ".",
+                    ]
+                ),
+                id="dl-button",
+                color="primary",
+                className="mt-2",
+            ),
+            dcc.Download(id="dl-package"),
+        ],
+        className="text-center",
+        style={
+            "font-size": "0.875rem",
+        },
+    ),
+)
 
 
 def dl_package(app):
@@ -110,24 +166,21 @@ def update_dataset(app):
             Output("curated-status", "data"),
             Output("curated-dataset", "data"),
         ],
-        Input("curated-input", "value"),
-        State("joined-ships", "data"),
+        [
+            Input("curated-input", "value"),
+            Input("joined-ships", "data"),
+        ],
     )
     def curated_switch(switches_value, cached_data):
         initial_df = pd.DataFrame(cached_data)
+        df_filtered = initial_df
+        curated_status = ""
 
         if switches_value:
             df_filtered = initial_df[initial_df["curated_status"] == "curated"]
             curated_status = "curated "
-        else:
-            df_filtered = initial_df
-            curated_status = ""
         data = df_filtered.to_dict(orient="records")
-
-        return (
-            curated_status,
-            data,
-        )
+        return curated_status, data
 
 
 def load_ship_papers(app):
@@ -156,3 +209,29 @@ def load_ship_papers(app):
             finally:
                 if conn:
                     conn.close()
+
+
+def caching(app):
+    @app.callback(
+        [
+            Output("pie1-cache", "data"),
+            Output("pie2-cache", "data"),
+            Output("phylogeny-cache", "data"),
+            Output("explore-table-cache", "data"),
+        ],
+        [Input("curated-dataset", "data")],
+    )
+    def make_cache(cached_data):
+        initial_df = pd.DataFrame(cached_data)
+        ship_pie = create_sunburst_plot(df=initial_df, type="ship")
+        tax_pie = create_sunburst_plot(df=initial_df, type="tax")
+        tree = plot_tree(highlight_families="all")
+        columns = [
+            "starshipID",
+            "familyName",
+            "genus",
+            "species",
+        ]
+
+        table = make_ship_table(df=initial_df, id="explore-table", columns=columns)
+        return ship_pie, tax_pie, tree, table

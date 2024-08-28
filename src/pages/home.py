@@ -8,6 +8,7 @@ import dash_mantine_components as dmc
 from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
+from src.components.callbacks import download_ships_button
 from src.components.tables import make_paper_table, make_ship_table
 import sqlite3
 import pandas as pd
@@ -215,26 +216,7 @@ layout = dmc.Container(
                                                     ],
                                                     className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
                                                 ),
-                                                html.Div(
-                                                    style={"textAlign": "center"},
-                                                    children=[
-                                                        dbc.Button(
-                                                            html.Div(
-                                                                [
-                                                                    "Download the latest version of ",
-                                                                    html.Span(
-                                                                        "starbase",
-                                                                        className="logo-text",
-                                                                    ),
-                                                                    ".",
-                                                                ],
-                                                            ),
-                                                            id="open-modal",
-                                                            color="primary",
-                                                            class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
-                                                        ),
-                                                    ],
-                                                ),
+                                                download_ships_button,
                                             ],
                                         ),
                                     ],
