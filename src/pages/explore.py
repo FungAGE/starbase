@@ -14,13 +14,6 @@ from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
 
 dash.register_page(__name__)
 
-columns = [
-    "starshipID",
-    "familyName",
-    "genus",
-    "species",
-]
-
 curated_switch = dbc.Row(
     justify="center",
     align="start",
@@ -93,12 +86,6 @@ tax_card = (
 layout = html.Div(
     [
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="phylogeny-cache"),
-        dcc.Store(id="pie1-cache"),
-        dcc.Store(id="pie2-cache"),
-        dcc.Store(id="table-cache"),
-        dcc.Store(id="curated-dataset"),
-        dcc.Store(id="curated-status"),
         dbc.Container(
             fluid=True,
             children=[
@@ -208,7 +195,7 @@ layout = html.Div(
                                                             ],
                                                         ),
                                                         # html.Div(
-                                                        #     id="table-cache-error"
+                                                        #     id="explore-table-cache-error"
                                                         # ),
                                                     ],
                                                 ),
@@ -274,28 +261,6 @@ layout = html.Div(
 
 @callback(
     [
-        Output("curated-status", "data"),
-        Output("curated-dataset", "data"),
-    ],
-    [
-        Input("curated-input", "value"),
-        Input("joined-ships", "data"),
-    ],
-)
-def curated_switch(switches_value, cached_data):
-    initial_df = pd.DataFrame(cached_data)
-    df_filtered = initial_df
-    curated_status = ""
-
-    if switches_value:
-        df_filtered = initial_df[initial_df["curated_status"] == "curated"]
-        curated_status = "curated "
-    data = df_filtered.to_dict(orient="records")
-    return curated_status, data
-
-
-@callback(
-    [
         Output("ship-card-header", "children"),
         Output("ship-count", "children"),
         Output("species-card-header", "children"),
@@ -330,24 +295,6 @@ def make_cards(curated_status, cached_data):
         className="card-title",
     )
     return ship_card_header, ship_count, species_card_header, species_count
-
-
-@callback(
-    [
-        Output("pie1-cache", "data"),
-        Output("pie2-cache", "data"),
-        Output("phylogeny-cache", "data"),
-        Output("table-cache", "data"),
-    ],
-    [Input("curated-dataset", "data")],
-)
-def make_cache(cached_data):
-    initial_df = pd.DataFrame(cached_data)
-    ship_pie = create_sunburst_plot(df=initial_df, type="ship")
-    tax_pie = create_sunburst_plot(df=initial_df, type="tax")
-    tree = plot_tree(highlight_families="all")
-    table = make_ship_table(df=initial_df, id="explore-table", columns=columns)
-    return ship_pie, tax_pie, tree, table
 
 
 def update_phylogeny(phylo, selected_clades):
@@ -400,7 +347,7 @@ def update_phylogeny(phylo, selected_clades):
         Input("phylogeny-cache", "data"),
         Input("pie1-cache", "data"),
         Input("pie2-cache", "data"),
-        Input("table-cache", "data"),
+        Input("explore-table-cache", "data"),
     ],
 )
 def update_ui(
