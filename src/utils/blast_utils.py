@@ -368,17 +368,27 @@ def blast_chords(blast_output):
         if not circos_graph_data or not circos_layout:
             return html.Div(["No valid data found for the BLAST search."])
 
-        # print("Circos graph data:", circos_graph_data)
-        # print("Circos layout data:", circos_layout)
+        print("Circos graph data:", circos_graph_data)
+        print("Circos layout data:", circos_layout)
+
+        layout_config = {
+            "innerRadius": 100,
+            "outerRadius": 200,
+            "cornerRadius": 4,
+            "labels": {
+                "size": 10,
+                "color": "#4d4d4d",
+            },
+        }
 
         # Minimal Circos plot configuration
         try:
             circos_plot = dashbio.Circos(
                 layout=circos_layout,
-                config={"innerRadius": 200, "outerRadius": 300},
+                config=layout_config,
                 tracks=[
                     {
-                        "type": "chords",
+                        "type": "CHORDS",
                         "data": circos_graph_data,
                         "config": {
                             "opacity": 0.7,
@@ -387,8 +397,11 @@ def blast_chords(blast_output):
                                 "field": "id",
                             },
                             "tooltipContent": {
-                                "source": "source.id",
-                                "target": "target.id",
+                                "source": "source",
+                                "sourceID": "id",
+                                "target": "target",
+                                "targetID": "id",
+                                "targetEnd": "end",
                                 "fields": [
                                     {
                                         "field": "value.pident",
@@ -404,7 +417,7 @@ def blast_chords(blast_output):
                         },
                     },
                 ],
-                id="blast-chord-plot",
+                id="blast-chord",
             )
 
             return html.Div(circos_plot)
