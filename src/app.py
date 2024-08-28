@@ -10,6 +10,8 @@ from src.components.callbacks import (
     update_gff_upload,
     load_ship_metadata,
     load_ship_papers,
+    update_dataset,
+    caching,
 )
 
 _dash_renderer._set_react_version("18.2.0")
@@ -53,8 +55,12 @@ def serve_app_layout():
                 dcc.Location(id="url", refresh=False),
                 dcc.Store(id="joined-ships"),
                 dcc.Store(id="paper-cache"),
-                # dcc.Store(id="curated-dataset"),
-                # dcc.Store(id="curated-status"),
+                dcc.Store(id="phylogeny-cache"),
+                dcc.Store(id="pie1-cache"),
+                dcc.Store(id="pie2-cache"),
+                dcc.Store(id="explore-table-cache"),
+                dcc.Store(id="curated-dataset"),
+                dcc.Store(id="curated-status"),
             ]
         )
     )
@@ -65,7 +71,8 @@ update_fasta_upload(app)
 update_gff_upload(app)
 load_ship_metadata(app)
 load_ship_papers(app)
-# update_dataset(app)
+update_dataset(app)
+caching(app)
 # make_tree(app)
 # make_sunburst(app)
 # make_table(app)
