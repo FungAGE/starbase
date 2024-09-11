@@ -11,6 +11,8 @@ from src.utils.plot_utils import make_logo
 
 import pandas as pd
 
+import os
+
 dash.register_page(__name__)
 
 
@@ -28,8 +30,35 @@ def create_accordion_item(df, papers, category):
         type_element_reference = filtered_papers_df["type_element_reference"]
         sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax")
 
-        uplogo = make_logo(upDRs)
-        downlogo = make_logo(downDRs)
+        uplogo_img = f"src/assets/images/DR/{category}-upDR.png"
+        if not os.path.exists(uplogo_img):
+            uplogo = make_logo(upDRs, uplogo_img)
+            uplogo_img = dbc.Col(
+                lg=6,
+                sm=12,
+                children=[
+                    html.H5(f"Sequence logo of upstream DRs in {category}"),
+                    html.Img(
+                        src=f"data:image/png;base64,{uplogo}",
+                        style={"width": "100%"},
+                    ),
+                ],
+            )
+
+        downlogo_img = f"src/assets/images/DR/{category}-downDR.png"
+        if not os.path.exists(downlogo_img):
+            downlogo = make_logo(downDRs, downlogo_img)
+            downlogo_img = dbc.Col(
+                lg=6,
+                sm=12,
+                children=[
+                    html.H5(f"Sequence logo of downstream DRs in {category}"),
+                    html.Img(
+                        src=f"data:image/png;base64,{downlogo}",
+                        style={"width": "100%"},
+                    ),
+                ],
+            )
 
         accordion_content = [
             html.H5(f"Total Number of Starships in {category}: {n_ships}"),
@@ -51,35 +80,11 @@ def create_accordion_item(df, papers, category):
 
         accordion_content.append(dcc.Graph(figure=sunburst))
 
-        if uplogo:
-            uplogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    html.H5(f"Sequence logo of upstream DRs in {category}"),
-                    html.Img(
-                        src=f"data:image/png;base64,{uplogo}",
-                        style={"width": "100%"},
-                    ),
-                ],
-            )
-        if downlogo:
-            downlogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    html.H5(f"Sequence logo of downstream DRs in {category}"),
-                    html.Img(
-                        src=f"data:image/png;base64,{downlogo}",
-                        style={"width": "100%"},
-                    ),
-                ],
-            )
-        if uplogo and downlogo:
+        if uplogo_img and downlogo_img:
             accordion_content.append(dbc.Row([uplogo_img, downlogo_img]))
-        elif uplogo and not downlogo:
+        elif uplogo_img and not downlogo_img:
             accordion_content.append(dbc.Row([uplogo_img]))
-        elif downlogo and not uplogo:
+        elif downlogo_img and not uplogo_img:
             accordion_content.append(dbc.Row([downlogo_img]))
 
         return dbc.AccordionItem(
@@ -164,15 +169,12 @@ layout = dbc.Container(
 @callback(
     [Output("accordion", "children"), Output("accordion", "active_item")],
     [
-        Input("url", "search"),
         Input("joined-ships", "data"),
         Input("paper-cache", "data"),
-    ],
-    [
-        State("accordion", "active_item"),
+        Input("accordion", "active_item"),
     ],
 )
-def load_data(search, cached_meta, cached_papers, active_item):
+def load_data(cached_meta, cached_papers, active_item):
     accordion = None
     query_param = active_item
 
@@ -180,6 +182,10 @@ def load_data(search, cached_meta, cached_papers, active_item):
         initial_df = pd.DataFrame(cached_meta)
         paper_df = pd.DataFrame(cached_papers)
         accordion = create_accordion(initial_df, paper_df)
-        if search:
-            query_param = search.split("=")[-1]
+
+        # Ensure we don't trigger an unnecessary update
+        if query_param == active_item:
+            # If the query_param is the same as active_item, return accordion but don't update active_item
+            return accordion, dash.no_update
+
     return accordion, query_param
