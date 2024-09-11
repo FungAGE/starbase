@@ -14,7 +14,7 @@ from Bio.Align.Applications import ClustalwCommandline
 
 
 def agg_df(df, groups):
-    if groups in df:
+    if all(group in df.columns for group in groups):
         agg = df.groupby(groups).starshipID.agg(
             count="count", nunique="nunique", duplicates=lambda x: x.size - x.nunique()
         )
@@ -23,12 +23,14 @@ def agg_df(df, groups):
 
         return agg
     else:
-        raise ValueError(f"{groups} missing from dataframe")
+        raise ValueError(
+            f"One or more of the groups {groups} do not exist in the DataFrame"
+        )
 
 
 def create_sunburst_plot(df, type):
     if type == "ship":
-        groups = "familyName"
+        groups = ["familyName"]
         title = "Starships by Family/Navis"
         colors = px.colors.qualitative.Plotly
     if type == "tax":
@@ -64,7 +66,7 @@ def are_all_strings_same_length(strings):
     return len(set(len(s) for s in strings)) == 1
 
 
-def make_logo(seqs):
+def make_logo(seqs, fig_name=None):
 
     if not seqs:  # If all sequences are empty, return None
         return None
@@ -108,21 +110,23 @@ def make_logo(seqs):
             )
             lm.Logo(counts_mat, ax=ax)
 
-            # Save the figure to a BytesIO object
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png")
-            buf.seek(0)
+            if fig_name:
+                fig.savefig(fig_name, format="png")
+                return None
+            else:
+                # Save the figure to a BytesIO object
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png")
+                buf.seek(0)
 
-            # Encode the image to base64
-            img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            plt.close(fig)  # Close the figure to free up resources
+                img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                plt.close(fig)
 
-            # Clean up temporary files
-            os.remove(temp_in_file.name)
-            os.remove(temp_out_file.name)
-            return img_base64
+                os.remove(temp_in_file.name)
+                os.remove(temp_out_file.name)
+                return img_base64
+
         else:
-            # Clean up temporary files
             os.remove(temp_in_file.name)
             os.remove(temp_out_file.name)
             return None
