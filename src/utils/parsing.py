@@ -16,7 +16,7 @@ def parse_fasta_from_text(text):
     try:
         queries = SeqIO.parse(StringIO(text), "fasta")
         query = next(queries)
-        header, seq = query.id, query.seq
+        header, seq = str(query.id), str(query.seq)
         return header, seq
     except Exception as e:
         print(f"Error parsing text: {e}")
@@ -32,7 +32,7 @@ def parse_fasta_from_file(file_contents):
         sequence = "".join(split_contents[1:])
         decoded_sequence = base64.b64decode(sequence).decode("utf-8")
         query = SeqIO.read(StringIO(decoded_sequence), "fasta")
-        header, seq = query.id, str(query.seq)
+        header, seq = str(query.id), str(query.seq)
         return header, seq
 
     except Exception as e:
