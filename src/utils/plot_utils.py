@@ -14,19 +14,21 @@ from Bio.Align.Applications import ClustalwCommandline
 
 
 def agg_df(df, groups):
-    agg = df.groupby(groups).starshipID.agg(
-        count="count", nunique="nunique", duplicates=lambda x: x.size - x.nunique()
-    )
+    if groups in df:
+        agg = df.groupby(groups).starshipID.agg(
+            count="count", nunique="nunique", duplicates=lambda x: x.size - x.nunique()
+        )
 
-    agg = agg.reset_index()
+        agg = agg.reset_index()
 
-    return agg
+        return agg
+    else:
+        raise ValueError(f"{groups} missing from dataframe")
 
 
 def create_sunburst_plot(df, type):
     if type == "ship":
-        groups = ["familyName", "starship_navis"]
-        groups = ["familyName"]
+        groups = "familyName"
         title = "Starships by Family/Navis"
         colors = px.colors.qualitative.Plotly
     if type == "tax":

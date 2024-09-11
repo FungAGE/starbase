@@ -17,27 +17,20 @@ from src.utils.plot_utils import create_sunburst_plot
 from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
 
 
-download_ships_button = (
+download_ships_button = dbc.Button(
     html.Div(
-        style={"textAlign": "center"},
-        children=[
-            dbc.Button(
-                html.Div(
-                    [
-                        "Download the latest version of ",
-                        html.Span(
-                            "starbase",
-                            className="logo-text",
-                        ),
-                        ".",
-                    ],
-                ),
-                id="open-modal",
-                color="primary",
-                class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
+        [
+            "Download the latest version of ",
+            html.Span(
+                "starbase",
+                className="logo-text",
             ),
+            ".",
         ],
     ),
+    id="open-modal",
+    color="primary",
+    class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
 )
 
 download_starbase_button = (
@@ -209,31 +202,3 @@ def load_ship_papers(app):
             finally:
                 if conn:
                     conn.close()
-
-
-def caching(app):
-    @app.callback(
-        [
-            Output("pie1-cache", "data"),
-            Output("pie2-cache", "data"),
-            Output("phylogeny-cache", "data"),
-            Output("explore-table-cache", "data"),
-        ],
-        [Input("curated-dataset", "data")],
-    )
-    def make_cache(cached_data):
-        initial_df = pd.DataFrame(cached_data)
-        ship_pie = create_sunburst_plot(df=initial_df, type="ship")
-        tax_pie = create_sunburst_plot(df=initial_df, type="tax")
-        tree = plot_tree(highlight_families="all")
-        columns = [
-            "starshipID",
-            "familyName",
-            "order",
-            "family",
-            "genus",
-            "species",
-        ]
-
-        table = make_ship_table(df=initial_df, id="explore-table", columns=columns)
-        return ship_pie, tax_pie, tree, table
