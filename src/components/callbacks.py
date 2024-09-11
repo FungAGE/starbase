@@ -229,6 +229,8 @@ def caching(app):
         columns = [
             "starshipID",
             "familyName",
+            "order",
+            "family",
             "genus",
             "species",
         ]

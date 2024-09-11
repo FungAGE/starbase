@@ -165,6 +165,11 @@ layout = dmc.Container(
                             children=html.Div(id="ship-blast-table"),
                         ),
                         dcc.Loading(
+                            id="subject-seq-button-loading",
+                            type="default",
+                            children=html.Div(id="subject-seq-button"),
+                        ),
+                        dcc.Loading(
                             id="ship-aln-loading",
                             type="default",
                             children=html.Div(id="ship-aln"),
@@ -209,6 +214,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
     [
         Output("blast-results-store", "data"),
         Output("hmmer-results-store", "data"),
+        Output("subject-seq-button", "children"),
     ],
     [
         Input("query-header-store", "data"),
@@ -238,31 +244,41 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
         blast_results_dict = blast_results.to_dict("records")
 
         # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
-        if query_type == "prot":
-            # Run HMMER
-            hmmer_results = run_hmmer(
-                db_list=db_list,
-                query_type=query_type,
-                input_genes="tyr",
-                input_eval=0.01,
-                query_fasta=tmp_query_fasta,
-                tmp_hmmer=tmp_hmmer,
-                tmp_hmmer_parsed=tmp_hmmer_parsed,
-                threads=2,
-            )
+        subject_seq_button = None
+        subject_seq = None
+        # Run HMMER
+        hmmer_results, subject_seq = run_hmmer(
+            db_list=db_list,
+            query_type=query_type,
+            input_genes="tyr",
+            input_eval=0.01,
+            query_fasta=tmp_query_fasta,
+            tmp_hmmer=tmp_hmmer,
+            tmp_hmmer_parsed=tmp_hmmer_parsed,
+            threads=2,
+        )
 
-            if hmmer_results is None:
-                raise ValueError("hmmsearch returned no results!")
+        if hmmer_results is None:
+            raise ValueError("hmmsearch returned no results!")
 
-            hmmer_results_dict = hmmer_results.to_dict("records")
-        else:
-            hmmer_results_dict = None
+        hmmer_results_dict = hmmer_results.to_dict("records")
 
-        return blast_results_dict, hmmer_results_dict
+        return blast_results_dict, hmmer_results_dict, subject_seq_button
 
     except Exception as e:
         print(f"Error: {str(e)}")
-        return None, None
+        return None, None, None
+
+
+@callback(
+    Output("subject-seq-dl-package", "data"),
+    [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
+)
+def subject_seq_download(n_clicks, filename):
+    if n_clicks:
+        return dcc.send_file(filename)
+    else:
+        return dash.no_update
 
 
 @callback(
@@ -300,35 +316,35 @@ def update_ui(
             # blast_chord = blast_chords(blast_results_df)
 
         # Process HMMER results and render family
-        if query_type == "nucl":
+        # if query_type == "nucl":
+        #     ship_family = dbc.Alert(
+        #         "hmmsearch will currently not be run for nucleotide queries",
+        #         color="warning",
+        #     )
+        # else:
+        if hmmer_results_dict:
+            hmmer_results_df = pd.DataFrame(hmmer_results_dict)
+            try:
+                superfamily, family_aln_length, family_evalue = select_ship_family(
+                    hmmer_results_df
+                )
+                if superfamily:
+                    family = initial_df[initial_df["longFamilyID"] == superfamily][
+                        "familyName"
+                    ].unique()[0]
+                    ship_family = dbc.Alert(
+                        [
+                            f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                        ],
+                        color="warning",
+                    )
+            except Exception as e:
+                ship_family = html.Div(f"Error: {str(e)}")
+        else:
             ship_family = dbc.Alert(
-                "hmmsearch will currently not be run for nucleotide queries",
+                "No captain sequence found (e-value threshold 0.01).",
                 color="warning",
             )
-        else:
-            if hmmer_results_dict:
-                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                try:
-                    superfamily, family_aln_length, family_evalue = select_ship_family(
-                        hmmer_results_df
-                    )
-                    if superfamily:
-                        family = initial_df[initial_df["longFamilyID"] == superfamily][
-                            "familyName"
-                        ].unique()[0]
-                        ship_family = dbc.Alert(
-                            [
-                                f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                            ],
-                            color="warning",
-                        )
-                except Exception as e:
-                    ship_family = html.Div(f"Error: {str(e)}")
-            else:
-                ship_family = dbc.Alert(
-                    "No captain sequence found (e-value threshold 0.01).",
-                    color="warning",
-                )
 
         return (
             ship_family,

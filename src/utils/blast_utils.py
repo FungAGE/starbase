@@ -190,6 +190,7 @@ def run_hmmer(
     tmp_hmmer_parsed=None,
     threads=None,
 ):
+    print("Running hmmersearch...")
     hmmer_db = ""
     if input_genes:
         hmmer_program = "hmmsearch"
@@ -203,7 +204,7 @@ def run_hmmer(
             parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
 
             # extract sequence from results
-            # extract_hmmer(tmp_hmmer_parsed)
+            subject_seq = extract_gene_from_hmmer(tmp_hmmer_parsed)
 
             # Read parsed output into DataFrame
             hmmer_results = pd.read_csv(
@@ -211,7 +212,7 @@ def run_hmmer(
                 sep="\t",
             )
 
-            return hmmer_results
+            return hmmer_results, subject_seq
         else:
             raise ValueError("Issue accessing HMM database")
     if hmmer_db is None:
@@ -240,7 +241,7 @@ def parse_hmmer(hmmer_output_file, parsed_file):
                     )
 
 
-def extract_hmmer(parsed_file):
+def extract_gene_from_hmmer(parsed_file):
     # Read the TSV file into a DataFrame
     data = pd.read_csv(parsed_file, sep="\t")
 
@@ -252,6 +253,7 @@ def extract_hmmer(parsed_file):
         os.path.dirname(parsed_file), f"{os.path.splitext(parsed_file)[0]}.besthit.txt"
     )
 
+    output_filename = None
     with open(top_hit_out_path, "w") as top_hit_out:
         # Write the header line
         top_hit_out.write(
@@ -264,7 +266,7 @@ def extract_hmmer(parsed_file):
         for index, row in min_evalue_rows.iterrows():
             # Create a SeqRecord
             query = row["query_id"]
-            qseq = row["query_seq"]
+            qseq = re.sub(r"\.", "", str(row["query_seq"]))
             sequence = SeqRecord(Seq(qseq), id=query, description="")
 
             # Write the SeqRecord to a FASTA file
@@ -274,6 +276,20 @@ def extract_hmmer(parsed_file):
             )
 
             SeqIO.write(sequence, output_filename, "fasta")
+
+    output = html.Div(
+        [
+            dbc.Button(
+                "Download best captain hit",
+                id="subject-seq-button",
+                n_clicks=0,
+                className="d-grid gap-2 col-6 mx-auto",
+                style={"fontSize": "1rem"},
+            ),
+            dcc.Download(id="subject-seq-dl-package"),
+        ]
+    )
+    return output
 
 
 def circos_prep(blast_output, links_output, layout_output):
@@ -554,3 +570,9 @@ def parse_lastz_output(output_file):
     df["send"] = pd.to_numeric(df["send"], errors="coerce")
 
     return df
+
+
+def diamond(query, db, threads=2):
+    threads = 2
+    diamond_cmd = f"/usr/bin/diamond blastp --db {db} -q {query} -f 6 qseqid pident evalue qseq -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids"
+    subprocess.run(diamond_cmd, shell=True, check=True)
