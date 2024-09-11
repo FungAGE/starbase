@@ -89,253 +89,259 @@ modal = dbc.Modal(
 )
 
 
-layout = dmc.Container(
-    fluid=True,
-    children=[
-        dmc.Center(
+layout = html.Div(
+    [
+        dcc.Location(id="url", refresh=False),
+        dmc.Container(
+            fluid=True,
             children=[
-                dcc.Location(id="url", refresh=False),
-                dmc.Title(
-                    [
-                        html.Span(
-                            "starbase: ",
-                            className="logo-text",
+                dmc.Center(
+                    children=[
+                        dmc.Title(
+                            [
+                                html.Span(
+                                    "starbase: ",
+                                    className="logo-text",
+                                ),
+                                "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                            ],
+                            className="text-center",
+                            style={"paddingTop": "20px"},
+                            # className="text-center text-custom text-custom-xl",
                         ),
-                        "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
                     ],
-                    className="text-center",
+                ),
+                dmc.Grid(
+                    justify="center",
+                    align="center",
                     style={"paddingTop": "20px"},
-                    # className="text-center text-custom text-custom-xl",
-                ),
-            ],
-        ),
-        dmc.Grid(
-            justify="center",
-            align="center",
-            style={"paddingTop": "20px"},
-            gutter="xl",
-            children=[
-                dmc.GridCol(
-                    span="content",
+                    gutter="xl",
                     children=[
-                        dbc.Card(
-                            [
-                                dbc.CardHeader(
-                                    [
-                                        html.Div(
-                                            [
-                                                "What can I currently use ",
-                                                html.Span(
-                                                    "starbase",
-                                                    className="logo-text",
-                                                ),
-                                                " for?",
-                                            ],
-                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                        )
-                                    ],
-                                    style={
-                                        "justify-content": "center",
-                                    },
-                                    className="card-header-custom",
-                                ),
-                                dbc.CardBody(
-                                    [
-                                        dbc.Stack(
-                                            working_buttons,
-                                            # direction="horizontal",
-                                            gap=3,
-                                            className="justify-content-center",
-                                        )
-                                    ],
-                                    className="d-flex align-items-center",
-                                ),
-                            ],
-                            className="w-100 mb-3",
-                        ),
-                    ],
-                ),
-                dmc.GridCol(
-                    span="content",
-                    children=[
-                        dbc.Card(
-                            [
-                                dbc.CardHeader(
-                                    [
-                                        html.Div(
-                                            [
-                                                "Functions of ",
-                                                html.Span(
-                                                    "starbase",
-                                                    className="logo-text",
-                                                ),
-                                                " under active development:",
-                                            ],
-                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                        )
-                                    ],
-                                    style={
-                                        "justify-content": "center",
-                                    },
-                                    className="card-header-custom",
-                                ),
-                                dbc.CardBody(
-                                    [not_working_ul],
-                                    className="d-flex align-items-center",
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                dmc.GridCol(
-                    span=12,
-                    children=[
-                        dmc.Center(
-                            [
+                        dmc.GridCol(
+                            span="content",
+                            children=[
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
                                             [
                                                 html.Div(
-                                                    "Data Availability",
-                                                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                )
-                                            ],
-                                            className="card-header-custom",
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                dmc.Text(
                                                     [
-                                                        "We have been maintaining ",
+                                                        "What can I currently use ",
                                                         html.Span(
                                                             "starbase",
                                                             className="logo-text",
                                                         ),
-                                                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                        " for?",
                                                     ],
                                                     className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                ),
-                                                download_ships_button,
+                                                )
                                             ],
+                                            style={
+                                                "justify-content": "center",
+                                            },
+                                            className="card-header-custom",
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                dbc.Stack(
+                                                    working_buttons,
+                                                    # direction="horizontal",
+                                                    gap=3,
+                                                    className="justify-content-center",
+                                                )
+                                            ],
+                                            className="d-flex align-items-center",
                                         ),
                                     ],
-                                    className="auto-resize-750",
-                                    # style={"height": "350px"},
-                                    #
+                                    className="w-100 mb-3",
                                 ),
-                                modal,
-                            ]
+                            ],
                         ),
-                    ],
-                ),
-            ],
-        ),
-        dmc.Grid(
-            justify="center",
-            align="center",
-            style={"paddingTop": "20px"},
-            grow=True,
-            children=[
-                dmc.GridCol(
-                    span=12,
-                    children=[
-                        dmc.Center(
-                            [
+                        dmc.GridCol(
+                            span="content",
+                            children=[
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
                                             [
                                                 html.Div(
-                                                    ["What is a Starship?"],
+                                                    [
+                                                        "Functions of ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                        " under active development:",
+                                                    ],
                                                     className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                ),
+                                                )
                                             ],
+                                            style={
+                                                "justify-content": "center",
+                                            },
                                             className="card-header-custom",
                                         ),
                                         dbc.CardBody(
-                                            [
-                                                dmc.Grid(
-                                                    [
-                                                        dmc.GridCol(
-                                                            span="content",
-                                                            children=[
-                                                                html.Div(
-                                                                    [
-                                                                        "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
-                                                                        html.Span(
-                                                                            "Paecilomyces",
-                                                                            style={
-                                                                                "font-style": "italic"
-                                                                            },
-                                                                        ),
-                                                                        " cheese making in ",
-                                                                        html.Span(
-                                                                            "Penicillium",
-                                                                            style={
-                                                                                "font-style": "italic",
-                                                                            },
-                                                                        ),
-                                                                        ", and enable the transfer of formaldehyde resistance in ",
-                                                                        html.Span(
-                                                                            "Aspergillus nidulans",
-                                                                            style={
-                                                                                "font-style": "italic",
-                                                                            },
-                                                                        ),
-                                                                        " and ",
-                                                                        html.Span(
-                                                                            "Penicillium chrysogenum.",
-                                                                            style={
-                                                                                "font-style": "italic",
-                                                                            },
-                                                                        ),
-                                                                    ],
-                                                                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl align-items-center",
-                                                                    style={
-                                                                        "justify-content": "center"
-                                                                    },
-                                                                ),
-                                                            ],
-                                                        ),
-                                                        dmc.GridCol(
-                                                            span="content",
-                                                            children=[
-                                                                dmc.Image(
-                                                                    src="assets/images/starship-model.png",
-                                                                    style={
-                                                                        "backgroundColor": "white",
-                                                                        "maxWidth": "1000px",
-                                                                    },
-                                                                )
-                                                            ],
-                                                        ),
-                                                    ]
-                                                ),
-                                            ],
+                                            [not_working_ul],
+                                            className="d-flex align-items-center",
                                         ),
                                     ],
-                                    color="primary",
-                                    inverse=True,
-                                    className="auto-resize-750",
                                 ),
-                            ]
+                            ],
+                        ),
+                        dmc.GridCol(
+                            span=12,
+                            children=[
+                                dmc.Center(
+                                    [
+                                        dbc.Card(
+                                            [
+                                                dbc.CardHeader(
+                                                    [
+                                                        html.Div(
+                                                            "Data Availability",
+                                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                                                        )
+                                                    ],
+                                                    className="card-header-custom",
+                                                ),
+                                                dbc.CardBody(
+                                                    [
+                                                        dmc.Text(
+                                                            [
+                                                                "We have been maintaining ",
+                                                                html.Span(
+                                                                    "starbase",
+                                                                    className="logo-text",
+                                                                ),
+                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                            ],
+                                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                                                        ),
+                                                        dmc.Center(
+                                                            download_ships_button
+                                                        ),
+                                                    ],
+                                                ),
+                                            ],
+                                            className="auto-resize-750",
+                                            # style={"height": "350px"},
+                                            #
+                                        ),
+                                        modal,
+                                    ]
+                                ),
+                            ],
                         ),
                     ],
                 ),
-                dmc.GridCol(
-                    span="content",
+                dmc.Grid(
+                    justify="center",
+                    align="center",
+                    style={"paddingTop": "20px"},
+                    grow=True,
                     children=[
-                        dmc.Center(
-                            [
-                                html.Div(id="paper-table"),
-                            ]
+                        dmc.GridCol(
+                            span=12,
+                            children=[
+                                dmc.Center(
+                                    [
+                                        dbc.Card(
+                                            [
+                                                dbc.CardHeader(
+                                                    [
+                                                        html.Div(
+                                                            ["What is a Starship?"],
+                                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                                                        ),
+                                                    ],
+                                                    className="card-header-custom",
+                                                ),
+                                                dbc.CardBody(
+                                                    [
+                                                        dmc.Grid(
+                                                            [
+                                                                dmc.GridCol(
+                                                                    span="content",
+                                                                    children=[
+                                                                        html.Div(
+                                                                            [
+                                                                                "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
+                                                                                html.Span(
+                                                                                    "Paecilomyces",
+                                                                                    style={
+                                                                                        "font-style": "italic"
+                                                                                    },
+                                                                                ),
+                                                                                " cheese making in ",
+                                                                                html.Span(
+                                                                                    "Penicillium",
+                                                                                    style={
+                                                                                        "font-style": "italic",
+                                                                                    },
+                                                                                ),
+                                                                                ", and enable the transfer of formaldehyde resistance in ",
+                                                                                html.Span(
+                                                                                    "Aspergillus nidulans",
+                                                                                    style={
+                                                                                        "font-style": "italic",
+                                                                                    },
+                                                                                ),
+                                                                                " and ",
+                                                                                html.Span(
+                                                                                    "Penicillium chrysogenum.",
+                                                                                    style={
+                                                                                        "font-style": "italic",
+                                                                                    },
+                                                                                ),
+                                                                            ],
+                                                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl align-items-center",
+                                                                            style={
+                                                                                "justify-content": "center"
+                                                                            },
+                                                                        ),
+                                                                    ],
+                                                                ),
+                                                                dmc.GridCol(
+                                                                    span="content",
+                                                                    children=[
+                                                                        dmc.Image(
+                                                                            src="assets/images/starship-model.png",
+                                                                            style={
+                                                                                "backgroundColor": "white",
+                                                                                "maxWidth": "1000px",
+                                                                            },
+                                                                        )
+                                                                    ],
+                                                                ),
+                                                            ]
+                                                        ),
+                                                    ],
+                                                ),
+                                            ],
+                                            color="primary",
+                                            inverse=True,
+                                            className="auto-resize-750",
+                                        ),
+                                    ]
+                                ),
+                            ],
+                        ),
+                        dmc.GridCol(
+                            span="content",
+                            children=[
+                                dmc.Center(
+                                    [
+                                        html.Div(id="paper-table"),
+                                    ]
+                                ),
+                            ],
                         ),
                     ],
                 ),
             ],
         ),
-    ],
+    ]
 )
 
 
