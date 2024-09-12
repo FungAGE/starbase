@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import dcc, html, callback
 from dash.dependencies import Output, Input
-from src.components.callbacks import download_ships_button, modal
+from src.components.callbacks import download_ships_card, modal
 from src.components.tables import make_paper_table
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
@@ -168,24 +168,7 @@ layout = html.Div(
                                                     ],
                                                     className="card-header-custom",
                                                 ),
-                                                dbc.CardBody(
-                                                    [
-                                                        dmc.Text(
-                                                            [
-                                                                "We have been maintaining ",
-                                                                html.Span(
-                                                                    "starbase",
-                                                                    className="logo-text",
-                                                                ),
-                                                                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the mean time, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
-                                                            ],
-                                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                        ),
-                                                        dmc.Center(
-                                                            download_ships_button
-                                                        ),
-                                                    ],
-                                                ),
+                                                download_ships_card,
                                             ],
                                             className="auto-resize-750",
                                             # style={"height": "350px"},
