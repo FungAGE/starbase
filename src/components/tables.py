@@ -57,7 +57,6 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                 page_size=pg_sz,
                 style_table={
                     "overflowX": "auto",
-                    "maxWidth": "100%",
                 },
                 style_cell={
                     "minWidth": "150px",

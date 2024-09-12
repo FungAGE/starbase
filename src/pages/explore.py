@@ -6,6 +6,7 @@ import dash
 from dash import dcc, html, callback, no_update
 from dash.dependencies import Output, Input, State
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 
 import pandas as pd
 from src.components.tables import make_ship_table
@@ -25,7 +26,7 @@ curated_switch = dbc.Row(
             children=[
                 dbc.Switch(
                     id="curated-input",
-                    label="Use just curated Starships",
+                    label="Subset to curated Starships",
                     value=False,
                     style={
                         "display": "flex",
@@ -39,92 +40,91 @@ curated_switch = dbc.Row(
     ],
 )
 
-species_card = (
-    dbc.Card(
-        [
-            dbc.CardHeader([html.Div(id="species-card-header")]),
-            dbc.CardBody(
-                [
-                    html.H1(
-                        html.Div(id="species-count"),
-                    ),
-                ],
-            ),
-        ],
-        style={
-            "textAlign": "center",
-            "fontSize": "1vw",
-            "height": 150,
-            "paddingBottom": "10px",
-        },
-        color="secondary",
-        inverse=True,
-    ),
+species_card = dbc.Card(
+    [
+        dbc.CardHeader([html.Div(id="species-card-header")]),
+        dbc.CardBody(
+            [
+                html.H1(
+                    html.Div(id="species-count"),
+                ),
+            ],
+        ),
+    ],
+    style={
+        "textAlign": "center",
+        "fontSize": "1vw",
+        "height": 150,
+        "maxWidth": "500px",
+    },
+    color="secondary",
+    inverse=True,
 )
 
-tax_card = (
-    dbc.Card(
-        [
-            dbc.CardHeader([html.Div(id="ship-card-header")]),
-            dbc.CardBody(
-                [
-                    html.H1(html.Div(id="ship-count")),
-                ],
-            ),
-        ],
-        style={
-            "textAlign": "center",
-            "fontSize": "1vw",
-            "height": 150,
-            "paddingBottom": "10px",
-        },
-        color="primary",
-        inverse=True,
-    ),
+tax_card = dbc.Card(
+    [
+        dbc.CardHeader([html.Div(id="ship-card-header")]),
+        dbc.CardBody(
+            [
+                html.H1(html.Div(id="ship-count")),
+            ],
+        ),
+    ],
+    style={
+        "textAlign": "center",
+        "fontSize": "1vw",
+        "height": 150,
+        "maxWidth": "500px",
+    },
+    color="primary",
+    inverse=True,
 )
 
 layout = html.Div(
     [
         dcc.Location(id="url", refresh=False),
-        dbc.Container(
+        dmc.Container(
             fluid=True,
             children=[
-                dbc.Row(
+                dmc.Grid(
                     justify="center",
-                    align="start",
-                    style={"paddingTop": "20px"},
+                    align="center",
                     children=[
-                        dbc.Col(
-                            lg=6,
-                            sm=8,
+                        dmc.GridCol(
+                            span={"lg": 6, "sm": 12},
                             children=[
-                                dbc.Stack(
-                                    [
-                                        curated_switch,
-                                        dbc.Row(
-                                            justify="center",
-                                            align="start",
-                                            children=[
-                                                dbc.Col(
-                                                    lg=6,
-                                                    sm=10,
-                                                    children=species_card,
-                                                ),
-                                                dbc.Col(
-                                                    lg=6,
-                                                    sm=10,
-                                                    children=tax_card,
-                                                ),
-                                            ],
+                                dmc.Grid(
+                                    justify="center",
+                                    align="start",
+                                    style={"padding": "10px"},
+                                    children=[
+                                        dmc.GridCol(
+                                            span={"lg": 6, "sm": 10},
+                                            children=curated_switch,
                                         ),
-                                        dbc.Row(
-                                            justify="center",
-                                            align="center",
+                                        dmc.GridCol(
+                                            span={"lg": 6, "sm": 10},
+                                            children=dbc.Button(
+                                                "Reset",
+                                                id="reset-button",
+                                                n_clicks=0,
+                                                color="success",
+                                                class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                                dmc.Grid(
+                                    justify="center",
+                                    align="start",
+                                    style={"padding": "10px"},
+                                    children=[
+                                        dmc.GridCol(
+                                            span={"lg": 6, "sm": 10},
                                             children=[
-                                                dbc.Col(
-                                                    lg=6,
-                                                    sm=8,
-                                                    children=[
+                                                dmc.Stack(
+                                                    [
+                                                        species_card,
                                                         dcc.Loading(
                                                             id="loading-2",
                                                             type="default",
@@ -134,82 +134,57 @@ layout = html.Div(
                                                                     config={
                                                                         "displayModeBar": False,
                                                                     },
-                                                                ),
-                                                            ],
-                                                        )
-                                                    ],
-                                                ),
-                                                dbc.Col(
-                                                    lg=6,
-                                                    sm=8,
-                                                    children=[
-                                                        dcc.Loading(
-                                                            id="loading-1",
-                                                            type="default",
-                                                            children=[
-                                                                dcc.Graph(
-                                                                    id="pie-chart1",
-                                                                    config={
-                                                                        "displayModeBar": False,
+                                                                    style={
+                                                                        "padding": "10px"
                                                                     },
                                                                 ),
-                                                                # html.Div(
-                                                                #     id="pie-cache-error"
-                                                                # ),
                                                             ],
-                                                        )
-                                                    ],
-                                                ),
+                                                        ),
+                                                    ]
+                                                )
                                             ],
                                         ),
-                                        dbc.Button(
-                                            "Reset",
-                                            id="reset-button",
-                                            n_clicks=0,
-                                            className="d-grid gap-2 col-3 mx-auto",
-                                        ),
-                                        dbc.Row(
-                                            justify="center",
-                                            align="center",
+                                        dmc.GridCol(
+                                            span={"lg": 6, "sm": 10},
                                             children=[
-                                                dbc.Col(
-                                                    children=[
-                                                        html.H2(
-                                                            [
-                                                                "All Starships in ",
-                                                                html.Span(
-                                                                    "starbase",
-                                                                    className="logo-text",
-                                                                ),
-                                                            ],
-                                                            className="text-center",
+                                                dmc.Stack(
+                                                    [
+                                                        tax_card,
+                                                        dcc.Graph(
+                                                            id="pie-chart1",
+                                                            config={
+                                                                "displayModeBar": False,
+                                                            },
+                                                            style={"padding": "10px"},
                                                         ),
-                                                        dcc.Loading(
-                                                            id="loading-3",
-                                                            type="default",
-                                                            children=[
-                                                                html.Div(
-                                                                    id="explore-table",
-                                                                    className="center-content",
-                                                                ),
-                                                            ],
-                                                        ),
-                                                        # html.Div(
-                                                        #     id="explore-table-cache-error"
-                                                        # ),
-                                                    ],
-                                                ),
+                                                    ]
+                                                )
                                             ],
                                         ),
                                     ],
-                                    gap=4,
-                                    direction="vertical",
+                                ),
+                                dmc.GridCol(
+                                    span=12,
+                                    children=[
+                                        dcc.Loading(
+                                            id="loading-3",
+                                            type="default",
+                                            children=[
+                                                html.Div(
+                                                    id="explore-table",
+                                                    className="center-content",
+                                                ),
+                                            ],
+                                        ),
+                                        # html.Div(
+                                        #     id="explore-table-cache-error"
+                                        # ),
+                                    ],
                                 ),
                             ],
                         ),
-                        dbc.Col(
-                            lg=4,
-                            sm=8,
+                        dmc.GridCol(
+                            span={"lg": 4, "sm": 8},
                             children=[
                                 dcc.Loading(
                                     id="loading-4",
@@ -227,7 +202,7 @@ layout = html.Div(
                             className="justify-content-center",
                         ),
                     ],
-                )
+                ),
             ],
         ),
     ]
@@ -271,7 +246,7 @@ layout = html.Div(
         Input("curated-dataset", "data"),
     ],
 )
-def make_cards(curated_status, cached_data):
+def make_ship_cards(curated_status, cached_data):
     df = pd.DataFrame(cached_data)
     ship_count = df["starshipID"].nunique()
     species = df["genus"] + "-" + df["species"]
