@@ -2,6 +2,10 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
 import dash
 from dash import dcc, callback, html
 import dash_bootstrap_components as dbc
@@ -12,9 +16,6 @@ import pandas as pd
 import sqlite3
 
 from src.utils.parsing import parse_fasta, parse_gff
-from src.components.tables import make_ship_table
-from src.utils.plot_utils import create_sunburst_plot
-from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
 
 
 download_ships_button = dbc.Button(
@@ -64,11 +65,12 @@ download_starbase_button = (
 def dl_package(app):
     @app.callback(Output("dl-package", "data"), [Input("dl-button", "n_clicks")])
     def generate_download(n_clicks):
-        if n_clicks is None:
+        if n_clicks and n_clicks > 0:
+            return dcc.send_file(
+                "database_folder/Starships/ships/fna/blastdb/concatenated.fa"
+            )
+        else:
             return dash.no_update
-        return dcc.send_file(
-            "database_folder/Starships/ships/fna/blastdb/concatenated.fa"
-        )
 
 
 def update_fasta_upload(app):
@@ -97,7 +99,7 @@ def update_fasta_upload(app):
                 return children
 
             except Exception as e:
-                print(e)
+                logging.error(e)
                 return html.Div(["There was an error processing this file."])
 
 
@@ -120,7 +122,7 @@ def update_gff_upload(app):
                 return children
 
             except Exception as e:
-                print(e)
+                logging.error(e)
                 return html.Div(["There was an error processing this file."])
 
 
@@ -142,7 +144,7 @@ def load_ship_metadata(app):
                 return data
 
             except sqlite3.Error as error:
-                print("Failed to retrieve data from SQLite table:", error)
+                logging.error("Failed to retrieve data from SQLite table:", error)
                 return None
 
             finally:
@@ -196,7 +198,7 @@ def load_ship_papers(app):
                 return data
 
             except sqlite3.Error as error:
-                print("Failed to retrieve data from SQLite table:", error)
+                logging.error("Failed to retrieve data from SQLite table:", error)
                 return None
 
             finally:
