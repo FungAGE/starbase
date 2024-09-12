@@ -13,6 +13,7 @@ from src.components.callbacks import (
     update_dataset,
     dl_fa,
     modal_download,
+    caching,
 )
 
 _dash_renderer._set_react_version("18.2.0")
@@ -58,6 +59,10 @@ def serve_app_layout():
                 dcc.Store(id="paper-cache"),
                 dcc.Store(id="curated-dataset"),
                 dcc.Store(id="curated-status"),
+                dcc.Store(id="pie1-cache"),
+                dcc.Store(id="pie2-cache"),
+                dcc.Store(id="phylogeny-cache"),
+                dcc.Store(id="explore-table-cache"),
             ]
         )
     )
@@ -71,9 +76,7 @@ load_ship_papers(app)
 update_dataset(app)
 dl_fa(app)
 modal_download(app)
-# make_tree(app)
-# make_sunburst(app)
-# make_table(app)
+caching(app)
 
 app.layout = serve_app_layout
 

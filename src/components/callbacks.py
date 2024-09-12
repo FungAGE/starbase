@@ -18,6 +18,8 @@ from dash.exceptions import PreventUpdate
 
 from src.utils.parsing import parse_fasta, parse_gff
 from src.components.tables import make_ship_table
+from src.utils.plot_utils import create_sunburst_plot
+from src.utils.tree import plot_tree
 
 
 download_ships_button = dbc.Button(
@@ -36,51 +38,46 @@ download_ships_button = dbc.Button(
     class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
 )
 
-download_ships_card = (
-    dbc.CardBody(
-        [
-            dmc.Text(
+download_ships_card = dbc.CardBody(
+    [
+        dmc.Text(
+            [
+                "We have been maintaining ",
+                html.Span(
+                    "starbase",
+                    className="logo-text",
+                ),
+                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
+            ],
+            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+        ),
+        dmc.Center(download_ships_button),
+    ],
+)
+
+download_starbase_button = html.Div(
+    [
+        dbc.Button(
+            html.P(
                 [
-                    "We have been maintaining ",
+                    "Download Starships from the latest version of ",
                     html.Span(
                         "starbase",
                         className="logo-text",
                     ),
-                    " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
-                ],
-                className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                    ".",
+                ]
             ),
-            dmc.Center(download_ships_button),
-        ],
-    ),
-)
-
-
-download_starbase_button = (
-    html.Div(
-        [
-            dbc.Button(
-                html.P(
-                    [
-                        "Download Starships from the latest version of ",
-                        html.Span(
-                            "starbase",
-                            className="logo-text",
-                        ),
-                        ".",
-                    ]
-                ),
-                id="dl-button",
-                color="primary",
-                className="mt-2",
-            ),
-            dcc.Download(id="dl-package"),
-        ],
-        className="text-center",
-        style={
-            "font-size": "0.875rem",
-        },
-    ),
+            id="dl-button",
+            color="primary",
+            className="mt-2",
+        ),
+        dcc.Download(id="dl-package"),
+    ],
+    className="text-center",
+    style={
+        "font-size": "0.875rem",
+    },
 )
 
 
@@ -369,3 +366,35 @@ def dl_fa(app):
                     conn.close()
         else:
             return None
+
+
+def caching(app):
+    @app.callback(
+        [
+            Output("pie1-cache", "data"),
+            Output("pie2-cache", "data"),
+            Output("phylogeny-cache", "data"),
+            Output("explore-table-cache", "data"),
+        ],
+        [Input("curated-dataset", "data")],
+    )
+    def make_cache(cached_data):
+        initial_df = pd.DataFrame(cached_data)
+        unique_df = initial_df.drop_duplicates(subset=["starshipID"])
+        ship_pie = create_sunburst_plot(df=unique_df, type="ship")
+        tax_pie = create_sunburst_plot(df=unique_df, type="tax")
+        tree = plot_tree(highlight_families="all")
+
+        table = make_ship_table(
+            df=unique_df,
+            id="explore-table",
+            columns=[
+                "starshipID",
+                "familyName",
+                "order",
+                "family",
+                "genus",
+                "species",
+            ],
+        )
+        return ship_pie, tax_pie, tree, table

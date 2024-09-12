@@ -116,99 +116,97 @@ def make_card(name):
     return card
 
 
-layout = (
-    dmc.Container(
-        fluid=True,
-        children=[
-            dcc.Location(id="url", refresh=False),
-            dmc.Grid(
-                justify="center",
-                align="center",
-                style={"paddingTop": "20px"},
-                children=[
-                    dmc.GridCol(
-                        span=10,
-                        children=[
-                            dmc.Text(
-                                [
-                                    html.Span(
-                                        "starbase",
-                                        className="logo-text",
-                                    ),
-                                    " was developed by the ",
-                                    html.A(
-                                        "FungAGE lab",
-                                        href="https://fungage.github.io/",
-                                    ),
-                                    " in collaboration with the Gluck-Thaler lab.",
-                                ],
-                                size="lg",
-                                className="text-center",
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-            dmc.Grid(
-                justify="center",
-                align="stretch",
-                children=[
-                    make_card("aaron"),
-                    make_card("adrian"),
-                    make_card("emile"),
-                    dmc.GridCol(
-                        span=10,
-                        children=[
-                            dmc.Text(
-                                [
-                                    html.P(
-                                        [
-                                            "The source code for ",
-                                            html.Span(
-                                                "starbase",
-                                                className="logo-text",
-                                            ),
-                                            " webserver will soon be available on GitHub",
-                                        ],
-                                        className="text-center",
-                                    )
-                                ],
-                                size="lg",
-                            ),
-                            dmc.Center(
-                                [
-                                    html.Div(
-                                        html.Img(
-                                            src="assets/images/starbase-map.png",
-                                            className="auto-resize-750",
-                                        )
-                                    ),
-                                ]
-                            ),
-                            dmc.Center(
-                                [
-                                    dbc.Card(
-                                        [
-                                            dbc.CardHeader(
-                                                [
-                                                    dmc.Text(
-                                                        "Data Availability",
-                                                        size="lg",
-                                                    )
-                                                ],
-                                                className="card-header-custom",
-                                            ),
-                                            download_ships_card,
-                                        ],
+layout = dmc.Container(
+    fluid=True,
+    children=[
+        dcc.Location(id="url", refresh=False),
+        dmc.Grid(
+            justify="center",
+            align="center",
+            style={"paddingTop": "20px"},
+            children=[
+                dmc.GridCol(
+                    span=10,
+                    children=[
+                        dmc.Text(
+                            [
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
+                                ),
+                                " was developed by the ",
+                                html.A(
+                                    "FungAGE lab",
+                                    href="https://fungage.github.io/",
+                                ),
+                                " in collaboration with the Gluck-Thaler lab.",
+                            ],
+                            size="lg",
+                            className="text-center",
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        dmc.Grid(
+            justify="center",
+            align="stretch",
+            children=[
+                make_card("aaron"),
+                make_card("adrian"),
+                make_card("emile"),
+                dmc.GridCol(
+                    span=10,
+                    children=[
+                        dmc.Text(
+                            [
+                                html.P(
+                                    [
+                                        "The source code for ",
+                                        html.Span(
+                                            "starbase",
+                                            className="logo-text",
+                                        ),
+                                        " webserver will soon be available on GitHub",
+                                    ],
+                                    className="text-center",
+                                )
+                            ],
+                            size="lg",
+                        ),
+                        dmc.Center(
+                            [
+                                html.Div(
+                                    html.Img(
+                                        src="assets/images/starbase-map.png",
                                         className="auto-resize-750",
-                                    ),
-                                    modal,
-                                ]
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    ),
+                                    )
+                                ),
+                            ]
+                        ),
+                        dmc.Center(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                dmc.Text(
+                                                    "Data Availability",
+                                                    size="lg",
+                                                )
+                                            ],
+                                            className="card-header-custom",
+                                        ),
+                                        download_ships_card,
+                                    ],
+                                    className="auto-resize-750",
+                                ),
+                                modal,
+                            ]
+                        ),
+                    ],
+                ),
+            ],
+        ),
+    ],
 )
