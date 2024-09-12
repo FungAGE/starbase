@@ -38,21 +38,37 @@ download_ships_button = dbc.Button(
     class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
 )
 
-download_ships_card = dbc.CardBody(
+download_ships_card = dbc.Card(
     [
-        dmc.Text(
+        dbc.CardHeader(
             [
-                "We have been maintaining ",
-                html.Span(
-                    "starbase",
-                    className="logo-text",
-                ),
-                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
+                html.Div(
+                    "Data Availability",
+                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                )
             ],
-            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+            className="card-header-custom",
         ),
-        dmc.Center(download_ships_button),
+        dbc.CardBody(
+            [
+                dmc.Text(
+                    [
+                        "We have been maintaining ",
+                        html.Span(
+                            "starbase",
+                            className="logo-text",
+                        ),
+                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
+                    ],
+                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                ),
+                dmc.Center(download_ships_button),
+            ],
+        ),
     ],
+    className="auto-resize-750",
+    # style={"height": "350px"},
+    #
 )
 
 download_starbase_button = html.Div(

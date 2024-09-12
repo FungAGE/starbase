@@ -186,21 +186,7 @@ layout = dmc.Container(
                         ),
                         dmc.Center(
                             [
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [
-                                                dmc.Text(
-                                                    "Data Availability",
-                                                    size="lg",
-                                                )
-                                            ],
-                                            className="card-header-custom",
-                                        ),
-                                        download_ships_card,
-                                    ],
-                                    className="auto-resize-750",
-                                ),
+                                download_ships_card,
                                 modal,
                             ]
                         ),

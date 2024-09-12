@@ -157,23 +157,7 @@ layout = html.Div(
                             children=[
                                 dmc.Center(
                                     [
-                                        dbc.Card(
-                                            [
-                                                dbc.CardHeader(
-                                                    [
-                                                        html.Div(
-                                                            "Data Availability",
-                                                            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                        )
-                                                    ],
-                                                    className="card-header-custom",
-                                                ),
-                                                download_ships_card,
-                                            ],
-                                            className="auto-resize-750",
-                                            # style={"height": "350px"},
-                                            #
-                                        ),
+                                        download_ships_card,
                                         modal,
                                     ]
                                 ),
