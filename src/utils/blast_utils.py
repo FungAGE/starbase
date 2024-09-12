@@ -161,11 +161,11 @@ def run_blast(
 
         # with open(tmp_query_fasta, "r") as file:
         #     file_contents = file.read()
-        # print(file_contents)
+        # logging.info(file_contents)
 
         # with open(tmp_blast, "r") as file:
         #     file_contents = file.read()
-        # print(file_contents)
+        # logging.info(file_contents)
 
         df = pd.read_csv(
             tmp_blast,
@@ -384,15 +384,15 @@ def blast_chords(blast_output):
             with open(tmp_layout_json) as f:
                 circos_layout = json.load(f)
         except Exception as e:
-            print(f"Error loading JSON data: {e}")
+            logging.error(f"Error loading JSON data: {e}")
             return html.Div(["Error loading plot data."])
 
         # Check if the loaded data is not empty
         if not circos_graph_data or not circos_layout:
             return html.Div(["No valid data found for the BLAST search."])
 
-        print("Circos graph data:", circos_graph_data)
-        print("Circos layout data:", circos_layout)
+        logging.info("Circos graph data:", circos_graph_data)
+        logging.info("Circos layout data:", circos_layout)
 
         layout_config = {
             "innerRadius": 100,
@@ -446,7 +446,7 @@ def blast_chords(blast_output):
             return html.Div(circos_plot)
 
         except Exception as e:
-            print(f"Error creating Circos plot: {e}")
+            logging.error(f"Error creating Circos plot: {e}")
             return html.Div(["Error creating plot."])
     else:
         return html.Div(["No results found for the BLAST search."])
@@ -497,7 +497,7 @@ def blast_table(ship_blast_results):
                 id="blast-dl-button",
                 n_clicks=0,
                 style={"textAlign": "center", "fontSize": "1rem"},
-                className="d-grid gap-2 col-4 mx-auto",
+                className="d-grid gap-2 col-3 mx-auto",
             ),
             dcc.Download(id="blast-dl"),
         ]

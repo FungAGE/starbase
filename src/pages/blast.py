@@ -425,17 +425,22 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
+            qseq = re.sub("-", "", row["qseq"])
+            qseqid = row["qseqid"]
+            sseq = re.sub("-", "", row["sseq"])
+            sseqid = (
+                str(row["sseqid"]).replace("|-", "").replace("|+", "").replace("|", "")
+            )
+
         except IndexError:
             logging.error(f"Error: Row index {row_idx} out of bounds.")
             raise
-
+        print(row)
         tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
         try:
             with open(tmp_fasta.name, "w") as f:
-                f.write(
-                    f">{row['qseqid']}\n{row['qseq']}\n>{row['sseqid']}\n{row['sseq']}\n"
-                )
+                f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
         except Exception as file_error:
             logging.error(f"Error writing to FASTA file: {file_error}")
             raise
