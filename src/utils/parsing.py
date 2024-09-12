@@ -6,7 +6,6 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
-import dash_bootstrap_components as dbc
 from dash import html
 
 from io import StringIO
