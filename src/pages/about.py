@@ -6,7 +6,7 @@ import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import html, dcc
-from src.components.callbacks import download_ships_button, modal
+from src.components.callbacks import download_ships_card, modal
 
 dash.register_page(__name__)
 
@@ -198,22 +198,7 @@ layout = (
                                                 ],
                                                 className="card-header-custom",
                                             ),
-                                            dbc.CardBody(
-                                                [
-                                                    html.P(
-                                                        [
-                                                            "We have been maintaining ",
-                                                            html.Span(
-                                                                "starbase",
-                                                                className="logo-text",
-                                                            ),
-                                                            " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
-                                                        ],
-                                                        style={"font-size": "0.875rem"},
-                                                    ),
-                                                    download_ships_button,
-                                                ]
-                                            ),
+                                            download_ships_card,
                                         ],
                                         className="auto-resize-750",
                                     ),
