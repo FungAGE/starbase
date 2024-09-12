@@ -5,8 +5,8 @@ warnings.filterwarnings("ignore")
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import dcc, html
-from src.components.callbacks import download_starbase_button
+from dash import html, dcc
+from src.components.callbacks import download_ships_button, modal
 
 dash.register_page(__name__)
 
@@ -120,6 +120,7 @@ layout = (
     dmc.Container(
         fluid=True,
         children=[
+            dcc.Location(id="url", refresh=False),
             dmc.Grid(
                 justify="center",
                 align="center",
@@ -206,16 +207,17 @@ layout = (
                                                                 "starbase",
                                                                 className="logo-text",
                                                             ),
-                                                            " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve all Starship sequences, annotations, and more, in a single .zip file (size ~100Mb)",
+                                                            " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
                                                         ],
                                                         style={"font-size": "0.875rem"},
                                                     ),
-                                                    download_starbase_button,
+                                                    download_ships_button,
                                                 ]
                                             ),
                                         ],
                                         className="auto-resize-750",
                                     ),
+                                    modal,
                                 ]
                             ),
                         ],

@@ -11,6 +11,8 @@ from src.components.callbacks import (
     load_ship_metadata,
     load_ship_papers,
     update_dataset,
+    dl_fa,
+    modal_download,
 )
 
 _dash_renderer._set_react_version("18.2.0")
@@ -67,6 +69,8 @@ update_gff_upload(app)
 load_ship_metadata(app)
 load_ship_papers(app)
 update_dataset(app)
+dl_fa(app)
+modal_download(app)
 # make_tree(app)
 # make_sunburst(app)
 # make_table(app)

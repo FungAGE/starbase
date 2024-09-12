@@ -16,7 +16,9 @@ def url_to_link(url, label):
     return f'<a href="{url}" target="_blank">{label}</a>'
 
 
-def make_ship_table(df, id, columns=None):
+def make_ship_table(df, id, columns=None, pg_sz=None):
+    if pg_sz is None:
+        pg_sz = 10
     if columns is None:
         # columns = df.columns
         columns = [
@@ -52,7 +54,7 @@ def make_ship_table(df, id, columns=None):
                 selected_rows=[],
                 page_action="native",
                 page_current=0,
-                page_size=10,
+                page_size=pg_sz,
                 style_table={
                     "overflowX": "auto",
                     "maxWidth": "100%",
