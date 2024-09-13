@@ -115,8 +115,6 @@ def run_blast(
     input_eval=None,
     threads=None,
 ):
-    # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
-    # * that way, the user can switch back and forth between hq and all ships in the output, without having to run a new search
     try:
         search_type = "ship"
         if search_type == "ship":
