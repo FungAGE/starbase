@@ -36,6 +36,7 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.utils.tree import plot_tree, default_highlight_families
+from src.components.callbacks import curated_switch
 
 dash.register_page(__name__)
 
@@ -135,6 +136,7 @@ layout = dmc.Container(
                             multiple=False,
                             accept=".fa, .fas, .fasta, .fna",
                         ),
+                        curated_switch(text="Only search curated Starships",size="normal"),
                         dbc.Button(
                             "Submit BLAST",
                             id="submit-button",
@@ -323,6 +325,10 @@ def subject_seq_download(n_clicks, filename):
         logging.error(f"Error in subject_seq_download: {str(e)}")
         return dash.no_update
 
+no_captain_alert = dbc.Alert(
+                    "No captain sequence found (e-value threshold 0.01).",
+                    color="warning",
+                )
 
 @callback(
     [
@@ -335,7 +341,7 @@ def subject_seq_download(n_clicks, filename):
     ],
     [
         State("submit-button", "n_clicks"),
-        State("joined-ships", "data"),
+        State("curated-dataset", "data"),
         State("query-type-store", "data"),
     ],
 )
@@ -357,37 +363,48 @@ def update_ui(
                 # Render BLAST table
                 blast_results_df = pd.DataFrame(blast_results_dict)
                 logging.info("Rendering BLAST table")
-                ship_table = blast_table(blast_results_df)
+                # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
+                # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
+                df_for_table = blast_results_df["starshipID" == initial_df["starshipID"]]
+                if len(df_for_table) > 0:
+                    ship_table = blast_table(df_for_table)
+                else:
+                    ship_table = dbc.Alert(
+                    "No BLAST results found.",
+                    color="error",
+                )
+                    
 
             if hmmer_results_dict:
-                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
                 logging.info("Processing HMMER results")
-                try:
-                    superfamily, family_aln_length, family_evalue = select_ship_family(
-                        hmmer_results_df
-                    )
-                    if superfamily:
-                        if query_type == "nucl":
-                            column = "familyName"
-                        else:
-                            column = "longFamilyID"
-                        family = initial_df[initial_df[column] == superfamily][
-                            "familyName"
-                        ].unique()[0]
-                        ship_family = dbc.Alert(
-                            [
-                                f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                            ],
-                            color="warning",
+                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
+                df_for_hmmer = hmmer_results_df["hit_IDs" == initial_df["starshipID"]]
+                if len(df_for_hmmer) > 0:
+                    try:
+                        superfamily, family_aln_length, family_evalue = select_ship_family(
+                            df_for_hmmer
                         )
-                except Exception as e:
-                    logging.error(f"Error selecting ship family: {str(e)}")
-                    ship_family = html.Div(f"Error: {str(e)}")
+                        if superfamily:
+                            if query_type == "nucl":
+                                column = "familyName"
+                            else:
+                                column = "longFamilyID"
+                            family = initial_df[initial_df[column] == superfamily][
+                                "familyName"
+                            ].unique()[0]
+                            ship_family = dbc.Alert(
+                                [
+                                    f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                ],
+                                color="warning",
+                            )
+                    except Exception as e:
+                        logging.error(f"Error selecting ship family: {str(e)}")
+                        ship_family = html.Div(f"Error: {str(e)}")
+                else:
+                    ship_family = no_captain_alert
             else:
-                ship_family = dbc.Alert(
-                    "No captain sequence found (e-value threshold 0.01).",
-                    color="warning",
-                )
+                ship_family = no_captain_alert
 
         return ship_family, ship_table
 

@@ -12,33 +12,9 @@ import pandas as pd
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
+from src.components.callbacks import curated_switch
 
 dash.register_page(__name__)
-
-curated_switch = dbc.Row(
-    justify="center",
-    align="start",
-    style={"paddingTop": "20px"},
-    children=[
-        dbc.Col(
-            lg=6,
-            sm=8,
-            children=[
-                dbc.Switch(
-                    id="curated-input",
-                    label="Subset to curated Starships",
-                    value=False,
-                    style={
-                        "display": "flex",
-                        "alignItems": "baseline",
-                        "transform": "scale(1.5)",
-                        "justify-content": "center",
-                    },
-                ),
-            ],
-        )
-    ],
-)
 
 species_card = dbc.Card(
     [
@@ -100,7 +76,7 @@ layout = html.Div(
                                     children=[
                                         dmc.GridCol(
                                             span={"lg": 6, "sm": 10},
-                                            children=curated_switch,
+                                            children=curated_switch(text="Subset to curated Starships",size="large"),
                                         ),
                                         dmc.GridCol(
                                             span={"lg": 6, "sm": 10},
