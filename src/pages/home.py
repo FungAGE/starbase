@@ -277,9 +277,10 @@ layout = html.Div(
 
 @callback(
     Output("paper-table", "children"),
-    [Input("paper-cache", "data"), Input("url", "href")],
+    [Input("paper-cache", "data"),Input("url","href")],
 )
-def load_paper_table(data, url):
+def load_paper_table(data,url):
+    print(data)
     if url:
         table = make_paper_table(data)
         return table
