@@ -202,10 +202,11 @@ def load_ship_metadata(app):
             try:
                 conn = sqlite3.connect("database_folder/starbase.sqlite")
                 query = """
-                SELECT j.*, o."order", o.family, f.longFamilyID, f.familyName
+                SELECT j.*, t."order", t.family, f.longFamilyID, f.familyName, a.accession_tag
                 FROM joined_ships j
-                JOIN genome_taxonomy o ON j.taxid = o.taxID
+                JOIN taxonomy t ON j.taxid = t.taxID
                 JOIN family_names f ON j.ship_family_id = f.id
+                JOIN accessions a ON j.ship_id = a.id
                 """
                 df = pd.read_sql_query(query, conn)
                 data = df.to_dict(orient="records")
@@ -351,7 +352,7 @@ def modal_download(app):
                 id="download-table",
                 pg_sz=25,
                 columns=[
-                    "starshipID",
+                    "accession_tag",
                     "familyName",
                     "genus",
                     "species",
@@ -384,11 +385,11 @@ def dl_fa(app):
 
         if click_all or click_selected:
             ship_names = [
-                rows[selected_row]["starshipID"] for selected_row in selected_rows
+                rows[selected_row]["accession_tag"] for selected_row in selected_rows
             ]
             try:
                 conn = sqlite3.connect("database_folder/starbase.sqlite")
-                query = f"SELECT genome_name, genome_sequence FROM genome_genome WHERE genome_name "
+                query = f"SELECT ship_name, ship_sequence FROM ships WHERE ship_name "
                 if len(ship_names) > 1:
                     placeholders = ",".join(["?"] * len(ship_names))
                     query += f"IN ({placeholders})"
@@ -399,7 +400,7 @@ def dl_fa(app):
 
                 # Create FASTA content
                 fasta_content = [
-                    f">{row['genome_name']}\n{row['genome_sequence']}"
+                    f">{row['ship_name']}\n{row['ship_sequence']}"
                     for _, row in df.iterrows()
                 ]
                 fasta_str = "\n".join(fasta_content)
@@ -430,7 +431,7 @@ def caching(app):
     )
     def make_cache(cached_data):
         initial_df = pd.DataFrame(cached_data)
-        unique_df = initial_df.drop_duplicates(subset=["starshipID"])
+        unique_df = initial_df.drop_duplicates(subset=["accession_tag"])
         ship_pie = create_sunburst_plot(df=unique_df, type="ship")
         tax_pie = create_sunburst_plot(df=unique_df, type="tax")
         tree = plot_tree(highlight_families="all")
@@ -439,7 +440,7 @@ def caching(app):
             df=unique_df,
             id="explore-table",
             columns=[
-                "starshipID",
+                "accession_tag",
                 "familyName",
                 "order",
                 "family",
