@@ -146,7 +146,7 @@ layout = dmc.Container(
                         ),
                         dcc.Loading(
                             id="family-loading",
-                            type="default",
+                            type="circle",
                             children=html.Div(
                                 id="ship-family",
                                 style={"paddingTop": "20px"},
@@ -162,22 +162,23 @@ layout = dmc.Container(
                     children=[
                         # dcc.Loading(
                         #     id="blast-chord-loading",
-                        #     type="default",
+                        #     type="circle",
                         #     children=[html.Div(id="blast-chord")],
                         # ),
                         dcc.Loading(
                             id="ship-blast-table-loading",
-                            type="default",
+                            type="circle",
+                            className="dash-loading",
                             children=html.Div(id="ship-blast-table"),
                         ),
                         dcc.Loading(
                             id="subject-seq-button-loading",
-                            type="default",
+                            type="circle",
                             children=html.Div(id="subject-seq-button"),
                         ),
                         dcc.Loading(
                             id="ship-aln-loading",
-                            type="default",
+                            type="circle",
                             children=html.Div(id="ship-aln"),
                         ),
                     ],
@@ -365,7 +366,7 @@ def update_ui(
                 logging.info("Rendering BLAST table")
                 # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
                 # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
-                df_for_table = blast_results_df["starshipID" == initial_df["starshipID"]]
+                df_for_table = blast_results_df["accession_tag" == initial_df["accession_tag"]]
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
@@ -378,7 +379,7 @@ def update_ui(
             if hmmer_results_dict:
                 logging.info("Processing HMMER results")
                 hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df["hit_IDs" == initial_df["starshipID"]]
+                df_for_hmmer = hmmer_results_df["hit_IDs" == initial_df["accession_tag"]]
                 if len(df_for_hmmer) > 0:
                     try:
                         superfamily, family_aln_length, family_evalue = select_ship_family(

@@ -127,7 +127,7 @@ layout = dmc.Container(
                                 ),
                                 dcc.Loading(
                                     id="loading-1",
-                                    type="default",
+                                    type="circle",
                                     children=html.Div(id="loading-output-1"),
                                 ),
                                 html.H4(
@@ -144,7 +144,7 @@ layout = dmc.Container(
                                 ),
                                 dcc.Loading(
                                     id="loading-2",
-                                    type="default",
+                                    type="circle",
                                     children=html.Div(id="loading-output-2"),
                                 ),
                             ],

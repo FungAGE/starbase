@@ -103,7 +103,7 @@ layout = html.Div(
                                                         species_card,
                                                         dcc.Loading(
                                                             id="loading-2",
-                                                            type="default",
+                                                            type="circle",
                                                             children=[
                                                                 dcc.Graph(
                                                                     id="pie-chart2",
@@ -144,7 +144,7 @@ layout = html.Div(
                                     children=[
                                         dcc.Loading(
                                             id="loading-3",
-                                            type="default",
+                                            type="circle",
                                             children=[
                                                 html.Div(
                                                     id="explore-table",
@@ -164,7 +164,7 @@ layout = html.Div(
                             children=[
                                 dcc.Loading(
                                     id="loading-4",
-                                    type="default",
+                                    type="circle",
                                     children=[
                                         dcc.Graph(
                                             id="explore-phylogeny",
@@ -224,7 +224,7 @@ layout = html.Div(
 )
 def make_ship_cards(curated_status, cached_data):
     df = pd.DataFrame(cached_data)
-    ship_count = df["starshipID"].nunique()
+    ship_count = df["accession_tag"].nunique()
     species = df["genus"] + "-" + df["species"]
     species_count = species.nunique()
 

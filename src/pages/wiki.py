@@ -149,7 +149,7 @@ layout = dbc.Container(
                     children=[
                         dcc.Loading(
                             id="wiki-loading",
-                            type="default",
+                            type="circle",
                             children=[
                                 dbc.Stack(
                                     children=html.Div(id="accordion"),

@@ -59,7 +59,7 @@ layout = dmc.Container(
                     children=[
                         dcc.Loading(
                             id="loading-1",
-                            type="default",
+                            type="circle",
                             children=[
                                 html.Div(id="pgv-figure"),
                             ],
@@ -306,7 +306,7 @@ def load_ship_table(cached_data, href):
         initial_df = pd.DataFrame(cached_data)
 
         specified_columns = [
-            "starshipID",
+            "accession_tag",
             "familyName",
             "genus",
             "species",
@@ -320,7 +320,7 @@ def load_ship_table(cached_data, href):
         )
 
         filtered_df = initial_df.dropna(subset=["valid_gff3"])
-        filtered_df = filtered_df.drop_duplicates(subset="starshipID")
+        filtered_df = filtered_df.drop_duplicates(subset="accession_tag")
         filtered_df = filtered_df.drop(columns=["valid_gff3", "valid_fna"])
 
         table = make_ship_table(filtered_df, "pgv-table", specified_columns)
