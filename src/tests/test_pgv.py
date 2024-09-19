@@ -171,7 +171,7 @@ def multi_pgv(gff_files, fna_files, tmp_file):
 
 def test_pgv(df, ships):
     tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
-    rows = df[df["starshipID"].isin(ships)]
+    rows = df[df["accession_tag"].isin(ships)]
 
     # Ensure the columns exist in the DataFrame
     if "gff3" in rows.columns and "fna" in rows.columns:

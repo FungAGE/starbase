@@ -22,7 +22,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
     if columns is None:
         # columns = df.columns
         columns = [
-            "starshipID",
+            "accession_tag",
             "familyName",
             "starship_navis",
             "starship_haplotype",
