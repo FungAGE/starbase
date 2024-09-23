@@ -7,8 +7,13 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import dcc, html, callback
 from dash.dependencies import Output, Input
-from src.components.callbacks import download_ships_card, modal
+
+import pandas as pd
+
+from src.components.sqlite import engine
+
 from src.components.tables import make_paper_table
+from src.components.callbacks import download_ships_card
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
@@ -152,17 +157,17 @@ layout = html.Div(
                                 ),
                             ],
                         ),
+                    ],
+                ),
+                dmc.Grid(
+                    justify="center",
+                    align="center",
+                    style={"paddingTop": "20px"},
+                    grow=True,
+                    children=[
                         dmc.GridCol(
-                            span=12,
-                            children=[
-                                dmc.Center(
-                                    [
-                                        download_ships_card,
-                                        modal,
-                                    ]
-                                ),
-                            ],
-                        ),
+                            span=12, children=[dmc.Center([download_ships_card])]
+                        )
                     ],
                 ),
                 dmc.Grid(
@@ -260,11 +265,7 @@ layout = html.Div(
                         dmc.GridCol(
                             span="content",
                             children=[
-                                dmc.Center(
-                                    [
-                                        html.Div(id="paper-table"),
-                                    ]
-                                ),
+                                dmc.Center([make_paper_table(engine)]),
                             ],
                         ),
                     ],
@@ -273,14 +274,3 @@ layout = html.Div(
         ),
     ]
 )
-
-
-@callback(
-    Output("paper-table", "children"),
-    [Input("paper-cache", "data"),Input("url","href")],
-)
-def load_paper_table(data,url):
-    print(data)
-    if url:
-        table = make_paper_table(data)
-        return table

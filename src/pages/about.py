@@ -6,7 +6,6 @@ import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import html, dcc
-from src.components.callbacks import download_ships_card, modal
 
 dash.register_page(__name__)
 
@@ -182,12 +181,6 @@ layout = dmc.Container(
                                         className="auto-resize-750",
                                     )
                                 ),
-                            ]
-                        ),
-                        dmc.Center(
-                            [
-                                download_ships_card,
-                                modal,
                             ]
                         ),
                     ],
