@@ -2,16 +2,18 @@ import warnings
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, callback
-from dash.dependencies import Output, Input, State
+from dash import dcc, html, dash_table
+import dash_core_components as dcc
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 
+import pandas as pd
+import os
+
+from src.components.sqlite import engine
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.plot_utils import make_logo
 
-import pandas as pd
-
-import os
 
 dash.register_page(__name__)
 
@@ -21,61 +23,90 @@ def create_accordion_item(df, papers, category):
         return None
     else:
         filtered_meta_df = df[df["familyName"] == category]
-        n_ships = len(filtered_meta_df["checksum"].dropna().unique())
+        n_ships = len(filtered_meta_df["accession_tag"].dropna().unique())
         min_size = min(filtered_meta_df["size"].dropna())
         max_size = max(filtered_meta_df["size"].dropna())
         upDRs = filtered_meta_df["upDR"].dropna().tolist()
         downDRs = filtered_meta_df["downDR"].dropna().tolist()
         filtered_papers_df = papers[papers["familyName"] == category]
-        type_element_reference = filtered_papers_df["type_element_reference"]
+        type_element_reference = (
+            filtered_papers_df["type_element_reference"].dropna().unique().astype(str)
+        )
         sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax")
 
-        uplogo_img = f"src/assets/images/DR/{category}-upDR.png"
-        if not os.path.exists(uplogo_img):
-            uplogo = make_logo(upDRs, uplogo_img)
-            uplogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    html.H5(f"Sequence logo of upstream DRs in {category}"),
+        uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
+        if not os.path.exists(uplogo_img_path):
+            uplogo_img_path = make_logo(upDRs, uplogo_img_path)
+        uplogo_img = dbc.Col(
+            lg=6,
+            sm=12,
+            children=[
+                dmc.Center(html.H5(f"Sequence logo of upstream DRs in {category}")),
+                dmc.Center(
                     html.Img(
-                        src=f"data:image/png;base64,{uplogo}",
+                        src=uplogo_img_path,
                         style={"width": "100%"},
                     ),
-                ],
-            )
+                ),
+            ],
+        )
 
-        downlogo_img = f"src/assets/images/DR/{category}-downDR.png"
-        if not os.path.exists(downlogo_img):
-            downlogo = make_logo(downDRs, downlogo_img)
-            downlogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    html.H5(f"Sequence logo of downstream DRs in {category}"),
-                    html.Img(
-                        src=f"data:image/png;base64,{downlogo}",
-                        style={"width": "100%"},
-                    ),
-                ],
-            )
+        downlogo_img_path = f"assets/images/DR/{category}-downDR.png"
+        if not os.path.exists(downlogo_img_path):
+            downlogo_img_path = make_logo(downDRs, downlogo_img_path)
+        downlogo_img = dbc.Col(
+            lg=6,
+            sm=12,
+            children=[
+                html.H5(f"Sequence logo of downstream DRs in {category}"),
+                html.Img(
+                    src=downlogo_img_path,
+                    style={"width": "100%"},
+                ),
+            ],
+        )
 
         accordion_content = [
-            html.H5(f"Total Number of Starships in {category}: {n_ships}"),
-            html.H5(f"Maximum Starship Size (bp): {max_size}"),
-            html.H5(f"Minimum Starship Size (bp): {min_size}"),
-        ]
-
-        if type_element_reference is not None:
-
-            link = filtered_papers_df["Url"]
-            paper_link = html.Link(
-                type_element_reference,
-                href=link,
+            dash_table.DataTable(
+                columns=[
+                    {"name": "Metric", "id": "metric"},
+                    {"name": "Value", "id": "value"},
+                ],
+                data=[
+                    {
+                        "metric": "Total Number of Starships in {}".format(category),
+                        "value": f"{n_ships:,.0f}",
+                    },
+                    {
+                        "metric": "Maximum Starship Size (bp)",
+                        "value": f"{max_size:,.0f}",
+                    },
+                    {
+                        "metric": "Minimum Starship Size (bp)",
+                        "value": f"{min_size:,.0f}",
+                    },
+                ],
+                style_table={"overflowX": "auto", "maxWidth": "500px"},
+                style_cell={"textAlign": "left"},
+                style_header={"fontWeight": "bold"},
+                # You can customize more styles as needed
             )
+        ]
+        if type_element_reference.size > 0:
+            # Get unique URLs and convert to strings
+            link = filtered_papers_df["Url"].dropna().unique().astype(str)
 
+            # Create a list of links
+            paper_links = [
+                html.A(ref, href=url, target="_blank")  # Use html.A for links
+                for ref, url in zip(type_element_reference, link)
+            ]
+
+            # Combine links into a single H5 element
             accordion_content.append(
-                html.H5(["Reference for defining type element in family: ", paper_link])
+                html.H5(
+                    ["Reference for defining type element in family: ", *paper_links]
+                )
             )
 
         accordion_content.append(dcc.Graph(figure=sunburst))
@@ -89,7 +120,9 @@ def create_accordion_item(df, papers, category):
 
         return dbc.AccordionItem(
             title=category,
-            children=[dbc.CardBody(accordion_content)],
+            children=[
+                dbc.CardBody(dbc.Stack(accordion_content, direction="vertical", gap=5))
+            ],
             item_id=category,
         )
 
@@ -107,8 +140,32 @@ def create_accordion(df, papers):
     return dbc.Accordion(
         children=accordion_items,
         id="category-accordion",
-        always_open=False,
+        always_open=True,
+        active_item="Voyager",
     )
+
+
+def load_data():
+    # Query your database to fetch the relevant data
+    meta_query = """
+    SELECT j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family
+    FROM joined_ships j
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
+    JOIN accessions a ON j.ship_id = a.id
+    """
+    meta_df = pd.read_sql_query(meta_query, engine)
+
+    paper_query = """
+    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
+    FROM papers p
+    JOIN family_names f ON p.shortCitation = f.type_element_reference
+    """
+    paper_df = pd.read_sql_query(paper_query, engine)
+
+    accordion = create_accordion(meta_df, paper_df)
+
+    return accordion
 
 
 layout = dbc.Container(
@@ -125,15 +182,8 @@ layout = dbc.Container(
                     sm=12,
                     children=[
                         html.H1(
-                            [
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                ),
-                                " Wiki",
-                            ]
+                            "Wiki - Summary and characteristics for each Starship family",
                         ),
-                        html.H2("Summary and characteristics of each Starship family"),
                     ],
                 )
             ],
@@ -150,13 +200,7 @@ layout = dbc.Container(
                         dcc.Loading(
                             id="wiki-loading",
                             type="circle",
-                            children=[
-                                dbc.Stack(
-                                    children=html.Div(id="accordion"),
-                                    direction="vertical",
-                                    gap=3,
-                                )
-                            ],
+                            children=[load_data()],
                         ),
                     ],
                 ),
@@ -164,28 +208,3 @@ layout = dbc.Container(
         ),
     ],
 )
-
-
-@callback(
-    [Output("accordion", "children"), Output("accordion", "active_item")],
-    [
-        Input("joined-ships", "data"),
-        Input("paper-cache", "data"),
-        Input("accordion", "active_item"),
-    ],
-)
-def load_data(cached_meta, cached_papers, active_item):
-    accordion = None
-    query_param = active_item
-
-    if cached_meta and cached_papers:
-        initial_df = pd.DataFrame(cached_meta)
-        paper_df = pd.DataFrame(cached_papers)
-        accordion = create_accordion(initial_df, paper_df)
-
-        # Ensure we don't trigger an unnecessary update
-        if query_param == active_item:
-            # If the query_param is the same as active_item, return accordion but don't update active_item
-            return accordion, dash.no_update
-
-    return accordion, query_param

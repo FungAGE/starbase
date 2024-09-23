@@ -15,7 +15,7 @@ from Bio.Align.Applications import ClustalwCommandline
 
 def agg_df(df, groups):
     if all(group in df.columns for group in groups):
-        agg = df.groupby(groups).starshipID.agg(
+        agg = df.groupby(groups).accession_tag.agg(
             count="count", nunique="nunique", duplicates=lambda x: x.size - x.nunique()
         )
 
@@ -120,11 +120,12 @@ def make_logo(seqs, fig_name=None):
                 buf.seek(0)
 
                 img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                output = f"data:image/png;base64,{img_base64}"
                 plt.close(fig)
 
                 os.remove(temp_in_file.name)
                 os.remove(temp_out_file.name)
-                return img_base64
+                return output
 
         else:
             os.remove(temp_in_file.name)
