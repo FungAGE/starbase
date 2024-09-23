@@ -3,6 +3,7 @@ from dash import html
 
 from src.pages import (
     HOME_URL,
+    DL_URL,
     WIKI_URL,
     EXPLORE_URL,
     PGV_URL,
@@ -13,6 +14,17 @@ from src.pages import (
 
 
 navbar_content = [
+    dbc.NavItem(
+        dbc.NavLink(
+            html.P(
+                ["Download ", html.Span("starbase", className="logo-text")],
+                className="nav-item-text",
+            ),
+            href=DL_URL,
+            active="exact",
+            className="nav-item-link",
+        )
+    ),
     dbc.NavItem(
         dbc.NavLink(
             html.P(
