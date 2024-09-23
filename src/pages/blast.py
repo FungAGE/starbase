@@ -372,7 +372,7 @@ def update_ui(
                 else:
                     ship_table = dbc.Alert(
                     "No BLAST results found.",
-                    color="error",
+                    color="danger",
                 )
                     
 
