@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 from src.utils.plot_utils import create_sunburst_plot
-from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
+from src.utils.tree import plot_tree
 
 CACHE_CONFIG = {
     "CACHE_TYPE": "filesystem",
@@ -144,7 +144,7 @@ def update_graph_2(data):
 
 
 @cache.memoize()
-def make_ship_table(data):
+def update_ship_table_data(data):
     return data.to_dict("records")
 
 
@@ -192,43 +192,46 @@ def update_ui(
 
     # Check if reset or URL navigation triggers update
     if url or n_clicks:
-        pie1_output = update_graph_1(df).to_dict()  # Convert figure to dict
-        pie2_output = update_graph_2(df).to_dict()  # Convert figure to dict
-        tree_output = update_phylogeny(df).to_dict()  # Convert figure to dict
-        table_output = df.to_dict(
-            "records"
-        )  # Convert dataframe to records for DataTable
+        pie1_output = update_graph_1(df).to_dict()
+        pie2_output = update_graph_2(df).to_dict()
+        tree_output = update_phylogeny().to_dict()
+        table_output = df.to_dict("records")
 
     # Handle clicks on Pie 1
-    elif clickData1:
+    if clickData1:
         path1 = [point["label"] for point in clickData1["points"]]
         plot1_df = df[df["familyName"].isin(path1)]
+        print(plot1_df.head())
 
         pie2_output = update_graph_2(plot1_df)
         tree_output = update_phylogeny(plot1_df["familyName"].unique())
-        table_output = make_ship_table(plot1_df)
+        table_output = update_ship_table_data(plot1_df)
 
     # Handle clicks on Pie 2
-    elif clickData2:
+    if clickData2:
         path2 = [point["label"] for point in clickData2["points"]]
         plot2_df = df[df["order"].isin(path2)]
+        print(plot2_df.head())
 
         pie1_output = update_graph_1(plot2_df)
         tree_output = update_phylogeny(plot2_df["familyName"].unique())
-        table_output = make_ship_table(plot2_df)
+        table_output = update_ship_table_data(plot2_df)
 
     # Handle clicks on the Phylogeny tree
-    elif clickData_phylo:
+    if clickData_phylo:
         selected_clades = [clickData_phylo["points"][0]["text"]]
+        print(selected_clades)
         plot_df = df[df["familyName"].isin(selected_clades)]
+        print(plot_df.head())
 
         pie1_output = update_graph_1(plot_df)
         pie2_output = update_graph_2(plot_df)
-        table_output = make_ship_table(plot_df)
+        table_output = update_ship_table_data(plot_df)
 
     # Handle row selections from the table
-    elif table_rows:
+    if table_rows:
         table_df = pd.DataFrame(table_data).iloc[table_rows]
+        print(table_df.head())
         selected_clades = table_df["familyName"].tolist()
         selected_ships = table_df["accession_tag"]
         plot_df = df[df["accession_tag"].isin(selected_ships)]
