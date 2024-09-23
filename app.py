@@ -4,15 +4,10 @@ import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
 import pandas as pd
-from sqlalchemy import create_engine
-
-from flask_caching import Cache
+from src.components.caching import cache
 
 from src.components import navmenu
-from src.components.callbacks import (
-    dl_package,
-    caching,
-)
+from src.components.callbacks import caching
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -36,6 +31,7 @@ app = Dash(
     __name__,
     server=server,
     use_pages=True,
+    pages_folder="src/pages",
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
@@ -45,14 +41,9 @@ app = Dash(
     ],
 )
 
-CACHE_CONFIG = {
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': '/tmp/dash_cache',
-    'CACHE_DEFAULT_TIMEOUT': 300  # optional, but good to specify
-}
+# Initialize cache with Flask server
+cache.init_app(server)
 
-# Initialize the cache with the Flask server instance
-cache = Cache(app.server, config=CACHE_CONFIG)
 
 def serve_app_layout():
     return dmc.MantineProvider(
@@ -69,7 +60,6 @@ def serve_app_layout():
                 dcc.Store("pie2-cache"),
                 dcc.Store("phylogeny-cache"),
                 dcc.Store("explore-table-cache"),
-                dcc.Store("dl-package")                
             ]
         )
     )
@@ -79,10 +69,4 @@ app.layout = serve_app_layout
 
 if __name__ == "__main__":
     app.run_server(debug=True)
-    # Create a SQLite engine and initialize the table
-    engine = create_engine('sqlite:///database_folder/starbase.sqlite')
-    query = "SELECT name FROM sqlite_master WHERE type='table'"
-    sql_tbls = pd.read_sql_query(query, engine)
-    caching(app,engine,cache)
-    dl_package(app)
-
+    caching(app)
