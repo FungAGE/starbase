@@ -16,6 +16,9 @@ from dash.exceptions import PreventUpdate
 import base64
 import pandas as pd
 
+from src.components.caching import cache
+from src.components.sqlite import engine
+
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.tree import plot_tree
@@ -24,7 +27,7 @@ from src.utils.tree import plot_tree
 download_ships_button = dbc.Button(
     html.Div(
         [
-            "Download the latest version of ",
+            "Download Starships from the latest version of ",
             html.Span(
                 "starbase",
                 className="logo-text",
@@ -32,7 +35,7 @@ download_ships_button = dbc.Button(
             ".",
         ],
     ),
-    id="open-modal",
+    href="/dl",
     color="primary",
     class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
 )
@@ -57,9 +60,10 @@ download_ships_card = dbc.Card(
                             "starbase",
                             className="logo-text",
                         ),
-                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export. In the meantime, you can retrieve Starship sequences below:",
+                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export",
                     ],
                     className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                    style={"paddingBottom": "20px"},
                 ),
                 dmc.Center(download_ships_button),
             ],
@@ -87,7 +91,6 @@ download_starbase_button = html.Div(
             color="primary",
             className="mt-2",
         ),
-        dcc.Download(id="dl-package"),
     ],
     className="text-center",
     style={
@@ -95,20 +98,21 @@ download_starbase_button = html.Div(
     },
 )
 
-def curated_switch(text,size="normal"):
+
+def curated_switch(text, size="normal"):
     if size == "normal":
-        style={
-                            "display": "flex",
-                            "alignItems": "baseline",
-                            "justify-content": "center",
-                        }
+        style = {
+            "display": "flex",
+            "alignItems": "baseline",
+            "justify-content": "center",
+        }
     if size == "large":
-        style={
-                            "display": "flex",
-                            "alignItems": "baseline",
-                            "transform": "scale(1.5)",
-                            "justify-content": "center",
-                        }
+        style = {
+            "display": "flex",
+            "alignItems": "baseline",
+            "transform": "scale(1.5)",
+            "justify-content": "center",
+        }
     switch = dbc.Row(
         justify="center",
         align="start",
@@ -130,60 +134,10 @@ def curated_switch(text,size="normal"):
     )
     return switch
 
-modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Choose Starships to Download")),
-        dbc.ModalBody(
-            html.Div(
-                [
-                    dmc.Grid(
-                        justify="space-within",
-                        children=[
-                            dmc.GridCol(
-                                span="content",
-                                children=[
-                                    dbc.Button(
-                                        "Download All Starships", id="download-all-btn"
-                                    )
-                                ],
-                            ),
-                            dmc.GridCol(
-                                span="content",
-                                children=[
-                                    dbc.Button(
-                                        "Download Selected Starships",
-                                        id="download-selected-btn",
-                                    )
-                                ],
-                            ),
-                            html.Div(id="download-table"),
-                            dcc.Download(id="download-fasta"),
-                        ],
-                    )
-                ]
-            )
-        ),
-        dbc.ModalFooter(
-            dbc.Button(
-                "Close",
-                id="close",
-                className="ms-auto",
-                n_clicks=0,
-            )
-        ),
-    ],
-    id="download-modal",
-    is_open=False,
-    size="lg",
-)
 
-
-def caching(app, engine, cache):
-    @app.callback(
-        Output("joined-ships", "data"),
-    )
-    @cache.memoize()
-    def ship_metadata():
+def caching(app):
+    @cache.cached(timeout=300, key_prefix="joined-ships")
+    def global_store(value):
         query = """
         SELECT j.*, t."order", t.family, f.longFamilyID, f.familyName, a.accession_tag
         FROM joined_ships j
@@ -191,26 +145,24 @@ def caching(app, engine, cache):
         JOIN family_names f ON j.ship_family_id = f.id
         JOIN accessions a ON j.ship_id = a.id
         """
-        try:
-            df = pd.read_sql_query(query, engine)
-            return df.to_dict(orient="records")
-        except Exception as e:
-            print(f"Error fetching ship metadata: {e}")
-            return []
+        df = pd.read_sql_query(query, engine)
+        if value == "curated":
+            df_filtered = df[df["curated_status"] == "curated"]
+        else:
+            df_filtered = df
+        unique_df = df_filtered.drop_duplicates(subset=["accession_tag"])
+        return unique_df
 
     @app.callback(
         [
             Output("curated-status", "data"),
             Output("curated-dataset", "data"),
         ],
-        [
-            Input("curated-input", "value"),
-            Input("joined-ships", "data"),
-        ]
+        [Input("curated-input", "value")],
     )
-    def make_curated(switches_value, cached_data):
+    def global_store(switches_value):
         try:
-            initial_df = pd.DataFrame(cached_data)
+            initial_df = global_store(switches_value)
             df_filtered = initial_df
             curated_status = ""
 
@@ -222,25 +174,18 @@ def caching(app, engine, cache):
             print(f"Error processing curated data: {e}")
             return "", []
 
-    @app.callback(
-        Output("paper-cache", "data"),
-        Input("url","href")
-    )
-    @cache.memoize()
-    def ship_papers(url):
-        if url:
-            query = """
-            SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
-            FROM papers p
-            JOIN family_names f ON p.shortCitation = f.type_element_reference
-            """
-            try:
-                df = pd.read_sql_query(query, engine)
-                data = df.to_dict(orient="records")
-                return data
-            except Exception as e:
-                print(f"Error fetching ship papers: {e}")
-                return []
+    def update_graph_1(data):
+        return create_sunburst_plot(df=data, type="ship")
+
+    def update_graph_2(data):
+        return create_sunburst_plot(df=data, type="tax")
+
+    def update_ship_table_data(data):
+        return data.to_dict("records")
+
+    def update_phylogeny(highlight_families="all"):
+        tree = plot_tree(highlight_families)
+        return tree
 
     @app.callback(
         [
@@ -249,7 +194,7 @@ def caching(app, engine, cache):
             Output("phylogeny-cache", "data"),
             Output("explore-table-cache", "data"),
         ],
-        Input("curated-dataset", "data")
+        Input("curated-dataset", "data"),
     )
     def cache_components(cached_data):
         try:
@@ -290,15 +235,3 @@ def caching(app, engine, cache):
         except Exception as e:
             print(f"Error caching components: {e}")
             return [], [], [], []
-
-
-# TODO: update to generate based on sql query
-def dl_package(app):
-    @app.callback(Output("dl-package", "data"), [Input("dl-button", "n_clicks")])
-    def generate_download(n_clicks):
-        if n_clicks and n_clicks > 0:
-            return dcc.send_file(
-                "database_folder/Starships/ships/fna/blastdb/concatenated.fa"
-            )
-        else:
-            return dash.no_update

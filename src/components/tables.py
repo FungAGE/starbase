@@ -6,6 +6,8 @@ from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 
+from src.components.sqlite import engine
+
 
 def truncate_string(s, length=10):
     return s if len(s) <= length else s[:length] + "..."
@@ -71,14 +73,13 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
     return table
 
 
-def make_paper_table(data):
-
-    # df = pd.read_csv(data)
-    # sub_df = df[["Title", "Author", "PublicationYear", "DOI", "Url"]].sort_values(
-    #     by="PublicationYear", ascending=False
-    # )
-
-    df = pd.DataFrame(data)
+def make_paper_table(engine):
+    query = """
+    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
+    FROM papers p
+    JOIN family_names f ON p.shortCitation = f.type_element_reference
+    """
+    df = pd.read_sql_query(query, engine)
 
     df_summary = (
         df.groupby("Title")
