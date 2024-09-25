@@ -297,7 +297,7 @@ def is_valid_file(file_path):
 @callback(
     Output("pgv-table", "children"),
     [
-        Input("joined-ships", "data"),
+        Input("store-data", "data"),
         Input("url", "href"),
     ],
 )

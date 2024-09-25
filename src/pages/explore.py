@@ -9,6 +9,10 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
 import pandas as pd
+
+from src.components.caching import cache
+from src.components.sqlite import engine
+
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.tree import plot_tree, hex_to_rgba, default_highlight_colors
@@ -59,6 +63,8 @@ tax_card = dbc.Card(
 layout = html.Div(
     [
         dcc.Location(id="url", refresh=False),
+        dcc.Store(id="store-data"),
+        dcc.Store(id="curated-status"),
         dmc.Container(
             fluid=True,
             children=[
@@ -76,7 +82,10 @@ layout = html.Div(
                                     children=[
                                         dmc.GridCol(
                                             span={"lg": 6, "sm": 10},
-                                            children=curated_switch(text="Subset to curated Starships",size="large"),
+                                            children=curated_switch(
+                                                text="Subset to curated Starships",
+                                                size="large",
+                                            ),
                                         ),
                                         dmc.GridCol(
                                             span={"lg": 6, "sm": 10},
@@ -146,10 +155,7 @@ layout = html.Div(
                                             id="loading-3",
                                             type="circle",
                                             children=[
-                                                html.Div(
-                                                    id="explore-table",
-                                                    className="center-content",
-                                                ),
+                                                html.Div(id="explore-table-cache"),
                                             ],
                                         ),
                                         # html.Div(
@@ -210,6 +216,41 @@ layout = html.Div(
 #     }
 
 
+# A simple example of using cache and dcc.Store
+@callback(
+    Output("store-data", "data"),
+    [Input("curated-input", "value"), Input("url", "href")],
+)
+def update_store(switches_value, url):
+    @cache.cached(timeout=300, key_prefix=lambda: f"data-{switches_value}")
+    def fetch_and_prepare_data():
+        query = """
+        SELECT j.*, t."order", t.family, f.longFamilyID, f.familyName, a.accession_tag
+        FROM joined_ships j
+        JOIN taxonomy t ON j.taxid = t.id
+        JOIN family_names f ON j.ship_family_id = f.id
+        JOIN accessions a ON j.ship_id = a.id
+        """
+        df = pd.read_sql_query(query, engine)
+        if switches_value:
+            df = df[df["curated_status"] == "curated"]
+        df = df.drop_duplicates(subset=["accession_tag"])
+        return df.to_dict("records")
+
+    cached_data = fetch_and_prepare_data()
+    return cached_data
+
+
+@callback(
+    Output("curated-status", "children"),
+    Input("store-data", "data"),
+)
+def display_status(data):
+    if data:
+        return "curated"
+    return ""
+
+
 @callback(
     [
         Output("ship-card-header", "children"),
@@ -218,11 +259,11 @@ layout = html.Div(
         Output("species-count", "children"),
     ],
     [
-        Input("curated-status", "data"),
-        Input("curated-dataset", "data"),
+        Input("store-data", "data"),
+        Input("curated-status", "children"),
     ],
 )
-def make_ship_cards(curated_status, cached_data):
+def make_ship_cards(cached_data, curated_status):
     df = pd.DataFrame(cached_data)
     ship_count = df["accession_tag"].nunique()
     species = df["genus"] + "-" + df["species"]
@@ -279,87 +320,88 @@ def update_phylogeny(phylo, selected_clades):
 
     return phylo
 
-# @callback(
-#     [
-#         Output("pie-chart1", "figure"),
-#         Output("pie-chart2", "figure"),
-#         Output("explore-phylogeny", "figure"),
-#         Output("explore-table", "children"),
-#     ],
-#     [
-#         Input("reset-button", "n_clicks"),
-#         Input("pie-chart1", "clickData"),
-#         Input("pie-chart2", "clickData"),
-#         Input("explore-phylogeny", "clickData"),
-#         Input("explore-table", "derived_virtual_data"),
-#         Input("explore-table", "derived_virtual_selected_rows"),
-#         Input("curated-dataset", "data"),
-#         Input("phylogeny-cache", "data"),
-#         Input("pie1-cache", "data"),
-#         Input("pie2-cache", "data"),
-#         Input("explore-table-cache", "data"),
-#     ],
-# )
-# def update_ui(
-#     n_clicks,
-#     clickData1,
-#     clickData2,
-#     clickData_phylo,
-#     table_data,
-#     table_rows,
-#     cached_data,
-#     phylogeny_cache,
-#     pie1_cache,
-#     pie2_cache,
-#     table_cache,
-# ):
-#     initial_df = pd.DataFrame(cached_data)
-#     pie1_output = pie1_cache
-#     pie2_output = pie2_cache
-#     tree_output = phylogeny_cache
-#     table_output = table_cache
 
-#     if n_clicks:
-#         return pie1_output, pie2_output, tree_output, table_output
+@callback(
+    [
+        Output("pie-chart1", "figure"),
+        Output("pie-chart2", "figure"),
+        Output("explore-phylogeny", "figure"),
+        Output("explore-table-cache", "children"),
+    ],
+    [
+        Input("store-data", "data"),
+        # Input("pie1-cache", "data"),
+        # Input("pie2-cache", "data"),
+        # Input("phylogeny-cache", "data"),
+        # Input("explore-table-cache", "derived_virtual_data"),
+        Input("reset-button", "n_clicks"),
+        Input("pie-chart1", "clickData"),
+        Input("pie-chart2", "clickData"),
+        Input("explore-phylogeny", "clickData"),
+        Input("explore-table", "derived_virtual_data"),
+        Input("explore-table", "derived_virtual_selected_rows"),
+    ],
+)
+def update_ui(
+    cached_data,
+    # pie1_cache,
+    # pie2_cache,
+    # phylogeny_cache,
+    # table_cache,
+    clickData1,
+    clickData2,
+    clickData_phylo,
+    table_data,
+    table_rows,
+    reset,
+):
+    initial_df = pd.DataFrame(cached_data)
 
-#     # If pie-chart1 was clicked, update pie-chart2, tree, and table
-#     if clickData1:
-#         path1 = [point["label"] for point in clickData1["points"]]
-#         plot_df = initial_df[initial_df["familyName"].isin(path1)]
-#         pie1_output = no_update
-#         pie2_output = create_sunburst_plot(plot_df, "tax")
-#         # tree_output = update_phylogeny(phylogeny_cache, path1)
-#         tree_output = plot_tree(path1)
-#         table_output = make_ship_table(df=plot_df, id="explore-table")
+    pie1_output = dash.no_update
+    pie2_output = dash.no_update
+    tree_output = dash.no_update
+    table_output = dash.no_update
 
-#     # If pie-chart2 was clicked, update pie-chart1 and tree
-#     if clickData2:
-#         path2 = [point["label"] for point in clickData2["points"]]
-#         plot_df = initial_df[initial_df["order"].isin(path2)]
-#         pie1_output = create_sunburst_plot(plot_df, "ship")
-#         pie2_output = no_update
-#         # tree_output = update_phylogeny(phylogeny_cache, path2)
-#         tree_output = plot_tree(path2)
-#         table_output = make_ship_table(df=plot_df, id="explore-table")
+    # If pie-chart1 was clicked, update pie-chart2, tree, and table
+    if clickData1:
+        path1 = [point["label"] for point in clickData1["points"]]
+        plot_df = initial_df[initial_df["familyName"].isin(path1)]
+        pie2_output = create_sunburst_plot(plot_df, "tax")
+        # tree_output = update_phylogeny(phylogeny_cache, path1)
+        tree_output = plot_tree(path1)
+        table_output = make_ship_table(df=plot_df, id="explore-table")
 
-#     # If phylogeny was clicked, update pie-chart1, pie-chart2, and table
-#     if clickData_phylo:
-#         selected_clades = [clickData_phylo["points"][0]["text"]]
-#         plot_df = initial_df[initial_df["familyName"].isin(selected_clades)]
-#         pie1_output = create_sunburst_plot(plot_df, "ship")
-#         pie2_output = create_sunburst_plot(plot_df, "tax")
-#         tree_output = no_update
-#         table_output = make_ship_table(df=plot_df, id="explore-table")
+    # If pie-chart2 was clicked, update pie-chart1 and tree
+    if clickData2:
+        path2 = [point["label"] for point in clickData2["points"]]
+        plot_df = initial_df[initial_df["order"].isin(path2)]
+        pie1_output = create_sunburst_plot(plot_df, "ship")
+        # tree_output = update_phylogeny(phylogeny_cache, path2)
+        tree_output = plot_tree(path2)
+        table_output = make_ship_table(df=plot_df, id="explore-table")
 
-#     # If table rows were selected, update pie-chart1, pie-chart2, and tree
-#     if table_rows:
-#         table_df = pd.DataFrame(table_data).iloc[table_rows]
-#         selected_clades = table_df["familyName"].tolist()
-#         pie1_output = create_sunburst_plot(table_df, "ship")
-#         pie2_output = create_sunburst_plot(table_df, "tax")
-#         # tree_output = update_phylogeny(phylogeny_cache, selected_clades)
-#         tree_output = plot_tree(selected_clades)
-#         table_output = no_update
+    # If phylogeny was clicked, update pie-chart1, pie-chart2, and table
+    if clickData_phylo:
+        selected_clades = [clickData_phylo["points"][0]["text"]]
+        plot_df = initial_df[initial_df["familyName"].isin(selected_clades)]
+        pie1_output = create_sunburst_plot(plot_df, "ship")
+        pie2_output = create_sunburst_plot(plot_df, "tax")
+        table_output = make_ship_table(df=plot_df, id="explore-table")
 
-#     # Return the updated or cached figures and table
-#     return pie1_output, pie2_output, tree_output, table_output
+    # If table rows were selected, update pie-chart1, pie-chart2, and tree
+    if table_rows:
+        table_df = pd.DataFrame(table_data).iloc[table_rows]
+        selected_clades = table_df["familyName"].tolist()
+        pie1_output = create_sunburst_plot(table_df, "ship")
+        pie2_output = create_sunburst_plot(table_df, "tax")
+        # tree_output = update_phylogeny(phylogeny_cache, selected_clades)
+        tree_output = plot_tree(selected_clades)
+
+    if reset:
+        pie1_output = create_sunburst_plot(initial_df, "ship")
+        pie2_output = create_sunburst_plot(initial_df, "tax")
+        tree_output = plot_tree()
+        table_output = make_ship_table(df=initial_df, id="explore-table")
+
+    # Return the updated or cached figures and table
+    return pie1_output, pie2_output, tree_output, table_output

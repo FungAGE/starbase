@@ -35,7 +35,7 @@ download_ships_button = dbc.Button(
             ".",
         ],
     ),
-    href="/dl",
+    href="/download",
     color="primary",
     class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
 )
@@ -133,105 +133,3 @@ def curated_switch(text, size="normal"):
         ],
     )
     return switch
-
-
-def caching(app):
-    @cache.cached(timeout=300, key_prefix="joined-ships")
-    def global_store(value):
-        query = """
-        SELECT j.*, t."order", t.family, f.longFamilyID, f.familyName, a.accession_tag
-        FROM joined_ships j
-        JOIN taxonomy t ON j.taxid = t.id
-        JOIN family_names f ON j.ship_family_id = f.id
-        JOIN accessions a ON j.ship_id = a.id
-        """
-        df = pd.read_sql_query(query, engine)
-        if value == "curated":
-            df_filtered = df[df["curated_status"] == "curated"]
-        else:
-            df_filtered = df
-        unique_df = df_filtered.drop_duplicates(subset=["accession_tag"])
-        return unique_df
-
-    @app.callback(
-        [
-            Output("curated-status", "data"),
-            Output("curated-dataset", "data"),
-        ],
-        [Input("curated-input", "value")],
-    )
-    def global_store(switches_value):
-        try:
-            initial_df = global_store(switches_value)
-            df_filtered = initial_df
-            curated_status = ""
-
-            if switches_value:
-                df_filtered = initial_df[initial_df["curated_status"] == "curated"]
-                curated_status = "curated"
-            return curated_status, df_filtered.to_dict(orient="records")
-        except Exception as e:
-            print(f"Error processing curated data: {e}")
-            return "", []
-
-    def update_graph_1(data):
-        return create_sunburst_plot(df=data, type="ship")
-
-    def update_graph_2(data):
-        return create_sunburst_plot(df=data, type="tax")
-
-    def update_ship_table_data(data):
-        return data.to_dict("records")
-
-    def update_phylogeny(highlight_families="all"):
-        tree = plot_tree(highlight_families)
-        return tree
-
-    @app.callback(
-        [
-            Output("pie1-cache", "data"),
-            Output("pie2-cache", "data"),
-            Output("phylogeny-cache", "data"),
-            Output("explore-table-cache", "data"),
-        ],
-        Input("curated-dataset", "data"),
-    )
-    def cache_components(cached_data):
-        try:
-            initial_df = pd.DataFrame(cached_data)
-            unique_df = initial_df.drop_duplicates(subset=["accession_tag"])
-
-            # Define caching functions
-            def cache_ship_table():
-                return make_ship_table(
-                    df=unique_df,
-                    id="explore-table",
-                    columns=[
-                        "accession_tag",
-                        "familyName",
-                        "order",
-                        "family",
-                        "genus",
-                        "species",
-                    ],
-                )
-
-            def cache_ship_sunburst():
-                return create_sunburst_plot(df=unique_df, type="ship")
-
-            def cache_tax_sunburst():
-                return create_sunburst_plot(df=unique_df, type="tax")
-
-            def cache_tree():
-                return plot_tree(highlight_families="all")
-
-            pie1_data = cache_ship_sunburst()
-            pie2_data = cache_tax_sunburst()
-            phylogeny_data = cache_tree()
-            explore_table_data = cache_ship_table()
-
-            return pie1_data, pie2_data, phylogeny_data, explore_table_data
-
-        except Exception as e:
-            print(f"Error caching components: {e}")
-            return [], [], [], []

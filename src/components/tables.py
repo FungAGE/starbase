@@ -31,7 +31,10 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
             "genus",
             "species",
         ]
-
+    if df is not None:
+        table_df = df.to_dict("records")
+    else:
+        table_df = []
     table = html.Div(
         [
             dash_table.DataTable(
@@ -45,7 +48,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                     }
                     for i in columns
                 ],
-                data=df.to_dict("records"),
+                data=table_df,
                 editable=False,
                 filter_action="native",
                 sort_action="native",

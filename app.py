@@ -7,7 +7,6 @@ import pandas as pd
 from src.components.caching import cache
 
 from src.components import navmenu
-from src.components.callbacks import caching
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -51,15 +50,6 @@ def serve_app_layout():
             [
                 navmenu.navmenu(),
                 html.Div(dash.page_container),
-                # dcc.Location(id="url", refresh=False),
-                dcc.Store("joined-ships"),
-                dcc.Store("curated-status"),
-                dcc.Store("curated-dataset"),
-                dcc.Store("paper-cache"),
-                dcc.Store("pie1-cache"),
-                dcc.Store("pie2-cache"),
-                dcc.Store("phylogeny-cache"),
-                dcc.Store("explore-table-cache"),
             ]
         )
     )
@@ -69,4 +59,3 @@ app.layout = serve_app_layout
 
 if __name__ == "__main__":
     app.run_server(debug=True)
-    caching(app)
