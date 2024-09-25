@@ -19,6 +19,8 @@ from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord
 from jinja2 import Template
 
+from src.components.sqlite import engine
+
 from src.components.tables import make_ship_table
 
 dash.register_page(__name__)
@@ -40,13 +42,19 @@ layout = dmc.Container(
                         "lg": 8,
                     },
                     children=[
-                        html.Div(id="pgv-table", className="center-content"),
-                        dbc.Button(
-                            "Show Starship(s) in Viewer",
-                            id="update-button",
-                            n_clicks=0,
-                            className="d-grid gap-2 mx-auto",
-                            style={"fontSize": "1rem"},
+                        dcc.Loading(
+                            id="loading",
+                            type="circle",
+                            children=[
+                                html.Div(id="pgv-table", className="center-content"),
+                                dbc.Button(
+                                    "Show Starship(s) in Viewer",
+                                    id="update-button",
+                                    n_clicks=0,
+                                    className="d-grid gap-2 mx-auto",
+                                    style={"fontSize": "1rem"},
+                                ),
+                            ],
                         ),
                     ],
                 ),
@@ -157,6 +165,44 @@ def inject_svg_to_html(svg_file, html_template_file, output_html_file):
         output_file.write(rendered_html)
 
 
+def write_tmp(df, type=None):
+    tmp = tempfile.NamedTemporaryFile(suffix=f".{type}", delete=False)
+    if type == "gff":
+        df.to_csv(tmp.name, sep="\t", header=False, index=False)
+    elif type == "fa":
+        seqid = df["accession_tag"]
+        seq = df["ship_sequence"]
+        with open(tmp.name, "w") as f:
+            f.write(f">{seqid}\n{seq}\n")
+    return tmp.name
+
+
+def fetch_gff(accession):
+    query = """
+    SELECT g.*
+    FROM gff g
+    JOIN accessions a ON g.ship_id = a.id
+    JOIN ships s on s.accession = a.id
+    JOIN joined_ships j ON j.ship_id = a.id
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
+    WHERE a.accession_tag = :accession_tag
+    """
+    df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+    return df
+
+
+def fetch_fa(accession):
+    query = """
+    SELECT s.*
+    FROM ships s
+    JOIN accessions a ON s.accession = a.id
+    WHERE a.accession_tag = :accession_tag
+    """
+    df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+    return df
+
+
 def single_pgv(gff_file, tmp_file):
     gff = Gff(gff_file)
 
@@ -174,7 +220,7 @@ def single_pgv(gff_file, tmp_file):
     gv.savefig_html(tmp_file, fig)
 
 
-def multi_pgv(gff_files, fna_files, tmp_file):
+def multi_pgv(gff_files, seqs, tmp_file):
 
     gff_list = list(map(Gff, gff_files))
 
@@ -190,7 +236,7 @@ def multi_pgv(gff_files, fna_files, tmp_file):
                 add_gene_feature(gene, segment, idx)
 
     # Run BLAST alignment & filter by user-defined threshold
-    align_coords = Blast(fna_files, seqtype="protein").run()
+    align_coords = Blast(seqs, seqtype="protein").run()
     align_coords = AlignCoord.filter(align_coords, length_thr=200, identity_thr=50)
 
     # Plot BLAST alignment links
@@ -217,8 +263,8 @@ def multi_pgv(gff_files, fna_files, tmp_file):
     Output("pgv-figure", "children"),
     Input("update-button", "n_clicks"),
     [
-        State("pgv-table", "selected_rows"),
-        State("pgv-table", "data"),
+        State("pgv-table", "derived_virtual_selected_rows"),
+        State("pgv-table", "derived_virtual_data"),
     ],
 )
 def update_pgv(n_clicks, selected_rows, table_data):
@@ -237,40 +283,45 @@ def update_pgv(n_clicks, selected_rows, table_data):
                     except IndexError as e:
                         return html.Div("Index out of bounds")
 
-                    if "gff3" in rows.columns and "fna" in rows.columns:
-                        gffs = rows["gff3"].dropna().tolist()
-                        fna = rows["fna"].dropna().tolist()
+                    tmp_gffs = []
+                    # TODO: need to do better filtering/catching for when sequences are missing in the list?
+                    tmp_fas = []
+                    for index, row in rows.iterrows():
+                        accession = row["accession_tag"]
+                        gff_df = fetch_gff(accession)
+                        tmp_gff = write_tmp(gff_df, "gff")
+                        tmp_gffs.append(tmp_gff)
 
-                        if len(selected_rows) > 1:
-                            if len(selected_rows) > 4:
-                                output = html.P(
-                                    "Select up to four Starships to compare."
-                                )
-                            else:
-                                multi_pgv(gffs, fna, tmp_pgv)
-                        elif len(selected_rows) == 1:
-                            gff_file = rows.iloc[0]["gff3"]
-                            single_pgv(gff_file, tmp_pgv)
+                    if len(selected_rows) > 1:
+                        if len(selected_rows) > 4:
+                            for index, row in rows.iterrows():
+                                fa_df = fetch_fa(accession)
+                                tmp_fa = write_tmp(fa_df, "fa")
+                                tmp_fas.append(tmp_fa)
+
+                            output = html.P("Select up to four Starships to compare.")
                         else:
-                            output = html.P("No valid selection.")
-
-                        try:
-                            with open(tmp_pgv, "r") as file:
-                                pgv_content = file.read()
-                        except IOError:
-                            output = html.P("Failed to read the temporary file.")
-
-                        output = html.Iframe(
-                            srcDoc=pgv_content,
-                            style={
-                                "width": "100%",
-                                "height": "100%",
-                                "border": "none",
-                            },
-                            className="auto-resize-750",
-                        )
+                            multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
+                    elif len(selected_rows) == 1:
+                        single_pgv(tmp_gffs[0], tmp_pgv)
                     else:
-                        output = html.H4("Required columns are missing from the data.")
+                        output = html.P("No valid selection.")
+
+                    try:
+                        with open(tmp_pgv, "r") as file:
+                            pgv_content = file.read()
+                    except IOError:
+                        output = html.P("Failed to read the temporary file.")
+
+                    output = html.Iframe(
+                        srcDoc=pgv_content,
+                        style={
+                            "width": "100%",
+                            "height": "100%",
+                            "border": "none",
+                        },
+                        className="auto-resize-750",
+                    )
                 else:
                     output = html.H4("Invalid row selection.")
             except Exception as e:
@@ -288,42 +339,25 @@ def update_pgv(n_clicks, selected_rows, table_data):
     )
 
 
-def is_valid_file(file_path):
-    if isinstance(file_path, str) and os.path.isfile(file_path):
-        return os.path.getsize(file_path) > 0
-    return False
-
-
 @callback(
     Output("pgv-table", "children"),
-    [
-        Input("store-data", "data"),
-        Input("url", "href"),
-    ],
+    Input("url", "href"),
 )
-def load_ship_table(cached_data, href):
+def load_ship_table(href):
+    query = """
+    SELECT a.accession_tag, f.familyName, t.species
+    FROM joined_ships j
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
+    JOIN accessions a ON j.ship_id = a.id
+    JOIN ships s on s.accession = a.id
+    JOIN gff g ON a.id = g.ship_id
+    WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL
+    """
+    table_df = pd.read_sql_query(query, engine)
+
     if href:
-        initial_df = pd.DataFrame(cached_data)
-
-        specified_columns = [
-            "accession_tag",
-            "familyName",
-            "genus",
-            "species",
-        ]
-
-        initial_df["valid_gff3"] = initial_df["gff3"].apply(
-            lambda x: x if is_valid_file(x) else None
-        )
-        initial_df["valid_fna"] = initial_df["fna"].apply(
-            lambda x: x if is_valid_file(x) else None
-        )
-
-        filtered_df = initial_df.dropna(subset=["valid_gff3"])
-        filtered_df = filtered_df.drop_duplicates(subset="accession_tag")
-        filtered_df = filtered_df.drop(columns=["valid_gff3", "valid_fna"])
-
-        table = make_ship_table(filtered_df, "pgv-table", specified_columns)
+        table = make_ship_table(df=table_df, id="pgv-table", columns=None, pg_sz=15)
         return table
 
 
