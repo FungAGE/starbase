@@ -331,6 +331,7 @@ no_captain_alert = dbc.Alert(
                     color="warning",
                 )
 
+
 @callback(
     [
         Output("ship-family", "children"),
@@ -339,15 +340,15 @@ no_captain_alert = dbc.Alert(
     [
         Input("blast-results-store", "data"),
         Input("hmmer-results-store", "data"),
+        Input("store-data", "data"),
     ],
     [
         State("submit-button", "n_clicks"),
-        State("curated-dataset", "data"),
         State("query-type-store", "data"),
     ],
 )
 def update_ui(
-    blast_results_dict, hmmer_results_dict, n_clicks, cached_data, query_type
+    blast_results_dict, hmmer_results_dict, cached_data, n_clicks, query_type
 ):
     try:
         ship_family = no_update
@@ -374,7 +375,6 @@ def update_ui(
                     "No BLAST results found.",
                     color="danger",
                 )
-                    
 
             if hmmer_results_dict:
                 logging.info("Processing HMMER results")

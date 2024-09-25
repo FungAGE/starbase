@@ -103,7 +103,7 @@ app.layout = html.Div(
             className="row",
         ),
         dcc.Location(id="url", refresh=False),
-        dcc.Store("curated-status"),
+        dcc.Store(id="curated-status"),
     ]
 )
 
