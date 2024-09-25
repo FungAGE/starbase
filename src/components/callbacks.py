@@ -6,23 +6,12 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
-import dash
-from dash import dcc, callback, html
+from dash import callback, html
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash.dependencies import Output, Input, State
-from dash.exceptions import PreventUpdate
+from dash.dependencies import Output, Input
 
-import base64
 import pandas as pd
-
-from src.components.caching import cache
-from src.components.sqlite import engine
-
-from src.components.tables import make_ship_table
-from src.utils.plot_utils import create_sunburst_plot
-from src.utils.tree import plot_tree
-
 
 download_ships_button = dbc.Button(
     html.Div(

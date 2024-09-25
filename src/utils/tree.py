@@ -280,7 +280,8 @@ def superfam_highlight(
 def plot_tree(highlight_families=None):
     tree = Phylo.read(tree_file, "newick")
 
-    graph_title = "Captain Gene Phylogeny"
+    # graph_title = "Captain Gene Phylogeny"
+    graph_title = None
 
     x_coords = get_x_coordinates(tree)
     y_coords = get_y_coordinates(tree)

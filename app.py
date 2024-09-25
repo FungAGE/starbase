@@ -4,8 +4,8 @@ import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
 import pandas as pd
-from src.components.caching import cache
 
+from src.components.caching import cache
 from src.components import navmenu
 
 _dash_renderer._set_react_version("18.2.0")
@@ -48,6 +48,8 @@ def serve_app_layout():
     return dmc.MantineProvider(
         html.Div(
             [
+                dcc.Location(id="url", refresh=False),
+                dcc.Store(id="store-data"),
                 navmenu.navmenu(),
                 html.Div(dash.page_container),
             ]
