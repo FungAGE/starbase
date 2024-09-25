@@ -204,3 +204,19 @@
   align-items: center;
   height: 100%;
 }
+
+.explore-card-header {
+  text-align: center;
+  font-weight: bold;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.explore-card-body {
+  height: 50px;
+  text-align: center;
+}
+.explore-card-text {
+  margin: auto;
+}

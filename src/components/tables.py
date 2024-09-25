@@ -21,16 +21,20 @@ def url_to_link(url, label):
 def make_ship_table(df, id, columns=None, pg_sz=None):
     if pg_sz is None:
         pg_sz = 10
-    if columns is None:
-        # columns = df.columns
-        columns = [
-            "accession_tag",
-            "familyName",
-            "starship_navis",
-            "starship_haplotype",
-            "genus",
-            "species",
+
+    if columns:
+        table_columns = columns
+    else:
+        table_columns = [
+            {
+                "name": i,
+                "id": i,
+                "deletable": False,
+                "selectable": True,
+            }
+            for i in df.columns
         ]
+
     if df is not None:
         table_df = df.to_dict("records")
     else:
@@ -39,15 +43,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         [
             dash_table.DataTable(
                 id=id,
-                columns=[
-                    {
-                        "name": i,
-                        "id": i,
-                        "deletable": False,
-                        "selectable": True,
-                    }
-                    for i in columns
-                ],
+                columns=table_columns,
                 data=table_df,
                 editable=False,
                 filter_action="native",
@@ -63,11 +59,13 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                 style_table={
                     "overflowX": "auto",
                 },
+                style_data={
+                    "whiteSpace": "minimal",
+                },
                 style_cell={
-                    "minWidth": "150px",
-                    "width": "150px",
-                    "maxWidth": "150px",
-                    "whiteSpace": "normal",
+                    "minWidth": "100px",
+                    "maxWidth": "100%",
+                    "textAlign": "left",
                 },
             ),
         ],
