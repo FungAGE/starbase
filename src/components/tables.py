@@ -39,37 +39,32 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         table_df = df.to_dict("records")
     else:
         table_df = []
-    table = html.Div(
-        [
-            dash_table.DataTable(
-                id=id,
-                columns=table_columns,
-                data=table_df,
-                editable=False,
-                filter_action="native",
-                sort_action="native",
-                sort_mode="multi",
-                row_selectable="multi",
-                row_deletable=False,
-                selected_columns=[],
-                selected_rows=[],
-                page_action="native",
-                page_current=0,
-                page_size=pg_sz,
-                style_table={
-                    "overflowX": "auto",
-                },
-                style_data={
-                    "whiteSpace": "minimal",
-                },
-                style_cell={
-                    "minWidth": "100px",
-                    "maxWidth": "100%",
-                    "textAlign": "left",
-                },
-            ),
-        ],
-        className="auto-resize-750",
+    table = dash_table.DataTable(
+        id=id,
+        columns=table_columns,
+        data=table_df,
+        editable=False,
+        filter_action="native",
+        sort_action="native",
+        sort_mode="multi",
+        row_selectable="multi",
+        row_deletable=False,
+        selected_columns=[],
+        selected_rows=[],
+        page_action="native",
+        page_current=0,
+        page_size=pg_sz,
+        style_table={
+            "overflowX": "auto",
+        },
+        style_data={
+            "whiteSpace": "minimal",
+        },
+        style_cell={
+            "minWidth": "100px",
+            "maxWidth": "100%",
+            "textAlign": "left",
+        },
     )
     return table
 
