@@ -28,7 +28,7 @@ def agg_df(df, groups):
         )
 
 
-def create_sunburst_plot(df, type):
+def create_sunburst_plot(df, type, title_switch=True):
     if type == "ship":
         groups = ["familyName"]
         title = "Starships by Family/Navis"
@@ -47,18 +47,25 @@ def create_sunburst_plot(df, type):
         color_discrete_sequence=colors,
     )
 
-    pie.update_layout(
-        autosize=True,
-        title_font=dict(size=24),
-        title={
-            "text": title,
-            "y": 1,
-            "x": 0.5,
-            "xanchor": "center",
-            "yanchor": "top",
-        },
-        margin=dict(t=50, l=0, r=0, b=0),
-    )
+    if title_switch:
+        pie.update_layout(
+            autosize=True,
+            title_font=dict(size=24),
+            title={
+                "text": title,
+                "y": 1,
+                "x": 0.5,
+                "xanchor": "center",
+                "yanchor": "top",
+            },
+            margin=dict(t=50, l=0, r=0, b=0),
+        )
+    else:
+        pie.update_layout(
+            autosize=True,
+            margin=dict(t=50, l=0, r=0, b=0),
+        )
+
     return pie
 
 

@@ -2,7 +2,8 @@ import warnings
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, dash_table
+from dash import dcc, html, dash_table, callback, no_update
+from dash.dependencies import Output, Input
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -11,6 +12,7 @@ import pandas as pd
 import os
 
 from src.components.sqlite import engine
+from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.plot_utils import make_logo
 
@@ -32,7 +34,6 @@ def create_accordion_item(df, papers, category):
         type_element_reference = (
             filtered_papers_df["type_element_reference"].dropna().unique().astype(str)
         )
-        sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax")
 
         uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
         if not os.path.exists(uplogo_img_path):
@@ -89,7 +90,6 @@ def create_accordion_item(df, papers, category):
                 style_table={"overflowX": "auto", "maxWidth": "500px"},
                 style_cell={"textAlign": "left"},
                 style_header={"fontWeight": "bold"},
-                # You can customize more styles as needed
             )
         ]
         if type_element_reference.size > 0:
@@ -109,8 +109,6 @@ def create_accordion_item(df, papers, category):
                 )
             )
 
-        accordion_content.append(dcc.Graph(figure=sunburst))
-
         if uplogo_img and downlogo_img:
             accordion_content.append(dbc.Row([uplogo_img, downlogo_img]))
         elif uplogo_img and not downlogo_img:
@@ -127,7 +125,95 @@ def create_accordion_item(df, papers, category):
         )
 
 
-def create_accordion(df, papers):
+layout = dmc.Container(
+    fluid=True,
+    children=[
+        dcc.Location(id="url", refresh=False),
+        dcc.Store(id="meta-data"),
+        dcc.Store(id="paper-data"),
+        dcc.Store(id="active-item-cache"),
+        dmc.Grid(
+            justify="center",
+            align="center",
+            style={"paddingTop": "20px"},
+            children=[
+                dmc.GridCol(
+                    span={"lg": 6, "sm": 12},
+                    children=[
+                        html.H1(
+                            "Summary and characteristics for each Starship family",
+                        ),
+                        dcc.Loading(
+                            id="wiki-loading",
+                            type="circle",
+                            children=html.Div(id="accordion"),
+                        ),
+                    ],
+                ),
+                dmc.GridCol(
+                    span={"lg": 6, "sm": 12},
+                    children=[html.Div(id="sidebar-title")],
+                ),
+                dmc.GridCol(
+                    span={"lg": 6, "sm": 12},
+                    children=[
+                        dcc.Loading(
+                            id="wiki-loading",
+                            type="circle",
+                            children=html.Div(id="accordion"),
+                        ),
+                    ],
+                ),
+                dmc.GridCol(
+                    span={"lg": 6, "sm": 12},
+                    children=[
+                        dcc.Loading(
+                            id="sidebar-loading",
+                            type="circle",
+                            children=[dmc.Center(html.Div(id="sidebar"))],
+                        )
+                    ],
+                ),
+            ],
+        ),
+    ],
+)
+
+
+@callback(Output("meta-data", "data"), Input("url", "href"))
+def load_meta_data(url):
+    if url:
+        meta_query = """
+        SELECT j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation, g.biosample, g.acquisition_date
+        FROM joined_ships j
+        JOIN taxonomy t ON j.taxid = t.id
+        JOIN family_names f ON j.ship_family_id = f.id
+        JOIN accessions a ON j.ship_id = a.id
+        JOIN genomes g ON j.genome_id = g.id
+        """
+        meta_df = pd.read_sql_query(meta_query, engine)
+        return meta_df.to_dict("records")
+
+
+@callback(Output("paper-data", "data"), Input("url", "href"))
+def load_paper_data(url):
+    if url:
+        paper_query = """
+        SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
+        FROM papers p
+        JOIN family_names f ON p.shortCitation = f.type_element_reference
+        """
+        paper_df = pd.read_sql_query(paper_query, engine)
+        return paper_df.to_dict("records")
+
+
+@callback(
+    Output("accordion", "children"),
+    [Input("meta-data", "data"), Input("paper-data", "data")],
+)
+def create_accordion(cached_meta, cached_papers):
+    df = pd.DataFrame(cached_meta)
+    papers = pd.DataFrame(cached_papers)
     unique_categories = df["familyName"].dropna().unique().tolist()
     assert isinstance(unique_categories, list), "unique_categories must be a list"
 
@@ -140,71 +226,67 @@ def create_accordion(df, papers):
     return dbc.Accordion(
         children=accordion_items,
         id="category-accordion",
-        always_open=True,
+        always_open=False,
         active_item="Voyager",
     )
 
 
-def load_data():
-    # Query your database to fetch the relevant data
-    meta_query = """
-    SELECT j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family
-    FROM joined_ships j
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
-    JOIN accessions a ON j.ship_id = a.id
-    """
-    meta_df = pd.read_sql_query(meta_query, engine)
-
-    paper_query = """
-    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
-    FROM papers p
-    JOIN family_names f ON p.shortCitation = f.type_element_reference
-    """
-    paper_df = pd.read_sql_query(paper_query, engine)
-
-    accordion = create_accordion(meta_df, paper_df)
-
-    return accordion
-
-
-layout = dbc.Container(
-    fluid=True,
-    children=[
-        dcc.Location(id="url", refresh=False),
-        dbc.Row(
-            justify="center",
-            align="middle",
-            style={"paddingTop": "20px"},
-            children=[
-                dbc.Col(
-                    lg=6,
-                    sm=12,
-                    children=[
-                        html.H1(
-                            "Wiki - Summary and characteristics for each Starship family",
-                        ),
-                    ],
-                )
-            ],
-        ),
-        dbc.Row(
-            justify="center",
-            align="start",
-            style={"paddingTop": "20px"},
-            children=[
-                dbc.Col(
-                    lg=6,
-                    sm=12,
-                    children=[
-                        dcc.Loading(
-                            id="wiki-loading",
-                            type="circle",
-                            children=[load_data()],
-                        ),
-                    ],
-                ),
-            ],
-        ),
+@callback(
+    [
+        Output("sidebar", "children"),
+        Output("sidebar-title", "children"),
+        Output("active-item-cache", "value"),
+    ],
+    [
+        Input("meta-data", "data"),
+        Input("category-accordion", "active_item"),
+        Input("active-item-cache", "value"),
     ],
 )
+def create_sidebar(cached_meta, active_item, value_cache):
+    if active_item is None:
+        return None, None, None
+    df = pd.DataFrame(cached_meta)
+    filtered_meta_df = df[df["familyName"] == active_item]
+
+    title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
+
+    sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax", title_switch=False)
+    fig = dcc.Graph(figure=sunburst)
+    table_columns = [
+        {
+            "name": "Accession",
+            "id": "accession_tag",
+            "deletable": False,
+            "selectable": False,
+        },
+        {
+            "name": "Genus",
+            "id": "genus",
+            "deletable": False,
+            "selectable": False,
+        },
+        {
+            "name": "Species",
+            "id": "species",
+            "deletable": False,
+            "selectable": False,
+        },
+        {
+            "name": "Source",
+            "id": "genomeSource",
+            "deletable": False,
+            "selectable": False,
+        },
+        {"name": "Citation", "id": "citation", "deletable": False, "selectable": False},
+        {
+            "name": "Biosample",
+            "id": "biosample",
+            "deletable": False,
+            "selectable": False,
+        },
+    ]
+    table = make_ship_table(df, id="wiki-table", columns=table_columns, pg_sz=15)
+    output = dbc.Stack(children=[fig, table], direction="vertical", gap=5)
+
+    return output, title, active_item
