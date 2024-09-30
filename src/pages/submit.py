@@ -1,9 +1,9 @@
 import warnings
 
 warnings.filterwarnings("ignore")
+import logging
 
 import base64
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -13,6 +13,7 @@ from dash import dcc, html, callback
 import sqlite3
 
 import datetime
+from src.utils.parsing import parse_fasta, parse_gff
 
 dash.register_page(__name__)
 
@@ -119,9 +120,11 @@ layout = dmc.Container(
                                     ["Upload Starship sequence:"],
                                 ),
                                 dcc.Upload(
-                                    id="fasta-upload",
-                                    children=html.Div(id="fasta-sequence-upload"),
-                                    className="upload-box text-red auto-resize-600 text-center",
+                                    id="submit-fasta-upload",
+                                    children=html.Div(
+                                        id="submit-fasta-sequence-upload"
+                                    ),
+                                    className="upload-box text-red text-center",
                                     multiple=False,
                                     accept=".fa, .fas, .fasta, .fna",
                                 ),
@@ -136,11 +139,11 @@ layout = dmc.Container(
                                     ],
                                 ),
                                 dcc.Upload(
-                                    id="upload-gff",
-                                    children=html.Div(id="output-gff-upload"),
+                                    id="submit-upload-gff",
+                                    children=html.Div(id="submit-output-gff-upload"),
                                     accept=".gff, .gff3, .tsv",
                                     multiple=False,
-                                    className="upload-box text-red auto-resize-600 text-center",
+                                    className="upload-box text-red text-center",
                                 ),
                                 dcc.Loading(
                                     id="loading-2",
@@ -327,15 +330,115 @@ layout = dmc.Container(
 )
 
 
+def init_db(db_path):
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='submissions'"
+    )
+    existing_table = c.fetchone()
+
+    if not existing_table:
+        c.execute(
+            """CREATE TABLE submissions (
+                seq_contents TEXT NOT NULL,
+                seq_filename TEXT NOT NULL,
+                seq_date TEXT NOT NULL,
+                anno_contents TEXT,
+                anno_filename TEXT,
+                anno_date TEXT,
+                uploader TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                genus TEXT NOT NULL,
+                species TEXT NOT NULL,
+                hostchr TEXT NOT NULL,
+                shipstart INTEGER NOT NULL,
+                shipend INTEGER NOT NULL,
+                shipstrand TEXT,
+                comment TEXT,
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
+            )"""
+        )
+        conn.commit()
+
+    return conn, c
+
+
+# Function to insert a new submission into the database
+def insert_submission(
+    conn,
+    c,
+    seq_content,
+    seq_filename,
+    seq_date,
+    anno_content,
+    anno_filename,
+    anno_date,
+    uploader,
+    evidence,
+    genus,
+    species,
+    hostchr,
+    shipstart,
+    shipend,
+    shipstrand,
+    comment,
+):
+
+    content_type, content_string = seq_content.split(",")
+    seq_decoded = base64.b64decode(content_string).decode("utf-8")
+    seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    anno_contents = ""
+    anno_datetime_obj = ""
+
+    if anno_content:
+        content_type, content_string = anno_content.split(",")
+        anno_contents = base64.b64decode(content_string).decode("utf-8")
+        anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+    if not comment:
+        comment = ""
+
+    c.execute(
+        """INSERT INTO submissions_new (seq_contents, seq_filename, seq_date, anno_contents,
+        anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
+        shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            seq_decoded,
+            seq_filename,
+            seq_datetime_obj,
+            anno_contents,
+            anno_filename,
+            anno_datetime_obj,
+            uploader,
+            evidence,
+            genus,
+            species,
+            hostchr,
+            shipstart,
+            shipend,
+            shipstrand,
+            comment,
+        ),
+    )
+    conn.commit()
+
+
 @callback(
     [Output("submit-modal", "is_open"), Output("output-data-upload", "children")],
     [
-        Input("fasta-upload", "contents"),
-        Input("fasta-upload", "filename"),
-        Input("fasta-upload", "last_modified"),
-        Input("upload-gff", "contents"),
-        Input("upload-gff", "filename"),
-        Input("upload-gff", "last_modified"),
+        Input("submit-fasta-upload", "contents"),
+        Input("submit-fasta-upload", "filename"),
+        Input("submit-fasta-upload", "last_modified"),
+        Input("submit-upload-gff", "contents"),
+        Input("submit-upload-gff", "filename"),
+        Input("submit-upload-gff", "last_modified"),
         Input("uploader", "value"),
         Input("evidence", "value"),
         Input("genus", "value"),
@@ -385,81 +488,26 @@ def submit_ship(
             )  # Return the error message if no file
 
         try:
-            # Create SQLite database connection
-            conn = sqlite3.connect("database_folder/starbase.sqlite")
-            c = conn.cursor()
-
-            # Check if the table already exists
-            c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='submissions_new'"
+            conn, c = init_db("database_folder/submissions.sqlite")
+            insert_submission(
+                conn,
+                c,
+                seq_content,
+                seq_filename,
+                seq_date,
+                anno_content,
+                anno_filename,
+                anno_date,
+                uploader,
+                evidence,
+                genus,
+                species,
+                hostchr,
+                shipstart,
+                shipend,
+                shipstrand,
+                comment,
             )
-            existing_table = c.fetchone()
-
-            if not existing_table:
-                # Create the table if it doesn't exist
-                c.execute(
-                    """CREATE TABLE submissions_new (
-                    seq_contents TEXT NOT NULL,
-                    seq_filename TEXT NOT NULL,
-                    seq_date TEXT NOT NULL,
-                    anno_contents TEXT,
-                    anno_filename TEXT,
-                    anno_date TEXT,
-                    uploader TEXT NOT NULL,
-                    evidence TEXT NOT NULL,
-                    genus TEXT NOT NULL,
-                    species TEXT NOT NULL,
-                    hostchr TEXT NOT NULL,
-                    shipstart INTEGER NOT NULL,
-                    shipend INTEGER NOT NULL,
-                    shipstrand TEXT,
-                    comment TEXT,
-                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
-                )"""
-                )
-                conn.commit()
-
-            # Process sequence and annotation contents
-            content_type, content_string = seq_content.split(",")
-            seq_decoded = base64.b64decode(content_string).decode("utf-8")
-            seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date)
-
-            anno_contents = ""
-            anno_filename = ""
-            anno_datetime_obj = ""
-
-            if anno_content:
-                content_type, content_string = anno_content.split(",")
-                anno_contents = base64.b64decode(content_string).decode("utf-8")
-                anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date)
-
-            if not comment:
-                comment = ""
-
-            # Insert submission data into the table
-            c.execute(
-                """INSERT INTO submissions_new (seq_contents, seq_filename, seq_date, anno_contents,
-                anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
-                shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    seq_content,
-                    seq_filename,
-                    seq_datetime_obj,
-                    anno_contents,
-                    anno_filename,
-                    anno_datetime_obj,
-                    uploader,
-                    evidence,
-                    genus,
-                    species,
-                    hostchr,
-                    shipstart,
-                    shipend,
-                    shipstrand,
-                    comment,
-                ),
-            )
-            conn.commit()
 
             modal = not is_open if not close_modal else False
             message = html.H5(f"Successfully submitted '{seq_filename}' to starbase")
@@ -474,3 +522,54 @@ def submit_ship(
                 conn.close()
 
     return modal, message
+
+
+@callback(
+    Output("submit-fasta-sequence-upload", "children"),
+    [
+        Input("submit-fasta-upload", "contents"),
+        Input("submit-fasta-upload", "filename"),
+    ],
+)
+def update_fasta_details(seq_content, seq_filename):
+    if seq_content is None:
+        return [
+            html.Div(
+                html.P(
+                    ["Select a FASTA file to upload"],
+                )
+            )
+        ]
+    else:
+        try:
+            # "," is the delimeter for splitting content_type from content_string
+            content_type, content_string = seq_content.split(",")
+            query_string = base64.b64decode(content_string).decode("utf-8")
+            children = parse_fasta(query_string, seq_filename)
+            return children
+
+        except Exception as e:
+            logging.error(e)
+            return html.Div(["There was an error processing this file."])
+
+
+@callback(
+    Output("submit-output-gff-upload", "children"),
+    [
+        Input("submit-upload-gff", "contents"),
+        Input("submit-upload-gff", "filename"),
+    ],
+)
+def update_gff_details(anno_content, anno_filename):
+    if anno_content is None:
+        return [
+            html.Div(["Select a GFF file to upload"]),
+        ]
+    else:
+        try:
+            children = parse_gff(anno_content, anno_filename)
+            return children
+
+        except Exception as e:
+            logging.error(e)
+            return html.Div(["There was an error processing this file."])

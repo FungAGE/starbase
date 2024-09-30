@@ -13,6 +13,10 @@ from dash.dependencies import Output, Input
 
 import pandas as pd
 
+import base64
+from src.utils.parsing import parse_fasta, parse_gff
+
+
 download_ships_button = dbc.Button(
     html.Div(
         [
