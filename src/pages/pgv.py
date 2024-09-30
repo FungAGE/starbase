@@ -186,7 +186,7 @@ def fetch_gff(accession):
     LEFT JOIN joined_ships j ON j.ship_id = a.id
     LEFT JOIN taxonomy t ON j.taxid = t.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
-    WHERE a.accession_tag = :accession_tag
+    WHERE a.accession_tag = :accession_tag AND j.orphan IS NULL
     """
     df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
     return df
@@ -352,7 +352,7 @@ def load_ship_table(href):
     LEFT JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN ships s on s.accession = a.id
     LEFT JOIN gff g ON a.id = g.ship_id
-    WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL
+    WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL AND j.orphan IS NULL
     """
     table_df = pd.read_sql_query(query, engine)
 

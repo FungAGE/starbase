@@ -196,6 +196,7 @@ def load_meta_data(url):
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN accessions a ON j.ship_id = a.id
         LEFT JOIN genomes g ON j.genome_id = g.id
+        WHERE j.orphan IS NULL
         """
         meta_df = pd.read_sql_query(meta_query, engine)
         return meta_df.to_dict("records")

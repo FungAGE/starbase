@@ -266,6 +266,7 @@ def update_store(switches_value, url):
             LEFT JOIN taxonomy t ON j.taxid = t.id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
             LEFT JOIN accessions a ON j.ship_id = a.id
+            WHERE j.orphan IS NULL
             """
             df = pd.read_sql_query(query, engine)
             print(df.head())
