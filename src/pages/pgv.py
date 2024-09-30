@@ -181,11 +181,11 @@ def fetch_gff(accession):
     query = """
     SELECT g.*
     FROM gff g
-    JOIN accessions a ON g.ship_id = a.id
-    JOIN ships s on s.accession = a.id
-    JOIN joined_ships j ON j.ship_id = a.id
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN accessions a ON g.ship_id = a.id
+    LEFT JOIN ships s on s.accession = a.id
+    LEFT JOIN joined_ships j ON j.ship_id = a.id
+    LEFT JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
     WHERE a.accession_tag = :accession_tag
     """
     df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
@@ -196,7 +196,7 @@ def fetch_fa(accession):
     query = """
     SELECT s.*
     FROM ships s
-    JOIN accessions a ON s.accession = a.id
+    LEFT JOIN accessions a ON s.accession = a.id
     WHERE a.accession_tag = :accession_tag
     """
     df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
@@ -347,11 +347,11 @@ def load_ship_table(href):
     query = """
     SELECT a.accession_tag, f.familyName, t.species
     FROM joined_ships j
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
-    JOIN accessions a ON j.ship_id = a.id
-    JOIN ships s on s.accession = a.id
-    JOIN gff g ON a.id = g.ship_id
+    LEFT JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN accessions a ON j.ship_id = a.id
+    LEFT JOIN ships s on s.accession = a.id
+    LEFT JOIN gff g ON a.id = g.ship_id
     WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL
     """
     table_df = pd.read_sql_query(query, engine)

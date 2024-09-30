@@ -207,7 +207,7 @@ def load_paper_data(url):
         paper_query = """
         SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
         FROM papers p
-        JOIN family_names f ON p.shortCitation = f.type_element_reference
+        LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
         """
         paper_df = pd.read_sql_query(paper_query, engine)
         return paper_df.to_dict("records")

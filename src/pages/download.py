@@ -153,9 +153,9 @@ def make_dl_table(url):
     query = """
     SELECT a.accession_tag, f.familyName, t."order", t.family, t.species 
     FROM accessions a
-    JOIN joined_ships j ON a.id = j.ship_id
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN joined_ships j ON a.id = j.ship_id
+    LEFT JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
     """
     df = pd.read_sql_query(query, engine)
 
@@ -183,7 +183,7 @@ def generate_download(dl_all, dl_select, rows, data):
             query = """
             SELECT s.*
             FROM ships s
-            JOIN accessions a ON s.accession = a.id
+            LEFT JOIN accessions a ON s.accession = a.id
             """
 
             accessions = pd.DataFrame(data).iloc[rows, "accession_tag"]
