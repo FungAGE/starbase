@@ -83,7 +83,7 @@ def make_paper_table(engine):
         df.groupby("Title")
         .agg(
             {
-                "familyName": lambda x: ", ".join(sorted(x.unique())),
+                "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
                 "Author": "first",
                 "PublicationYear": "first",
                 "DOI": "first",
