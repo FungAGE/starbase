@@ -37,6 +37,7 @@ from src.utils.blast_utils import (
 )
 from src.utils.tree import plot_tree, default_highlight_families
 from src.components.callbacks import curated_switch
+from src.utils.parsing import parse_fasta
 
 dash.register_page(__name__)
 
@@ -126,17 +127,19 @@ layout = dmc.Container(
                             },
                         ),
                         dcc.Upload(
-                            id="fasta-upload",
+                            id="blast-fasta-upload",
                             children=html.Div(
                                 "Drag and drop or click to select a FASTA file.",
-                                id="fasta-sequence-upload",
+                                id="blast-fasta-sequence-upload",
                                 style={"fontSize": "1rem"},
                             ),
                             className="upload-box",
                             multiple=False,
                             accept=".fa, .fas, .fasta, .fna",
                         ),
-                        curated_switch(text="Only search curated Starships",size="normal"),
+                        curated_switch(
+                            text="Only search curated Starships", size="normal"
+                        ),
                         dbc.Button(
                             "Submit BLAST",
                             id="submit-button",
@@ -190,6 +193,35 @@ layout = dmc.Container(
 
 
 @callback(
+    Output("blast-fasta-sequence-upload", "children"),
+    [
+        Input("blast-fasta-upload", "contents"),
+        Input("blast-fasta-upload", "filename"),
+    ],
+)
+def update_fasta_details(seq_content, seq_filename):
+    if seq_content is None:
+        return [
+            html.Div(
+                html.P(
+                    ["Select a FASTA file to upload"],
+                )
+            )
+        ]
+    else:
+        try:
+            # "," is the delimeter for splitting content_type from content_string
+            content_type, content_string = seq_content.split(",")
+            query_string = base64.b64decode(content_string).decode("utf-8")
+            children = parse_fasta(query_string, seq_filename)
+            return children
+
+        except Exception as e:
+            logging.error(e)
+            return html.Div(["There was an error processing this file."])
+
+
+@callback(
     [
         Output("query-header-store", "data"),
         Output("query-seq-store", "data"),
@@ -198,7 +230,7 @@ layout = dmc.Container(
     [
         Input("submit-button", "n_clicks"),
         Input("query-text", "value"),
-        Input("fasta-upload", "contents"),
+        Input("blast-fasta-upload", "contents"),
     ],
 )
 def preprocess(n_clicks, query_text_input, query_file_contents):
@@ -326,10 +358,11 @@ def subject_seq_download(n_clicks, filename):
         logging.error(f"Error in subject_seq_download: {str(e)}")
         return dash.no_update
 
+
 no_captain_alert = dbc.Alert(
-                    "No captain sequence found (e-value threshold 0.01).",
-                    color="warning",
-                )
+    "No captain sequence found (e-value threshold 0.01).",
+    color="warning",
+)
 
 
 @callback(
@@ -367,23 +400,27 @@ def update_ui(
                 logging.info("Rendering BLAST table")
                 # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
                 # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
-                df_for_table = blast_results_df["accession_tag" == initial_df["accession_tag"]]
+                df_for_table = blast_results_df[
+                    "accession_tag" == initial_df["accession_tag"]
+                ]
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
                     ship_table = dbc.Alert(
-                    "No BLAST results found.",
-                    color="danger",
-                )
+                        "No BLAST results found.",
+                        color="danger",
+                    )
 
             if hmmer_results_dict:
                 logging.info("Processing HMMER results")
                 hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df["hit_IDs" == initial_df["accession_tag"]]
+                df_for_hmmer = hmmer_results_df[
+                    "hit_IDs" == initial_df["accession_tag"]
+                ]
                 if len(df_for_hmmer) > 0:
                     try:
-                        superfamily, family_aln_length, family_evalue = select_ship_family(
-                            df_for_hmmer
+                        superfamily, family_aln_length, family_evalue = (
+                            select_ship_family(df_for_hmmer)
                         )
                         if superfamily:
                             if query_type == "nucl":
