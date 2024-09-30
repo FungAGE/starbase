@@ -58,12 +58,12 @@ def create_sunburst_plot(df, type, title_switch=True):
                 "xanchor": "center",
                 "yanchor": "top",
             },
-            margin=dict(t=50, l=0, r=0, b=0),
+            margin=dict(t=30, l=0, r=0, b=0),
         )
     else:
         pie.update_layout(
             autosize=True,
-            margin=dict(t=50, l=0, r=0, b=0),
+            margin=dict(t=30, l=0, r=0, b=0),
         )
 
     return pie

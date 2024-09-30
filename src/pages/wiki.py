@@ -134,11 +134,15 @@ layout = dmc.Container(
         dcc.Store(id="active-item-cache"),
         dmc.Grid(
             justify="center",
-            align="center",
+            align="begin",
             style={"paddingTop": "20px"},
             children=[
                 dmc.GridCol(
                     span={"lg": 6, "sm": 12},
+                    style={
+                        "overflow": "hidden",
+                        "padding": "10px",
+                    },
                     children=[
                         html.H1(
                             "Summary and characteristics for each Starship family",
@@ -152,26 +156,28 @@ layout = dmc.Container(
                 ),
                 dmc.GridCol(
                     span={"lg": 6, "sm": 12},
-                    children=[html.Div(id="sidebar-title")],
-                ),
-                dmc.GridCol(
-                    span={"lg": 6, "sm": 12},
+                    style={
+                        "overflow": "hidden",
+                        "padding": "10px",
+                    },
                     children=[
-                        dcc.Loading(
-                            id="wiki-loading",
-                            type="circle",
-                            children=html.Div(id="accordion"),
-                        ),
-                    ],
-                ),
-                dmc.GridCol(
-                    span={"lg": 6, "sm": 12},
-                    children=[
+                        html.Div(id="sidebar-title"),
                         dcc.Loading(
                             id="sidebar-loading",
                             type="circle",
-                            children=[dmc.Center(html.Div(id="sidebar"))],
-                        )
+                            children=[
+                                dmc.Center(
+                                    html.Div(
+                                        id="sidebar",
+                                        style={
+                                            "width": "100%",
+                                            "overflowY": "auto",
+                                            "overflowX": "auto",
+                                        },
+                                    )
+                                )
+                            ],
+                        ),
                     ],
                 ),
             ],
@@ -184,12 +190,12 @@ layout = dmc.Container(
 def load_meta_data(url):
     if url:
         meta_query = """
-        SELECT j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation, g.biosample, g.acquisition_date
+        SELECT j.ship_family_id,j.curated_status,j.taxid,j.ship_id,j.genome_id,j.ome,j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation, g.biosample, g.acquisition_date
         FROM joined_ships j
-        JOIN taxonomy t ON j.taxid = t.id
-        JOIN family_names f ON j.ship_family_id = f.id
-        JOIN accessions a ON j.ship_id = a.id
-        JOIN genomes g ON j.genome_id = g.id
+        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN accessions a ON j.ship_id = a.id
+        LEFT JOIN genomes g ON j.genome_id = g.id
         """
         meta_df = pd.read_sql_query(meta_query, engine)
         return meta_df.to_dict("records")
@@ -247,12 +253,14 @@ def create_sidebar(cached_meta, active_item, value_cache):
     if active_item is None:
         return None, None, None
     df = pd.DataFrame(cached_meta)
-    filtered_meta_df = df[df["familyName"] == active_item]
-
     title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
 
+    filtered_meta_df = df[df["familyName"] == active_item].sort_values(
+        by="accession_tag", ascending=False
+    )
+
     sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax", title_switch=False)
-    fig = dcc.Graph(figure=sunburst)
+    fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
     table_columns = [
         {
             "name": "Accession",

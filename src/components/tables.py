@@ -55,13 +55,15 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         page_current=0,
         page_size=pg_sz,
         style_table={
+            "width": "100%",
+            "height": "100%",
             "overflowX": "auto",
         },
         style_data={
             "whiteSpace": "minimal",
         },
         style_cell={
-            "minWidth": "100px",
+            "minWidth": "0px",
             "maxWidth": "100%",
             "textAlign": "left",
         },
