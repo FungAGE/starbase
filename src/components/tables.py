@@ -75,7 +75,7 @@ def make_paper_table(engine):
     query = """
     SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
     FROM papers p
-    JOIN family_names f ON p.shortCitation = f.type_element_reference
+    LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
     """
     df = pd.read_sql_query(query, engine)
 

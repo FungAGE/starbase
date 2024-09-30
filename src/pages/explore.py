@@ -263,9 +263,9 @@ def update_store(switches_value, url):
             query = """
             SELECT j.*, t."order", t.family, f.longFamilyID, f.familyName, a.accession_tag
             FROM joined_ships j
-            JOIN taxonomy t ON j.taxid = t.id
-            JOIN family_names f ON j.ship_family_id = f.id
-            JOIN accessions a ON j.ship_id = a.id
+            LEFT JOIN taxonomy t ON j.taxid = t.id
+            LEFT JOIN family_names f ON j.ship_family_id = f.id
+            LEFT JOIN accessions a ON j.ship_id = a.id
             """
             df = pd.read_sql_query(query, engine)
             print(df.head())
