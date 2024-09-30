@@ -156,6 +156,7 @@ def make_dl_table(url):
     LEFT JOIN joined_ships j ON a.id = j.ship_id
     LEFT JOIN taxonomy t ON j.taxid = t.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
+    WHERE j.orphan IS NULL
     """
     df = pd.read_sql_query(query, engine)
 
