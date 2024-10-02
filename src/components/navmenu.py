@@ -5,7 +5,7 @@ from src.pages import (
     HOME_URL,
     DL_URL,
     WIKI_URL,
-    EXPLORE_URL,
+    # EXPLORE_URL,
     PGV_URL,
     BLAST_URL,
     SUBMIT_URL,
@@ -38,17 +38,17 @@ navbar_content = [
             className="nav-item-link",
         )
     ),
-    dbc.NavItem(
-        dbc.NavLink(
-            html.P(
-                ["Explore"],
-                className="nav-item-text",
-            ),
-            href=EXPLORE_URL,
-            active="exact",
-            className="nav-item-link",
-        )
-    ),
+    # dbc.NavItem(
+    #     dbc.NavLink(
+    #         html.P(
+    #             ["Explore"],
+    #             className="nav-item-text",
+    #         ),
+    #         href=EXPLORE_URL,
+    #         active="exact",
+    #         className="nav-item-link",
+    #     )
+    # ),
     dbc.NavItem(
         dbc.NavLink(
             html.P(

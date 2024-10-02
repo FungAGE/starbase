@@ -10,13 +10,18 @@ import dash_mantine_components as dmc
 
 from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
-import sqlite3
 
 import datetime
 from src.utils.parsing import parse_fasta, parse_gff
 
 dash.register_page(__name__)
 
+
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
+from sqlalchemy.exc import NoSuchTableError
+import pandas as pd
+
+db_url = "sqlite:///database_folder/submissions.sqlite"
 
 layout = dmc.Container(
     fluid=True,
@@ -330,45 +335,46 @@ layout = dmc.Container(
 )
 
 
-def init_db(db_path):
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
+def init_db(db_url):
+    # Create an SQLAlchemy engine
+    engine = create_engine(db_url)
 
-    c.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='submissions'"
+    # Create metadata object to handle table creation
+    metadata = MetaData()
+
+    # Define the 'submissions' table schema
+    submissions_table = Table(
+        'submissions', metadata,
+        Column('seq_contents', Text, nullable=False),
+        Column('seq_filename', Text, nullable=False),
+        Column('seq_date', Text),
+        Column('anno_contents', Text),
+        Column('anno_filename', Text),
+        Column('anno_date', Text),
+        Column('uploader', Text, nullable=False),
+        Column('evidence', Text, nullable=False),
+        Column('genus', Text),
+        Column('species', Text),
+        Column('hostchr', Text),
+        Column('shipstart', Integer, nullable=False),
+        Column('shipend', Integer, nullable=False),
+        Column('shipstrand', Text),
+        Column('comment', Text),
+        Column('id', Integer, primary_key=True, autoincrement=True)
     )
-    existing_table = c.fetchone()
 
-    if not existing_table:
-        c.execute(
-            """CREATE TABLE submissions (
-                seq_contents TEXT NOT NULL,
-                seq_filename TEXT NOT NULL,
-                seq_date TEXT NOT NULL,
-                anno_contents TEXT,
-                anno_filename TEXT,
-                anno_date TEXT,
-                uploader TEXT NOT NULL,
-                evidence TEXT NOT NULL,
-                genus TEXT NOT NULL,
-                species TEXT NOT NULL,
-                hostchr TEXT NOT NULL,
-                shipstart INTEGER NOT NULL,
-                shipend INTEGER NOT NULL,
-                shipstrand TEXT,
-                comment TEXT,
-                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
-            )"""
-        )
-        conn.commit()
+    # Try to reflect the table if it exists
+    try:
+        submissions_table = Table('submissions', metadata, autoload_with=engine)
+    except NoSuchTableError:
+        # If the table doesn't exist, create it
+        metadata.create_all(engine)
 
-    return conn, c
-
+    # Return the engine for future use
+    return engine
 
 # Function to insert a new submission into the database
 def insert_submission(
-    conn,
-    c,
     seq_content,
     seq_filename,
     seq_date,
@@ -385,6 +391,8 @@ def insert_submission(
     shipstrand,
     comment,
 ):
+
+    engine = init_db(db_url)
 
     content_type, content_string = seq_content.split(",")
     seq_decoded = base64.b64decode(content_string).decode("utf-8")
@@ -405,29 +413,29 @@ def insert_submission(
     if not comment:
         comment = ""
 
-    c.execute(
-        """INSERT INTO submissions_new (seq_contents, seq_filename, seq_date, anno_contents,
-        anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
-        shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            seq_decoded,
-            seq_filename,
-            seq_datetime_obj,
-            anno_contents,
-            anno_filename,
-            anno_datetime_obj,
-            uploader,
-            evidence,
-            genus,
-            species,
-            hostchr,
-            shipstart,
-            shipend,
-            shipstrand,
-            comment,
-        ),
-    )
-    conn.commit()
+    with engine.connect() as connection:
+        connection.execute(
+            """INSERT INTO submissions (seq_contents, seq_filename, seq_date, anno_contents,
+            anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
+            shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                seq_decoded,
+                seq_filename,
+                seq_datetime_obj,
+                anno_contents,
+                anno_filename,
+                anno_datetime_obj,
+                uploader,
+                evidence,
+                genus,
+                species,
+                hostchr,
+                shipstart,
+                shipend,
+                shipstrand,
+                comment,
+            ),
+        )
 
 
 @callback(
@@ -476,6 +484,7 @@ def submit_ship(
     modal = is_open  # Keep the modal state as it is unless toggled
     message = """"""
 
+    
     if n_clicks and n_clicks > 0:
         if strand_radio == 1:
             shipstrand = "+"
@@ -487,39 +496,26 @@ def submit_ship(
                 "No fasta file uploaded",
             )  # Return the error message if no file
 
-        try:
-            conn, c = init_db("database_folder/submissions.sqlite")
-            insert_submission(
-                conn,
-                c,
-                seq_content,
-                seq_filename,
-                seq_date,
-                anno_content,
-                anno_filename,
-                anno_date,
-                uploader,
-                evidence,
-                genus,
-                species,
-                hostchr,
-                shipstart,
-                shipend,
-                shipstrand,
-                comment,
-            )
+        insert_submission(
+            seq_content,
+            seq_filename,
+            seq_date,
+            anno_content,
+            anno_filename,
+            anno_date,
+            uploader,
+            evidence,
+            genus,
+            species,
+            hostchr,
+            shipstart,
+            shipend,
+            shipstrand,
+            comment,
+        )
 
-            modal = not is_open if not close_modal else False
-            message = html.H5(f"Successfully submitted '{seq_filename}' to starbase")
-
-        except sqlite3.Error as error:
-            print("Failed to insert record into SQLite table:", error)
-            message = html.H5("Failed to submit data. Please try again.")
-
-        finally:
-            if conn:
-                c.close()
-                conn.close()
+        modal = not is_open if not close_modal else False
+        message = html.H5(f"Successfully submitted '{seq_filename}' to starbase")
 
     return modal, message
 

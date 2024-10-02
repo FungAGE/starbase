@@ -159,7 +159,7 @@ def make_dl_table(url):
     WHERE j.orphan IS NULL
     """
     df = pd.read_sql_query(query, engine)
-
+    df.fillna('', inplace=True)  # Replace NaN with an empty string
     return df.to_dict("records")
 
 
