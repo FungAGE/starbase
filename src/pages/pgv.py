@@ -69,7 +69,13 @@ layout = dmc.Container(
                             id="loading-1",
                             type="circle",
                             children=[
-                                html.Div(id="pgv-figure"),
+                                html.Div(id="pgv-figure",
+                                        style={
+                                            "height": "800px",
+                                            "width": "100%",
+                                            "overflow": "auto",
+                                            "border": "1px solid #ccc",
+                                        }),
                             ],
                         )
                     ],
@@ -355,6 +361,7 @@ def load_ship_table(href):
     WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL AND j.orphan IS NULL
     """
     table_df = pd.read_sql_query(query, engine)
+    table_df = table_df.drop_duplicates(subset=["accession_tag"])
 
     if href:
         table = make_ship_table(df=table_df, id="pgv-table", columns=None, pg_sz=15)
