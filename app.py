@@ -5,7 +5,6 @@ from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
 import pandas as pd
 
-from src.components.caching import cache
 from src.components import navmenu
 
 _dash_renderer._set_react_version("18.2.0")
@@ -39,9 +38,6 @@ app = Dash(
         {"name": "viewport", "content": "width=device-width, initial-scale=1"},
     ],
 )
-
-# Initialize cache with Flask server
-cache.init_app(server)
 
 
 def serve_app_layout():
