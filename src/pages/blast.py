@@ -49,7 +49,7 @@ db_list = {
             "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
             "hmm": {
                 "nucl": "database_folder/Starships/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "database_folder/Starships/captain/tyr/faa/hmm/YRsuperfams.p1-512.hmm",
+                "prot": "database_folder/Starships/captain/tyr/faa/hmm/combined.hmm",
             },
         },
         "nlr": {
@@ -395,14 +395,12 @@ def update_ui(
             initial_df = pd.DataFrame(cached_data)
 
             if blast_results_dict:
-                # Render BLAST table
-                blast_results_df = pd.DataFrame(blast_results_dict)
                 logging.info("Rendering BLAST table")
+                blast_results_df = pd.DataFrame(blast_results_dict)
                 # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
                 # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
-                df_for_table = blast_results_df[
-                    "accession_tag" == initial_df["accession_tag"]
-                ]
+                # TODO: update blastdb's with accessions, rather than shipIDs?
+                df_for_table = blast_results_df[blast_results_df["sseqid"].isin(initial_df["starshipID"])]
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
@@ -414,28 +412,31 @@ def update_ui(
             if hmmer_results_dict:
                 logging.info("Processing HMMER results")
                 hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df[
-                    "hit_IDs" == initial_df["accession_tag"]
-                ]
+                df_for_hmmer = hmmer_results_df[hmmer_results_df["hit_IDs"].isin(initial_df["starshipID"])]
                 if len(df_for_hmmer) > 0:
                     try:
                         superfamily, family_aln_length, family_evalue = (
                             select_ship_family(df_for_hmmer)
                         )
-                        if superfamily:
-                            if query_type == "nucl":
-                                column = "familyName"
-                            else:
-                                column = "longFamilyID"
-                            family = initial_df[initial_df[column] == superfamily][
+                        if superfamily:                                
+                            family = initial_df[initial_df["familyName"] == superfamily][
                                 "familyName"
                             ].unique()[0]
-                            ship_family = dbc.Alert(
-                                [
-                                    f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                                ],
-                                color="warning",
-                            )
+                            if family:
+                                ship_family = dbc.Alert(
+                                    [
+                                        f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                    ],
+                                    color="warning",
+                                )
+                            else:
+                                ship_family = dbc.Alert(
+                                    [
+                                        f"Starship family could not be determined."
+                                    ],
+                                    color="danger",
+                                )
+                                
                     except Exception as e:
                         logging.error(f"Error selecting ship family: {str(e)}")
                         ship_family = html.Div(f"Error: {str(e)}")
@@ -490,7 +491,6 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
         except IndexError:
             logging.error(f"Error: Row index {row_idx} out of bounds.")
             raise
-        print(row)
         tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
         try:

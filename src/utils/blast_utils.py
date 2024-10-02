@@ -116,14 +116,9 @@ def run_blast(
     threads=None,
 ):
     try:
-        search_type = "ship"
-        if search_type == "ship":
-            # only nucleotide records for ship searching
-            db_type = "nucl"
-        else:
-            db_type = query_type
+        db_type = "nucl"
 
-        blastdb = db_list[search_type][db_type]
+        blastdb = db_list["ship"][db_type]
         if db_type == "nucl":
             if query_type == "nucl":
                 blast_program = NcbiblastnCommandline
@@ -185,6 +180,9 @@ def run_blast(
                 "sseq",
             ],
         )
+        
+        df["qseqid"] = df["qseqid"].replace("|-", "").replace("|+", "").replace("|", "")
+        
         logging.info(f"BLAST results parsed with {len(df)} hits.")
 
         return df
@@ -234,7 +232,7 @@ def parse_hmmer(hmmer_output_file, parsed_file):
             for hit in record.hits:
                 for hsp in hit.hsps:
                     query_seq = str(hsp.query.seq)
-                    subject_seq = str(hsp.hit.seq)
+                    subject_seq = re.sub("-Captain_.*", "", str(hsp.hit.seq).replace("|-", "").replace("|+", "").replace("|", ""))
                     aln_length = hsp.aln_span
                     query_start = hsp.query_start
                     query_end = hsp.query_end
