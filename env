@@ -1,6 +1,6 @@
 HOME_URL=/
 WIKI_URL=/wiki
-EXPLORE_URL=/explore
+# EXPLORE_URL=/explore
 BLAST_URL=/blast
 PGV_URL=/pgv
 SUBMIT_URL=/submit

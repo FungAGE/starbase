@@ -5,7 +5,7 @@ load_dotenv("env")
 
 HOME_URL = os.getenv("HOME_URL")
 WIKI_URL = os.getenv("WIKI_URL")
-EXPLORE_URL = os.getenv("EXPLORE_URL")
+# EXPLORE_URL = os.getenv("EXPLORE_URL")
 BLAST_URL = os.getenv("BLAST_URL")
 ABOUT_URL = os.getenv("ABOUT_URL")
 PGV_URL = os.getenv("PGV_URL")
