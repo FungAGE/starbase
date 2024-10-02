@@ -41,7 +41,7 @@ rgb_colors = {
     key: hex_to_rgba(value) for key, value in default_highlight_colors.items()
 }
 
-metadata["color"] = metadata["superfam"].map(rgb_colors)
+metadata["color"] = metadata["familyName"].map(rgb_colors)
 
 
 def get_x_coordinates(tree):
@@ -222,7 +222,7 @@ def superfam_highlight(
     x_coords=None,
     y_coords=None,
 ):
-    superfam_df = metadata[metadata["superfam"] == highlights]
+    superfam_df = metadata[metadata["familyName"] == highlights]
 
     if not superfam_df.empty:
         highlight_names = superfam_df["tip"].tolist()
