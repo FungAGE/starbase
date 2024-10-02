@@ -10,7 +10,6 @@ import dash_mantine_components as dmc
 
 from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
-import sqlite3
 
 import datetime
 from src.utils.parsing import parse_fasta, parse_gff
@@ -376,7 +375,6 @@ def init_db(db_url):
 
 # Function to insert a new submission into the database
 def insert_submission(
-    engine,
     seq_content,
     seq_filename,
     seq_date,
@@ -393,6 +391,8 @@ def insert_submission(
     shipstrand,
     comment,
 ):
+
+    engine = init_db(db_url)
 
     content_type, content_string = seq_content.split(",")
     seq_decoded = base64.b64decode(content_string).decode("utf-8")
@@ -484,7 +484,6 @@ def submit_ship(
     modal = is_open  # Keep the modal state as it is unless toggled
     message = """"""
 
-    engine = init_db(db_url)
     
     if n_clicks and n_clicks > 0:
         if strand_radio == 1:
@@ -498,7 +497,6 @@ def submit_ship(
             )  # Return the error message if no file
 
         insert_submission(
-            engine,
             seq_content,
             seq_filename,
             seq_date,
