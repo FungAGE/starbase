@@ -28,7 +28,7 @@ external_scripts = [
 server = Flask(__name__)
 
 # Initialize the mounted directory path before loading the app
-initialize_mounted_directory()
+MOUNTED_DIRECTORY_PATH = initialize_mounted_directory()
 
 app = Dash(
     __name__,
