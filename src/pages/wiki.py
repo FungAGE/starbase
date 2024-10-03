@@ -190,7 +190,7 @@ layout = dmc.Container(
 def load_meta_data(url):
     if url:
         meta_query = """
-        SELECT j.ship_family_id,j.curated_status,j.taxid,j.ship_id,j.genome_id,j.ome,j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation, g.biosample, g.acquisition_date
+        SELECT j.ship_family_id,j.curated_status,j.taxid,j.ship_id,j.genome_id,j.ome,j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation
         FROM joined_ships j
         LEFT JOIN taxonomy t ON j.taxid = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -270,12 +270,6 @@ def create_sidebar(cached_meta, active_item, value_cache):
             "selectable": False,
         },
         {
-            "name": "Genus",
-            "id": "genus",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
             "name": "Species",
             "id": "species",
             "deletable": False,
@@ -287,10 +281,9 @@ def create_sidebar(cached_meta, active_item, value_cache):
             "deletable": False,
             "selectable": False,
         },
-        {"name": "Citation", "id": "citation", "deletable": False, "selectable": False},
         {
-            "name": "Biosample",
-            "id": "biosample",
+            "name": "Citation/Release Date",
+            "id": "citation",
             "deletable": False,
             "selectable": False,
         },
