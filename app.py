@@ -6,6 +6,7 @@ from flask import Flask
 import pandas as pd
 
 from src.components import navmenu
+from src.components.callbacks import initialize_mounted_directory
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -25,6 +26,10 @@ external_scripts = [
 ]
 
 server = Flask(__name__)
+
+# Initialize the mounted directory path before loading the app
+initialize_mounted_directory()
+
 app = Dash(
     __name__,
     server=server,
