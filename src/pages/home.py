@@ -257,9 +257,7 @@ layout = html.Div(
                     style={"paddingTop": "20px"},
                     grow=True,
                     children=[
-                        dmc.GridCol(
-                            span=12, children=[dmc.Center([download_ships_card])]
-                        )
+                        dmc.GridCol(span=12, children=dmc.Center(download_ships_card))
                     ],
                 ),
             ],
