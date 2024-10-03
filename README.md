@@ -1,6 +1,6 @@
 # `starbase`: Database and Toolkit for Exploration of _Starship_ Elements in Fungi
 
-<img src=src/assets/logos/favicon.png width=200>
+<img src=assets/logos/favicon.png width=200>
 
 <!-- badges: start -->
 
