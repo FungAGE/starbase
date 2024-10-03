@@ -49,3 +49,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Remove old packages
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: "github"
+          token: ${{ secrets.GITHUB_PAT }}
+          min-versions-to-keep: 10
+          delete-only-pre-release-versions: "true"
