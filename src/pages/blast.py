@@ -36,37 +36,37 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.utils.tree import plot_tree, default_highlight_families
-from src.components.callbacks import curated_switch
+from src.components.callbacks import curated_switch, MOUNTED_DIRECTORY_PATH
 from src.utils.parsing import parse_fasta
 
 dash.register_page(__name__)
 
 db_list = {
-    "ship": {"nucl": "database_folder/Starships/ships/fna/blastdb/concatenated.fa"},
+    "ship": {"nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/ships/fna/blastdb/concatenated.fa"},
     "gene": {
         "tyr": {
-            "nucl": "database_folder/Starships/captain/tyr/fna/blastdb/concatenated.fa",
-            "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
+            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/fna/blastdb/concatenated.dedup.fa",
+            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/blastdb/concatenated.faa",
             "hmm": {
-                "nucl": "database_folder/Starships/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "database_folder/Starships/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/fna/hmm/combined.hmm",
+                "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/hmm/combined.hmm",
             },
         },
         "nlr": {
-            "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
-            "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/nlr/fna/blastdb/nlr.fa",
+            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
         },
         "fre": {
-            "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
-            "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/fre/fna/blastdb/fre.fa",
+            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
         },
         "plp": {
-            "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
-            "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/plp/fna/blastdb/plp.fa",
+            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
         },
         "duf3723": {
-            "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
-            "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
+            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
         },
     },
 }

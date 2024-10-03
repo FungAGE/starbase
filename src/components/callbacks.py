@@ -6,15 +6,13 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
-from dash import callback, html
+from dash import html
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash.dependencies import Output, Input
 
 import pandas as pd
-
-import base64
-from src.utils.parsing import parse_fasta, parse_gff
+from sqlalchemy import create_engine
+import os
 
 
 download_ships_button = dbc.Button(
@@ -126,3 +124,27 @@ def curated_switch(text, size="normal"):
         ],
     )
     return switch
+
+
+MOUNTED_DIRECTORY_PATH = None
+
+
+def find_mounted_directory(base_path="./", folder_name=None, file_name=None):
+    for root, dirs, files in os.walk(base_path):
+        if folder_name is not None:
+            for dir_name in dirs:
+                if folder_name in dir_name:
+                    return os.path.join(root, dir_name)
+        if file_name is not None:
+            for file in files:
+                if file_name in file:
+                    return os.path.dirname(file)
+    return None
+
+
+def initialize_mounted_directory():
+    global MOUNTED_DIRECTORY_PATH
+    MOUNTED_DIRECTORY_PATH = find_mounted_directory(folder_name="database_folder")
+    if MOUNTED_DIRECTORY_PATH is None:
+        MOUNTED_DIRECTORY_PATH = find_mounted_directory(file_name="starbase.sqlite")
+    return MOUNTED_DIRECTORY_PATH

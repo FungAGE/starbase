@@ -3,7 +3,8 @@ import warnings
 warnings.filterwarnings("ignore")
 import dash
 from dash import dcc, html, dash_table, callback, no_update
-from dash.dependencies import Output, Input
+from dash.dependencies import Output, Input, State
+from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -150,7 +151,10 @@ layout = dmc.Container(
                         dcc.Loading(
                             id="wiki-loading",
                             type="circle",
-                            children=html.Div(id="accordion"),
+                            children=html.Div(
+                                id="accordion",
+                                children=dbc.Accordion(id="category-accordion"),
+                            ),
                         ),
                     ],
                 ),
@@ -190,7 +194,7 @@ layout = dmc.Container(
 def load_meta_data(url):
     if url:
         meta_query = """
-        SELECT j.ship_family_id,j.curated_status,j.taxid,j.ship_id,j.genome_id,j.ome,j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation, g.biosample, g.acquisition_date
+        SELECT j.ship_family_id,j.curated_status,j.taxid,j.ship_id,j.genome_id,j.ome,j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation
         FROM joined_ships j
         LEFT JOIN taxonomy t ON j.taxid = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -244,34 +248,26 @@ def create_accordion(cached_meta, cached_papers):
         Output("sidebar-title", "children"),
         Output("active-item-cache", "value"),
     ],
-    [
-        Input("meta-data", "data"),
-        Input("category-accordion", "active_item"),
-        Input("active-item-cache", "value"),
-    ],
+    Input("category-accordion", "active_item"),
+    State("meta-data", "data"),
 )
-def create_sidebar(cached_meta, active_item, value_cache):
-    if active_item is None:
-        return None, None, None
+def create_sidebar(active_item, cached_meta):
+    if active_item is None or cached_meta is None:
+        raise PreventUpdate  # Prevent the callback from running if the inputs are invalid
+
     df = pd.DataFrame(cached_meta)
     title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
 
     filtered_meta_df = df[df["familyName"] == active_item].sort_values(
         by="accession_tag", ascending=False
     )
-
     sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax", title_switch=False)
     fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
+
     table_columns = [
         {
             "name": "Accession",
             "id": "accession_tag",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "Genus",
-            "id": "genus",
             "deletable": False,
             "selectable": False,
         },
@@ -287,15 +283,17 @@ def create_sidebar(cached_meta, active_item, value_cache):
             "deletable": False,
             "selectable": False,
         },
-        {"name": "Citation", "id": "citation", "deletable": False, "selectable": False},
         {
-            "name": "Biosample",
-            "id": "biosample",
+            "name": "Citation/Release Date",
+            "id": "citation",
             "deletable": False,
             "selectable": False,
         },
     ]
-    table = make_ship_table(df, id="wiki-table", columns=table_columns, pg_sz=15)
+    table = make_ship_table(
+        filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
+    )
+
     output = dbc.Stack(children=[fig, table], direction="vertical", gap=5)
 
     return output, title, active_item
