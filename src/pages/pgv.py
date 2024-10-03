@@ -17,6 +17,7 @@ from pygenomeviz.parser import Gff
 from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord
+from Bio import SeqIO
 from jinja2 import Template
 
 from src.components.sqlite import engine
@@ -69,13 +70,15 @@ layout = dmc.Container(
                             id="loading-1",
                             type="circle",
                             children=[
-                                html.Div(id="pgv-figure",
-                                        style={
-                                            "height": "800px",
-                                            "width": "100%",
-                                            "overflow": "auto",
-                                            "border": "1px solid #ccc",
-                                        }),
+                                html.Div(
+                                    id="pgv-figure",
+                                    style={
+                                        "height": "800px",
+                                        "width": "100%",
+                                        "overflow": "auto",
+                                        "border": "1px solid #ccc",
+                                    },
+                                ),
                             ],
                         )
                     ],
@@ -171,30 +174,35 @@ def inject_svg_to_html(svg_file, html_template_file, output_html_file):
         output_file.write(rendered_html)
 
 
-def write_tmp(df, type=None):
-    tmp = tempfile.NamedTemporaryFile(suffix=f".{type}", delete=False)
+def write_tmp(df, seqid, type=None):
+    tmp = tempfile.NamedTemporaryFile(suffix=f".{type}", delete=False).name
     if type == "gff":
-        df.to_csv(tmp.name, sep="\t", header=False, index=False)
+        df.to_csv(tmp, sep="\t", header=False, index=False)
     elif type == "fa":
-        seqid = df["accession_tag"]
-        seq = df["ship_sequence"]
-        with open(tmp.name, "w") as f:
+        seq = df["ship_sequence"][0]
+        with open(tmp, "w") as f:
             f.write(f">{seqid}\n{seq}\n")
-    return tmp.name
+    return tmp
 
 
 def fetch_gff(accession):
     query = """
     SELECT g.*
     FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
-    LEFT JOIN ships s on s.accession = a.id
-    LEFT JOIN joined_ships j ON j.ship_id = a.id
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    JOIN accessions a ON g.ship_id = a.id
+    JOIN ships s on s.accession = a.id
+    JOIN joined_ships j ON j.ship_id = a.id
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
     WHERE a.accession_tag = :accession_tag AND j.orphan IS NULL
     """
+
+    # print("Executing GFF query with accession:", accession)
     df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+
+    if df.empty:
+        print(f"No GFF records found for accession_tag: {accession}")
+
     return df
 
 
@@ -205,7 +213,13 @@ def fetch_fa(accession):
     LEFT JOIN accessions a ON s.accession = a.id
     WHERE a.accession_tag = :accession_tag
     """
+
+    # print("Executing FA query with accession:", accession)
     df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+
+    if df.empty:
+        print(f"No FA records found for accession_tag: {accession}")
+
     return df
 
 
@@ -227,29 +241,49 @@ def single_pgv(gff_file, tmp_file):
 
 
 def multi_pgv(gff_files, seqs, tmp_file):
-
     gff_list = list(map(Gff, gff_files))
-
     gv = GenomeViz(track_align_type="center", fig_track_height=0.7)
     gv.set_scale_bar()
 
     for gff in gff_list:
+        # Check GFF SeqIDs
+        gff_seqids = gff.get_seqid2size().keys()
+        print(f"GFF SeqIDs: {gff_seqids}")
 
-        track = gv.add_feature_track(gff.name, gff.get_seqid2size(), align_label=False)
-        for idx, (seqid, features) in enumerate(gff.get_seqid2features("gene").items()):
+        for seqid, features in gff.get_seqid2features("gene").items():
+            print(f"Processing seqid: {seqid}")
+
+            if seqid not in gff.get_seqid2size():
+                print(f"Error: SeqID {seqid} not found in GFF sizes")
+                continue
+
+            track = gv.add_feature_track(seqid, gff.get_seqid2size(), align_label=False)
             segment = track.get_segment(seqid)
-            for gene in features:
+
+            for idx, gene in enumerate(features):
                 add_gene_feature(gene, segment, idx)
 
-    # Run BLAST alignment & filter by user-defined threshold
-    align_coords = Blast(seqs, seqtype="protein").run()
-    align_coords = AlignCoord.filter(align_coords, length_thr=200, identity_thr=50)
+    for seq_file in seqs:
+        if not os.path.isfile(seq_file):
+            print(f"Error: {seq_file} is not a valid file path.")
+            return  # Exit the function if an invalid file is found
+        if os.path.getsize(seq_file) == 0:
+            print(f"Error: {seq_file} is an empty file.")
+            return  # Exit the function if an empty file is found
 
-    # Plot BLAST alignment links
+    blast_cmd = Blast(seqs, seqtype="nucleotide")
+    align_coords = blast_cmd.run()
+    align_coords = AlignCoord.filter(align_coords, length_thr=50, identity_thr=20)
+
+    print(f"Found {len(align_coords)} alignments")
+
     if len(align_coords) > 0:
         min_ident = int(min([ac.identity for ac in align_coords if ac.identity]))
-        color, inverted_color = "grey", "red"
+        print(f"Minimum identity: {min_ident}")
+
+        color, inverted_color = "blue", "orange"
         for ac in align_coords:
+            print(f"Adding link between {ac.query_link} and {ac.ref_link}")
             gv.add_link(
                 ac.query_link,
                 ac.ref_link,
@@ -262,7 +296,6 @@ def multi_pgv(gff_files, seqs, tmp_file):
 
     fig = plot_legend(gv)
     gv.savefig_html(tmp_file, fig)
-    # gv.savefig("tmp/genbank_comparison_by_blast.svg")
 
 
 @callback(
@@ -280,6 +313,9 @@ def update_pgv(n_clicks, selected_rows, table_data):
         if table_data and selected_rows is not None:
             try:
                 table_df = pd.DataFrame(table_data)
+                # Debug: Check columns and selected_rows
+                # print("Columns in table_df:", table_df.columns.tolist())
+                # print("Selected rows:", selected_rows)
 
                 if isinstance(selected_rows, list) and all(
                     isinstance(idx, int) for idx in selected_rows
@@ -290,29 +326,25 @@ def update_pgv(n_clicks, selected_rows, table_data):
                         return html.Div("Index out of bounds")
 
                     tmp_gffs = []
-                    # TODO: need to do better filtering/catching for when sequences are missing in the list?
                     tmp_fas = []
                     for index, row in rows.iterrows():
                         accession = row["accession_tag"]
+                        # print("Fetching GFF for accession:", accession)
                         gff_df = fetch_gff(accession)
-                        tmp_gff = write_tmp(gff_df, "gff")
+
+                        tmp_gff = write_tmp(gff_df, accession, "gff")
                         tmp_gffs.append(tmp_gff)
-
-                    if len(selected_rows) > 1:
-                        if len(selected_rows) > 4:
-                            for index, row in rows.iterrows():
-                                fa_df = fetch_fa(accession)
-                                tmp_fa = write_tmp(fa_df, "fa")
-                                tmp_fas.append(tmp_fa)
-
-                            output = html.P("Select up to four Starships to compare.")
-                        else:
-                            multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
+                        # print("Fetching FA for accession:", accession)
+                        fa_df = fetch_fa(accession)
+                        tmp_fa = write_tmp(fa_df, accession, "fa")
+                        tmp_fas.append(str(tmp_fa))
+                        output = html.P("Select up to four Starships to compare.")
+                    if len(selected_rows) > 1 and len(selected_rows) <= 4:
+                        multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
                     elif len(selected_rows) == 1:
                         single_pgv(tmp_gffs[0], tmp_pgv)
                     else:
                         output = html.P("No valid selection.")
-
                     try:
                         with open(tmp_pgv, "r") as file:
                             pgv_content = file.read()
@@ -326,7 +358,6 @@ def update_pgv(n_clicks, selected_rows, table_data):
                             "height": "100%",
                             "border": "none",
                         },
-                        className="auto-resize-750",
                     )
                 else:
                     output = html.H4("Invalid row selection.")
@@ -353,12 +384,12 @@ def load_ship_table(href):
     query = """
     SELECT a.accession_tag, f.familyName, t.species
     FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
-    LEFT JOIN ships s on s.accession = a.id
-    LEFT JOIN gff g ON a.id = g.ship_id
-    WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL AND j.orphan IS NULL
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
+    JOIN accessions a ON j.ship_id = a.id
+    JOIN ships s on s.accession = a.id
+    JOIN gff g ON a.id = g.ship_id
+    WHERE s.ship_sequence is NOT NULL AND g.ship_id is NOT NULL AND j.orphan IS NULL
     """
     table_df = pd.read_sql_query(query, engine)
     table_df = table_df.drop_duplicates(subset=["accession_tag"])
