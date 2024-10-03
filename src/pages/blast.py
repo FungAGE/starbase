@@ -35,14 +35,15 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from src.utils.tree import plot_tree, default_highlight_families
 from src.components.callbacks import curated_switch, MOUNTED_DIRECTORY_PATH
 from src.utils.parsing import parse_fasta
 
 dash.register_page(__name__)
 
 db_list = {
-    "ship": {"nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/ships/fna/blastdb/concatenated.fa"},
+    "ship": {
+        "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/ships/fna/blastdb/concatenated.fa"
+    },
     "gene": {
         "tyr": {
             "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/fna/blastdb/concatenated.dedup.fa",
@@ -400,7 +401,9 @@ def update_ui(
                 # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
                 # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
                 # TODO: update blastdb's with accessions, rather than shipIDs?
-                df_for_table = blast_results_df[blast_results_df["sseqid"].isin(initial_df["starshipID"])]
+                df_for_table = blast_results_df[
+                    blast_results_df["sseqid"].isin(initial_df["starshipID"])
+                ]
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
@@ -412,16 +415,18 @@ def update_ui(
             if hmmer_results_dict:
                 logging.info("Processing HMMER results")
                 hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df[hmmer_results_df["hit_IDs"].isin(initial_df["starshipID"])]
+                df_for_hmmer = hmmer_results_df[
+                    hmmer_results_df["hit_IDs"].isin(initial_df["starshipID"])
+                ]
                 if len(df_for_hmmer) > 0:
                     try:
                         superfamily, family_aln_length, family_evalue = (
                             select_ship_family(df_for_hmmer)
                         )
-                        if superfamily:                                
-                            family = initial_df[initial_df["familyName"] == superfamily][
-                                "familyName"
-                            ].unique()[0]
+                        if superfamily:
+                            family = initial_df[
+                                initial_df["familyName"] == superfamily
+                            ]["familyName"].unique()[0]
                             if family:
                                 ship_family = dbc.Alert(
                                     [
@@ -431,12 +436,10 @@ def update_ui(
                                 )
                             else:
                                 ship_family = dbc.Alert(
-                                    [
-                                        f"Starship family could not be determined."
-                                    ],
+                                    [f"Starship family could not be determined."],
                                     color="danger",
                                 )
-                                
+
                     except Exception as e:
                         logging.error(f"Error selecting ship family: {str(e)}")
                         ship_family = html.Div(f"Error: {str(e)}")
