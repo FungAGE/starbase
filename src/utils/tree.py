@@ -6,7 +6,6 @@ from Bio import Phylo
 import pandas as pd
 import plotly.graph_objs as go
 
-tree_file = "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
 metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
 
 default_highlight_colors = {
@@ -277,7 +276,10 @@ def superfam_highlight(
         return rectangle, scatter, text_label
 
 
-def plot_tree(highlight_families=None):
+def plot_tree(
+    tree_file="src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
+    highlight_families=None,
+):
     tree = Phylo.read(tree_file, "newick")
 
     # graph_title = "Captain Gene Phylogeny"
