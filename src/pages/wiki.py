@@ -3,7 +3,8 @@ import warnings
 warnings.filterwarnings("ignore")
 import dash
 from dash import dcc, html, dash_table, callback, no_update
-from dash.dependencies import Output, Input
+from dash.dependencies import Output, Input, State
+from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -150,7 +151,10 @@ layout = dmc.Container(
                         dcc.Loading(
                             id="wiki-loading",
                             type="circle",
-                            children=html.Div(id="accordion"),
+                            children=html.Div(
+                                id="accordion",
+                                children=dbc.Accordion(id="category-accordion"),
+                            ),
                         ),
                     ],
                 ),
@@ -244,24 +248,22 @@ def create_accordion(cached_meta, cached_papers):
         Output("sidebar-title", "children"),
         Output("active-item-cache", "value"),
     ],
-    [
-        Input("meta-data", "data"),
-        Input("category-accordion", "active_item"),
-        Input("active-item-cache", "value"),
-    ],
+    Input("category-accordion", "active_item"),
+    State("meta-data", "data"),
 )
-def create_sidebar(cached_meta, active_item, value_cache):
-    if active_item is None:
-        return None, None, None
+def create_sidebar(active_item, cached_meta):
+    if active_item is None or cached_meta is None:
+        raise PreventUpdate  # Prevent the callback from running if the inputs are invalid
+
     df = pd.DataFrame(cached_meta)
     title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
 
     filtered_meta_df = df[df["familyName"] == active_item].sort_values(
         by="accession_tag", ascending=False
     )
-
     sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax", title_switch=False)
     fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
+
     table_columns = [
         {
             "name": "Accession",
@@ -288,7 +290,10 @@ def create_sidebar(cached_meta, active_item, value_cache):
             "selectable": False,
         },
     ]
-    table = make_ship_table(df, id="wiki-table", columns=table_columns, pg_sz=15)
+    table = make_ship_table(
+        filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
+    )
+
     output = dbc.Stack(children=[fig, table], direction="vertical", gap=5)
 
     return output, title, active_item
