@@ -35,7 +35,7 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from app import MOUNTED_DIRECTORY_PATH
+from src.components.config import MOUNTED_DIRECTORY_PATH
 from src.components.callbacks import curated_switch
 from src.utils.parsing import parse_fasta
 
