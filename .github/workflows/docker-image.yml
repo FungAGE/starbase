@@ -50,6 +50,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # TODO: add PAT for from FungAGE org
       - name: Remove old packages
         uses: actions/delete-package-versions@v5
         with:
