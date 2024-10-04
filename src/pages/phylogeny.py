@@ -6,11 +6,11 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
-
-import subprocess
-import tempfile
 import os
 import glob
+import subprocess
+import tempfile
+import json
 import base64
 
 import dash
@@ -27,40 +27,56 @@ from src.components.callbacks import MOUNTED_DIRECTORY_PATH
 dash.register_page(__name__)
 
 
-def add_to_tree(input_seq, fasta, tree):
-    if input_seq:
-        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        mafft_cmd = f"mafft --thread 2 --addfragments {input_seq} {fasta} > {tmp_fasta}"
-        subprocess.run(
-            mafft_cmd,
-            shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+def run_mafft(query, ref_msa):
 
-        # temp_dir = tempfile.TemporaryDirectory().name
+    # REF_MSA="/home/adrian/Systematics/Starship_Database/starbase/database_folder/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit"
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    MODEL = "PROTGTR+G+F"
+    QRY_HEADER = extract_sequence_header(query)
+
+    # mafft_cmd = f"mafft --thread 2 --addfragments {input_seq} {fasta} > {tmp_fasta}"
+    mafft_cmd = f"mafft --auto --addfragments {query} --keeplength {ref_msa} | seqkit grep -n -p {QRY_HEADER} > {tmp_fasta}"
+    subprocess.run(
+        mafft_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return tmp_fasta
+
+
+def add_to_tree(query_msa, tree, ref_msa, model):
+    if query_msa:
+        tmp_dir = tempfile.TemporaryDirectory().name
+
         # iqtree_cmd = f"iqtree -T 2 -s {tmp_fasta} -g {tree} --prefix {temp_dir}"
-        # subprocess.run(iqtree_cmd, shell=True)
+        # fasttree_cmd = f"fasttree {tmp_fasta} > {tmp_tree}"
 
-        # search_pattern = os.path.join(temp_dir, "*.treefile")
-
-        # # Use glob to find all files matching the pattern
-        # matching_files = glob.glob(search_pattern)
-
-        # # Return the first matching file or None if no match is found
-        # if matching_files:
-        #     return matching_files[0]  # or return the full list if you need all matches
-        # else:
-        #     return None
-        tmp_tree = tempfile.NamedTemporaryFile(suffix=".treefile", delete=False).name
-        fasttree_cmd = f"fasttree {tmp_fasta} > {tmp_tree}"
+        epa_cmd = f"epa-ng --redo --ref-msa {ref_msa} --tree {tree} --query {query_msa} --model {model} --out-dir {tmp_dir}"
         subprocess.run(
-            fasttree_cmd,
+            epa_cmd,
             shell=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        return tmp_tree
+
+        tmp_tree = os.path.join(tmp_dir, "epa_result.jplace")
+
+        # jplace is json format?
+        # Load the JSON file
+        with open(tmp_tree, "r") as json_file:
+            tree = json.load(json_file)
+
+        # Extract the 'tree' field (assuming it's a string in Newick format)
+        newick_tree = json.get("tree")
+
+        # Save the extracted tree in Newick format
+        out_tree = os.path.join(tmp_dir, "output.nwk")
+
+        if newick_tree:
+            with open(out_tree, "w") as newick_file:
+                newick_file.write(newick_tree)
+        return out_tree
 
 
 layout = dmc.Container(
@@ -151,10 +167,15 @@ def update_ui(fasta_upload):
     query_type = guess_seq_type(input_seq)
     tmp_query_fasta = write_temp_fasta(input_header, input_seq)
     if query_type == "prot":
+        query_msa = run_mafft(
+            query=tmp_query_fasta,
+            ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+        )
         new_tree = add_to_tree(
-            tmp_query_fasta,
-            f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
-            "src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
+            query_msa=query_msa,
+            tree=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
+            ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+            model="PROTGTR+G+F",
         )
         if new_tree is not None:
             output = dcc.Graph(
