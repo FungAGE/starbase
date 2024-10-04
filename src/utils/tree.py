@@ -222,7 +222,9 @@ def superfam_highlight(
     y_coords=None,
 ):
     superfam_df = metadata[metadata["familyName"] == highlights]
-
+    rectangle = None
+    scatter = None
+    text_label = None
     if not superfam_df.empty:
         highlight_names = superfam_df["tip"].tolist()
 
@@ -231,54 +233,91 @@ def superfam_highlight(
             if "color" in superfam_df.columns and not superfam_df["color"].isna().all()
             else "rgba(25, 25, 25, 0.6)"
         )
+        if x_coords is not None and y_coords is not None:
+            x_coord_list = [
+                x_coords[clade] for clade in x_coords if clade.name in highlight_names
+            ]
+            y_coord_list = [
+                y_coords[clade] for clade in y_coords if clade.name in highlight_names
+            ]
 
-    if x_coords is not None and y_coords is not None:
+            x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
+            y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
+
+            rectangle = get_rectangle(
+                x_start,
+                x_end,
+                y_start,
+                y_end,
+                fill_color=color,
+                border_color=color,
+                line_width=2,
+            )
+
+            scatter = go.Scatter(
+                x=[(x_start + x_end) / 2],
+                y=[(y_start + y_end) / 2],
+                mode="markers",
+                marker=dict(size=10, color="rgba(255,255,255,0)"),
+                text=[highlights],
+                hoverinfo="text",
+                name=highlights,
+            )
+
+            text_label = get_text_label(
+                # x=(x_end + x_start) / 2,
+                x=7,
+                y=(y_end + y_start) / 2,
+                text=highlights,
+                font_size=24,
+                font_color="black",
+                x_anchor="center",
+                y_anchor="middle",
+            )
+    return rectangle, scatter, text_label
+
+
+def add_tip_labels(
+    tips,
+    x_coords=0,
+    y_coords=0,
+):
+    text_label = None
+
+    if x_coords is not None and y_coords is not None and tips:
+        # Ensure 'tips' is a valid list or iterable and clade.name is not None
         x_coord_list = [
-            x_coords[clade] for clade in x_coords if clade.name in highlight_names
+            x_coords[clade]
+            for clade in x_coords
+            if clade.name is not None and clade.name in tips
         ]
         y_coord_list = [
-            y_coords[clade] for clade in y_coords if clade.name in highlight_names
+            y_coords[clade]
+            for clade in y_coords
+            if clade.name is not None and clade.name in tips
         ]
 
-        x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
-        y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
+        if x_coord_list and y_coord_list:
+            x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
+            y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
 
-        rectangle = get_rectangle(
-            x_start,
-            x_end,
-            y_start,
-            y_end,
-            fill_color=color,
-            border_color=color,
-            line_width=2,
-        )
+            text_label = get_text_label(
+                x=4,
+                y=(y_end + y_start) / 2,
+                text=tips,
+                font_size=24,
+                font_color="black",
+                x_anchor="center",
+                y_anchor="middle",
+            )
 
-        scatter = go.Scatter(
-            x=[(x_start + x_end) / 2],
-            y=[(y_start + y_end) / 2],
-            mode="markers",
-            marker=dict(size=10, color="rgba(255,255,255,0)"),
-            text=[highlights],
-            hoverinfo="text",
-            name=highlights,
-        )
-
-        text_label = get_text_label(
-            # x=(x_end + x_start) / 2,
-            x=7,
-            y=(y_end + y_start) / 2,
-            text=highlights,
-            font_size=24,
-            font_color="black",
-            x_anchor="center",
-            y_anchor="middle",
-        )
-        return rectangle, scatter, text_label
+    return text_label
 
 
 def plot_tree(
     tree_file="src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
     highlight_families=None,
+    tips=None,
 ):
     tree = Phylo.read(tree_file, "newick")
 
@@ -316,6 +355,12 @@ def plot_tree(
         line_shapes.append(rectangle)
         scatter_points.append(scatter)
         text_labels.append(text_label)
+
+    if tips:
+        for tip in tips:
+            tips_labels = add_tip_labels(tips=tip, x_coords=x_coords, y_coords=y_coords)
+            text_labels.append(tips_labels)
+
     nodes = scatter_points
 
     layout = dict(

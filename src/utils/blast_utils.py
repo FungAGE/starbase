@@ -31,12 +31,18 @@ from Bio.Seq import Seq
 from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text
 
 
-def write_temp_fasta(header, sequence):
+def write_temp_fasta(queries):
     try:
-        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
+
+        records = []
+        for header, sequence in queries:
+            cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+            records.append(cleaned_query_seq)
+
+        SeqIO.write(records, tmp_query_fasta, "fasta")
         logging.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
+
         return tmp_query_fasta
     except Exception as e:
         logging.error(f"Error writing temporary FASTA: {e}")
@@ -45,6 +51,7 @@ def write_temp_fasta(header, sequence):
 
 def check_input(query_text_input, query_file_contents):
     try:
+        # Ensure input is provided
         if query_text_input in ("", None) and query_file_contents is None:
             raise ValueError(
                 "No input provided. Both text and file contents are empty."
@@ -53,20 +60,34 @@ def check_input(query_text_input, query_file_contents):
             logging.warning(
                 "Both text input and file contents are provided. Only one will be processed."
             )
-            return "both", None, None
-        elif query_text_input:
+            return "both", None
+
+        # Process text input
+        if query_text_input:
             input_type = "text"
             header, query = parse_fasta_from_text(query_text_input)
+            if not header or not query:
+                raise ValueError("Failed to parse text input.")
+            parsed_sequences = [(header, query)]
+
+        # Process file input
         elif query_file_contents:
             input_type = "file"
-            header, query = parse_fasta_from_file(query_file_contents)
+            parsed_sequences = parse_fasta_from_file(query_file_contents)
+            if not parsed_sequences or len(parsed_sequences) == 0:
+                raise ValueError("Failed to parse file contents.")
+            header = parsed_sequences[0][
+                0
+            ]  # Using the first sequence header for logging
+
         logging.debug(
-            f"Input type: {input_type}, Header: {header}, Query Length: {len(query) if query else 'None'}"
+            f"Input type: {input_type}, Header: {header}, Query Length: {len(parsed_sequences[0][1]) if parsed_sequences else 'None'}"
         )
-        return input_type, header, query
+        return input_type, parsed_sequences
+
     except Exception as e:
         logging.error(f"Error in check_input: {e}")
-        return None, None, None
+        return None, None
 
 
 nucl_char = set("ATGC")
@@ -85,23 +106,36 @@ def clean_lines(queries):
         return None
 
 
-def guess_seq_type(query_seq):
+def guess_seq_type(queries):
     try:
-        if query_seq is None:
-            logging.error("query_seq is None.")
+        if queries is None:
+            logging.error("queries is None.")
             return None
 
-        cleaned_seq = clean_lines(query_seq)
+        query_types = []
+        for i in range(0, len(queries)):
+            query_seq = queries[i][1]
+            cleaned_seq = clean_lines(query_seq)
 
-        nucl_count = sum(1 for nt in query_seq.upper() if nt in nucl_char)
-        prot_count = sum(1 for aa in query_seq.upper() if aa in prot_char)
+            nucl_count = sum(1 for nt in query_seq.upper() if nt in nucl_char)
+            prot_count = sum(1 for aa in query_seq.upper() if aa in prot_char)
 
-        query_type = "nucl" if nucl_count >= (0.8 * len(cleaned_seq)) else "prot"
-        logging.debug(
-            f"Cleaned sequence length: {len(cleaned_seq)}, Sequence type guessed: {query_type}, Nucleotide count: {nucl_count}, Protein count: {prot_count}"
-        )
+            query_type = "nucl" if nucl_count >= (0.8 * len(cleaned_seq)) else "prot"
+            logging.debug(
+                f"Cleaned sequence length: {len(cleaned_seq)}, Sequence type guessed: {query_type}, Nucleotide count: {nucl_count}, Protein count: {prot_count}"
+            )
+            query_types.append(query_type)
 
-        return query_type
+        # Check if all items in query_types are the same
+        if all(qt == query_types[0] for qt in query_types):
+            logging.info(f"All queries are of type: {query_types[0]}")
+            return query_types[
+                0
+            ]  # Return the consistent type (either "nucl" or "prot")
+        else:
+            logging.error(f"queries are of mixed types: {e}")
+            return None
+
     except Exception as e:
         logging.error(f"Error in guessing sequence type: {e}")
         return None
@@ -180,9 +214,9 @@ def run_blast(
                 "sseq",
             ],
         )
-        
+
         df["qseqid"] = df["qseqid"].replace("|-", "").replace("|+", "").replace("|", "")
-        
+
         logging.info(f"BLAST results parsed with {len(df)} hits.")
 
         return df
@@ -232,7 +266,14 @@ def parse_hmmer(hmmer_output_file, parsed_file):
             for hit in record.hits:
                 for hsp in hit.hsps:
                     query_seq = str(hsp.query.seq)
-                    subject_seq = re.sub("-Captain_.*", "", str(hsp.hit.seq).replace("|-", "").replace("|+", "").replace("|", ""))
+                    subject_seq = re.sub(
+                        "-Captain_.*",
+                        "",
+                        str(hsp.hit.seq)
+                        .replace("|-", "")
+                        .replace("|+", "")
+                        .replace("|", ""),
+                    )
                     aln_length = hsp.aln_span
                     query_start = hsp.query_start
                     query_end = hsp.query_end

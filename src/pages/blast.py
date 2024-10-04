@@ -86,8 +86,7 @@ layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="query-header-store"),
-        dcc.Store(id="query-seq-store"),
+        dcc.Store(id="query-store"),
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="hmmer-results-store"),
@@ -224,8 +223,7 @@ def update_fasta_details(seq_content, seq_filename):
 
 @callback(
     [
-        Output("query-header-store", "data"),
-        Output("query-seq-store", "data"),
+        Output("query-store", "data"),
         Output("query-type-store", "data"),
     ],
     [
@@ -243,9 +241,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         #     f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
         # )
 
-        input_type, query_header, query_seq = check_input(
-            query_text_input, query_file_contents
-        )
+        input_type, queries = check_input(query_text_input, query_file_contents)
         # logging.info(
         #     f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
         # )
@@ -254,10 +250,10 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
             logging.info("Invalid input type; returning None.")
             return None, None, None
 
-        query_type = guess_seq_type(query_seq)
+        query_type = guess_seq_type(queries)
         logging.info(f"guess_seq_type returned query_type={query_type}")
 
-        return query_header, query_seq, query_type
+        return queries, query_type
 
     except Exception as e:
         logging.error(f"Error in preprocess: {str(e)}")
@@ -271,19 +267,18 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Output("subject-seq-button", "children"),
     ],
     [
-        Input("query-header-store", "data"),
-        Input("query-seq-store", "data"),
+        Input("query-store", "data"),
         Input("query-type-store", "data"),
     ],
 )
-def fetch_blast_hmmer_results(query_header, query_seq, query_type):
+def fetch_blast_hmmer_results(queries, query_type):
     try:
-        if not query_header or not query_seq:
-            logging.error("Missing query header or sequence.")
+        if not queries:
+            logging.error("Missing queries.")
             return None, None, None
 
         # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+        tmp_query_fasta = write_temp_fasta(queries)
         logging.info(f"Temp FASTA written: {tmp_query_fasta}")
 
         # Run BLAST

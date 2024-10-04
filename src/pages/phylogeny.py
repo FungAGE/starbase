@@ -16,67 +16,73 @@ import base64
 import dash
 import dash_mantine_components as dmc
 
-from dash import dcc, html, callback
+from dash import dcc, html, callback, callback_context
 from dash.dependencies import Output, Input
 
+from Bio import SeqIO
+
 from src.utils.blast_utils import check_input, guess_seq_type, write_temp_fasta
+from src.utils.parsing import extract_fasta_headers
 from src.utils.tree import plot_tree
 from src.utils.parsing import parse_fasta
-from src.components.callbacks import MOUNTED_DIRECTORY_PATH
+
+# from src.components.callbacks import MOUNTED_DIRECTORY_PATH
 
 dash.register_page(__name__)
 
 
 def run_mafft(query, ref_msa):
-
-    # REF_MSA="/home/adrian/Systematics/Starship_Database/starbase/database_folder/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit"
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     MODEL = "PROTGTR+G+F"
-    QRY_HEADER = extract_sequence_header(query)
+    tmp_headers = extract_fasta_headers(query, "file")
 
-    # mafft_cmd = f"mafft --thread 2 --addfragments {input_seq} {fasta} > {tmp_fasta}"
-    mafft_cmd = f"mafft --auto --addfragments {query} --keeplength {ref_msa} | seqkit grep -n -p {QRY_HEADER} > {tmp_fasta}"
+    mafft_cmd = f"mafft --thread 2 --auto --addfragments {query} --keeplength {ref_msa} | seqkit grep -n -f {tmp_headers} > {tmp_fasta}"
     subprocess.run(
         mafft_cmd,
         shell=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    return tmp_fasta
+    return tmp_headers, tmp_fasta
 
 
-def add_to_tree(query_msa, tree, ref_msa, model):
+def add_to_tree(query_msa, tree, ref_msa, model, tmp_dir):
     if query_msa:
-        tmp_dir = tempfile.TemporaryDirectory().name
+        # Construct the epa-ng command
+        epa_cmd = f"epa-ng -T 2 --redo --ref-msa {ref_msa} --tree {tree} --query {query_msa} --model {model} --out-dir {tmp_dir}"
 
-        # iqtree_cmd = f"iqtree -T 2 -s {tmp_fasta} -g {tree} --prefix {temp_dir}"
-        # fasttree_cmd = f"fasttree {tmp_fasta} > {tmp_tree}"
-
-        epa_cmd = f"epa-ng --redo --ref-msa {ref_msa} --tree {tree} --query {query_msa} --model {model} --out-dir {tmp_dir}"
-        subprocess.run(
+        # Run the command
+        result = subprocess.run(
             epa_cmd,
             shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,  # Uncomment to suppress stdout
+            stderr=subprocess.DEVNULL,  # Uncomment to suppress stderr
         )
 
+        # Check for errors in command execution
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"epa-ng command failed with return code {result.returncode}"
+            )
+
         tmp_tree = os.path.join(tmp_dir, "epa_result.jplace")
+        return tmp_tree
 
-        # jplace is json format?
-        # Load the JSON file
-        with open(tmp_tree, "r") as json_file:
-            tree = json.load(json_file)
 
-        # Extract the 'tree' field (assuming it's a string in Newick format)
-        newick_tree = json.get("tree")
+def gappa(tmp_tree):
+    out_dir = os.path.dirname(tmp_tree)
+    out_tree = os.path.join(out_dir, "epa_result.newick")
+    gappa_cmd = (
+        f"gappa examine graft --out-dir {out_dir} --threads 2 --jplace-path {tmp_tree}"
+    )
+    subprocess.run(
+        gappa_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
-        # Save the extracted tree in Newick format
-        out_tree = os.path.join(tmp_dir, "output.nwk")
-
-        if newick_tree:
-            with open(out_tree, "w") as newick_file:
-                newick_file.write(newick_tree)
-        return out_tree
+    return out_tree
 
 
 layout = dmc.Container(
@@ -90,10 +96,7 @@ layout = dmc.Container(
             gutter="xl",
             children=[
                 dmc.GridCol(
-                    span={
-                        "sm": 12,
-                        "lg": 8,
-                    },
+                    span="content",
                     children=[
                         dcc.Upload(
                             id="fasta-upload",
@@ -163,26 +166,34 @@ def update_fasta_details(seq_content, seq_filename):
     Input("fasta-upload", "contents"),
 )
 def update_ui(fasta_upload):
-    input_type, input_header, input_seq = check_input(None, fasta_upload)
-    query_type = guess_seq_type(input_seq)
-    tmp_query_fasta = write_temp_fasta(input_header, input_seq)
-    if query_type == "prot":
-        query_msa = run_mafft(
-            query=tmp_query_fasta,
-            ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
-        )
-        new_tree = add_to_tree(
-            query_msa=query_msa,
-            tree=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
-            ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
-            model="PROTGTR+G+F",
-        )
-        if new_tree is not None:
-            output = dcc.Graph(
-                id="phylogeny",
-                className="div-card",
-                figure=plot_tree(new_tree, highlight_families=input_header),
-            )
-            return output
-    else:
-        return None
+    output = None
+    headers_list = None
+    MOUNTED_DIRECTORY_PATH = "database_folder"
+    if fasta_upload:
+        with tempfile.TemporaryDirectory() as tmp_dir:  # Use 'with' to keep the temp dir open
+            input_type, inputs = check_input(None, fasta_upload)
+            query_type = guess_seq_type(inputs)
+            tmp_query_fasta = write_temp_fasta(inputs)
+            headers_list = extract_fasta_headers(tmp_query_fasta, "list")
+            if query_type == "prot":
+                tmp_headers, query_msa = run_mafft(
+                    query=tmp_query_fasta,
+                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+                )
+                new_tree = add_to_tree(
+                    query_msa=query_msa,
+                    tree=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
+                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+                    model="PROTGTR+G+F",
+                    tmp_dir=tmp_dir,
+                )
+                out_tree = gappa(new_tree)
+                if out_tree is not None:
+                    output = dcc.Graph(
+                        id="phylogeny",
+                        className="div-card",
+                        figure=plot_tree(
+                            out_tree, highlight_families="all", tips=headers_list
+                        ),
+                    )
+        return output
