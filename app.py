@@ -7,7 +7,6 @@ import pandas as pd
 
 from src.components import navmenu
 
-
 _dash_renderer._set_react_version("18.2.0")
 
 external_stylesheets = [
