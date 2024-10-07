@@ -6,7 +6,7 @@ from flask import Flask
 import pandas as pd
 
 from src.components import navmenu
-from src.components.config import MOUNTED_DIRECTORY_PATH
+
 
 _dash_renderer._set_react_version("18.2.0")
 
