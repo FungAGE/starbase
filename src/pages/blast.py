@@ -41,31 +41,31 @@ from src.utils.parsing import parse_fasta
 dash.register_page(__name__)
 
 db_list = {
-    "ship": {"nucl": "src/data/ships/fna/blastdb/concatenated.fa"},
+    "ship": {"nucl": "src/data/db/ships/fna/blastdb/concatenated.fa"},
     "gene": {
         "tyr": {
-            "nucl": "src/data/captain/tyr/fna/blastdb/concatenated.dedup.fa",
-            "prot": "src/data/captain/tyr/faa/blastdb/concatenated.faa",
+            "nucl": "src/data/db/captain/tyr/fna/blastdb/concatenated.dedup.fa",
+            "prot": "src/data/db/captain/tyr/faa/blastdb/concatenated.faa",
             "hmm": {
-                "nucl": "src/data/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "src/data/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
+                "prot": "src/data/db/captain/tyr/faa/hmm/combined.hmm",
             },
         },
         "nlr": {
-            "nucl": "src/data/cargo/nlr/fna/blastdb/nlr.fa",
-            "prot": "src/data/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+            "nucl": "src/data/db/cargo/nlr/fna/blastdb/nlr.fa",
+            "prot": "src/data/db/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
         },
         "fre": {
-            "nucl": "src/data/cargo/fre/fna/blastdb/fre.fa",
-            "prot": "src/data/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+            "nucl": "src/data/db/cargo/fre/fna/blastdb/fre.fa",
+            "prot": "src/data/db/cargo/fre/faa/blastdb/fre.mycoDB.faa",
         },
         "plp": {
-            "nucl": "src/data/cargo/plp/fna/blastdb/plp.fa",
-            "prot": "src/data/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+            "nucl": "src/data/db/cargo/plp/fna/blastdb/plp.fa",
+            "prot": "src/data/db/cargo/plp/faa/blastdb/plp.mycoDB.faa",
         },
         "duf3723": {
-            "nucl": "src/data/cargo/duf3723/fna/blastdb/duf3723.fa",
-            "prot": "src/data/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+            "nucl": "src/data/db/cargo/duf3723/fna/blastdb/duf3723.fa",
+            "prot": "src/data/db/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
         },
     },
 }
