@@ -26,6 +26,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the code
 COPY ./ ./
 
+# unzip db
+RUN gunzip src/data/db.tar.gz \
+    tar -zxf db.tar
+
 # Change permissions
 RUN chmod +x start-script.sh && chown -R $USER:$USER $HOME
 
