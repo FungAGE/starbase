@@ -26,9 +26,10 @@ from Bio.Blast.Applications import (
 from Bio import SeqIO, SearchIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
+from Bio.SeqUtils import nt_search
 
-
-from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text
+from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
+from src.utils.BLASTstitcher import stitch_blast
 
 
 def write_temp_fasta(header, sequence):
@@ -133,7 +134,9 @@ def run_blast(
         if not os.path.exists(blastdb) or os.path.getsize(blastdb) == 0:
             raise ValueError(f"BLAST database {blastdb} not found or is empty.")
 
-        logging.info(f"Running BLAST with query: {query_fasta}, Database: {blastdb}")
+        logging.info(
+            f"Running BLAST with query: {query_fasta}, query_type={query_type}, Database: {blastdb}"
+        )
         blast_cline = blast_program(
             query=query_fasta,
             db=blastdb,
@@ -145,12 +148,10 @@ def run_blast(
         stdout, stderr = blast_cline()
         logging.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
 
-        # Optionally stitch BLAST results
-        # if stitch:
-        #     stitched_blast_tmp = tempfile.NamedTemporaryFile(suffix=".stitch").name
-        #     stitch_blast_cmd = f"python bin/BLASTstitcher.py -i {tmp_blast} -o {stitched_blast_tmp}"
-        #     subprocess.run(stitch_blast_cmd, shell=True)
-        #     ship_blast_out = stitched_blast_tmp
+        # stitch BLAST results
+        tmp_stitch = tempfile.NamedTemporaryFile(suffix=".stitch", delete=False).name
+        logging.info(f"Running BLAST stitching: {tmp_stitch}")
+        stitch_blast(tmp_blast, tmp_stitch)
 
         # with open(tmp_query_fasta, "r") as file:
         #     file_contents = file.read()
@@ -161,7 +162,7 @@ def run_blast(
         # logging.info(file_contents)
 
         df = pd.read_csv(
-            tmp_blast,
+            tmp_stitch,
             sep="\t",
             names=[
                 "qseqid",
@@ -181,7 +182,10 @@ def run_blast(
             ],
         )
 
-        df["qseqid"] = df["qseqid"].replace("|-", "").replace("|+", "").replace("|", "")
+        df = df.dropna()
+
+        df["qseqid"] = df["qseqid"].apply(clean_shipID)
+        df["sseqid"] = df["sseqid"].apply(clean_shipID)
 
         logging.info(f"BLAST results parsed with {len(df)} hits.")
 
@@ -191,39 +195,81 @@ def run_blast(
         return None
 
 
+def hmmsearch(
+    db_list=None,
+    query_type=None,
+    input_genes="tyr",
+    input_eval=None,
+    query_fasta=None,
+    threads=None,
+):
+    tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
+    hmmer_db = db_list["gene"][input_genes]["hmm"][query_type]
+    if not os.path.exists(hmmer_db) or os.path.getsize(hmmer_db) == 0:
+        raise ValueError(f"HMMER database {hmmer_db} not found or is empty.")
+
+    hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
+    logging.info(f"Running HMMER search: {hmmer_cmd}")
+    subprocess.run(hmmer_cmd, shell=True)
+    return tmp_hmmer
+
+
 def run_hmmer(
     db_list=None,
     query_type=None,
     input_genes="tyr",
     input_eval=None,
     query_fasta=None,
-    tmp_hmmer=None,
-    tmp_hmmer_parsed=None,
     threads=None,
 ):
     try:
-        hmmer_db = db_list["gene"][input_genes]["hmm"][query_type]
-        if not os.path.exists(hmmer_db) or os.path.getsize(hmmer_db) == 0:
-            raise ValueError(f"HMMER database {hmmer_db} not found or is empty.")
+        # family classification should only use protein hmm
+        # first run hmmer using nucl hmm
+        tmp_hmmer = hmmsearch(
+            db_list,
+            query_type,
+            input_genes,
+            input_eval,
+            query_fasta,
+            threads,
+        )
 
-        hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
-        logging.info(f"Running HMMER search: {hmmer_cmd}")
-        subprocess.run(hmmer_cmd, shell=True)
+        tmp_hmmer_parsed = parse_hmmer(tmp_hmmer)
+        # extract the gene sequence
+        gene_header, gene_seq = extract_gene_from_hmmer(tmp_hmmer_parsed)
 
-        parse_hmmer(tmp_hmmer, tmp_hmmer_parsed)
-        subject_seq = extract_gene_from_hmmer(tmp_hmmer_parsed)
+        # translate nucl queries
+        if query_type == "nucl" and gene_header is not None and gene_seq is not None:
+            tmp_protein = get_protein_sequence(gene_header, gene_seq)
+            if tmp_protein is not None:
+                # run hmmer using protein sequence of extracted gene
+                tmp_hmmer_protein = hmmsearch(
+                    db_list,
+                    "prot",
+                    input_genes,
+                    input_eval,
+                    tmp_protein,
+                    threads,
+                )
+                tmp_hmmer_protein_parsed = parse_hmmer(tmp_hmmer_protein)
+                logging.info(
+                    f"Second hmmersearch run stored at: {tmp_hmmer_protein_parsed}"
+                )
+                hmmer_results = pd.read_csv(tmp_hmmer_protein_parsed, sep="\t")
+        else:
+            hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
 
-        hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
         logging.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
 
-        return hmmer_results, subject_seq
+        return hmmer_results, gene_seq, tmp_hmmer, tmp_hmmer_parsed
     except Exception as e:
         logging.error(f"Error in HMMER search: {e}")
-        return None, None
+        return None, None, None, None
 
 
 # Parse the HMMER results
-def parse_hmmer(hmmer_output_file, parsed_file):
+def parse_hmmer(hmmer_output_file):
+    parsed_file = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
     with open(parsed_file, "w") as tsv_file:
         tsv_file.write(
             "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
@@ -232,14 +278,7 @@ def parse_hmmer(hmmer_output_file, parsed_file):
             for hit in record.hits:
                 for hsp in hit.hsps:
                     query_seq = str(hsp.query.seq)
-                    subject_seq = re.sub(
-                        "-Captain_.*",
-                        "",
-                        str(hsp.hit.seq)
-                        .replace("|-", "")
-                        .replace("|+", "")
-                        .replace("|", ""),
-                    )
+                    subject_seq = clean_shipID(str(hsp.hit.seq))
                     aln_length = hsp.aln_span
                     query_start = hsp.query_start
                     query_end = hsp.query_end
@@ -249,57 +288,41 @@ def parse_hmmer(hmmer_output_file, parsed_file):
                     tsv_file.write(
                         f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
                     )
+    return parsed_file
 
 
 def extract_gene_from_hmmer(parsed_file):
-    # Read the TSV file into a DataFrame
     data = pd.read_csv(parsed_file, sep="\t")
 
     # Get rows with the lowest e-value for each unique entry in Query
     min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
+    # Reset the index
+    min_evalue_rows = min_evalue_rows.reset_index(drop=True)
 
-    # Use os.path.join to construct file paths correctly
-    top_hit_out_path = os.path.join(
-        os.path.dirname(parsed_file), f"{os.path.splitext(parsed_file)[0]}.besthit.txt"
-    )
+    # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".besthit.txt").name
+    # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".best_hsp.fa").name
+    # logging.info(f"Best hit for gene sequence: {top_hit_out_path}")
 
-    output_filename = None
-    with open(top_hit_out_path, "w") as top_hit_out:
-        # Write the header line
-        top_hit_out.write(
-            "hit_IDs\tquery_id\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
-        )
+    query = min_evalue_rows.loc[0, "query_id"]
+    qseq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")
 
-        # Write the rows to the file using to_csv
-        min_evalue_rows.to_csv(top_hit_out, sep="\t", header=False, index=False)
+    logging.info(f"Sequence has length {len(qseq)}")
 
-        for index, row in min_evalue_rows.iterrows():
-            # Create a SeqRecord
-            query = row["query_id"]
-            qseq = re.sub(r"\.", "", str(row["query_seq"]))
-            sequence = SeqRecord(Seq(qseq), id=query, description="")
+    return query, qseq
 
-            # Write the SeqRecord to a FASTA file
-            # Use os.path.join for constructing output file paths
-            output_filename = os.path.join(
-                os.path.dirname(parsed_file), f"{query}_best_hsp.fa"
-            )
-
-            SeqIO.write(sequence, output_filename, "fasta")
-
-    output = html.Div(
-        [
-            dbc.Button(
-                "Download best captain hit",
-                id="subject-seq-button",
-                n_clicks=0,
-                className="d-grid gap-2 col-6 mx-auto",
-                style={"fontSize": "1rem"},
-            ),
-            dcc.Download(id="subject-seq-dl-package"),
-        ]
-    )
-    return output
+    # output = html.Div(
+    #     [
+    #         dbc.Button(
+    #             "Download best captain hit",
+    #             id="subject-seq-button",
+    #             n_clicks=0,
+    #             className="d-grid gap-2 col-6 mx-auto",
+    #             style={"fontSize": "1rem"},
+    #         ),
+    #         dcc.Download(id="subject-seq-dl-package"),
+    #     ]
+    # )
+    # return output
 
 
 def circos_prep(blast_output, links_output, layout_output):
@@ -470,7 +493,16 @@ def blast_table(ship_blast_results):
                     for i in ship_blast_results.columns
                 ],
                 data=ship_blast_results.to_dict("records"),
-                hidden_columns=["qseqid", "qseq", "sseq"],
+                hidden_columns=[
+                    "starshipID",
+                    "qseqid",
+                    "qseq",
+                    "sseq",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                ],
                 id="ship-blast-table",
                 editable=False,
                 sort_action="native",
@@ -492,7 +524,9 @@ def blast_table(ship_blast_results):
                     "padding": "10px",
                 },
                 style_cell={
+                    "minWidth": "0px",
                     "whiteSpace": "normal",
+                    "textAlign": "left",
                 },
             ),
             dbc.Button(
@@ -594,3 +628,89 @@ def diamond(query, db, threads=2):
     threads = 2
     diamond_cmd = f"/usr/bin/diamond blastp --db {db} -q {query} -f 6 qseqid pident evalue qseq -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids"
     subprocess.run(diamond_cmd, shell=True, check=True)
+
+
+def load_fasta_to_dict(fasta_file):
+    """
+    Loads a multi-FASTA file into a dictionary with headers as keys and sequences as values.
+    """
+    return {record.id: str(record.seq) for record in SeqIO.parse(fasta_file, "fasta")}
+
+
+def find_start_codons(seq):
+    """
+    Finds the start codon positions (ATG) in the nucleotide sequence.
+    Returns the first start codon position or None if not found.
+    """
+    start_codon = "ATG"
+    start_positions = nt_search(str(seq), start_codon)[1:]  # Skip the sequence itself
+
+    if start_positions:
+        return start_positions[0]
+    return None
+
+
+def translate_seq(seq):
+    """
+    Translate the nucleotide sequence in three forward and three reverse frames.
+    """
+    s = Seq(seq)
+    frames = []
+    for phase in range(3):
+        fwd = s[phase:].translate(to_stop=False)
+        rev = s.reverse_complement()[phase:].translate(to_stop=False)
+        frames.append(fwd)
+        frames.append(rev)
+    return frames
+
+
+def find_longest_orf(aa_seq, min_length=50):
+    """
+    Finds the longest ORF in the translated amino acid sequence, ignoring stretches of 'X'.
+    """
+    longest_orf = ""
+    current_orf = []
+
+    for aa in aa_seq:
+        if aa == "*":
+            orf = "".join(current_orf)
+            if (
+                len(orf) >= min_length
+                and "X" not in orf
+                and len(orf) > len(longest_orf)
+            ):
+                longest_orf = orf
+            current_orf = []
+        else:
+            current_orf.append(aa)
+
+    # In case there's an ORF at the end of the sequence
+    orf = "".join(current_orf)
+    if len(orf) >= min_length and "X" not in orf and len(orf) > len(longest_orf):
+        longest_orf = orf
+
+    return longest_orf
+
+
+def get_protein_sequence(header, nuc_sequence):
+    """
+    Translates the nucleotide sequence to protein sequence and writes to a FASTA file.
+    """
+    protein_output_filename = tempfile.NamedTemporaryFile(suffix=".faa").name
+    # start_codon = find_start_codons(nuc_sequence)
+    # if start_codon is not None:
+    #     protein_seqs = translate(nuc_sequence[start_codon:])
+    # else:
+    protein_seqs = translate_seq(nuc_sequence)
+    print(protein_seqs)
+    longest_protein = max((find_longest_orf(frame) for frame in protein_seqs), key=len)
+    if longest_protein is not None:
+        # Write the longest ORF to the output file
+        SeqIO.write(
+            SeqRecord(Seq(longest_protein), id=header, description=""),
+            protein_output_filename,
+            "fasta",
+        )
+        return protein_output_filename
+    else:
+        return None

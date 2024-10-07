@@ -10,6 +10,7 @@ from dash import html
 
 from io import StringIO
 import base64
+import re
 import pandas as pd
 
 from Bio import SeqIO
@@ -165,3 +166,11 @@ def parse_fasta(contents, filename):
                 ]
             )
         ]
+
+
+def clean_shipID(s):
+    return re.sub(
+        s.replace("|-", "").replace("|+", "").replace("|", "").replace("fam_", "_"),
+        "-Captain_.*",
+        "",
+    )

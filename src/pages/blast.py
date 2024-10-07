@@ -36,12 +36,13 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta
+from src.utils.parsing import parse_fasta, clean_shipID
 from src.components.sqlite import engine
 
 
 dash.register_page(__name__)
 
+# TODO: remake nucl blastdb for ships (updated headers)
 db_list = {
     "ship": {"nucl": "src/data/db/ships/fna/blastdb/concatenated.fa"},
     "gene": {
@@ -288,7 +289,6 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
 
         # Run BLAST
         tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
-        logging.info(f"Running BLAST with query_type={query_type}")
 
         try:
             blast_results = run_blast(
@@ -309,23 +309,19 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
         blast_results_dict = blast_results.to_dict("records")
 
         # Run HMMER
-        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-        tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-        logging.info(f"Running HMMER")
+        # logging.info(f"Running HMMER")
 
         # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
         subject_seq_button = None
         subject_seq = None
 
         try:
-            hmmer_results, subject_seq = run_hmmer(
+            hmmer_results, subject_seq, tmp_hmmer, tmp_hmmer_parsed = run_hmmer(
                 db_list=db_list,
                 query_type=query_type,
                 input_genes="tyr",
                 input_eval=0.01,
                 query_fasta=tmp_query_fasta,
-                tmp_hmmer=tmp_hmmer,
-                tmp_hmmer_parsed=tmp_hmmer_parsed,
                 threads=2,
             )
             # logging.info(f"HMMER results: {hmmer_results}")
@@ -388,8 +384,8 @@ def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
             query = """
             SELECT j.*, a.accession_tag, f.familyName, t.species
             FROM joined_ships j
-            JOIN taxonomy t ON j.taxid = t.id
-            JOIN family_names f ON j.ship_family_id = f.id
+            LEFT JOIN taxonomy t ON j.taxid = t.id
+            LEFT JOIN family_names f ON j.ship_family_id = f.id
             JOIN accessions a ON j.ship_id = a.id
             WHERE j.orphan IS NULL
             """
@@ -404,9 +400,17 @@ def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
                 # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
                 # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
                 # TODO: update blastdb's with accessions, rather than shipIDs?
-                df_for_table = blast_results_df[
-                    blast_results_df["sseqid"].isin(initial_df["starshipID"])
-                ]
+                df_for_table = pd.merge(
+                    blast_results_df,
+                    initial_df[["starshipID", "accession_tag"]],
+                    left_on="sseqid",
+                    right_on="starshipID",
+                    how="left",
+                )
+
+                col_order = [df_for_table.columns[-1]] + list(df_for_table.columns[:-1])
+                df_for_table = df_for_table[col_order]
+
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
@@ -468,9 +472,9 @@ def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
 )
 def blast_alignments(ship_blast_results, selected_row, query_type):
     try:
-        # logging.info(
-        #     f"blast_alignments called with ship_blast_results: {ship_blast_results}, selected_row: {selected_row}, query_type: {query_type}"
-        # )
+        logging.info(
+            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
+        )
 
         if not selected_row or len(selected_row) == 0:
             return [None]
@@ -487,12 +491,10 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
-            qseq = re.sub("-", "", row["qseq"])
-            qseqid = row["qseqid"]
-            sseq = re.sub("-", "", row["sseq"])
-            sseqid = (
-                str(row["sseqid"]).replace("|-", "").replace("|+", "").replace("|", "")
-            )
+            qseq = re.sub("-", "", str(row["qseq"]))
+            qseqid = str(row["qseqid"])
+            sseq = re.sub("-", "", str(row["sseq"]))
+            sseqid = str(row["sseqid"])
 
         except IndexError:
             logging.error(f"Error: Row index {row_idx} out of bounds.")
