@@ -180,9 +180,9 @@ def run_blast(
                 "sseq",
             ],
         )
-        
+
         df["qseqid"] = df["qseqid"].replace("|-", "").replace("|+", "").replace("|", "")
-        
+
         logging.info(f"BLAST results parsed with {len(df)} hits.")
 
         return df
@@ -232,7 +232,14 @@ def parse_hmmer(hmmer_output_file, parsed_file):
             for hit in record.hits:
                 for hsp in hit.hsps:
                     query_seq = str(hsp.query.seq)
-                    subject_seq = re.sub("-Captain_.*", "", str(hsp.hit.seq).replace("|-", "").replace("|+", "").replace("|", ""))
+                    subject_seq = re.sub(
+                        "-Captain_.*",
+                        "",
+                        str(hsp.hit.seq)
+                        .replace("|-", "")
+                        .replace("|+", "")
+                        .replace("|", ""),
+                    )
                     aln_length = hsp.aln_span
                     query_start = hsp.query_start
                     query_end = hsp.query_end
@@ -519,7 +526,7 @@ def select_ship_family(hmmer_results):
             best_match = best_matches.iloc[0]
             superfamily = best_match["hit_IDs"]
             aln_length = best_match["aln_length"]
-            evalue = best_match["evalue"]
+            evalue = "{:.2e}".format(best_match["evalue"])
 
             return superfamily, aln_length, evalue
 

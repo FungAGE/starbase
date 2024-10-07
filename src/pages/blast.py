@@ -37,6 +37,8 @@ from src.utils.blast_utils import (
 )
 from src.components.callbacks import curated_switch
 from src.utils.parsing import parse_fasta
+from src.components.sqlite import engine
+
 
 dash.register_page(__name__)
 
@@ -372,26 +374,29 @@ no_captain_alert = dbc.Alert(
     [
         Input("blast-results-store", "data"),
         Input("hmmer-results-store", "data"),
-        Input("store-data", "data"),
     ],
-    [
-        State("submit-button", "n_clicks"),
-        State("query-type-store", "data"),
-    ],
+    [State("submit-button", "n_clicks"), State("curated-input", "value")],
 )
-def update_ui(
-    blast_results_dict, hmmer_results_dict, cached_data, n_clicks, query_type
-):
-    try:
-        ship_family = no_update
-        ship_table = no_update
+def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
+    if blast_results_dict is None and hmmer_results_dict is None:
+        raise PreventUpdate
+    if n_clicks:
+        logging.info(f"Updating UI with n_clicks={n_clicks}")
+        try:
+            ship_family = no_update
+            ship_table = no_update
+            query = """
+            SELECT j.*, a.accession_tag, f.familyName, t.species
+            FROM joined_ships j
+            JOIN taxonomy t ON j.taxid = t.id
+            JOIN family_names f ON j.ship_family_id = f.id
+            JOIN accessions a ON j.ship_id = a.id
+            WHERE j.orphan IS NULL
+            """
+            if curated:
+                query += "WHERE j.curated_status == 'curated'"
 
-        if blast_results_dict is None and hmmer_results_dict is None:
-            raise PreventUpdate
-
-        if n_clicks:
-            logging.info(f"Updating UI with n_clicks={n_clicks}")
-            initial_df = pd.DataFrame(cached_data)
+            initial_df = pd.read_sql_query(query, engine)
 
             if blast_results_dict:
                 logging.info("Rendering BLAST table")
@@ -446,11 +451,11 @@ def update_ui(
             else:
                 ship_family = no_captain_alert
 
-        return ship_family, ship_table
+            return ship_family, ship_table
 
-    except Exception as e:
-        logging.error(f"Error in update_ui: {str(e)}")
-        return no_update, no_update
+        except Exception as e:
+            logging.error(f"Error in update_ui: {str(e)}")
+            return no_update, no_update
 
 
 @callback(

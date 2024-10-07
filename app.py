@@ -47,7 +47,6 @@ def serve_app_layout():
         html.Div(
             [
                 dcc.Location(id="url", refresh=False),
-                dcc.Store(id="store-data"),
                 navmenu.navmenu(),
                 html.Div(dash.page_container),
             ]
