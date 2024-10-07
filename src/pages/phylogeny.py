@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore")
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 
 import os
 import glob
@@ -81,6 +81,7 @@ def gappa(tmp_tree):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    logging.info(f"Tree output: {out_tree}")
 
     return out_tree
 
@@ -178,16 +179,20 @@ def update_ui(fasta_upload):
             if query_type == "prot":
                 tmp_headers, query_msa = run_mafft(
                     query=tmp_query_fasta,
-                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/superfamily-rep-captains.clipkit",
                 )
                 new_tree = add_to_tree(
                     query_msa=query_msa,
-                    tree=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
-                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+                    tree=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/tree/superfamily-rep-ships.treefile",
+                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/superfamily-rep-captains.clipkit",
                     model="PROTGTR+G+F",
                     tmp_dir=tmp_dir,
                 )
                 out_tree = gappa(new_tree)
+                with open(out_tree, "r") as file:
+                    file_contents = file.read()
+                logging.info(file_contents)
+
                 if out_tree is not None:
                     output = dcc.Graph(
                         id="phylogeny",

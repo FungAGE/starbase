@@ -23,3 +23,7 @@ logomaker==0.8
 pygenomeviz==1.1.0
 dash-mantine-components==0.14.4
 sqlalchemy
+
+# TODO: add the following to conda:
+# epa-ng
+# gappa

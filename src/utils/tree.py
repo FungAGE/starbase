@@ -100,7 +100,7 @@ def get_clade_lines(
     line_color=None,
     line_width=0.5,
 ):
-    """define a shape of type 'line', for branch"""
+    """Define a shape of type 'line' for a branch."""
     branch_line = dict(
         type="line", layer="below", line=dict(color=line_color, width=line_width)
     )
@@ -119,16 +119,27 @@ def draw_clade(
     clade,
     x_start,
     line_shapes,
+    tip_dots,
     line_width=1,
     x_coords=0,
     y_coords=0,
 ):
-    """Recursively draw the tree branches, down from the given clade"""
+    """Recursively draw the tree branches, down from the given clade."""
     x_curr = x_coords[clade]
     y_curr = y_coords[clade]
 
+    # Determine the line color based on whether the clade is a tip
     if clade.name in metadata["tip"].values:
         line_color = metadata.loc[metadata["tip"] == clade.name, "color"].values[0]
+        # Add a dot at the tip
+        tip_dot = dict(
+            x=x_curr,
+            y=y_curr,
+            mode="markers",
+            marker=dict(size=5, color=line_color),
+            name=clade.name,
+        )
+        tip_dots.append(tip_dot)
     else:
         line_color = "rgb(25,25,25)"
 
@@ -168,6 +179,7 @@ def draw_clade(
                 child,
                 x_curr,
                 line_shapes,
+                tip_dots,
                 x_coords=x_coords,
                 y_coords=y_coords,
             )
@@ -278,23 +290,22 @@ def superfam_highlight(
 
 
 def add_tip_labels(
-    tips,
+    tip,
     x_coords=0,
     y_coords=0,
 ):
     text_label = None
 
-    if x_coords is not None and y_coords is not None and tips:
-        # Ensure 'tips' is a valid list or iterable and clade.name is not None
+    if x_coords is not None and y_coords is not None and tip:
         x_coord_list = [
             x_coords[clade]
             for clade in x_coords
-            if clade.name is not None and clade.name in tips
+            if clade.name is not None and clade.name in tip
         ]
         y_coord_list = [
             y_coords[clade]
             for clade in y_coords
-            if clade.name is not None and clade.name in tips
+            if clade.name is not None and clade.name in tip
         ]
 
         if x_coord_list and y_coord_list:
@@ -304,7 +315,7 @@ def add_tip_labels(
             text_label = get_text_label(
                 x=4,
                 y=(y_end + y_start) / 2,
-                text=tips,
+                text=tip,
                 font_size=24,
                 font_color="black",
                 x_anchor="center",
@@ -328,7 +339,8 @@ def plot_tree(
     y_coords = get_y_coordinates(tree)
     line_shapes = []
     text_labels = []
-    scatter_points = []
+    tip_dots = []
+    centroids = []
     nodes = []
 
     draw_clade(
@@ -336,6 +348,7 @@ def plot_tree(
         tree.root,
         0,
         line_shapes,
+        tip_dots,
         line_width=1,
         x_coords=x_coords,
         y_coords=y_coords,
@@ -353,15 +366,15 @@ def plot_tree(
             y_coords=y_coords,
         )
         line_shapes.append(rectangle)
-        scatter_points.append(scatter)
+        centroids.append(scatter)
         text_labels.append(text_label)
 
     if tips:
         for tip in tips:
-            tips_labels = add_tip_labels(tips=tip, x_coords=x_coords, y_coords=y_coords)
+            tips_labels = add_tip_labels(tip=tip, x_coords=x_coords, y_coords=y_coords)
             text_labels.append(tips_labels)
 
-    nodes = scatter_points
+    nodes = centroids
 
     layout = dict(
         height=1200,
@@ -388,9 +401,9 @@ def plot_tree(
 
     if highlight_families is not None:
         legend = {"x": 0, "y": 1}
-        annotations = text_labels
+        # Filter out None elements from text_labels
+        annotations = [label for label in text_labels if label is not None]
         font = dict(family="Open Sans")
-        # layout["legend"] = legend
         layout["annotations"] = annotations
         layout["font"] = font
 
