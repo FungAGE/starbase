@@ -122,23 +122,3 @@ def curated_switch(text, size="normal"):
         ],
     )
     return switch
-
-
-def find_mounted_directory(base_path="./", folder_name=None, file_name=None):
-    for root, dirs, files in os.walk(base_path):
-        if folder_name is not None:
-            for dir_name in dirs:
-                if folder_name in dir_name:
-                    return os.path.join(root, dir_name)
-        if file_name is not None:
-            for file in files:
-                if file_name in file:
-                    return os.path.dirname(file)
-    return None
-
-
-def initialize_mounted_directory():
-    MOUNTED_DIRECTORY_PATH = find_mounted_directory(folder_name="database_folder")
-    if MOUNTED_DIRECTORY_PATH is None:
-        MOUNTED_DIRECTORY_PATH = find_mounted_directory(file_name="starbase.sqlite")
-    return MOUNTED_DIRECTORY_PATH

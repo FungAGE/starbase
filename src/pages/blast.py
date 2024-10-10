@@ -35,40 +35,40 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from src.components.config import MOUNTED_DIRECTORY_PATH
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta
+from src.utils.parsing import parse_fasta, clean_shipID
+from src.components.sqlite import engine
+
 
 dash.register_page(__name__)
 
+# TODO: remake nucl blastdb for ships (updated headers)
 db_list = {
-    "ship": {
-        "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/ships/fna/blastdb/concatenated.fa"
-    },
+    "ship": {"nucl": "src/data/db/ships/fna/blastdb/concatenated.fa"},
     "gene": {
         "tyr": {
-            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/fna/blastdb/concatenated.dedup.fa",
-            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/blastdb/concatenated.faa",
+            "nucl": "src/data/db/captain/tyr/fna/blastdb/concatenated.dedup.fa",
+            "prot": "src/data/db/captain/tyr/faa/blastdb/concatenated.faa",
             "hmm": {
-                "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/fna/hmm/combined.hmm",
-                "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
+                "prot": "src/data/db/captain/tyr/faa/hmm/combined.hmm",
             },
         },
         "nlr": {
-            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/nlr/fna/blastdb/nlr.fa",
-            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
+            "nucl": "src/data/db/cargo/nlr/fna/blastdb/nlr.fa",
+            "prot": "src/data/db/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
         },
         "fre": {
-            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/fre/fna/blastdb/fre.fa",
-            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
+            "nucl": "src/data/db/cargo/fre/fna/blastdb/fre.fa",
+            "prot": "src/data/db/cargo/fre/faa/blastdb/fre.mycoDB.faa",
         },
         "plp": {
-            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/plp/fna/blastdb/plp.fa",
-            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
+            "nucl": "src/data/db/cargo/plp/fna/blastdb/plp.fa",
+            "prot": "src/data/db/cargo/plp/faa/blastdb/plp.mycoDB.faa",
         },
         "duf3723": {
-            "nucl": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
-            "prot": f"{MOUNTED_DIRECTORY_PATH}/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
+            "nucl": "src/data/db/cargo/duf3723/fna/blastdb/duf3723.fa",
+            "prot": "src/data/db/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
         },
     },
 }
@@ -289,7 +289,6 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
 
         # Run BLAST
         tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
-        logging.info(f"Running BLAST with query_type={query_type}")
 
         try:
             blast_results = run_blast(
@@ -310,23 +309,19 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
         blast_results_dict = blast_results.to_dict("records")
 
         # Run HMMER
-        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-        tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-        logging.info(f"Running HMMER")
+        # logging.info(f"Running HMMER")
 
         # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
         subject_seq_button = None
         subject_seq = None
 
         try:
-            hmmer_results, subject_seq = run_hmmer(
+            hmmer_results, subject_seq, tmp_hmmer, tmp_hmmer_parsed = run_hmmer(
                 db_list=db_list,
                 query_type=query_type,
                 input_genes="tyr",
                 input_eval=0.01,
                 query_fasta=tmp_query_fasta,
-                tmp_hmmer=tmp_hmmer,
-                tmp_hmmer_parsed=tmp_hmmer_parsed,
                 threads=2,
             )
             # logging.info(f"HMMER results: {hmmer_results}")
@@ -375,26 +370,29 @@ no_captain_alert = dbc.Alert(
     [
         Input("blast-results-store", "data"),
         Input("hmmer-results-store", "data"),
-        Input("store-data", "data"),
     ],
-    [
-        State("submit-button", "n_clicks"),
-        State("query-type-store", "data"),
-    ],
+    [State("submit-button", "n_clicks"), State("curated-input", "value")],
 )
-def update_ui(
-    blast_results_dict, hmmer_results_dict, cached_data, n_clicks, query_type
-):
-    try:
-        ship_family = no_update
-        ship_table = no_update
+def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
+    if blast_results_dict is None and hmmer_results_dict is None:
+        raise PreventUpdate
+    if n_clicks:
+        logging.info(f"Updating UI with n_clicks={n_clicks}")
+        try:
+            ship_family = no_update
+            ship_table = no_update
+            query = """
+            SELECT j.*, a.accession_tag, f.familyName, t.species
+            FROM joined_ships j
+            LEFT JOIN taxonomy t ON j.taxid = t.id
+            LEFT JOIN family_names f ON j.ship_family_id = f.id
+            JOIN accessions a ON j.ship_id = a.id
+            WHERE j.orphan IS NULL
+            """
+            if curated:
+                query += "WHERE j.curated_status == 'curated'"
 
-        if blast_results_dict is None and hmmer_results_dict is None:
-            raise PreventUpdate
-
-        if n_clicks:
-            logging.info(f"Updating UI with n_clicks={n_clicks}")
-            initial_df = pd.DataFrame(cached_data)
+            initial_df = pd.read_sql_query(query, engine)
 
             if blast_results_dict:
                 logging.info("Rendering BLAST table")
@@ -402,9 +400,17 @@ def update_ui(
                 # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
                 # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
                 # TODO: update blastdb's with accessions, rather than shipIDs?
-                df_for_table = blast_results_df[
-                    blast_results_df["sseqid"].isin(initial_df["starshipID"])
-                ]
+                df_for_table = pd.merge(
+                    blast_results_df,
+                    initial_df[["starshipID", "accession_tag"]],
+                    left_on="sseqid",
+                    right_on="starshipID",
+                    how="left",
+                )
+
+                col_order = [df_for_table.columns[-1]] + list(df_for_table.columns[:-1])
+                df_for_table = df_for_table[col_order]
+
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
@@ -449,11 +455,11 @@ def update_ui(
             else:
                 ship_family = no_captain_alert
 
-        return ship_family, ship_table
+            return ship_family, ship_table
 
-    except Exception as e:
-        logging.error(f"Error in update_ui: {str(e)}")
-        return no_update, no_update
+        except Exception as e:
+            logging.error(f"Error in update_ui: {str(e)}")
+            return no_update, no_update
 
 
 @callback(
@@ -466,9 +472,9 @@ def update_ui(
 )
 def blast_alignments(ship_blast_results, selected_row, query_type):
     try:
-        # logging.info(
-        #     f"blast_alignments called with ship_blast_results: {ship_blast_results}, selected_row: {selected_row}, query_type: {query_type}"
-        # )
+        logging.info(
+            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
+        )
 
         if not selected_row or len(selected_row) == 0:
             return [None]
@@ -485,12 +491,10 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
-            qseq = re.sub("-", "", row["qseq"])
-            qseqid = row["qseqid"]
-            sseq = re.sub("-", "", row["sseq"])
-            sseqid = (
-                str(row["sseqid"]).replace("|-", "").replace("|+", "").replace("|", "")
-            )
+            qseq = re.sub("-", "", str(row["qseq"]))
+            qseqid = str(row["qseqid"])
+            sseq = re.sub("-", "", str(row["sseq"]))
+            sseqid = str(row["sseqid"])
 
         except IndexError:
             logging.error(f"Error: Row index {row_idx} out of bounds.")
