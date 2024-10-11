@@ -48,7 +48,7 @@ db_list = {
     "ship": {"nucl": "src/data/db/ships/fna/blastdb/concatenated.fa"},
     "gene": {
         "tyr": {
-            "nucl": "src/data/db/captain/tyr/fna/blastdb/concatenated.dedup.fa",
+            "nucl": "src/data/db/captain/tyr/fna/blastdb/concatenated.dedup.fna",
             "prot": "src/data/db/captain/tyr/faa/blastdb/concatenated.faa",
             "hmm": {
                 "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
@@ -300,7 +300,7 @@ def fetch_blast_diamond_results(query_header, query_seq, query_type):
                 input_eval=0.01,
                 threads=2,
             )
-            # logging.info(f"BLAST results: {blast_results}")
+            # logging.info(f"BLAST results: {blast_results.head()}")
             if blast_results is None:
                 raise ValueError("BLAST returned no results!")
         except Exception as e:

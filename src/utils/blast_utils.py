@@ -115,6 +115,7 @@ def run_blast(
     tmp_blast=None,
     input_eval=None,
     threads=None,
+    stitch=None,
 ):
     try:
         db_type = "nucl"
@@ -149,9 +150,33 @@ def run_blast(
         logging.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
 
         # stitch BLAST results
-        tmp_stitch = tempfile.NamedTemporaryFile(suffix=".stitch", delete=False).name
-        logging.info(f"Running BLAST stitching: {tmp_stitch}")
-        stitch_blast(tmp_blast, tmp_stitch)
+        if stitch:
+            tmp_stitch = tempfile.NamedTemporaryFile(
+                suffix=".stitch", delete=False
+            ).name
+            logging.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
+            df = stitch_blast(tmp_blast, tmp_stitch)
+        else:
+            df = pd.read_csv(
+                tmp_blast,
+                sep="\t",
+                names=[
+                    "qseqid",
+                    "sseqid",
+                    "pident",
+                    "length",
+                    "mismatch",
+                    "gapopen",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                    "evalue",
+                    "bitscore",
+                    "qseq",
+                    "sseq",
+                ],
+            )
 
         # with open(tmp_query_fasta, "r") as file:
         #     file_contents = file.read()
@@ -160,34 +185,6 @@ def run_blast(
         # with open(tmp_blast, "r") as file:
         #     file_contents = file.read()
         # logging.info(file_contents)
-
-        df = pd.read_csv(
-            tmp_stitch,
-            sep="\t",
-            names=[
-                "qseqid",
-                "sseqid",
-                "pident",
-                "length",
-                "mismatch",
-                "gapopen",
-                "qstart",
-                "qend",
-                "sstart",
-                "send",
-                "evalue",
-                "bitscore",
-                "qseq",
-                "sseq",
-            ],
-        )
-
-        df = df.dropna()
-
-        df["qseqid"] = df["qseqid"].apply(clean_shipID)
-        df["sseqid"] = df["sseqid"].apply(clean_shipID)
-
-        logging.info(f"BLAST results parsed with {len(df)} hits.")
 
         return df
     except Exception as e:
@@ -637,7 +634,7 @@ def run_diamond(
 
     header, seq = parse_fasta_from_text(query_fasta)
 
-    diamond_db = db_list["gene"][input_genes][query_type]
+    diamond_db = db_list["gene"][input_genes]["prot"]
     if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
         raise ValueError(f"HMMER database {diamond_db} not found or is empty.")
 
@@ -647,12 +644,12 @@ def run_diamond(
     else:
         blast_type = "blastp"
         out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
-
-    diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids --frameshift  | sed '1i >{header}' > {diamond_out}"
+    diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids | sed '1i >{header}' > {diamond_out}"
 
     subprocess.run(diamond_cmd, shell=True, check=True)
 
-    diamond_results = pd.read_csv(diamond_out, sep="\t")
+    column_names = out_fmt.split()[1:]
+    diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
 
     return diamond_results.to_dict("records")
 
