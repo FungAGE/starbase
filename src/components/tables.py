@@ -9,7 +9,7 @@ import pandas as pd
 from src.components.sqlite import engine
 
 
-def truncate_string(s, length=10):
+def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
 
@@ -95,8 +95,8 @@ def make_paper_table(engine):
 
     sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
-    sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=20))
-    sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=20))
+    # sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=40))
+    # sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=40))
     sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
     sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
 
@@ -163,18 +163,19 @@ def make_paper_table(engine):
                         id="papers-table",
                         markdown_options={"html": True},
                         style_table={
-                            "overflowX": "auto",  # Enable horizontal scrolling
+                            "overflowX": "auto",
                         },
                         style_data={
-                            "whiteSpace": "normal",  # Allow text to wrap
+                            "height": "auto",
+                            "whiteSpace": "normal",
                             "overflow": "hidden",
                             "textOverflow": "ellipsis",
                         },
                         style_cell={
-                            "minWidth": "120px",  # Minimum column width
-                            "maxWidth": "100%",  # Maximum column width
-                            "textAlign": "left",  # Align text to the left
-                            "padding": "5px",  # Add padding for better spacing
+                            "minWidth": "120px",
+                            "maxWidth": "300px",
+                            "textAlign": "left",
+                            "padding": "5px",
                         },
                         style_header={
                             "backgroundColor": "lightgrey",
