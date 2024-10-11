@@ -624,10 +624,37 @@ def parse_lastz_output(output_file):
     return df
 
 
-def diamond(query, db, threads=2):
-    threads = 2
-    diamond_cmd = f"/usr/bin/diamond blastp --db {db} -q {query} -f 6 qseqid pident evalue qseq -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids"
+def run_diamond(
+    db_list=None,
+    query_type=None,
+    input_genes="tyr",
+    input_eval=None,
+    query_fasta=None,
+    threads=2,
+):
+
+    diamond_out = tempfile.NamedTemporaryFile(suffix=".fa").name
+
+    header, seq = parse_fasta_from_text(query_fasta)
+
+    diamond_db = db_list["gene"][input_genes][query_type]
+    if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
+        raise ValueError(f"HMMER database {diamond_db} not found or is empty.")
+
+    if query_type == "nucl":
+        blast_type = "blastx"
+        out_fmt = "6 qseqid sseqid length qstart qend gaps qseq_translated sseq evalue bitscore"
+    else:
+        blast_type = "blastp"
+        out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
+
+    diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids --frameshift  | sed '1i >{header}' > {diamond_out}"
+
     subprocess.run(diamond_cmd, shell=True, check=True)
+
+    diamond_results = pd.read_csv(diamond_out, sep="\t")
+
+    return diamond_results.to_dict("records")
 
 
 def load_fasta_to_dict(fasta_file):

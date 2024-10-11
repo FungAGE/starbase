@@ -29,6 +29,7 @@ from src.utils.blast_utils import (
     write_temp_fasta,
     run_blast,
     run_hmmer,
+    run_diamond,
     blast_table,
     run_lastz,
     select_ship_family,
@@ -91,7 +92,7 @@ layout = dmc.Container(
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
-        dcc.Store(id="hmmer-results-store"),
+        dcc.Store(id="diamond-results-store"),
         dmc.Grid(
             justify="start",
             align="start",
@@ -268,7 +269,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 @callback(
     [
         Output("blast-results-store", "data"),
-        Output("hmmer-results-store", "data"),
+        Output("diamond-results-store", "data"),
         Output("subject-seq-button", "children"),
     ],
     [
@@ -277,7 +278,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-type-store", "data"),
     ],
 )
-def fetch_blast_hmmer_results(query_header, query_seq, query_type):
+def fetch_blast_diamond_results(query_header, query_seq, query_type):
     try:
         if not query_header or not query_seq:
             logging.error("Missing query header or sequence.")
@@ -313,10 +314,10 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
 
         # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
         subject_seq_button = None
-        subject_seq = None
+        # subject_seq = None
 
         try:
-            hmmer_results, subject_seq, tmp_hmmer, tmp_hmmer_parsed = run_hmmer(
+            diamond_results_dict = run_diamond(
                 db_list=db_list,
                 query_type=query_type,
                 input_genes="tyr",
@@ -324,19 +325,28 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
                 query_fasta=tmp_query_fasta,
                 threads=2,
             )
+            # logging.info(f"Diamond results: {diamond_results}")
+            # hmmer_results, subject_seq, tmp_hmmer, tmp_hmmer_parsed = run_hmmer(
+            #     db_list=db_list,
+            #     query_type=query_type,
+            #     input_genes="tyr",
+            #     input_eval=0.01,
+            #     query_fasta=tmp_query_fasta,
+            #     threads=2,
+            # )
             # logging.info(f"HMMER results: {hmmer_results}")
-            if hmmer_results is None:
-                logging.error("hmmsearch returned no results!")
+
+            if diamond_results_dict is None:
+                logging.error("Diamond returned no results!")
                 raise
         except Exception as e:
-            logging.error(f"HMMER error: {str(e)}")
+            logging.error(f"Diamond error: {str(e)}")
             raise
 
-        hmmer_results_dict = hmmer_results.to_dict("records")
-        return blast_results_dict, hmmer_results_dict, subject_seq_button
+        return blast_results_dict, diamond_results_dict, subject_seq_button
 
     except Exception as e:
-        logging.error(f"Error in fetch_blast_hmmer_results: {str(e)}")
+        logging.error(f"Error in fetch_blast_diamond_results: {str(e)}")
         return None, None, None
 
 
@@ -369,12 +379,12 @@ no_captain_alert = dbc.Alert(
     ],
     [
         Input("blast-results-store", "data"),
-        Input("hmmer-results-store", "data"),
+        Input("diamond-results-store", "data"),
     ],
     [State("submit-button", "n_clicks"), State("curated-input", "value")],
 )
-def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
-    if blast_results_dict is None and hmmer_results_dict is None:
+def update_ui(blast_results_dict, diamond_results_dict, n_clicks, curated):
+    if blast_results_dict is None and diamond_results_dict is None:
         raise PreventUpdate
     if n_clicks:
         logging.info(f"Updating UI with n_clicks={n_clicks}")
@@ -419,11 +429,11 @@ def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
                         color="danger",
                     )
 
-            if hmmer_results_dict:
-                logging.info("Processing HMMER results")
-                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df[
-                    hmmer_results_df["hit_IDs"].isin(initial_df["starshipID"])
+            if diamond_results_dict:
+                logging.info("Processing Diamond results")
+                diamond_results_df = pd.DataFrame(diamond_results_dict)
+                df_for_hmmer = diamond_results_df[
+                    diamond_results_df["sseqid"].isin(initial_df["starshipID"])
                 ]
                 if len(df_for_hmmer) > 0:
                     try:
