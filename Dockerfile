@@ -28,9 +28,12 @@ COPY ./ ./
 
 # unzip db
 RUN gunzip -c src/data/db.tar.gz | tar -xf - -C src/data
+# to create the db.tar.gz 
+# tar -cf db.tar db/
+# gzip db.tar
 
 # build blast dbs from sql table
-RUN python /src/utils/blastdb.py
+RUN python src/utils/blastdb.py
 
 # Change permissions
 RUN chmod +x start-script.sh && chown -R $USER:$USER $HOME
