@@ -115,7 +115,7 @@ def run_blast(
     tmp_blast=None,
     input_eval=None,
     threads=None,
-    stitch=None,
+    stitch=True,
 ):
     try:
         db_type = "nucl"
@@ -499,6 +499,8 @@ def blast_table(ship_blast_results):
                     "qend",
                     "sstart",
                     "send",
+                    "mismatch",
+                    "gapopen",
                 ],
                 id="ship-blast-table",
                 editable=False,
@@ -517,12 +519,22 @@ def blast_table(ship_blast_results):
                 style_table={
                     "overflow": "hidden",
                     "overflowX": "auto",
-                    "maxWidth": "100%",
-                    "padding": "10px",
+                },
+                style_data={
+                    "height": "auto",
+                    "whiteSpace": "normal",
+                    "overflow": "hidden",
                 },
                 style_cell={
-                    "minWidth": "0px",
+                    "minWidth": "120px",
+                    "maxWidth": "300px",
+                    "padding": "5px",
                     "whiteSpace": "normal",
+                    "textAlign": "left",
+                },
+                style_header={
+                    "backgroundColor": "lightgrey",
+                    "fontWeight": "bold",
                     "textAlign": "left",
                 },
             ),
@@ -644,6 +656,8 @@ def run_diamond(
     else:
         blast_type = "blastp"
         out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
+
+    subprocess.run("/home/adrian/anaconda3/bin/diamond help", shell=True, check=True)
     diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids | sed '1i >{header}' > {diamond_out}"
 
     subprocess.run(diamond_cmd, shell=True, check=True)

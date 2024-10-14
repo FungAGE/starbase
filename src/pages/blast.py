@@ -39,40 +39,10 @@ from src.utils.blast_utils import (
 from src.components.callbacks import curated_switch
 from src.utils.parsing import parse_fasta, clean_shipID
 from src.components.sqlite import engine
+from src.utils.blastdb import db_list
 
 
 dash.register_page(__name__)
-
-# TODO: remake nucl blastdb for ships (updated headers)
-db_list = {
-    "ship": {"nucl": "src/data/db/ships/fna/blastdb/concatenated.fa"},
-    "gene": {
-        "tyr": {
-            "nucl": "src/data/db/captain/tyr/fna/blastdb/concatenated.dedup.fna",
-            "prot": "src/data/db/captain/tyr/faa/blastdb/concatenated.faa",
-            "hmm": {
-                "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "src/data/db/captain/tyr/faa/hmm/combined.hmm",
-            },
-        },
-        "nlr": {
-            "nucl": "src/data/db/cargo/nlr/fna/blastdb/nlr.fa",
-            "prot": "src/data/db/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-        },
-        "fre": {
-            "nucl": "src/data/db/cargo/fre/fna/blastdb/fre.fa",
-            "prot": "src/data/db/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-        },
-        "plp": {
-            "nucl": "src/data/db/cargo/plp/fna/blastdb/plp.fa",
-            "prot": "src/data/db/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-        },
-        "duf3723": {
-            "nucl": "src/data/db/cargo/duf3723/fna/blastdb/duf3723.fa",
-            "prot": "src/data/db/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-        },
-    },
-}
 
 
 def blast_family_button(family):
@@ -391,25 +361,28 @@ def update_ui(blast_results_dict, diamond_results_dict, n_clicks, curated):
         try:
             ship_family = no_update
             ship_table = no_update
+
+            blast_results_df = pd.DataFrame(blast_results_dict)
+
             query = """
             SELECT j.*, a.accession_tag, f.familyName, t.species
-            FROM joined_ships j
+            FROM accessions a
+            LEFT JOIN joined_ships j ON a.id = j.ship_id
             LEFT JOIN taxonomy t ON j.taxid = t.id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
-            JOIN accessions a ON j.ship_id = a.id
-            WHERE j.orphan IS NULL
+            WHERE accession_tag IN ({placeholders}) AND j.orphan IS NULL
             """
+            # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
+            # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
             if curated:
                 query += "WHERE j.curated_status == 'curated'"
 
-            initial_df = pd.read_sql_query(query, engine)
+            initial_df = pd.read_sql_query(
+                query, engine, placeholders=blast_results_df["accession_tag"]
+            )
 
             if blast_results_dict:
                 logging.info("Rendering BLAST table")
-                blast_results_df = pd.DataFrame(blast_results_dict)
-                # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
-                # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
-                # TODO: update blastdb's with accessions, rather than shipIDs?
                 df_for_table = pd.merge(
                     blast_results_df,
                     initial_df[["starshipID", "accession_tag"]],
