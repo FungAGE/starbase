@@ -38,17 +38,20 @@ def fetch_sequences(db_url, type):
     metadata = MetaData()
     metadata.reflect(bind=engine)
 
-    sequences = Table(type, metadata, autoload_with=engine)
-    result = connection.execute(sequences.select())
+    sequences_table = Table(type, metadata, autoload_with=engine)
+    result = connection.execute(sequences_table.select())
+
     if type == "captains":
         rowID = "captainID"
         sequenceID = "sequence"
-    if type == "ships":
+    elif type == "ships":
         rowID = "accession_tag"
         sequenceID = "ship_sequence"
+    else:
+        raise ValueError("Unsupported table type")
 
     sequences = []
-    for row in result:
+    for row in result.mappings():  # Use .mappings() to return rows as dictionaries
         name = row[rowID]
         sequence = row[sequenceID]
         sequences.append((name, sequence))
