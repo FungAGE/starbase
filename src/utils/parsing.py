@@ -170,7 +170,11 @@ def parse_fasta(contents, filename):
 
 def clean_shipID(s):
     return re.sub(
-        s.replace("|-", "").replace("|+", "").replace("|", "").replace("fam_", "_"),
-        "-Captain_.*",
+        r"_(\d)",
         "",
+        re.sub(
+            "-Captain_.*",
+            "",
+            s.replace("|-", "").replace("|+", "").replace("|", "").replace("fam_", "_"),
+        ),
     )

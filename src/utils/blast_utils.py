@@ -258,10 +258,10 @@ def run_hmmer(
 
         logging.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
 
-        return hmmer_results, gene_seq, tmp_hmmer, tmp_hmmer_parsed
+        return hmmer_results.to_dict("records")
     except Exception as e:
         logging.error(f"Error in HMMER search: {e}")
-        return None, None, None, None
+        return None
 
 
 # Parse the HMMER results
@@ -491,7 +491,7 @@ def blast_table(ship_blast_results):
                 ],
                 data=ship_blast_results.to_dict("records"),
                 hidden_columns=[
-                    "starshipID",
+                    "sseqid",
                     "qseqid",
                     "qseq",
                     "sseq",
@@ -732,23 +732,30 @@ def find_longest_orf(aa_seq, min_length=50):
 
 def get_protein_sequence(header, nuc_sequence):
     """
-    Translates the nucleotide sequence to protein sequence and writes to a FASTA file.
+    Translates the nucleotide sequence to protein sequence and writes to a multi-sequence FASTA file.
+
+    Parameters:
+        headers (list): List of headers for each protein sequence.
+        nuc_sequence (str): The nucleotide sequence to be translated.
+
+    Returns:
+        str: The filename of the generated FASTA file.
     """
-    protein_output_filename = tempfile.NamedTemporaryFile(suffix=".faa").name
-    # start_codon = find_start_codons(nuc_sequence)
-    # if start_codon is not None:
-    #     protein_seqs = translate(nuc_sequence[start_codon:])
-    # else:
+    protein_output_filename = tempfile.NamedTemporaryFile(
+        suffix=".faa", delete=False
+    ).name
     protein_seqs = translate_seq(nuc_sequence)
-    print(protein_seqs)
-    longest_protein = max((find_longest_orf(frame) for frame in protein_seqs), key=len)
-    if longest_protein is not None:
-        # Write the longest ORF to the output file
-        SeqIO.write(
-            SeqRecord(Seq(longest_protein), id=header, description=""),
-            protein_output_filename,
-            "fasta",
-        )
+
+    if protein_seqs is not None:
+        if isinstance(protein_seqs, list):
+            records = []
+            for i, protein_seq in enumerate(protein_seqs):
+                new_header = f"{header}_{i}"
+                records.append(
+                    SeqRecord(Seq(protein_seq), id=new_header, description="")
+                )
+
+            SeqIO.write(records, protein_output_filename, "fasta")
         return protein_output_filename
     else:
         return None
