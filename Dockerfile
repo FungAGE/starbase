@@ -27,7 +27,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./ ./
 
 # unzip db
-RUN gunzip -c src/data/db.tar.gz | tar -xf -
+RUN cd src/data && gunzip -c db.tar.gz | tar -xf - && ls -l db/ && chmod 644 db/starbase.sqlite && cd ../../
+# to create the db.tar.gz 
+# cd src/data/ && tar -cf db.tar db/* && gzip -f db.tar
+
+# build blast dbs from sql table
+RUN python src/utils/blastdb.py
 
 # Change permissions
 RUN chmod +x start-script.sh && chown -R $USER:$USER $HOME

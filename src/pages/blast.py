@@ -29,6 +29,7 @@ from src.utils.blast_utils import (
     write_temp_fasta,
     run_blast,
     run_hmmer,
+    run_diamond,
     blast_table,
     run_lastz,
     select_ship_family,
@@ -38,40 +39,10 @@ from src.utils.blast_utils import (
 from src.components.callbacks import curated_switch
 from src.utils.parsing import parse_fasta, clean_shipID
 from src.components.sqlite import engine
+from src.utils.blastdb import db_list
 
 
 dash.register_page(__name__)
-
-# TODO: remake nucl blastdb for ships (updated headers)
-db_list = {
-    "ship": {"nucl": "src/data/db/ships/fna/blastdb/concatenated.fa"},
-    "gene": {
-        "tyr": {
-            "nucl": "src/data/db/captain/tyr/fna/blastdb/concatenated.dedup.fa",
-            "prot": "src/data/db/captain/tyr/faa/blastdb/concatenated.faa",
-            "hmm": {
-                "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "src/data/db/captain/tyr/faa/hmm/combined.hmm",
-            },
-        },
-        "nlr": {
-            "nucl": "src/data/db/cargo/nlr/fna/blastdb/nlr.fa",
-            "prot": "src/data/db/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-        },
-        "fre": {
-            "nucl": "src/data/db/cargo/fre/fna/blastdb/fre.fa",
-            "prot": "src/data/db/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-        },
-        "plp": {
-            "nucl": "src/data/db/cargo/plp/fna/blastdb/plp.fa",
-            "prot": "src/data/db/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-        },
-        "duf3723": {
-            "nucl": "src/data/db/cargo/duf3723/fna/blastdb/duf3723.fa",
-            "prot": "src/data/db/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-        },
-    },
-}
 
 
 def blast_family_button(family):
@@ -91,7 +62,7 @@ layout = dmc.Container(
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
-        dcc.Store(id="hmmer-results-store"),
+        dcc.Store(id="captain-results-store"),
         dmc.Grid(
             justify="start",
             align="start",
@@ -268,7 +239,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 @callback(
     [
         Output("blast-results-store", "data"),
-        Output("hmmer-results-store", "data"),
+        Output("captain-results-store", "data"),
         Output("subject-seq-button", "children"),
     ],
     [
@@ -277,7 +248,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-type-store", "data"),
     ],
 )
-def fetch_blast_hmmer_results(query_header, query_seq, query_type):
+def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     try:
         if not query_header or not query_seq:
             logging.error("Missing query header or sequence.")
@@ -299,7 +270,7 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
                 input_eval=0.01,
                 threads=2,
             )
-            # logging.info(f"BLAST results: {blast_results}")
+            # logging.info(f"BLAST results: {blast_results.head()}")
             if blast_results is None:
                 raise ValueError("BLAST returned no results!")
         except Exception as e:
@@ -311,32 +282,40 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
         # Run HMMER
         # logging.info(f"Running HMMER")
 
-        # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
         subject_seq_button = None
-        subject_seq = None
+        # subject_seq = None
 
         try:
-            hmmer_results, subject_seq, tmp_hmmer, tmp_hmmer_parsed = run_hmmer(
-                db_list=db_list,
-                query_type=query_type,
-                input_genes="tyr",
-                input_eval=0.01,
-                query_fasta=tmp_query_fasta,
-                threads=2,
-            )
-            # logging.info(f"HMMER results: {hmmer_results}")
-            if hmmer_results is None:
-                logging.error("hmmsearch returned no results!")
+            if search_type == "diamond":
+                results_dict = run_diamond(
+                    db_list=db_list,
+                    query_type=query_type,
+                    input_genes="tyr",
+                    input_eval=0.01,
+                    query_fasta=tmp_query_fasta,
+                    threads=2,
+                )
+            if search_type == "hmmsearch":
+                results_dict = run_hmmer(
+                    db_list=db_list,
+                    query_type=query_type,
+                    input_genes="tyr",
+                    input_eval=0.01,
+                    query_fasta=tmp_query_fasta,
+                    threads=2,
+                )
+
+            if results_dict is None or len(results_dict) == 0:
+                logging.error("Diamond/HMMER returned no results!")
                 raise
         except Exception as e:
-            logging.error(f"HMMER error: {str(e)}")
+            logging.error(f"Diamond/HMMER error: {str(e)}")
             raise
 
-        hmmer_results_dict = hmmer_results.to_dict("records")
-        return blast_results_dict, hmmer_results_dict, subject_seq_button
+        return blast_results_dict, results_dict, subject_seq_button
 
     except Exception as e:
-        logging.error(f"Error in fetch_blast_hmmer_results: {str(e)}")
+        logging.error(f"Error in fetch_captain: {str(e)}")
         return None, None, None
 
 
@@ -369,47 +348,53 @@ no_captain_alert = dbc.Alert(
     ],
     [
         Input("blast-results-store", "data"),
-        Input("hmmer-results-store", "data"),
+        Input("captain-results-store", "data"),
+        Input("curated-input", "value"),
     ],
-    [State("submit-button", "n_clicks"), State("curated-input", "value")],
+    State("submit-button", "n_clicks"),
 )
-def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
-    if blast_results_dict is None and hmmer_results_dict is None:
+def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
+    if blast_results_dict is None and captain_results_dict is None:
         raise PreventUpdate
     if n_clicks:
         logging.info(f"Updating UI with n_clicks={n_clicks}")
         try:
             ship_family = no_update
             ship_table = no_update
+
+            blast_results_df = pd.DataFrame(blast_results_dict)
+
             query = """
-            SELECT j.*, a.accession_tag, f.familyName, t.species
-            FROM joined_ships j
+            SELECT j.starshipID, a.accession_tag, f.familyName, t.species
+            FROM accessions a
+            LEFT JOIN joined_ships j ON a.id = j.ship_id
             LEFT JOIN taxonomy t ON j.taxid = t.id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
-            JOIN accessions a ON j.ship_id = a.id
             WHERE j.orphan IS NULL
             """
+            # user can switch back and forth between hq and all ships in the output, without having to run a new search
             if curated:
-                query += "WHERE j.curated_status == 'curated'"
+                query += "AND j.curated_status == 'curated'"
+
+            # accessions = blast_results_df["sseqid"]
+
+            # if accessions is not None and len(accessions) > 1:
+            #     placeholders = ",".join(["?"] * len(accessions))
+            #     query += f"AND accession_tag IN ({placeholders})"
+            #     initial_df = pd.read_sql_query(query, engine, params=accessions)
+            # else:
 
             initial_df = pd.read_sql_query(query, engine)
 
             if blast_results_dict:
                 logging.info("Rendering BLAST table")
-                blast_results_df = pd.DataFrame(blast_results_dict)
-                # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
-                # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
-                # TODO: update blastdb's with accessions, rather than shipIDs?
                 df_for_table = pd.merge(
+                    initial_df,
                     blast_results_df,
-                    initial_df[["starshipID", "accession_tag"]],
-                    left_on="sseqid",
-                    right_on="starshipID",
-                    how="left",
+                    left_on="accession_tag",
+                    right_on="sseqid",
+                    how="right",
                 )
-
-                col_order = [df_for_table.columns[-1]] + list(df_for_table.columns[:-1])
-                df_for_table = df_for_table[col_order]
 
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
@@ -419,16 +404,16 @@ def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
                         color="danger",
                     )
 
-            if hmmer_results_dict:
-                logging.info("Processing HMMER results")
-                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df[
-                    hmmer_results_df["hit_IDs"].isin(initial_df["starshipID"])
-                ]
-                if len(df_for_hmmer) > 0:
+            if captain_results_dict:
+                logging.info("Processing Diamond/HMMER results")
+                captain_results_df = pd.DataFrame(captain_results_dict)
+                # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
+                #     clean_shipID
+                # )
+                if len(captain_results_df) > 0:
                     try:
                         superfamily, family_aln_length, family_evalue = (
-                            select_ship_family(df_for_hmmer)
+                            select_ship_family(captain_results_df)
                         )
                         if superfamily:
                             family = initial_df[
@@ -467,10 +452,11 @@ def update_ui(blast_results_dict, hmmer_results_dict, n_clicks, curated):
     [
         Input("ship-blast-table", "derived_virtual_data"),
         Input("ship-blast-table", "derived_virtual_selected_rows"),
+        Input("curated-input", "value"),
     ],
     State("query-type-store", "data"),
 )
-def blast_alignments(ship_blast_results, selected_row, query_type):
+def blast_alignments(ship_blast_results, selected_row, curated, query_type):
     try:
         logging.info(
             f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"

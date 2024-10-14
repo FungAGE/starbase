@@ -17,8 +17,18 @@
 # +++++++++++++++++++++++++++++++++++++++++++++++++
 
 # ------------------------------------------------------
+import warnings
+
+warnings.filterwarnings("ignore")
+
+import logging
+
 import argparse
 import sys
+import pandas as pd
+
+from src.utils.parsing import clean_shipID
+
 
 # ------------------------------------------------------
 # version = 3.6
@@ -216,3 +226,27 @@ def stitch_blast(tabfile, output_name):
     # Print filtered tab file
     # ------------------------------------------------------
     print_table(stitchedtab, output_name)
+    df = pd.read_csv(
+        output_name,
+        sep="\t",
+        names=[
+            "qseqid",
+            "sseqid",
+            "pident",
+            "length",
+            "mismatch",
+            "gapopen",
+            "qstart",
+            "qend",
+            "sstart",
+            "send",
+            "evalue",
+            "bitscore",
+            "qseq",
+            "sseq",
+        ],
+    )
+    df = df.dropna()
+
+    # logging.info(f"BLAST results parsed with {len(df)} hits.")
+    return df

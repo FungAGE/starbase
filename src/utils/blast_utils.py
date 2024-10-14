@@ -115,6 +115,7 @@ def run_blast(
     tmp_blast=None,
     input_eval=None,
     threads=None,
+    stitch=True,
 ):
     try:
         db_type = "nucl"
@@ -149,9 +150,33 @@ def run_blast(
         logging.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
 
         # stitch BLAST results
-        tmp_stitch = tempfile.NamedTemporaryFile(suffix=".stitch", delete=False).name
-        logging.info(f"Running BLAST stitching: {tmp_stitch}")
-        stitch_blast(tmp_blast, tmp_stitch)
+        if stitch:
+            tmp_stitch = tempfile.NamedTemporaryFile(
+                suffix=".stitch", delete=False
+            ).name
+            logging.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
+            df = stitch_blast(tmp_blast, tmp_stitch)
+        else:
+            df = pd.read_csv(
+                tmp_blast,
+                sep="\t",
+                names=[
+                    "qseqid",
+                    "sseqid",
+                    "pident",
+                    "length",
+                    "mismatch",
+                    "gapopen",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                    "evalue",
+                    "bitscore",
+                    "qseq",
+                    "sseq",
+                ],
+            )
 
         # with open(tmp_query_fasta, "r") as file:
         #     file_contents = file.read()
@@ -160,34 +185,6 @@ def run_blast(
         # with open(tmp_blast, "r") as file:
         #     file_contents = file.read()
         # logging.info(file_contents)
-
-        df = pd.read_csv(
-            tmp_stitch,
-            sep="\t",
-            names=[
-                "qseqid",
-                "sseqid",
-                "pident",
-                "length",
-                "mismatch",
-                "gapopen",
-                "qstart",
-                "qend",
-                "sstart",
-                "send",
-                "evalue",
-                "bitscore",
-                "qseq",
-                "sseq",
-            ],
-        )
-
-        df = df.dropna()
-
-        df["qseqid"] = df["qseqid"].apply(clean_shipID)
-        df["sseqid"] = df["sseqid"].apply(clean_shipID)
-
-        logging.info(f"BLAST results parsed with {len(df)} hits.")
 
         return df
     except Exception as e:
@@ -261,10 +258,10 @@ def run_hmmer(
 
         logging.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
 
-        return hmmer_results, gene_seq, tmp_hmmer, tmp_hmmer_parsed
+        return hmmer_results.to_dict("records")
     except Exception as e:
         logging.error(f"Error in HMMER search: {e}")
-        return None, None, None, None
+        return None
 
 
 # Parse the HMMER results
@@ -494,7 +491,7 @@ def blast_table(ship_blast_results):
                 ],
                 data=ship_blast_results.to_dict("records"),
                 hidden_columns=[
-                    "starshipID",
+                    "sseqid",
                     "qseqid",
                     "qseq",
                     "sseq",
@@ -502,6 +499,8 @@ def blast_table(ship_blast_results):
                     "qend",
                     "sstart",
                     "send",
+                    "mismatch",
+                    "gapopen",
                 ],
                 id="ship-blast-table",
                 editable=False,
@@ -520,12 +519,22 @@ def blast_table(ship_blast_results):
                 style_table={
                     "overflow": "hidden",
                     "overflowX": "auto",
-                    "maxWidth": "100%",
-                    "padding": "10px",
+                },
+                style_data={
+                    "height": "auto",
+                    "whiteSpace": "normal",
+                    "overflow": "hidden",
                 },
                 style_cell={
-                    "minWidth": "0px",
+                    "minWidth": "120px",
+                    "maxWidth": "300px",
+                    "padding": "5px",
                     "whiteSpace": "normal",
+                    "textAlign": "left",
+                },
+                style_header={
+                    "backgroundColor": "lightgrey",
+                    "fontWeight": "bold",
                     "textAlign": "left",
                 },
             ),
@@ -624,10 +633,39 @@ def parse_lastz_output(output_file):
     return df
 
 
-def diamond(query, db, threads=2):
-    threads = 2
-    diamond_cmd = f"/usr/bin/diamond blastp --db {db} -q {query} -f 6 qseqid pident evalue qseq -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids"
+def run_diamond(
+    db_list=None,
+    query_type=None,
+    input_genes="tyr",
+    input_eval=None,
+    query_fasta=None,
+    threads=2,
+):
+
+    diamond_out = tempfile.NamedTemporaryFile(suffix=".fa").name
+
+    header, seq = parse_fasta_from_text(query_fasta)
+
+    diamond_db = db_list["gene"][input_genes]["prot"]
+    if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
+        raise ValueError(f"HMMER database {diamond_db} not found or is empty.")
+
+    if query_type == "nucl":
+        blast_type = "blastx"
+        out_fmt = "6 qseqid sseqid length qstart qend gaps qseq_translated sseq evalue bitscore"
+    else:
+        blast_type = "blastp"
+        out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
+
+    subprocess.run("/home/adrian/anaconda3/bin/diamond help", shell=True, check=True)
+    diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids | sed '1i >{header}' > {diamond_out}"
+
     subprocess.run(diamond_cmd, shell=True, check=True)
+
+    column_names = out_fmt.split()[1:]
+    diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
+
+    return diamond_results.to_dict("records")
 
 
 def load_fasta_to_dict(fasta_file):
@@ -694,23 +732,30 @@ def find_longest_orf(aa_seq, min_length=50):
 
 def get_protein_sequence(header, nuc_sequence):
     """
-    Translates the nucleotide sequence to protein sequence and writes to a FASTA file.
+    Translates the nucleotide sequence to protein sequence and writes to a multi-sequence FASTA file.
+
+    Parameters:
+        headers (list): List of headers for each protein sequence.
+        nuc_sequence (str): The nucleotide sequence to be translated.
+
+    Returns:
+        str: The filename of the generated FASTA file.
     """
-    protein_output_filename = tempfile.NamedTemporaryFile(suffix=".faa").name
-    # start_codon = find_start_codons(nuc_sequence)
-    # if start_codon is not None:
-    #     protein_seqs = translate(nuc_sequence[start_codon:])
-    # else:
+    protein_output_filename = tempfile.NamedTemporaryFile(
+        suffix=".faa", delete=False
+    ).name
     protein_seqs = translate_seq(nuc_sequence)
-    print(protein_seqs)
-    longest_protein = max((find_longest_orf(frame) for frame in protein_seqs), key=len)
-    if longest_protein is not None:
-        # Write the longest ORF to the output file
-        SeqIO.write(
-            SeqRecord(Seq(longest_protein), id=header, description=""),
-            protein_output_filename,
-            "fasta",
-        )
+
+    if protein_seqs is not None:
+        if isinstance(protein_seqs, list):
+            records = []
+            for i, protein_seq in enumerate(protein_seqs):
+                new_header = f"{header}_{i}"
+                records.append(
+                    SeqRecord(Seq(protein_seq), id=new_header, description="")
+                )
+
+            SeqIO.write(records, protein_output_filename, "fasta")
         return protein_output_filename
     else:
         return None
