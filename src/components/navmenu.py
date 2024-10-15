@@ -4,7 +4,8 @@ from dash import html
 from src.config.settings import (
     HOME_URL,
     WIKI_URL,
-    PGV_URL,
+    # PGV_URL,
+    CLINKER_URL,
     BLAST_URL,
     SUBMIT_URL,
     ABOUT_URL,
@@ -25,7 +26,7 @@ def navmenu(buttons_disabled=False):
         dbc.NavItem(
             dbc.NavLink(
                 "Starship Viewer",
-                href=PGV_URL,
+                href=CLINKER_URL,
                 active="exact",
                 className="nav-item-link",
                 disabled=buttons_disabled,
