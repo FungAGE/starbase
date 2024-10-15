@@ -6,7 +6,8 @@ from src.pages import (
     DL_URL,
     WIKI_URL,
     # EXPLORE_URL,
-    PGV_URL,
+    # PGV_URL,
+    CLINKER_URL,
     BLAST_URL,
     SUBMIT_URL,
     ABOUT_URL,
@@ -55,7 +56,7 @@ navbar_content = [
                 ["Starship Viewer"],
                 className="nav-item-text",
             ),
-            href=PGV_URL,
+            href=CLINKER_URL,
             active="exact",
             className="nav-item-link",
         )
