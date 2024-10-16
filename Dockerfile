@@ -1,6 +1,7 @@
 # Select base image
 FROM python:3.9
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
+LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring of large transposable elements in  Fungi"
 
 # Create user name and home directory variables
 ENV USER=starbase
