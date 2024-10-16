@@ -477,9 +477,9 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
-            qseq = re.sub("-", "", str(row["qseq"]))
+            qseq = str(row["qseq"])
             qseqid = str(row["qseqid"])
-            sseq = re.sub("-", "", str(row["sseq"]))
+            sseq = str(row["sseq"])
             sseqid = str(row["sseqid"])
 
         except IndexError:

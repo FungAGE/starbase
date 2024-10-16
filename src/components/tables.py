@@ -67,6 +67,11 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
             "maxWidth": "100%",
             "textAlign": "left",
         },
+        style_header={
+            "backgroundColor": "lightgrey",
+            "fontWeight": "bold",
+            "textAlign": "left",
+        },
     )
     return table
 
