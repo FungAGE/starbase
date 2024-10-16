@@ -61,7 +61,9 @@ layout = dmc.Container(
         dcc.Location(id="url", refresh=False),
         dmc.Center(
             children=[
-                dmc.Title("Choose Starships to Download:"),
+                dmc.Title(
+                    ["Choose Starships to Download:"], style={"paddingTop": "20px"}
+                ),
             ],
         ),
         dmc.Grid(
