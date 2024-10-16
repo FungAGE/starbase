@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy import create_engine
 import subprocess
+import pandas as pd
 
 db_list = {
     "ship": {"nucl": "src/data/db/ships/fna/blastdb/ships.fa"},
@@ -34,29 +35,29 @@ db_list = {
 
 def fetch_sequences(db_url, type):
     engine = create_engine(db_url)
-    connection = engine.connect()
-    metadata = MetaData()
-    metadata.reflect(bind=engine)
-
-    sequences_table = Table(type, metadata, autoload_with=engine)
-    result = connection.execute(sequences_table.select())
 
     if type == "captains":
-        rowID = "captainID"
-        sequenceID = "sequence"
+        nameID = "captainID"
+        query = f"""
+        SELECT c.*
+        FROM captains c
+        """
     elif type == "ships":
-        rowID = "accession_tag"
-        sequenceID = "sequence"
+        nameID = "accession_tag"
+        query = """
+        SELECT s.*, a.accession_tag
+        FROM ships s
+        LEFT JOIN accessions a ON s.accession = a.id
+        """
     else:
         raise ValueError("Unsupported table type")
 
+    result = pd.read_sql_query(query, engine)
     sequences = []
-    for row in result.mappings():  # Use .mappings() to return rows as dictionaries
-        name = row[rowID]
-        sequence = row[sequenceID]
+    for index, row in result.iterrows():
+        name = row[nameID]
+        sequence = row["sequence"]
         sequences.append((name, sequence))
-
-    connection.close()
     return sequences
 
 
