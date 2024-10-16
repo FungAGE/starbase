@@ -241,7 +241,7 @@ def generate_download(dl_all, dl_select, rows, data):
             # Create FASTA content
             try:
                 fasta_content = [
-                    f">{row['accession_tag']}\n{row['ship_sequence']}"
+                    f">{row['accession_tag']}\n{row['sequence']}"
                     for _, row in df.iterrows()
                 ]
                 fasta_str = "\n".join(fasta_content)

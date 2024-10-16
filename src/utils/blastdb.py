@@ -46,7 +46,7 @@ def fetch_sequences(db_url, type):
         sequenceID = "sequence"
     elif type == "ships":
         rowID = "accession_tag"
-        sequenceID = "ship_sequence"
+        sequenceID = "sequence"
     else:
         raise ValueError("Unsupported table type")
 

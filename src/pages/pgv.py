@@ -179,7 +179,7 @@ def write_tmp(df, seqid, type=None):
     if type == "gff":
         df.to_csv(tmp, sep="\t", header=False, index=False)
     elif type == "fa":
-        seq = df["ship_sequence"][0]
+        seq = df["sequence"][0]
         with open(tmp, "w") as f:
             f.write(f">{seqid}\n{seq}\n")
     return tmp
@@ -389,7 +389,7 @@ def load_ship_table(href):
     JOIN accessions a ON j.ship_id = a.id
     JOIN ships s on s.accession = a.id
     JOIN gff g ON a.id = g.ship_id
-    WHERE s.ship_sequence is NOT NULL AND g.ship_id is NOT NULL AND j.orphan IS NULL
+    WHERE s.sequence is NOT NULL AND g.ship_id is NOT NULL AND j.orphan IS NULL
     """
     table_df = pd.read_sql_query(query, engine)
     table_df = table_df.drop_duplicates(subset=["accession_tag"])
