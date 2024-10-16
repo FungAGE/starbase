@@ -150,17 +150,27 @@ layout = dmc.Container(
 
 @callback(Output("dl-table", "data"), Input("url", "href"))
 def make_dl_table(url):
-    query = """
-    SELECT a.accession_tag, f.familyName, t."order", t.family, t.species 
-    FROM accessions a
-    LEFT JOIN joined_ships j ON a.id = j.ship_id
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    WHERE j.orphan IS NULL
-    """
-    df = pd.read_sql_query(query, engine)
-    df.fillna('', inplace=True)  # Replace NaN with an empty string
-    return df.to_dict("records")
+    try:
+        query = """
+        SELECT a.accession_tag, f.familyName, t."order", t.family, t.species 
+        FROM accessions a
+        LEFT JOIN joined_ships j ON a.id = j.ship_id
+        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
+        WHERE j.orphan IS NULL
+        """
+        df = pd.read_sql_query(query, engine)
+        if df.empty:
+            logging.error("Query returned an empty DataFrame.")
+        else:
+            logging.info(f"Retrieved {len(df)} records from the database.")
+
+        df.fillna("", inplace=True)  # Replace NaN with an empty string
+        return df.to_dict("records")
+
+    except Exception as e:
+        logging.error(f"Failed to execute query in make_dl_table. Details: {e}")
+        return []
 
 
 @callback(
@@ -173,37 +183,83 @@ def make_dl_table(url):
     ],
 )
 def generate_download(dl_all, dl_select, rows, data):
-    if dl_all or dl_select:
-        print(rows)
-        if dl_select and (rows is None or rows == []):
-            return None, dbc.Alert(
-                "Make a selection in the table first", color="warning"
-            )
-        else:
+    try:
+        if dl_all or dl_select:
+            logging.info(f"dl_all={dl_all}, dl_select={dl_select}, rows={rows}")
 
-            query = """
-            SELECT s.*
-            FROM ships s
-            LEFT JOIN accessions a ON s.accession = a.id
-            """
+            if dl_select and (rows is None or rows == []):
+                logging.warning(
+                    "Download selected was triggered but no rows are selected."
+                )
+                return None, dbc.Alert(
+                    "Make a selection in the table first", color="warning"
+                )
 
-            accessions = pd.DataFrame(data).iloc[rows, "accession_tag"]
+            # Validate if data is available
+            if not data:
+                logging.error("No data available from the table for processing.")
+                return None, dbc.Alert("No data available for download", color="danger")
 
-            if accessions is not None and len(accessions) > 1:
-                placeholders = ",".join(["?"] * len(accessions))
-                query += f"WHERE accession_tag IN ({placeholders})"
-                df = pd.read_sql_query(query, engine, params=accessions)
-            else:
-                df = pd.read_sql_query(query, engine)
+            # Extract accessions safely
+            try:
+                accessions = pd.DataFrame(data).iloc[rows]["accession_tag"]
+                logging.info(f"Selected accessions: {accessions.tolist()}")
+            except Exception as e:
+                logging.error(f"Failed to extract accessions. Details: {e}")
+                return None, dbc.Alert(
+                    "Error extracting accessions from the selection", color="danger"
+                )
+
+            # Build and execute the SQL query
+            try:
+                query = """
+                SELECT s.*
+                FROM ships s
+                LEFT JOIN accessions a ON s.accession = a.id
+                """
+                if accessions is not None and len(accessions) > 0:
+                    placeholders = ",".join(["?"] * len(accessions))
+                    query += f" WHERE accession_tag IN ({placeholders})"
+                    df = pd.read_sql_query(query, engine, params=accessions.tolist())
+                    logging.info(f"Query returned {len(df)} records for accessions.")
+                else:
+                    df = pd.read_sql_query(query, engine)
+                    logging.info("Retrieved all records from the database.")
+            except Exception as e:
+                logging.error(f"Failed to execute database query. Details: {e}")
+                return None, dbc.Alert(
+                    "Error retrieving data from the database", color="danger"
+                )
+
+            if df.empty:
+                logging.warning("Query returned no matching records.")
+                return None, dbc.Alert(
+                    "No matching records found for the selected accessions",
+                    color="warning",
+                )
 
             # Create FASTA content
-            fasta_content = [
-                f">{row['accession_tag']}\n{row['ship_sequence']}"
-                for _, row in df.iterrows()
-            ]
-            fasta_str = "\n".join(fasta_content)
+            try:
+                fasta_content = [
+                    f">{row['accession_tag']}\n{row['ship_sequence']}"
+                    for _, row in df.iterrows()
+                ]
+                fasta_str = "\n".join(fasta_content)
+                logging.info("FASTA content created successfully.")
+                return dcc.send_string(fasta_str, filename="starships.fasta"), None
+            except Exception as e:
+                logging.error(f"Failed to create FASTA content. Details: {e}")
+                return None, dbc.Alert(
+                    "Error creating FASTA file for download", color="danger"
+                )
+        else:
+            logging.info("No download action triggered.")
+            return dash.no_update, None
 
-            # Send the FASTA file for download
-            return dcc.send_string(fasta_str, filename="starships.fasta"), None
-    else:
-        return dash.no_update, None
+    except Exception as e:
+        logging.error(
+            f"An unexpected error occurred in generate_download. Details: {e}"
+        )
+        return None, dbc.Alert(
+            "An unexpected error occurred during the download process", color="danger"
+        )
