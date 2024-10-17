@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore")
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 
 from dash import html
 import dash_bootstrap_components as dbc
