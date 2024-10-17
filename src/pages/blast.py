@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore")
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 
 import dash
 import dash_bootstrap_components as dbc
@@ -211,16 +211,16 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
 
     try:
-        # logging.info(
-        #     f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
-        # )
+        logging.info(
+            f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
+        )
 
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-        # logging.info(
-        #     f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
-        # )
+        logging.info(
+            f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
+        )
 
         if input_type in ("none", "both"):
             logging.info("Invalid input type; returning None.")
@@ -270,7 +270,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                 input_eval=0.01,
                 threads=2,
             )
-            # logging.info(f"BLAST results: {blast_results.head()}")
+            logging.info(f"BLAST results: {blast_results.head()}")
             if blast_results is None:
                 raise ValueError("BLAST returned no results!")
         except Exception as e:
@@ -280,7 +280,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
         blast_results_dict = blast_results.to_dict("records")
 
         # Run HMMER
-        # logging.info(f"Running HMMER")
+        logging.info(f"Running HMMER")
 
         subject_seq_button = None
         # subject_seq = None
@@ -404,41 +404,58 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                         color="danger",
                     )
 
-            if captain_results_dict:
-                logging.info("Processing Diamond/HMMER results")
-                captain_results_df = pd.DataFrame(captain_results_dict)
-                # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
-                #     clean_shipID
-                # )
-                if len(captain_results_df) > 0:
-                    try:
-                        superfamily, family_aln_length, family_evalue = (
-                            select_ship_family(captain_results_df)
-                        )
-                        if superfamily:
-                            family = initial_df[
-                                initial_df["familyName"] == superfamily
-                            ]["familyName"].unique()[0]
-                            if family:
-                                ship_family = dbc.Alert(
-                                    [
-                                        f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                                    ],
-                                    color="warning",
-                                )
-                            else:
-                                ship_family = dbc.Alert(
-                                    [f"Starship family could not be determined."],
-                                    color="danger",
-                                )
+                min_evalue_rows = df_for_table.loc[
+                    df_for_table.groupby("qseqid")["evalue"].idxmin()
+                ]
+                if min_evalue_rows["pident"][0] > 95:
+                    family_name = min_evalue_rows["familyName"][0]
+                    aln_len = min_evalue_rows["length"][0]
+                    ev = min_evalue_rows["evalue"][0]
+                    ship_family = dbc.Alert(
+                        [
+                            f"Your sequence is likely in Starship family: {family_name} (Alignment length = {aln_len}, evalue = {ev})",
+                        ],
+                        color="warning",
+                    )
 
-                    except Exception as e:
-                        logging.error(f"Error selecting ship family: {str(e)}")
-                        ship_family = html.Div(f"Error: {str(e)}")
                 else:
-                    ship_family = no_captain_alert
-            else:
-                ship_family = no_captain_alert
+                    if captain_results_dict:
+                        logging.info("Processing Diamond/HMMER results")
+                        captain_results_df = pd.DataFrame(captain_results_dict)
+                        # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
+                        #     clean_shipID
+                        # )
+                        if len(captain_results_df) > 0:
+                            try:
+                                superfamily, family_aln_length, family_evalue = (
+                                    select_ship_family(captain_results_df)
+                                )
+                                if superfamily:
+                                    family = initial_df[
+                                        initial_df["familyName"] == superfamily
+                                    ]["familyName"].unique()[0]
+                                    if family:
+                                        ship_family = dbc.Alert(
+                                            [
+                                                f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                            ],
+                                            color="warning",
+                                        )
+                                    else:
+                                        ship_family = dbc.Alert(
+                                            [
+                                                f"Starship family could not be determined."
+                                            ],
+                                            color="danger",
+                                        )
+
+                            except Exception as e:
+                                logging.error(f"Error selecting ship family: {str(e)}")
+                                ship_family = html.Div(f"Error: {str(e)}")
+                        else:
+                            ship_family = no_captain_alert
+                    else:
+                        ship_family = no_captain_alert
 
             return ship_family, ship_table
 
