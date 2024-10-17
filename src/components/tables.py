@@ -58,6 +58,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
             "width": "100%",
             "height": "100%",
             "overflowX": "auto",
+            "overflowY": "auto",
         },
         style_data={
             "whiteSpace": "minimal",
