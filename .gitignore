@@ -166,3 +166,5 @@ database_folder/**
 .dockerignore
 src/data/db
 .vscode/settings.json
+alembic/**
+alembic.ini
