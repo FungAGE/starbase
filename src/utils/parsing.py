@@ -63,40 +63,38 @@ def parse_fasta_from_text(text, format="fasta"):
 def parse_fasta_from_file(file_contents):
     """
     Parses a FASTA sequence from a file's contents (base64 encoded).
-    Ensures a valid FASTA header is present.
+    Ensures a valid FASTA header is present and only one sequence is present.
     Returns the header and sequence if successful, otherwise (None, None).
     """
     try:
         if not file_contents:
             raise ValueError("No file contents provided.")
 
-        # Split the contents and decode the base64 file contents
         split_contents = file_contents.split(",")
-        file_type = split_contents[
-            0
-        ].strip()  # This will contain metadata (e.g., "data:text/plain;base64")
-        sequence = "".join(
-            split_contents[1:]
-        )  # This is the base64-encoded FASTA sequence
+        file_type = split_contents[0].strip()
+        sequence = "".join(split_contents[1:])
 
         decoded_sequence = base64.b64decode(sequence).decode("utf-8")
 
-        # Ensure the sequence contains a valid FASTA header
-        decoded_sequence = ensure_fasta_header(decoded_sequence)
+        fasta_io = StringIO(decoded_sequence)
+        sequences = list(SeqIO.parse(fasta_io, "fasta"))
 
-        # Parse the decoded sequence using SeqIO
-        query = SeqIO.read(StringIO(decoded_sequence), "fasta")
+        if len(sequences) == 0:
+            raise ValueError("No valid FASTA sequence found.")
+        elif len(sequences) > 1:
+            raise ValueError("More than one sequence found in the FASTA file.")
 
+        query = sequences[0]
         header, seq = str(query.id), str(query.seq)
         logging.info(f"Parsed sequence: {header}")
         return header, seq
 
     except ValueError as ve:
         logging.error(f"Value error: {ve}")
-        return None, None
+        return None, str(ve)
     except Exception as e:
         logging.error(f"Error parsing file: {e}")
-        return None, None
+        return None, str(e)
 
 
 def parse_gff(contents, filename):
