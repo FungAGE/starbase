@@ -190,28 +190,26 @@ layout = dmc.Container(
 )
 
 
-def clean_contigIDs(strings):
+def clean_contigIDs(string):
     # Removing omes from contigIDs
-    cleaned = []
-    for string in strings:
+    if string is None:
+        return None
+    else:
         parts = string.split("_", 1)
         if len(parts) > 1:
             prefix = parts[0]
             suffix = parts[1]
             if 7 <= len(prefix) <= 9:
-                cleaned.append(suffix)
+                return suffix
             else:
-                cleaned.append(string)
-    return cleaned
+                return string
 
 
 @callback(Output("meta-data", "data"), Input("url", "href"))
 def load_meta_data(url):
     if url:
         meta_query = """
-        SELECT j.ship_family_id, j.curated_status, j.taxid, j.ship_id, j.genome_id, j.ome, j.size, j.upDR, j.downDR, 
-               f.familyName, j."#contigID" AS contigID, j.elementBegin, j.elementEnd, j."size", f.type_element_reference, 
-               a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation
+        SELECT j.ship_family_id, j.curated_status, j.taxid, j.ship_id, j.genome_id, j.ome, j.size, j.upDR, j.downDR, f.familyName, j.contigID, j.elementBegin, j.elementEnd, j."size", f.type_element_reference, a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation
         FROM joined_ships j
         LEFT JOIN taxonomy t ON j.taxid = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -221,9 +219,9 @@ def load_meta_data(url):
         """
         meta_df = pd.read_sql_query(meta_query, engine)
 
-        # # Accessing the column using the new alias 'contigID'
-        # if "contigID" in meta_df.columns:
-        #     meta_df["contigID"] = meta_df["contigID"].apply(clean_contigIDs)
+        # clean ome from contigID
+        if "contigID" in meta_df.columns:
+            meta_df["contigID"] = meta_df["contigID"].apply(clean_contigIDs)
 
         return meta_df.to_dict("records")
 
@@ -286,6 +284,8 @@ def create_sidebar(active_item, cached_meta):
     sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax", title_switch=False)
     fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
 
+    # TODO: add links to genome browser, and extra classification info for selected genome
+
     table_columns = [
         {
             "name": "Accession",
@@ -301,7 +301,7 @@ def create_sidebar(active_item, cached_meta):
         },
         {
             "name": "Contig ID",
-            "id": "#contigID",
+            "id": "contigID",
             "deletable": False,
             "selectable": False,
         },
@@ -323,18 +323,18 @@ def create_sidebar(active_item, cached_meta):
             "deletable": False,
             "selectable": False,
         },
-        {
-            "name": "Source",
-            "id": "genomeSource",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "Citation/Release Date",
-            "id": "citation",
-            "deletable": False,
-            "selectable": False,
-        },
+        # {
+        #     "name": "Source",
+        #     "id": "genomeSource",
+        #     "deletable": False,
+        #     "selectable": False,
+        # },
+        # {
+        #     "name": "Citation/Release Date",
+        #     "id": "citation",
+        #     "deletable": False,
+        #     "selectable": False,
+        # },
     ]
     table = make_ship_table(
         filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
