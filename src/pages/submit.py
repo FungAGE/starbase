@@ -1,8 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-import logging
-
 import base64
 import dash
 import dash_bootstrap_components as dbc
@@ -13,10 +8,11 @@ from dash import dcc, html, callback
 
 import datetime
 from src.utils.parsing import parse_fasta, parse_gff
+import logging
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
-
-logging.basicConfig(level=logging.ERROR)
 
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
 from sqlalchemy.exc import NoSuchTableError

@@ -1,9 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -25,9 +19,9 @@ from jinja2 import Template
 from src.components.sqlite import engine
 
 from src.components.tables import make_ship_table
+import logging
 
-logging.basicConfig(level=logging.ERROR)
-logging.getLogger("matplotlib.font_manager").disabled = True
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
 

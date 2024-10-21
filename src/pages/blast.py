@@ -1,11 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -41,6 +33,9 @@ from src.utils.parsing import parse_fasta, parse_fasta_from_file
 from src.components.sqlite import engine
 from src.utils.blastdb import db_list
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
 

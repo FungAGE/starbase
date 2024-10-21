@@ -1,11 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-
 import dash_bootstrap_components as dbc
 from dash import dash_table, dcc, html
 import dash_bio as dashbio
@@ -29,6 +21,10 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 
 from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def write_temp_fasta(header, sequence):

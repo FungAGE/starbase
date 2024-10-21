@@ -1,11 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-
 import dash
 from dash import html, dcc, dash_table, callback
 import dash_mantine_components as dmc
