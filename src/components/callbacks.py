@@ -1,17 +1,11 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-
 from dash import html
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
 import os
+import logging
 
+logger = logging.getLogger(__name__)
 
 download_ships_button = dbc.Button(
     html.Div(

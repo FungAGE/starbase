@@ -1,11 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-
 import dash_bootstrap_components as dbc
 from dash import dash_table, dcc, html
 import dash_bio as dashbio
@@ -29,6 +21,10 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 
 from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def write_temp_fasta(header, sequence):
@@ -59,7 +55,7 @@ def check_input(query_text_input, query_file_contents):
             header, query = parse_fasta_from_text(query_text_input)
         elif query_file_contents:
             input_type = "file"
-            header, query = parse_fasta_from_file(query_file_contents)
+            header, query, error_message = parse_fasta_from_file(query_file_contents)
         logging.debug(
             f"Input type: {input_type}, Header: {header}, Query Length: {len(query) if query else 'None'}"
         )
@@ -367,11 +363,11 @@ def run_blast(
 
         # with open(tmp_query_fasta, "r") as file:
         #     file_contents = file.read()
-        logging.info(file_contents)
+        # logging.info(file_contents)
 
         # with open(tmp_blast, "r") as file:
         #     file_contents = file.read()
-        logging.info(file_contents)
+        # logging.info(file_contents)
 
         return df
     except Exception as e:
@@ -485,7 +481,7 @@ def extract_gene_from_hmmer(parsed_file):
 
     # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".besthit.txt").name
     # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".best_hsp.fa").name
-    logging.info(f"Best hit for gene sequence: {top_hit_out_path}")
+    # logging.info(f"Best hit for gene sequence: {top_hit_out_path}")
 
     query = min_evalue_rows.loc[0, "query_id"]
     qseq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")

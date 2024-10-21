@@ -1,7 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -14,6 +10,10 @@ from src.components.sqlite import engine
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
