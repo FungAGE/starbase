@@ -52,11 +52,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # TODO: add PAT for from FungAGE org
       - name: Remove old packages
         uses: actions/delete-package-versions@v5
         with:
           owner: "github"
-          token: ${{ secrets.GITHUB_PAT }}
+          token: ${{ secrets.GH_PAT }}
           min-versions-to-keep: 10
           delete-only-pre-release-versions: "true"
