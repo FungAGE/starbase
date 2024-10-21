@@ -675,7 +675,7 @@ def handle_fasta_upload(contents, filename):
 
     content_type, content_string = contents.split(",")
 
-    header, fasta_length_error_message = parse_fasta_from_file(contents)
+    header, seq, fasta_length_error_message = parse_fasta_from_file(contents)
 
     decoded = base64.b64decode(content_string)
     file_size = len(decoded)

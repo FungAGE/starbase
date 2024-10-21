@@ -87,14 +87,14 @@ def parse_fasta_from_file(file_contents):
         query = sequences[0]
         header, seq = str(query.id), str(query.seq)
         logging.info(f"Parsed sequence: {header}")
-        return header, seq
+        return header, seq, None
 
     except ValueError as ve:
         logging.error(f"Value error: {ve}")
-        return None, str(ve)
+        return header, seq, str(ve)
     except Exception as e:
         logging.error(f"Error parsing file: {e}")
-        return None, str(e)
+        return header, seq, str(e)
 
 
 def parse_gff(contents, filename):
