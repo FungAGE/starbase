@@ -132,6 +132,7 @@ layout = dmc.Container(
                                     className="upload-box text-red text-center",
                                     multiple=False,
                                     accept=".fa, .fas, .fasta, .fna",
+                                    max_size=10000000,
                                 ),
                                 dcc.Loading(
                                     id="loading-1",
@@ -148,6 +149,7 @@ layout = dmc.Container(
                                     children=html.Div(id="submit-output-gff-upload"),
                                     accept=".gff, .gff3, .tsv",
                                     multiple=False,
+                                    max_size=10000000,
                                     className="upload-box text-red text-center",
                                 ),
                                 dcc.Loading(

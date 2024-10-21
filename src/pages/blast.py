@@ -109,6 +109,7 @@ layout = dmc.Container(
                             className="upload-box",
                             multiple=False,
                             accept=".fa, .fas, .fasta, .fna",
+                            max_size=10000000,
                         ),
                         curated_switch(
                             text="Only search curated Starships", size="normal"
