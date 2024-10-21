@@ -57,13 +57,11 @@ limiter = Limiter(
 )
 
 
-# Log rate-limited events
 @limiter.request_filter
 def log_rate_limit():
     remote_addr = get_remote_address()
     logging.info(f"Rate limit hit by IP: {remote_addr}")
-    # Alternatively, store the data in a database or monitoring service
-    return False  # Don't exclude the request from rate limiting, just log it
+    return False
 
 
 @app.server.before_request
