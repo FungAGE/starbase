@@ -16,6 +16,7 @@ from src.utils.parsing import parse_fasta, parse_gff
 
 dash.register_page(__name__)
 
+logging.basicConfig(level=logging.ERROR)
 
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
 from sqlalchemy.exc import NoSuchTableError

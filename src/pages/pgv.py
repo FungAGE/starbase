@@ -26,6 +26,7 @@ from src.components.sqlite import engine
 
 from src.components.tables import make_ship_table
 
+logging.basicConfig(level=logging.ERROR)
 logging.getLogger("matplotlib.font_manager").disabled = True
 
 dash.register_page(__name__)
