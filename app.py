@@ -26,6 +26,8 @@ external_scripts = [
 
 server = Flask(__name__)
 
+server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+
 app = Dash(
     __name__,
     server=server,

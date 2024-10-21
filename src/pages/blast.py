@@ -37,7 +37,7 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta, clean_shipID
+from src.utils.parsing import parse_fasta, parse_fasta_from_file
 from src.components.sqlite import engine
 from src.utils.blastdb import db_list
 
@@ -110,6 +110,11 @@ layout = dmc.Container(
                             multiple=False,
                             accept=".fa, .fas, .fasta, .fna",
                         ),
+                        html.Div(
+                            id="upload-error-message",
+                            style={"color": "red", "marginTop": "1rem"},
+                        ),
+                        dcc.Store(id="upload-error-store"),
                         curated_switch(
                             text="Only search curated Starships", size="normal"
                         ),
@@ -653,3 +658,37 @@ def create_alignment_plot(ship_blast_results, selected_row):
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
         return None
+
+
+@callback(
+    Output("upload-error-message", "children"),
+    Output("upload-error-store", "data"),
+    Output("submit-button", "disabled"),
+    Input("blast-fasta-upload", "contents"),
+    State("blast-fasta-upload", "filename"),
+    prevent_initial_call=True,
+)
+def handle_fasta_upload(contents, filename):
+    if contents is None:
+        return "", None
+    max_size = 10 * 1024 * 1024  # 10 MB in bytes
+
+    content_type, content_string = contents.split(",")
+
+    header, fasta_length_error_message = parse_fasta_from_file(contents)
+
+    decoded = base64.b64decode(content_string)
+    file_size = len(decoded)
+
+    if fasta_length_error_message:
+        error_message = dbc.Alert(
+            f"Error: {fasta_length_error_message}", color="danger"
+        )
+        return error_message, error_message, True
+    elif file_size > max_size:
+        error_message = dbc.Alert(
+            f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger"
+        )
+        return error_message, error_message, True
+    else:
+        return "", None, False
