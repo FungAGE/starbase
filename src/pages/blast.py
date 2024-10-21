@@ -21,8 +21,9 @@ import tempfile
 import base64
 from datetime import date
 import pandas as pd
-
 import plotly.graph_objects as go
+
+from app import limiter
 from src.utils.blast_utils import (
     check_input,
     guess_seq_type,
@@ -237,6 +238,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         return None, None, None
 
 
+@limiter.limit("1 per minute")
 @callback(
     [
         Output("blast-results-store", "data"),
