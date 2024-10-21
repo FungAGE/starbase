@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore")
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 
 import dash
 from dash import html, dcc, dash_table, callback
@@ -177,7 +177,7 @@ def make_dl_table(url):
         if df.empty:
             logging.error("Query returned an empty DataFrame.")
         # else:
-        # logging.info(f"Retrieved {len(df)} records from the database.")
+        logging.info(f"Retrieved {len(df)} records from the database.")
 
         df.fillna("", inplace=True)  # Replace NaN with an empty string
         return df.to_dict("records")
@@ -211,9 +211,9 @@ def notification_base(title, message):
     ],
 )
 def generate_download(dl_all, dl_select, table_data, selected_rows):
-    # logging.info(
-    #     f"dl_all={dl_all}, dl_select={dl_select}, table_data_length={len(table_data)}, selected_rows={selected_rows}"
-    # )
+    logging.info(
+        f"dl_all={dl_all}, dl_select={dl_select}, table_data_length={len(table_data)}, selected_rows={selected_rows}"
+    )
 
     if not table_data or len(table_data) == 0:
         logging.error("No data available from the table for processing.")
@@ -225,7 +225,7 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
         )
 
     if not dl_all and not dl_select:
-        # logging.debug("No download action triggered. dl_all or dl_select not active.")
+        logging.debug("No download action triggered. dl_all or dl_select not active.")
         return dash.no_update, None, False, False
 
     query = """
@@ -238,7 +238,7 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
 
         if dl_all:
             accessions = table_df["accession_tag"].to_list()
-            # logging.info("Using all table data for download.")
+            logging.info("Using all table data for download.")
 
             df = pd.read_sql_query(query, engine)
 
@@ -267,7 +267,7 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
                     )
 
                 accessions = selected_df["accession_tag"].to_list()
-                # logging.info(f"Using selected table data: {accessions}")
+                logging.info(f"Using selected table data: {accessions}")
 
                 placeholders = ",".join(["?"] * len(accessions))
                 query += f" WHERE a.accession_tag IN ({placeholders})"
@@ -297,14 +297,14 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
                 False,
             )
         else:
-            # logging.info(f"Retrieved {len(df)} records from the database.")
+            logging.info(f"Retrieved {len(df)} records from the database.")
             try:
                 fasta_content = [
                     f">{row['accession_tag']}\n{row['sequence']}"
                     for _, row in df.iterrows()
                 ]
                 fasta_str = "\n".join(fasta_content)
-                # logging.info("FASTA content created successfully.")
+                logging.info("FASTA content created successfully.")
                 return (
                     dcc.send_string(fasta_str, filename="starships.fasta"),
                     None,
