@@ -34,37 +34,44 @@ def create_accordion_item(df, papers, category):
             filtered_papers_df["type_element_reference"].dropna().unique().astype(str)
         )
 
-        uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
-        if not os.path.exists(uplogo_img_path):
-            uplogo_img_path = make_logo(upDRs, uplogo_img_path, type="up")
-        uplogo_img = dbc.Col(
-            lg=6,
-            sm=12,
-            children=[
-                dmc.Center(html.H5(f"Sequence logo of upstream DRs in {category}")),
-                dmc.Center(
+        if len(downDRs) > 10:
+            uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
+
+            if not os.path.exists(uplogo_img_path):
+                uplogo_img_path = make_logo(upDRs, uplogo_img_path, type="up")
+            uplogo_img = dbc.Col(
+                lg=6,
+                sm=12,
+                children=[
+                    dmc.Center(html.H5(f"Sequence logo of upstream DRs in {category}")),
+                    dmc.Center(
+                        html.Img(
+                            src=uplogo_img_path,
+                            style={"width": "100%"},
+                        ),
+                    ),
+                ],
+            )
+        else:
+            uplogo_img = None
+
+        if len(downDRs) > 10:
+            downlogo_img_path = f"assets/images/DR/{category}-downDR.png"
+            if not os.path.exists(downlogo_img_path):
+                downlogo_img_path = make_logo(downDRs, downlogo_img_path, type="down")
+            downlogo_img = dbc.Col(
+                lg=6,
+                sm=12,
+                children=[
+                    html.H5(f"Sequence logo of downstream DRs in {category}"),
                     html.Img(
-                        src=uplogo_img_path,
+                        src=downlogo_img_path,
                         style={"width": "100%"},
                     ),
-                ),
-            ],
-        )
-
-        downlogo_img_path = f"assets/images/DR/{category}-downDR.png"
-        if not os.path.exists(downlogo_img_path):
-            downlogo_img_path = make_logo(downDRs, downlogo_img_path, type="down")
-        downlogo_img = dbc.Col(
-            lg=6,
-            sm=12,
-            children=[
-                html.H5(f"Sequence logo of downstream DRs in {category}"),
-                html.Img(
-                    src=downlogo_img_path,
-                    style={"width": "100%"},
-                ),
-            ],
-        )
+                ],
+            )
+        else:
+            downlogo_img = None
 
         accordion_content = [
             dash_table.DataTable(
