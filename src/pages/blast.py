@@ -376,14 +376,6 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
             if curated:
                 query += "AND j.curated_status == 'curated'"
 
-            # accessions = blast_results_df["sseqid"]
-
-            # if accessions is not None and len(accessions) > 1:
-            #     placeholders = ",".join(["?"] * len(accessions))
-            #     query += f"AND accession_tag IN ({placeholders})"
-            #     initial_df = pd.read_sql_query(query, engine, params=accessions)
-            # else:
-
             initial_df = pd.read_sql_query(query, engine)
 
             if blast_results_dict:
@@ -394,6 +386,10 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                     left_on="accession_tag",
                     right_on="sseqid",
                     how="right",
+                )
+                # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
+                df_for_table = df_for_table.drop_duplicates(
+                    subset=["accession_tag", "pident", "length"]
                 )
 
                 if len(df_for_table) > 0:
