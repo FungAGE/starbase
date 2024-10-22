@@ -11,43 +11,38 @@
 <!-- badges: end -->
 
 # `starbase`: A Database and Toolkit for Exploring Eukaryotic Transposable Elements in Fungi
+
 ## Overview
 
-Starbase is a web-based application designed for exploring large eukaryotic transposable elements known as Starships. These novel class II DNA transposons are endemic to *Pezizomycotina* and can significantly impact the genomic architecture of fungi. This application provides various tools for analyzing and visualizing these genetic elements.
+`starbase` is a web-based application that provides various analytical and visualization tools for exploring large eukaryotic transposable elements known as Starships.
 
-## Usage
-- Access the Wiki: Click on the "Catalogue/Wiki of Starship Metadata" button to view detailed information about the metadata associated with various Starship sequences.
-- Submit a Sequence: Use the submission button to upload new Starship sequences for analysis.
-- Perform Searches: Utilize the BLAST/HMMER search features to analyze submitted sequences against existing databases.
-
-## Contribution
-Contributions to this project are welcome! If you have suggestions or improvements, please feel free to submit an issue or pull request.
-
-## Features
-### Current Functionalities
-
-The application currently supports the following features:
-- Wiki: Catalogue/Wiki of Starship Metadata
-- Submit: Submission of new Starship sequences
-- BLAST/HMMER Searches: Perform BLAST or HMMER searches on the submitted sequences
-
-### Future Development
-The following functionalities are under active development and will be available soon:
-- Synteny/Genome Browser
+Access `starbase` [here](https://starbase.serve.scilifelab.se/).
 
 ## What is a Starship?
 
-Starships are extremely large (~20-700 kb) DNA transposons that can constitute up to 2% of fungal genomes. They replicate within the host genome via tyrosine recombinases (captain genes) and can carry significant genetic 'cargo', such as:
+Starships are extremely large (~20-700 kb) DNA transposons that can constitute up to 2% of fungal genomes. These novel class II DNA transposons are endemic to _Pezizomycotina_ and can significantly impact the architecture of fungal genomes. They replicate within the host genome via tyrosine recombinases (captain genes) and can carry significant genetic 'cargo', such as:
 
-- Genes for metal resistance in *Paecilomyces*
-- Cheese-making genes in *Penicillium*
-- Formaldehyde resistance genes in *Aspergillus nidulans* and *Penicillium chrysogenum*
+- Genes for metal resistance in _Paecilomyces_
+- Cheese-making genes in _Penicillium_
+- Formaldehyde resistance genes in _Aspergillus nidulans_ and _Penicillium chrysogenum_
 
-## Getting Started
-### Current Web-App
-Access `starbase` [here](https://starbase.serve.scilifelab.se/).
+## Usage
 
-### Build from the docker image
+- Access the Wiki: View detailed information about Starship Families and their general characteristics.
+- Submit a Sequence: Use the submission tab to upload new Starship sequences for curation and inclusion in the database.
+- Search for Starships: Utilize the BLAST/HMMER search functions to analyze sequences against the existing database.
+
+### Features Under Development
+
+- `starfish` webserver
+- Synteny/Genome Browser
+
+## Contributions
+
+Contributions to the development of `starbase` are welcome! If you have suggestions or improvements, please feel free to submit an issue or pull request.
+
+## Build from the docker image
+
 1. Find the most recent version under the "Packages" tab: `docker pull ghcr.io/fungage/starbase:[tag]`
 1. Run `docker build -t starbase` then `docker run -p 7000:80 starbase`
-2. Launch the app by visiting `localhost:7000` in your browser.
+1. Launch the app by visiting `localhost:7000` in your browser.
