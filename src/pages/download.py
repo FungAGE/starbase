@@ -6,6 +6,10 @@ import pandas as pd
 
 from src.components.sqlite import engine
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 dash.register_page(__name__)
 
 table_columns = [

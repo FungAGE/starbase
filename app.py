@@ -15,7 +15,7 @@ import logging
 
 warnings.filterwarnings("ignore")
 if not logging.getLogger().hasHandlers():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.ERROR)
     logging.getLogger("matplotlib.font_manager").disabled = True
 
 _dash_renderer._set_react_version("18.2.0")
@@ -70,4 +70,4 @@ def serve_app_layout():
 app.layout = serve_app_layout
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)
