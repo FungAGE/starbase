@@ -3,6 +3,8 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
+from flask_compress import Compress
+
 import pandas as pd
 
 from src.components import navmenu
@@ -36,6 +38,10 @@ server = Flask(__name__)
 
 server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
 
+compress = Compress()
+compress.init_app(server)  # Apply compression to the Flask server
+
+# Initialize Dash app with the Flask server
 app = Dash(
     __name__,
     server=server,
@@ -44,10 +50,7 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
-    # external_scripts=external_scripts,
-    meta_tags=[
-        {"name": "viewport", "content": "width=device-width, initial-scale=1"},
-    ],
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 
 
