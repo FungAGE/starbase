@@ -942,3 +942,13 @@ def get_protein_sequence(header, nuc_sequence):
         return protein_output_filename
     else:
         return None
+
+
+def clean_sequence(seq):
+    valid_nucleotides = {"A", "T", "C", "G"}
+    seq = re.sub(r"\(.*?\)", "", seq)
+    seq = seq.upper()
+    if all(nuc in valid_nucleotides for nuc in seq):
+        return seq
+    else:
+        return None

@@ -36,7 +36,7 @@ def create_accordion_item(df, papers, category):
 
         uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
         if not os.path.exists(uplogo_img_path):
-            uplogo_img_path = make_logo(upDRs, uplogo_img_path)
+            uplogo_img_path = make_logo(upDRs, uplogo_img_path, type="up")
         uplogo_img = dbc.Col(
             lg=6,
             sm=12,
@@ -53,7 +53,7 @@ def create_accordion_item(df, papers, category):
 
         downlogo_img_path = f"assets/images/DR/{category}-downDR.png"
         if not os.path.exists(downlogo_img_path):
-            downlogo_img_path = make_logo(downDRs, downlogo_img_path)
+            downlogo_img_path = make_logo(downDRs, downlogo_img_path, type="down")
         downlogo_img = dbc.Col(
             lg=6,
             sm=12,

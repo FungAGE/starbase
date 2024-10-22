@@ -7,10 +7,13 @@ import base64
 import tempfile
 import matplotlib.pyplot as plt
 import plotly.express as px
+from Bio.Seq import Seq
 
 import logomaker as lm
 
 from Bio.Align.Applications import ClustalwCommandline
+
+from src.utils.blast_utils import clean_sequence
 
 
 def agg_df(df, groups):
@@ -73,7 +76,7 @@ def are_all_strings_same_length(strings):
     return len(set(len(s) for s in strings)) == 1
 
 
-def make_logo(seqs, fig_name=None):
+def make_logo(seqs, fig_name=None, type=None):
 
     if not seqs:  # If all sequences are empty, return None
         return None
@@ -83,10 +86,12 @@ def make_logo(seqs, fig_name=None):
 
     # Write sequences to the temporary input file
     with open(temp_in_file.name, "w") as file:
-        for idx, seq in enumerate(seqs):
-            if seq != ".":
+        clean_seqs = [str(Seq(seq)) for seq in seqs if seq and clean_sequence(seq)]
+
+        for idx, cs in enumerate(clean_seqs):
+            if cs != ".":
                 header = f">seq{idx + 1}"
-                file.write(f"{header}\n{seq}\n")
+                file.write(f"{header}\n{cs}\n")
 
     if os.path.exists(temp_in_file.name) and os.path.getsize(temp_in_file.name) > 0:
 
@@ -104,7 +109,7 @@ def make_logo(seqs, fig_name=None):
             lines = f.readlines()
 
         aln_seqs = [
-            seq.strip().upper()
+            seq.strip()
             for seq in lines
             if not seq.startswith("#") and not seq.startswith(">")
         ]
