@@ -22,7 +22,7 @@ from pygenomeviz.align import Blast, AlignCoord
 from jinja2 import Template
 
 # Initialize the SQLite engine
-engine = create_engine("sqlite:///src/data/db/starbase.sqlite")
+engine = create_engine("sqlite:///src/data/starbase.sqlite")
 
 query = """
 SELECT a.accession_tag, f.familyName, t.species

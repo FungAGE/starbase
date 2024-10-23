@@ -6,7 +6,7 @@ from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 
-from src.components.sqlite import engine
+from src.components.mariadb import engine
 
 
 def truncate_string(s, length=40):

@@ -3,9 +3,14 @@ FROM python:3.9
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring of large transposable elements in  Fungi"
 
-# Create user name and home directory variables
+# Create variables for user name, home directory, and placeholders 
 ENV USER=starbase
 ENV HOME=/home/$USER
+ENV DB_USER=""
+ENV DB_PASSWORD=""
+ENV DB_HOST=""
+ENV DB_PORT="3306"
+ENV DB_NAME=""
 
 # Add user to system
 RUN useradd -m -u 1000 $USER
@@ -26,11 +31,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the code
 COPY ./ ./
-
-# unzip db
-RUN cd src/data && gunzip -c db.tar.gz | tar -xf - && ls -l db/ && chmod 644 db/starbase.sqlite && cd ../../
-# to create the db.tar.gz 
-# cd src/data/ && tar -cf db.tar db/* && gzip -f db.tar
 
 # build blast dbs from sql table
 RUN python src/utils/blastdb.py

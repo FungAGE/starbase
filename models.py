@@ -68,11 +68,6 @@ class Paper(Base):
     family_names = relationship("FamilyName", back_populates="paper")
 
 
-t_sqlite_sequence = Table(
-    "sqlite_sequence", metadata, Column("name", NullType), Column("seq", NullType)
-)
-
-
 class Taxonomy(Base):
     __tablename__ = "taxonomy"
 

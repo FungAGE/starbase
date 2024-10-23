@@ -12,7 +12,7 @@ import dash_mantine_components as dmc
 import pandas as pd
 import os
 
-from src.components.sqlite import engine
+from src.components.mariadb import engine
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot
 from src.utils.plot_utils import make_logo
@@ -209,9 +209,30 @@ def clean_contigIDs(strings):
 def load_meta_data(url):
     if url:
         meta_query = """
-        SELECT j.ship_family_id, j.curated_status, j.taxid, j.ship_id, j.genome_id, j.ome, j.size, j.upDR, j.downDR, 
-               f.familyName, j."#contigID" AS contigID, j.elementBegin, j.elementEnd, j."size", f.type_element_reference, 
-               a.accession_tag, t."order", t.family, t.genus, t.species, g.version, g.genomeSource, g.citation
+        SELECT 
+            j.ship_family_id, 
+            j.curated_status, 
+            j.taxid, 
+            j.ship_id, 
+            j.genome_id, 
+            j.ome, 
+            j.size, 
+            j.upDR, 
+            j.downDR, 
+            f.familyName, 
+            j.contigID, 
+            j.elementBegin, 
+            j.elementEnd, 
+            j.size, 
+            f.type_element_reference, 
+            a.accession_tag, 
+            t.`order`,
+            t.family, 
+            t.genus, 
+            t.species, 
+            g.version, 
+            g.genomeSource, 
+            g.citation
         FROM joined_ships j
         LEFT JOIN taxonomy t ON j.taxid = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id

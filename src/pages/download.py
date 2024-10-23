@@ -12,7 +12,7 @@ import dash_mantine_components as dmc
 from dash.dependencies import Output, Input
 import pandas as pd
 
-from src.components.sqlite import engine
+from src.components.mariadb import engine
 
 dash.register_page(__name__)
 

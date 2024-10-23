@@ -1,6 +1,4 @@
 from Bio import SeqIO
-import pandas as pd
-import sqlite3
 import hashlib
 
 from sqlalchemy import (
@@ -13,15 +11,12 @@ from sqlalchemy import (
     VARCHAR,
     ForeignKey,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
 
+from src.components.mariadb import engine, Base
 
-Base = declarative_base()
 
 # set up table classes
-
-
 class Accessions(Base):
     __tablename__ = "accessions"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -219,6 +214,26 @@ class JoinedShips(Base):
     captainID_new = Column(Integer)
 
 
+class Submissions(Base):
+    __tablename__ = "submissions_table"
+    seq_contents = Column(String)
+    seq_filename = Column(String)
+    seq_date = Column(String)
+    anno_contents = Column(String)
+    anno_filename = Column(String)
+    anno_date = Column(String)
+    uploader = Column(String)
+    evidence = Column(String)
+    genus = Column(String)
+    species = Column(String)
+    hostchr = Column(String)
+    shipstart = Column(Integer)
+    shipend = Column(Integer)
+    shipstrand = Column(String)
+    comment = Column(String)
+    id = Column(Integer)
+
+
 # TODO: add new tables
 # - empty sites
 # - representative ships (maybe just add a column?)
@@ -233,31 +248,7 @@ Ships.accession = relationship(
 Gff.ship_id = relationship("Accessions", order_by=Accessions.id, back_populates="gff")
 
 # Initialize the SQLite engine
-engine = create_engine("sqlite:///src/data/db/starbase.sqlite")
-Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
-
-# Start a new session
-with Session() as session:
-    # Step 1: Retrieve the foreign key value (e.g., the captain's ID)
-    captain_name = "Captain Kirk"  # Example captain name
-
-    # Query to find the captain's ID based on the name or any other condition
-    captain = session.query(Captain).filter_by(name=captain_name).first()
-
-    if captain is None:
-        print("Captain not found!")
-    else:
-        # Step 2: Add a new ship linked to the captain
-        new_ship = Ship(name="USS Enterprise", captain_id=captain.id)
-        session.add(new_ship)
-
-        # Step 3: Commit the transaction
-        session.commit()
-
-        print(
-            f"New ship added with ID {new_ship.id} and linked to captain ID {new_ship.captain_id}"
-        )
 
 
 def update_md5(engine, table, id_column, seq_column, md5_column):
