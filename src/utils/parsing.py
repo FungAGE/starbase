@@ -176,3 +176,18 @@ def clean_shipID(s):
             s.replace("|-", "").replace("|+", "").replace("|", "").replace("fam_", "_"),
         ),
     )
+
+
+def clean_contigIDs(string):
+    """Removing omes from contigIDs."""
+    if string is None:
+        return None
+    else:
+        parts = string.split("_", 1)
+        if len(parts) > 1:
+            prefix = parts[0]
+            suffix = parts[1]
+            if 7 <= len(prefix) <= 9:
+                return suffix
+            else:
+                return string

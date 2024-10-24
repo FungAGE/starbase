@@ -7,6 +7,7 @@ from dash.dependencies import Output, Input, State
 import os
 import tempfile
 import pandas as pd
+import logging
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
@@ -18,9 +19,14 @@ from jinja2 import Template
 
 from src.components.cache import cache
 from src.components.mariadb import engine
-
 from src.components.tables import make_ship_table
-import logging
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import (
+    fetch_all_ships,
+    fetch_accession_gff,
+    fetch_ship_table,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -225,19 +231,11 @@ def write_tmp(df, seqid, file_type=None, temp_dir=None):
     return file_path
 
 
-def fetch_gff(accession):
-    query = """
-    SELECT g.*
-    FROM gff g
-    JOIN accessions a ON g.ship_id = a.id
-    JOIN ships s on s.accession = a.id
-    JOIN joined_ships j ON j.ship_id = a.id
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
-    WHERE a.accession_tag = :accession_tag AND j.orphan IS NULL
-    """
+def load_gff(accession):
 
-    df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+    df = load_from_cache(f"accession_gff_{accession}")
+    if df is None:
+        df = fetch_accession_gff(accession)
 
     if df.empty:
         print(f"No GFF records found for accession_tag: {accession}")
@@ -251,16 +249,15 @@ def fetch_gff(accession):
     return df
 
 
-def fetch_fa(accession):
-    query = """
-    SELECT s.*
-    FROM ships s
-    LEFT JOIN accessions a ON s.accession = a.id
-    WHERE a.accession_tag = :accession_tag
-    """
+def load_fa(accession):
+    df = load_from_cache("all_ships")
+    if df is None:
+        df = fetch_all_ships()
 
-    # print("Executing FA query with accession:", accession)
-    df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+    if isinstance(accession, str):
+        df = df[df["accession_tag"] == accession]
+    else:
+        df = df[df["accession_tag"].isin(accession)]
 
     if df.empty:
         print(f"No FA records found for accession_tag: {accession}")
@@ -363,6 +360,22 @@ def multi_pgv(gff_files, seqs, tmp_file):
     return message
 
 
+@cache.memoize()
+@callback(
+    Output("pgv-table", "children"),
+    Input("url", "href"),
+)
+def load_ship_table(href):
+    table_df = load_from_cache("ship_table")
+    if table_df is None:
+        table_df = fetch_ship_table()
+    if href:
+        table = make_ship_table(
+            df=table_df, id="pgv-table", columns=table_columns, pg_sz=15
+        )
+        return table
+
+
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
     Input("update-button", "n_clicks"),
@@ -374,14 +387,14 @@ def multi_pgv(gff_files, seqs, tmp_file):
 def update_pgv(n_clicks, selected_rows, table_data):
     message = None
     if n_clicks > 0:
-        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
+        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
 
         if table_data and selected_rows is not None:
             try:
                 table_df = pd.DataFrame(table_data)
                 # Debug: Check columns and selected_rows
-                # print("Columns in table_df:", table_df.columns.tolist())
-                # print("Selected rows:", selected_rows)
+                logger.info(f"Columns in table_df: {table_df.columns.tolist()}")
+                logger.info(f"Selected rows: {selected_rows}")
 
                 if isinstance(selected_rows, list) and all(
                     isinstance(idx, int) for idx in selected_rows
@@ -396,13 +409,13 @@ def update_pgv(n_clicks, selected_rows, table_data):
                         tmp_fas = []
                         for index, row in rows.iterrows():
                             accession = row["accession_tag"]
-                            # print("Fetching GFF for accession:", accession)
-                            gff_df = fetch_gff(accession)
+                            logging.info(f"Fetching GFF for accession: {accession}")
+                            gff_df = load_gff(accession)
 
                             tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
                             tmp_gffs.append(tmp_gff)
-                            # print("Fetching FA for accession:", accession)
-                            fa_df = fetch_fa(accession)
+                            logging.info(f"Fetching FA for accession: {accession}")
+                            fa_df = load_fa(accession)
                             tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
                             tmp_fas.append(str(tmp_fa))
                             output = html.P("Select up to four Starships to compare.")
@@ -429,7 +442,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
                 else:
                     output = html.H4("Invalid row selection.")
             except Exception as e:
-                print("Exception:", e)
+                logging.error(f"Exception: {e}")
                 output = html.H4(
                     "Error while comparing ships using BLAST. Try another combination."
                 )
@@ -446,33 +459,6 @@ def update_pgv(n_clicks, selected_rows, table_data):
         ),
         message,
     )
-
-
-@cache.memoize()
-@callback(
-    Output("pgv-table", "children"),
-    Input("url", "href"),
-)
-def load_ship_table(href):
-    query = """
-    SELECT a.accession_tag, f.familyName, t.species
-    FROM joined_ships j
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
-    JOIN accessions a ON j.ship_id = a.id
-    JOIN ships s on s.accession = a.id
-    JOIN gff g ON a.id = g.ship_id
-    WHERE s.sequence is NOT NULL AND g.ship_id is NOT NULL AND j.orphan IS NULL
-    """
-    table_df = pd.read_sql_query(query, engine)
-    table_df = table_df.drop_duplicates(subset=["accession_tag"])
-    table_df = table_df.sort_values(by="familyName", ascending=True)
-
-    if href:
-        table = make_ship_table(
-            df=table_df, id="pgv-table", columns=table_columns, pg_sz=15
-        )
-        return table
 
 
 # inject_svg_to_html(

@@ -165,3 +165,5 @@ database_folder
 database_folder/**
 .dockerignore
 .vscode/settings.json
+
+cache/**

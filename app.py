@@ -8,6 +8,7 @@ from flask_caching import Cache
 import pandas as pd
 
 from src.components import navmenu
+from src.components.precompute import precompute_all
 from src.components.cache import cache
 
 import warnings
@@ -70,4 +71,5 @@ def serve_app_layout():
 app.layout = serve_app_layout
 
 if __name__ == "__main__":
+    precompute_all()
     app.run_server(debug=False)

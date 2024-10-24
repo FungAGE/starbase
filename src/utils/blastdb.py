@@ -2,6 +2,8 @@ import subprocess
 import pandas as pd
 import os
 from src.components.mariadb import engine
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_all_captains, fetch_all_ships
 
 db_list = {
     "ship": {"nucl": "src/data/ships/fna/blastdb/ships.fa"},
@@ -34,33 +36,6 @@ db_list = {
 }
 
 
-def fetch_sequences(engine, type):
-
-    if type == "captains":
-        nameID = "captainID"
-        query = f"""
-        SELECT c.*
-        FROM captains c
-        """
-    elif type == "ships":
-        nameID = "accession_tag"
-        query = """
-        SELECT s.*, a.accession_tag
-        FROM ships s
-        LEFT JOIN accessions a ON s.accession = a.id
-        """
-    else:
-        raise ValueError("Unsupported table type")
-
-    result = pd.read_sql_query(query, engine)
-    sequences = []
-    for index, row in result.iterrows():
-        name = row[nameID]
-        sequence = row["sequence"]
-        sequences.append((name, sequence))
-    return sequences
-
-
 def write_fasta(sequences, fasta_path):
     with open(fasta_path, "w") as fasta_file:
         for name, sequence in sequences:
@@ -90,7 +65,15 @@ if __name__ == "__main__":
     if not os.path.exists(ship_fasta_path):
         os.makedirs(ship_fasta_path)
 
-    ship_sequences = fetch_sequences(engine, "ships")
+    ship_sequences_list = []
+    ship_sequences = load_from_cache("all_ships")
+    if ship_sequences is None:
+        ship_sequences = fetch_all_ships()
+    for index, row in ship_sequences.iterrows():
+        name = row["accession_tag"]
+        sequence = row["sequence"]
+        ship_sequences_list.append((name, sequence))
+
     write_fasta(ship_sequences, ship_fasta_path)
     create_blast_database(ship_fasta_path, "nucl")
 
@@ -98,6 +81,14 @@ if __name__ == "__main__":
     if not os.path.exists(captain_fasta_path):
         os.makedirs(captain_fasta_path)
 
-    captain_sequences = fetch_sequences(engine, "captains")
+    captain_sequences_list = []
+    captain_sequences = load_from_cache("all_captains")
+    if captain_sequences is None:
+        captain_sequences = fetch_all_captains()
+    for index, row in captain_sequences.iterrows():
+        name = row["captainID"]
+        sequence = row["sequence"]
+        captain_sequences_list.append((name, sequence))
+
     write_fasta(captain_sequences, captain_fasta_path)
     create_blast_database(captain_fasta_path, "prot")

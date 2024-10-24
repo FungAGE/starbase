@@ -2,22 +2,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-import os
-
 from Bio import Phylo
-import pandas as pd
 import plotly.graph_objs as go
 
 import tempfile
 
-from src.components.mariadb import engine
-
-tree_query = """SELECT string FROM trees WHERE id=1"""
-
-sf_query = """
-SELECT sf.*
-FROM superfam-clades sf
-"""
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_captain_tree, fetch_sf_data
 
 default_highlight_colors = {
     "Phoenix": "#00cc96",
@@ -288,83 +279,86 @@ def superfam_highlight(
 
 
 def plot_tree(highlight_families=None):
-    with engine.connect() as connection:
-        tree_string = connection.execute(tree_query).fetchone()
-        metadata = pd.read_sql_query(sf_query)
-        with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
-            temp_file.write(tree_string)
-            tree_file = temp_file.name
+    tree_string = load_from_cache("captain_tree")
+    if tree_string is None:
+        tree_string = fetch_captain_tree()
+    with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
+        temp_file.write(tree_string)
+        tree_file = temp_file.name
 
-            tree = Phylo.read(tree_file, "newick")
-            os.remove(tree_file)
+        tree = Phylo.read(tree_file, "newick")
 
-        # graph_title = "Captain Gene Phylogeny"
-        graph_title = None
+    metadata = load_from_cache("sf_data")
+    if metadata is None:
+        metadata = fetch_sf_data()
 
-        x_coords = get_x_coordinates(tree)
-        y_coords = get_y_coordinates(tree)
-        line_shapes = []
-        text_labels = []
-        scatter_points = []
-        nodes = []
+    # graph_title = "Captain Gene Phylogeny"
+    graph_title = None
 
-        draw_clade(
+    x_coords = get_x_coordinates(tree)
+    y_coords = get_y_coordinates(tree)
+    line_shapes = []
+    text_labels = []
+    scatter_points = []
+    nodes = []
+
+    draw_clade(
+        metadata,
+        tree.root,
+        0,
+        line_shapes,
+        line_width=1,
+        x_coords=x_coords,
+        y_coords=y_coords,
+    )
+
+    if highlight_families is not None and highlight_families == "all":
+        highlights = default_highlight_families
+    else:
+        highlights = [highlight_families]
+    for highlight in highlights:
+        rectangle, scatter, text_label = superfam_highlight(
             metadata,
-            tree.root,
-            0,
-            line_shapes,
-            line_width=1,
+            highlight,
             x_coords=x_coords,
             y_coords=y_coords,
         )
+        line_shapes.append(rectangle)
+        scatter_points.append(scatter)
+        text_labels.append(text_label)
+    nodes = scatter_points
 
-        if highlight_families is not None and highlight_families == "all":
-            highlights = default_highlight_families
-        else:
-            highlights = [highlight_families]
-        for highlight in highlights:
-            rectangle, scatter, text_label = superfam_highlight(
-                metadata,
-                highlight,
-                x_coords=x_coords,
-                y_coords=y_coords,
-            )
-            line_shapes.append(rectangle)
-            scatter_points.append(scatter)
-            text_labels.append(text_label)
-        nodes = scatter_points
+    layout = dict(
+        height=1200,
+        # width=1000,
+        title=graph_title,
+        autosize=True,
+        showlegend=False,
+        xaxis=dict(
+            range=[0, 8],
+            showline=False,
+            zeroline=False,
+            showgrid=False,
+            showticklabels=False,
+        ),
+        yaxis=dict(
+            range=[0, 1250],
+            showline=False,
+            zeroline=False,
+            showgrid=False,
+            showticklabels=False,
+        ),
+        shapes=line_shapes,
+    )
 
-        layout = dict(
-            height=1200,
-            # width=1000,
-            title=graph_title,
-            autosize=True,
-            showlegend=False,
-            xaxis=dict(
-                range=[0, 8],
-                showline=False,
-                zeroline=False,
-                showgrid=False,
-                showticklabels=False,
-            ),
-            yaxis=dict(
-                range=[0, 1250],
-                showline=False,
-                zeroline=False,
-                showgrid=False,
-                showticklabels=False,
-            ),
-            shapes=line_shapes,
-        )
+    if highlight_families is not None:
+        legend = {"x": 0, "y": 1}
+        annotations = text_labels
+        font = dict(family="Open Sans")
+        # layout["legend"] = legend
+        layout["annotations"] = annotations
+        layout["font"] = font
 
-        if highlight_families is not None:
-            legend = {"x": 0, "y": 1}
-            annotations = text_labels
-            font = dict(family="Open Sans")
-            # layout["legend"] = legend
-            layout["annotations"] = annotations
-            layout["font"] = font
+    fig = go.Figure(data=nodes, layout=layout)
 
-        fig = go.Figure(data=nodes, layout=layout)
-
-        return fig
+    return fig

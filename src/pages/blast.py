@@ -30,8 +30,9 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta, clean_shipID, parse_fasta_from_file
-from src.components.mariadb import engine
+from src.utils.parsing import parse_fasta, parse_fasta_from_file
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_meta_data
 from src.utils.blastdb import db_list
 
 import logging
@@ -370,19 +371,10 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
 
             blast_results_df = pd.DataFrame(blast_results_dict)
 
-            query = """
-            SELECT j.starshipID, a.accession_tag, f.familyName, t.species
-            FROM accessions a
-            LEFT JOIN joined_ships j ON a.id = j.ship_id
-            LEFT JOIN taxonomy t ON j.taxid = t.id
-            LEFT JOIN family_names f ON j.ship_family_id = f.id
-            WHERE j.orphan IS NULL
-            """
-            # user can switch back and forth between hq and all ships in the output, without having to run a new search
-            if curated:
-                query += "AND j.curated_status == 'curated'"
+            initial_df = load_from_cache("meta_data", curated)
 
-            initial_df = pd.read_sql_query(query, engine)
+            if initial_df is None:
+                initial_df = fetch_meta_data(curated)
 
             if blast_results_dict:
                 logging.info("Rendering BLAST table")

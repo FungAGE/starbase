@@ -10,15 +10,23 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
 import pandas as pd
+import pickle
 import os
 import logging
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.components.cache import cache
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import (
+    fetch_meta_data,
+    cache_sunburst_plot,
+    fetch_paper_data,
+)
 from src.components.mariadb import engine
 from src.components.tables import make_ship_table
-from src.utils.plot_utils import create_sunburst_plot, make_logo
+from src.utils.plot_utils import make_logo
+from src.utils.parsing import clean_contigIDs
 
 dash.register_page(__name__)
 
@@ -201,61 +209,15 @@ layout = dmc.Container(
 )
 
 
-def clean_contigIDs(string):
-    # Removing omes from contigIDs
-    if string is None:
-        return None
-    else:
-        parts = string.split("_", 1)
-        if len(parts) > 1:
-            prefix = parts[0]
-            suffix = parts[1]
-            if 7 <= len(prefix) <= 9:
-                return suffix
-            else:
-                return string
-
-
 @cache.memoize()
 @callback(Output("meta-data", "data"), Input("url", "href"))
 def load_meta_data(url):
     if url:
-        logger.debug("Loading metadata from database.")
-        meta_query = """
-        SELECT 
-            j.ship_family_id, 
-            j.curated_status, 
-            j.taxid, 
-            j.ship_id, 
-            j.genome_id, 
-            j.ome, 
-            j.size, 
-            j.upDR, 
-            j.downDR, 
-            f.familyName, 
-            j.contigID, 
-            j.elementBegin, 
-            j.elementEnd, 
-            j.size, 
-            f.type_element_reference, 
-            a.accession_tag, 
-            t.`order`,
-            t.family, 
-            t.genus, 
-            t.species, 
-            g.version, 
-            g.genomeSource, 
-            g.citation
-        FROM joined_ships j
-        LEFT JOIN taxonomy t ON j.taxid = t.id
-        LEFT JOIN family_names f ON j.ship_family_id = f.id
-        LEFT JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN genomes g ON j.genome_id = g.id
-        WHERE j.orphan IS NULL
-        """
         try:
-            # Read the SQL query into a DataFrame
-            meta_df = pd.read_sql_query(meta_query, engine)
+            logger.debug("Loading metadata from database.")
+            meta_df = load_from_cache("meta_data")
+            if meta_df is None:
+                meta_df = fetch_meta_data()
             logger.info(f"Metadata query returned {len(meta_df)} rows.")
 
             # Clean 'contigID' column if present
@@ -279,14 +241,11 @@ def load_meta_data(url):
 @callback(Output("paper-data", "data"), Input("url", "href"))
 def load_paper_data(url):
     if url:
-        logger.debug("Loading paper data from database.")
-        paper_query = """
-        SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
-        FROM papers p
-        LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
-        """
         try:
-            paper_df = pd.read_sql_query(paper_query, engine)
+            logger.debug("Loading paper data from database.")
+            paper_df = load_from_cache("paper_data")
+            if paper_df is None:
+                paper_df = fetch_paper_data()
             logger.info(f"Paper data query returned {len(paper_df)} rows.")
             return paper_df.to_dict("records")
         except SQLAlchemyError as e:
@@ -309,12 +268,19 @@ def create_accordion(cached_meta, cached_papers):
         logger.error("One or more inputs are None: meta-data or paper-data.")
         raise PreventUpdate
 
-    logger.debug("Creating accordion based on metadata and paper data.")
     df = pd.DataFrame(cached_meta)
     papers = pd.DataFrame(cached_papers)
 
+    assert isinstance(
+        df, pd.DataFrame
+    ), f"Expected df to be a DataFrame, but got {type(df)}."
+    assert isinstance(
+        papers, pd.DataFrame
+    ), f"Expected papers to be a DataFrame, but got {type(papers)}."
+
+    logger.debug("Creating accordion based on metadata and paper data.")
+
     try:
-        print(df.columns)
         unique_categories = df["familyName"].dropna().unique().tolist()
         logger.info(
             f"Found {len(unique_categories)} unique categories for the accordion."
@@ -366,11 +332,15 @@ def create_sidebar(active_item, cached_meta):
             f"Filtered metadata for {active_item} contains {len(filtered_meta_df)} rows."
         )
 
-        # Create sunburst plot and table for the sidebar
-        sunburst = create_sunburst_plot(
-            df=filtered_meta_df, type="tax", title_switch=False
+        sunburst_figure = load_from_cache(f"sunburst_{active_item}")
+        if sunburst_figure is None:
+            sunburst_figure = cache_sunburst_plot(
+                family=active_item, df=filtered_meta_df
+            )
+
+        fig = dcc.Graph(
+            figure=sunburst_figure, style={"width": "100%", "height": "100%"}
         )
-        fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
 
         table_columns = [
             {
@@ -423,3 +393,16 @@ def create_sidebar(active_item, cached_meta):
             exc_info=True,
         )
         raise
+
+
+# # Check if the figure cache file exists
+# if os.path.exists(cache_file):
+#     # Load the figure from the pickle file
+#     with open(cache_file, "rb") as f:
+#         print("Loading figure from cache...")
+#         return pickle.load(f)
+# else:
+#     # If cache does not exist, create the figure
+#     print("Creating and saving new figure...")
+#     df = fetch_data()  # Fetch your data (e.g., from SQL)
+#     return create_sunburst_plot(df)

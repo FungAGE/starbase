@@ -7,10 +7,10 @@ import base64
 import tempfile
 import matplotlib.pyplot as plt
 import plotly.express as px
+import pickle
+
 from Bio.Seq import Seq
-
 import logomaker as lm
-
 from Bio.Align.Applications import ClustalwCommandline
 
 from src.utils.blast_utils import clean_sequence
@@ -31,7 +31,7 @@ def agg_df(df, groups):
         )
 
 
-def create_sunburst_plot(df, type, title_switch=True):
+def create_sunburst_plot(df, type, title_switch=True, cache_file=None):
     if type == "ship":
         groups = ["familyName"]
         title = "Starships by Family/Navis"

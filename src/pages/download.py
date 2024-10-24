@@ -6,6 +6,8 @@ import pandas as pd
 
 from src.components.cache import cache
 from src.components.mariadb import engine
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_download_data, fetch_all_ships
 
 import logging
 
@@ -163,18 +165,9 @@ layout = dmc.Container(
 @callback(Output("dl-table", "data"), Input("url", "href"))
 def make_dl_table(url):
     try:
-        query = """
-        SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
-        FROM accessions a
-        LEFT JOIN joined_ships j ON a.id = j.ship_id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
-        LEFT JOIN family_names f ON j.ship_family_id = f.id
-        WHERE j.orphan IS NULL
-        """
-        df = pd.read_sql_query(query, engine)
-        if df.empty:
-            logging.error("Query returned an empty DataFrame.")
-        # else:
+        df = load_from_cache("download_data")
+        if df is None:
+            df = fetch_download_data()
         logging.info(f"Retrieved {len(df)} records from the database.")
 
         df.fillna("", inplace=True)  # Replace NaN with an empty string
@@ -226,11 +219,6 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
         logging.debug("No download action triggered. dl_all or dl_select not active.")
         return dash.no_update, None, False, False
 
-    query = """
-    SELECT s.*, a.accession_tag
-    FROM ships s
-    LEFT JOIN accessions a ON s.accession = a.id
-    """
     table_df = pd.DataFrame(table_data)
     try:
 
@@ -238,7 +226,9 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
             accessions = table_df["accession_tag"].to_list()
             logging.info("Using all table data for download.")
 
-            df = pd.read_sql_query(query, engine)
+            df = load_from_cache("all_ships")
+            if df is None:
+                df = fetch_all_ships()
 
         elif dl_select:
             if not selected_rows or len(selected_rows) == 0:
@@ -267,10 +257,7 @@ def generate_download(dl_all, dl_select, table_data, selected_rows):
                 accessions = selected_df["accession_tag"].to_list()
                 logging.info(f"Using selected table data: {accessions}")
 
-                placeholders = ",".join(["?"] * len(accessions))
-                query += f" WHERE a.accession_tag IN ({placeholders})"
-                params = [(acc,) for acc in accessions]  # List of single-element tuples
-                df = pd.read_sql_query(query, engine, params=params)
+                df = df[df["accession_tag"].isin(accessions)]
 
             if df.empty:
                 logging.error("No data available for selected rows.")
