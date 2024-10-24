@@ -4,6 +4,7 @@ import dash_mantine_components as dmc
 from dash.dependencies import Output, Input
 import pandas as pd
 
+from src.components.cache import cache
 from src.components.mariadb import engine
 
 import logging
@@ -158,6 +159,7 @@ layout = dmc.Container(
 )
 
 
+@cache.memoize()
 @callback(Output("dl-table", "data"), Input("url", "href"))
 def make_dl_table(url):
     try:

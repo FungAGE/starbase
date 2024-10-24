@@ -15,6 +15,7 @@ import logging
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.components.cache import cache
 from src.components.mariadb import engine
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot, make_logo
@@ -215,6 +216,7 @@ def clean_contigIDs(string):
                 return string
 
 
+@cache.memoize()
 @callback(Output("meta-data", "data"), Input("url", "href"))
 def load_meta_data(url):
     if url:
@@ -273,6 +275,7 @@ def load_meta_data(url):
 
 
 # Callback to load paper data
+@cache.memoize()
 @callback(Output("paper-data", "data"), Input("url", "href"))
 def load_paper_data(url):
     if url:

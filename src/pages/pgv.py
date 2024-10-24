@@ -16,6 +16,7 @@ from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 from Bio import SeqIO
 from jinja2 import Template
 
+from src.components.cache import cache
 from src.components.mariadb import engine
 
 from src.components.tables import make_ship_table
@@ -447,6 +448,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
     )
 
 
+@cache.memoize()
 @callback(
     Output("pgv-table", "children"),
     Input("url", "href"),

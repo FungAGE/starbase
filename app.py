@@ -3,19 +3,19 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
-
-# from flask_compress import Compress
+from flask_caching import Cache
 
 import pandas as pd
 
 from src.components import navmenu
+from src.components.cache import cache
 
 import warnings
 import logging
 
 warnings.filterwarnings("ignore")
 if not logging.getLogger().hasHandlers():
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.DEBUG)
     logging.getLogger("matplotlib.font_manager").disabled = True
 
 _dash_renderer._set_react_version("18.2.0")
@@ -39,9 +39,6 @@ server = Flask(__name__)
 
 server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
 
-# compress = Compress()
-# compress.init_app(server)  # Apply compression to the Flask server
-
 # Initialize Dash app with the Flask server
 app = Dash(
     __name__,
@@ -53,6 +50,9 @@ app = Dash(
     external_stylesheets=external_stylesheets,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
+
+# Set up cache with app
+cache.init_app(server)
 
 
 def serve_app_layout():
