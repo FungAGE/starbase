@@ -164,7 +164,7 @@ layout = dmc.Container(
 def make_dl_table(url):
     try:
         query = """
-        SELECT a.accession_tag, f.familyName, t."order", t.family, t.species 
+        SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
         FROM accessions a
         LEFT JOIN joined_ships j ON a.id = j.ship_id
         LEFT JOIN taxonomy t ON j.taxid = t.id
