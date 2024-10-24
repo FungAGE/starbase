@@ -14,11 +14,8 @@ logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
 
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
-from sqlalchemy.exc import NoSuchTableError
-import pandas as pd
 
-db_url = "sqlite:///submissions.sqlite"
+from src.components.mariadb import engine
 
 layout = dmc.Container(
     fluid=True,
@@ -334,48 +331,9 @@ layout = dmc.Container(
 )
 
 
-def init_db(db_url):
-    # Create an SQLAlchemy engine
-    engine = create_engine(db_url)
-
-    # Create metadata object to handle table creation
-    metadata = MetaData()
-
-    # Define the 'submissions' table schema
-    submissions_table = Table(
-        "submissions",
-        metadata,
-        Column("seq_contents", Text, nullable=False),
-        Column("seq_filename", Text, nullable=False),
-        Column("seq_date", Text),
-        Column("anno_contents", Text),
-        Column("anno_filename", Text),
-        Column("anno_date", Text),
-        Column("uploader", Text, nullable=False),
-        Column("evidence", Text, nullable=False),
-        Column("genus", Text),
-        Column("species", Text),
-        Column("hostchr", Text),
-        Column("shipstart", Integer, nullable=False),
-        Column("shipend", Integer, nullable=False),
-        Column("shipstrand", Text),
-        Column("comment", Text),
-        Column("id", Integer, primary_key=True, autoincrement=True),
-    )
-
-    # Try to reflect the table if it exists
-    try:
-        submissions_table = Table("submissions", metadata, autoload_with=engine)
-    except NoSuchTableError:
-        # If the table doesn't exist, create it
-        metadata.create_all(engine)
-
-    # Return the engine for future use
-    return engine
-
-
 # Function to insert a new submission into the database
 def insert_submission(
+    engine,
     seq_content,
     seq_filename,
     seq_date,
@@ -392,8 +350,6 @@ def insert_submission(
     shipstrand,
     comment,
 ):
-
-    engine = init_db(db_url)
 
     content_type, content_string = seq_content.split(",")
     seq_decoded = base64.b64decode(content_string).decode("utf-8")
@@ -497,6 +453,7 @@ def submit_ship(
             )  # Return the error message if no file
 
         insert_submission(
+            engine,
             seq_content,
             seq_filename,
             seq_date,

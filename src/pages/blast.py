@@ -29,8 +29,8 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta, parse_fasta_from_file
-from src.components.sqlite import engine
+from src.utils.parsing import parse_fasta, clean_shipID
+from src.components.mariadb import engine
 from src.utils.blastdb import db_list
 
 import logging

@@ -6,8 +6,8 @@ from Bio import Phylo
 import pandas as pd
 import plotly.graph_objs as go
 
-tree_file = "src/data/db/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
-metadata = pd.read_csv("src/data/db/captain/tyr/faa/tree/superfam-clades.tsv", sep="\t")
+tree_file = "src/data/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
+metadata = pd.read_csv("src/data/captain/tyr/faa/tree/superfam-clades.tsv", sep="\t")
 
 default_highlight_colors = {
     "Phoenix": "#00cc96",

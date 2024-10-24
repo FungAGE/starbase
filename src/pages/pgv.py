@@ -16,7 +16,7 @@ from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 from Bio import SeqIO
 from jinja2 import Template
 
-from src.components.sqlite import engine
+from src.components.mariadb import engine
 
 from src.components.tables import make_ship_table
 import logging

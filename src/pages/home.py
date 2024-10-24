@@ -6,7 +6,7 @@ from dash.dependencies import Output, Input
 
 import pandas as pd
 
-from src.components.sqlite import engine
+from src.components.mariadb import engine
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
