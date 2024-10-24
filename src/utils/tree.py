@@ -2,12 +2,22 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import os
+
 from Bio import Phylo
 import pandas as pd
 import plotly.graph_objs as go
 
-tree_file = "src/data/captain/tyr/faa/tree/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"
-metadata = pd.read_csv("src/data/captain/tyr/faa/tree/superfam-clades.tsv", sep="\t")
+import tempfile
+
+from src.components.mariadb import engine
+
+tree_query = """SELECT string FROM trees WHERE id=1"""
+
+sf_query = """
+SELECT sf.*
+FROM superfam-clades sf
+"""
 
 default_highlight_colors = {
     "Phoenix": "#00cc96",
@@ -40,8 +50,6 @@ def hex_to_rgba(hex_color):
 rgb_colors = {
     key: hex_to_rgba(value) for key, value in default_highlight_colors.items()
 }
-
-metadata["color"] = metadata["familyName"].map(rgb_colors)
 
 
 def get_x_coordinates(tree):
@@ -127,6 +135,8 @@ def draw_clade(
     """Recursively draw the tree branches, down from the given clade"""
     x_curr = x_coords[clade]
     y_curr = y_coords[clade]
+
+    metadata["color"] = metadata["familyName"].map(rgb_colors)
 
     if clade.name in metadata["tip"].values:
         line_color = metadata.loc[metadata["tip"] == clade.name, "color"].values[0]
@@ -278,75 +288,83 @@ def superfam_highlight(
 
 
 def plot_tree(highlight_families=None):
-    tree = Phylo.read(tree_file, "newick")
+    with engine.connect() as connection:
+        tree_string = connection.execute(tree_query).fetchone()
+        metadata = pd.read_sql_query(sf_query)
+        with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
+            temp_file.write(tree_string)
+            tree_file = temp_file.name
 
-    # graph_title = "Captain Gene Phylogeny"
-    graph_title = None
+            tree = Phylo.read(tree_file, "newick")
+            os.remove(tree_file)
 
-    x_coords = get_x_coordinates(tree)
-    y_coords = get_y_coordinates(tree)
-    line_shapes = []
-    text_labels = []
-    scatter_points = []
-    nodes = []
+        # graph_title = "Captain Gene Phylogeny"
+        graph_title = None
 
-    draw_clade(
-        metadata,
-        tree.root,
-        0,
-        line_shapes,
-        line_width=1,
-        x_coords=x_coords,
-        y_coords=y_coords,
-    )
+        x_coords = get_x_coordinates(tree)
+        y_coords = get_y_coordinates(tree)
+        line_shapes = []
+        text_labels = []
+        scatter_points = []
+        nodes = []
 
-    if highlight_families is not None and highlight_families == "all":
-        highlights = default_highlight_families
-    else:
-        highlights = [highlight_families]
-    for highlight in highlights:
-        rectangle, scatter, text_label = superfam_highlight(
+        draw_clade(
             metadata,
-            highlight,
+            tree.root,
+            0,
+            line_shapes,
+            line_width=1,
             x_coords=x_coords,
             y_coords=y_coords,
         )
-        line_shapes.append(rectangle)
-        scatter_points.append(scatter)
-        text_labels.append(text_label)
-    nodes = scatter_points
 
-    layout = dict(
-        height=1200,
-        # width=1000,
-        title=graph_title,
-        autosize=True,
-        showlegend=False,
-        xaxis=dict(
-            range=[0, 8],
-            showline=False,
-            zeroline=False,
-            showgrid=False,
-            showticklabels=False,
-        ),
-        yaxis=dict(
-            range=[0, 1250],
-            showline=False,
-            zeroline=False,
-            showgrid=False,
-            showticklabels=False,
-        ),
-        shapes=line_shapes,
-    )
+        if highlight_families is not None and highlight_families == "all":
+            highlights = default_highlight_families
+        else:
+            highlights = [highlight_families]
+        for highlight in highlights:
+            rectangle, scatter, text_label = superfam_highlight(
+                metadata,
+                highlight,
+                x_coords=x_coords,
+                y_coords=y_coords,
+            )
+            line_shapes.append(rectangle)
+            scatter_points.append(scatter)
+            text_labels.append(text_label)
+        nodes = scatter_points
 
-    if highlight_families is not None:
-        legend = {"x": 0, "y": 1}
-        annotations = text_labels
-        font = dict(family="Open Sans")
-        # layout["legend"] = legend
-        layout["annotations"] = annotations
-        layout["font"] = font
+        layout = dict(
+            height=1200,
+            # width=1000,
+            title=graph_title,
+            autosize=True,
+            showlegend=False,
+            xaxis=dict(
+                range=[0, 8],
+                showline=False,
+                zeroline=False,
+                showgrid=False,
+                showticklabels=False,
+            ),
+            yaxis=dict(
+                range=[0, 1250],
+                showline=False,
+                zeroline=False,
+                showgrid=False,
+                showticklabels=False,
+            ),
+            shapes=line_shapes,
+        )
 
-    fig = go.Figure(data=nodes, layout=layout)
+        if highlight_families is not None:
+            legend = {"x": 0, "y": 1}
+            annotations = text_labels
+            font = dict(family="Open Sans")
+            # layout["legend"] = legend
+            layout["annotations"] = annotations
+            layout["font"] = font
 
-    return fig
+        fig = go.Figure(data=nodes, layout=layout)
+
+        return fig
