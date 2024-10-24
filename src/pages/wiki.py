@@ -11,12 +11,17 @@ import dash_mantine_components as dmc
 
 import pandas as pd
 import os
+import logging
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.components.mariadb import engine
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import create_sunburst_plot, make_logo
 
 dash.register_page(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 def create_accordion_item(df, papers, category):
@@ -213,6 +218,7 @@ def clean_contigIDs(string):
 @callback(Output("meta-data", "data"), Input("url", "href"))
 def load_meta_data(url):
     if url:
+        logger.debug("Loading metadata from database.")
         meta_query = """
         SELECT 
             j.ship_family_id, 
@@ -245,51 +251,92 @@ def load_meta_data(url):
         LEFT JOIN genomes g ON j.genome_id = g.id
         WHERE j.orphan IS NULL
         """
-        meta_df = pd.read_sql_query(meta_query, engine)
+        try:
+            # Read the SQL query into a DataFrame
+            meta_df = pd.read_sql_query(meta_query, engine)
+            logger.info(f"Metadata query returned {len(meta_df)} rows.")
 
-        # clean ome from contigID
-        if "contigID" in meta_df.columns:
-            meta_df["contigID"] = meta_df["contigID"].apply(clean_contigIDs)
+            # Clean 'contigID' column if present
+            if "contigID" in meta_df.columns:
+                meta_df["contigID"] = meta_df["contigID"].apply(clean_contigIDs)
+                logger.debug("Cleaned contigID column in the metadata.")
 
-        return meta_df.to_dict("records")
+            return meta_df.to_dict("records")
+        except SQLAlchemyError as e:
+            logger.error(
+                "Error occurred while executing the metadata query.", exc_info=True
+            )
+            return []
+
+    logger.warning("No URL provided for metadata loading.")
+    raise PreventUpdate  # Skip the update if no URL is provided
 
 
+# Callback to load paper data
 @callback(Output("paper-data", "data"), Input("url", "href"))
 def load_paper_data(url):
     if url:
+        logger.debug("Loading paper data from database.")
         paper_query = """
         SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
         FROM papers p
         LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
         """
-        paper_df = pd.read_sql_query(paper_query, engine)
-        return paper_df.to_dict("records")
+        try:
+            paper_df = pd.read_sql_query(paper_query, engine)
+            logger.info(f"Paper data query returned {len(paper_df)} rows.")
+            return paper_df.to_dict("records")
+        except SQLAlchemyError as e:
+            logger.error(
+                "Error occurred while executing the paper data query.", exc_info=True
+            )
+            return []
+
+    logger.warning("No URL provided for paper data loading.")
+    raise PreventUpdate
 
 
+# Callback to create accordion layout
 @callback(
     Output("accordion", "children"),
     [Input("meta-data", "data"), Input("paper-data", "data")],
 )
 def create_accordion(cached_meta, cached_papers):
+    if cached_meta is None or cached_papers is None:
+        logger.error("One or more inputs are None: meta-data or paper-data.")
+        raise PreventUpdate
+
+    logger.debug("Creating accordion based on metadata and paper data.")
     df = pd.DataFrame(cached_meta)
     papers = pd.DataFrame(cached_papers)
-    unique_categories = df["familyName"].dropna().unique().tolist()
-    assert isinstance(unique_categories, list), "unique_categories must be a list"
 
-    accordion_items = [
-        create_accordion_item(df, papers, category)
-        for category in unique_categories
-        if category != "nan"
-    ]
+    try:
+        print(df.columns)
+        unique_categories = df["familyName"].dropna().unique().tolist()
+        logger.info(
+            f"Found {len(unique_categories)} unique categories for the accordion."
+        )
+        assert isinstance(unique_categories, list), "unique_categories must be a list"
 
-    return dbc.Accordion(
-        children=accordion_items,
-        id="category-accordion",
-        always_open=False,
-        active_item="Voyager",
-    )
+        accordion_items = [
+            create_accordion_item(df, papers, category)
+            for category in unique_categories
+            if category != "nan"
+        ]
+        logger.debug("Accordion items created successfully.")
+
+        return dbc.Accordion(
+            children=accordion_items,
+            id="category-accordion",
+            always_open=False,
+            active_item="Voyager",
+        )
+    except Exception as e:
+        logger.error("Error occurred while creating the accordion.", exc_info=True)
+        raise
 
 
+# Callback to create sidebar content
 @callback(
     [
         Output("sidebar", "children"),
@@ -301,73 +348,75 @@ def create_accordion(cached_meta, cached_papers):
 )
 def create_sidebar(active_item, cached_meta):
     if active_item is None or cached_meta is None:
+        logger.warning("No active item or cached meta data provided.")
         raise PreventUpdate  # Prevent the callback from running if the inputs are invalid
 
+    logger.debug(f"Creating sidebar for active item: {active_item}")
     df = pd.DataFrame(cached_meta)
-    title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
 
-    filtered_meta_df = df[df["familyName"] == active_item].sort_values(
-        by="accession_tag", ascending=False
-    )
-    sunburst = create_sunburst_plot(df=filtered_meta_df, type="tax", title_switch=False)
-    fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
+    try:
+        title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
+        filtered_meta_df = df[df["familyName"] == active_item].sort_values(
+            by="accession_tag", ascending=False
+        )
+        logger.info(
+            f"Filtered metadata for {active_item} contains {len(filtered_meta_df)} rows."
+        )
 
-    # TODO: add links to genome browser, and extra classification info for selected genome
+        # Create sunburst plot and table for the sidebar
+        sunburst = create_sunburst_plot(
+            df=filtered_meta_df, type="tax", title_switch=False
+        )
+        fig = dcc.Graph(figure=sunburst, style={"width": "100%", "height": "100%"})
 
-    table_columns = [
-        {
-            "name": "Accession",
-            "id": "accession_tag",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "Species",
-            "id": "species",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "Contig ID",
-            "id": "contigID",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "Start Position in Genome",
-            "id": "elementBegin",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "End Position in Genome",
-            "id": "elementEnd",
-            "deletable": False,
-            "selectable": False,
-        },
-        {
-            "name": "Element Length",
-            "id": "size",
-            "deletable": False,
-            "selectable": False,
-        },
-        # {
-        #     "name": "Source",
-        #     "id": "genomeSource",
-        #     "deletable": False,
-        #     "selectable": False,
-        # },
-        # {
-        #     "name": "Citation/Release Date",
-        #     "id": "citation",
-        #     "deletable": False,
-        #     "selectable": False,
-        # },
-    ]
-    table = make_ship_table(
-        filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
-    )
+        table_columns = [
+            {
+                "name": "Accession",
+                "id": "accession_tag",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Species",
+                "id": "species",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Contig ID",
+                "id": "contigID",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Start Position in Genome",
+                "id": "elementBegin",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "End Position in Genome",
+                "id": "elementEnd",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Element Length",
+                "id": "size",
+                "deletable": False,
+                "selectable": False,
+            },
+        ]
+        table = make_ship_table(
+            filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
+        )
+        logger.debug("Table for sidebar created successfully.")
 
-    output = dbc.Stack(children=[fig, table], direction="vertical", gap=5)
-
-    return output, title, active_item
+        output = dbc.Stack(children=[fig, table], direction="vertical", gap=5)
+        return output, title, active_item
+    except Exception as e:
+        logger.error(
+            f"Error occurred while creating the sidebar for {active_item}.",
+            exc_info=True,
+        )
+        raise
