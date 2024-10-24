@@ -13,8 +13,9 @@ import tempfile
 import base64
 from datetime import date
 import pandas as pd
-
 import plotly.graph_objects as go
+
+from src.components.cache import cache
 from src.utils.blast_utils import (
     check_input,
     guess_seq_type,
@@ -29,7 +30,7 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta, clean_shipID
+from src.utils.parsing import parse_fasta, clean_shipID, parse_fasta_from_file
 from src.components.mariadb import engine
 from src.utils.blastdb import db_list
 
@@ -341,6 +342,11 @@ no_captain_alert = dbc.Alert(
 )
 
 
+@cache.memoize()
+def fn():
+    return
+
+
 @callback(
     [
         Output("ship-family", "children"),
@@ -460,6 +466,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
             return no_update, no_update
 
 
+@cache.memoize()
 @callback(
     Output("ship-aln", "children"),
     [
