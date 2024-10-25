@@ -144,7 +144,7 @@ layout = dmc.Container(
                                     accept=".gff, .gff3, .tsv",
                                     multiple=False,
                                     max_size=10000000,
-                                    className="upload-box text-red text-center",
+                                    className="upload-box text-center",
                                 ),
                                 dcc.Loading(
                                     id="loading-2",
@@ -334,10 +334,10 @@ layout = dmc.Container(
 # Function to insert a new submission into the database
 def insert_submission(
     engine,
-    seq_content,
+    seq_contents,
     seq_filename,
     seq_date,
-    anno_content,
+    anno_contents,
     anno_filename,
     anno_date,
     uploader,
@@ -351,7 +351,7 @@ def insert_submission(
     comment,
 ):
 
-    content_type, content_string = seq_content.split(",")
+    content_type, content_string = seq_contents.split(",")
     seq_decoded = base64.b64decode(content_string).decode("utf-8")
     seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
         "%Y-%m-%d %H:%M:%S"
@@ -360,8 +360,8 @@ def insert_submission(
     anno_contents = ""
     anno_datetime_obj = ""
 
-    if anno_content:
-        content_type, content_string = anno_content.split(",")
+    if anno_contents:
+        content_type, content_string = anno_contents.split(",")
         anno_contents = base64.b64decode(content_string).decode("utf-8")
         anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
             "%Y-%m-%d %H:%M:%S"
@@ -371,17 +371,24 @@ def insert_submission(
         comment = ""
 
     with engine.connect() as connection:
+        query = """
+            INSERT INTO submissions (
+                seq_contents, seq_filename, seq_date, anno_contents,
+                anno_filename, anno_date, uploader, evidence,
+                genus, species, hostchr, shipstart, shipend,
+                shipstrand, comment
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
         connection.execute(
-            """INSERT INTO submissions (seq_contents, seq_filename, seq_date, anno_contents,
-            anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
-            shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            query,
             (
-                seq_decoded,
+                seq_contents,
                 seq_filename,
-                seq_datetime_obj,
+                seq_date,
                 anno_contents,
                 anno_filename,
-                anno_datetime_obj,
+                anno_date,
                 uploader,
                 evidence,
                 genus,
@@ -419,10 +426,10 @@ def insert_submission(
     [State("submit-modal", "is_open")],
 )
 def submit_ship(
-    seq_content,
+    seq_contents,
     seq_filename,
     seq_date,
-    anno_content,
+    anno_contents,
     anno_filename,
     anno_date,
     uploader,
@@ -446,7 +453,7 @@ def submit_ship(
             shipstrand = "+"
         else:
             shipstrand = "-"
-        if not seq_content:
+        if not seq_contents:
             return (
                 modal,
                 "No fasta file uploaded",
@@ -454,10 +461,10 @@ def submit_ship(
 
         insert_submission(
             engine,
-            seq_content,
+            seq_contents,
             seq_filename,
             seq_date,
-            anno_content,
+            anno_contents,
             anno_filename,
             anno_date,
             uploader,
@@ -484,8 +491,8 @@ def submit_ship(
         Input("submit-fasta-upload", "filename"),
     ],
 )
-def update_fasta_details(seq_content, seq_filename):
-    if seq_content is None:
+def update_fasta_details(seq_contents, seq_filename):
+    if seq_contents is None:
         return [
             html.Div(
                 html.P(
@@ -496,7 +503,7 @@ def update_fasta_details(seq_content, seq_filename):
     else:
         try:
             # "," is the delimeter for splitting content_type from content_string
-            content_type, content_string = seq_content.split(",")
+            content_type, content_string = seq_contents.split(",")
             query_string = base64.b64decode(content_string).decode("utf-8")
             children = parse_fasta(query_string, seq_filename)
             return children
@@ -513,14 +520,14 @@ def update_fasta_details(seq_content, seq_filename):
         Input("submit-upload-gff", "filename"),
     ],
 )
-def update_gff_details(anno_content, anno_filename):
-    if anno_content is None:
+def update_gff_details(anno_contents, anno_filename):
+    if anno_contents is None:
         return [
             html.Div(["Select a GFF file to upload"]),
         ]
     else:
         try:
-            children = parse_gff(anno_content, anno_filename)
+            children = parse_gff(anno_contents, anno_filename)
             return children
 
         except Exception as e:
