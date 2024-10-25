@@ -393,6 +393,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                     subset=["accession_tag", "pident", "length"]
                 )
                 df_for_table.fillna("", inplace=True)
+                df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
 
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
