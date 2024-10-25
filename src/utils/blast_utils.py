@@ -21,6 +21,7 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 
 from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
+from src.utils.blastdb import blast_db_exists, create_dbs
 
 import logging
 
@@ -305,22 +306,26 @@ def run_blast(
 
         blastdb = db_list["ship"][db_type]
         if db_type == "nucl":
-            if query_type == "nucl":
-                blast_program = NcbiblastnCommandline
-            else:
-                blast_program = NcbitblastnCommandline
+            blast_program = (
+                NcbiblastnCommandline
+                if query_type == "nucl"
+                else NcbitblastnCommandline
+            )
         else:
-            if query_type == "prot":
-                blast_program = NcbiblastpCommandline
-            else:
-                blast_program = NcbiblastxCommandline
+            blast_program = (
+                NcbiblastpCommandline if query_type == "prot" else NcbiblastxCommandline
+            )
 
-        if not os.path.exists(blastdb) or os.path.getsize(blastdb) == 0:
-            raise ValueError(f"BLAST database {blastdb} not found or is empty.")
+        # Ensure the database exists
+        if not blast_db_exists(blastdb):
+            logger.warning(f"BLAST database {blastdb} does not exist. Creating it.")
+            create_dbs()  # Create the database if it doesn't exist
 
         logger.info(
             f"Running BLAST with query: {query_fasta}, query_type={query_type}, Database: {blastdb}"
         )
+
+        # Construct the command
         blast_cline = blast_program(
             query=query_fasta,
             db=blastdb,
@@ -329,10 +334,12 @@ def run_blast(
             outfmt="6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq",
             num_threads=threads,
         )
+
+        # Execute the command
         stdout, stderr = blast_cline()
         logger.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
 
-        # stitch BLAST results
+        # Stitch BLAST results
         if stitch:
             tmp_stitch = tempfile.NamedTemporaryFile(
                 suffix=".stitch", delete=False
@@ -360,14 +367,6 @@ def run_blast(
                     "sseq",
                 ],
             )
-
-        # with open(tmp_query_fasta, "r") as file:
-        #     file_contents = file.read()
-        # logger.info(file_contents)
-
-        # with open(tmp_blast, "r") as file:
-        #     file_contents = file.read()
-        # logger.info(file_contents)
 
         return df
     except Exception as e:
@@ -660,31 +659,56 @@ def blast_chords(blast_output):
 
 # TODO: link in ship classification information for subjects here
 def blast_table(ship_blast_results):
+    df_columns = [
+        {
+            "name": "Accession",
+            "id": "accession_tag",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Starship Family",
+            "id": "familyName",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Percent Identity",
+            "id": "pident",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Hit Length",
+            "id": "length",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "E-value",
+            "id": "evalue",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Bitscore",
+            "id": "bitscore",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+    ]
+
     tbl = html.Div(
         [
             dash_table.DataTable(
-                columns=[
-                    {
-                        "name": i,
-                        "id": i,
-                        "deletable": False,
-                        "selectable": True,
-                    }
-                    for i in ship_blast_results.columns
-                ],
+                columns=df_columns,
                 data=ship_blast_results.to_dict("records"),
-                hidden_columns=[
-                    "sseqid",
-                    "qseqid",
-                    "qseq",
-                    "sseq",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                    "mismatch",
-                    "gapopen",
-                ],
                 id="ship-blast-table",
                 editable=False,
                 sort_action="native",

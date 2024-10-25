@@ -215,6 +215,11 @@ def fetch_all_captains():
     FROM captains c
     """
 
+    df = pd.read_sql_query(query, engine)
+
+    save_to_cache(df, cache_key)
+    return df
+
 
 def fetch_captain_tree():
     cache_key = generate_cache_key("captain_tree")

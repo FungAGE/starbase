@@ -261,7 +261,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
         logger.info(f"Temp FASTA written: {tmp_query_fasta}")
 
         # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
+        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
 
         try:
             blast_results = run_blast(
@@ -371,10 +371,13 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
 
             blast_results_df = pd.DataFrame(blast_results_dict)
 
-            initial_df = load_from_cache("meta_data", curated)
+            # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
+            initial_df = load_from_cache("meta_data")
 
             if initial_df is None:
                 initial_df = fetch_meta_data(curated)
+
+            initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
 
             if blast_results_dict:
                 logger.info("Rendering BLAST table")
@@ -389,6 +392,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 df_for_table = df_for_table.drop_duplicates(
                     subset=["accession_tag", "pident", "length"]
                 )
+                df_for_table.fillna("", inplace=True)
 
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
