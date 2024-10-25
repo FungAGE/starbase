@@ -3,20 +3,20 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
-from flask_caching import Cache
 
 import pandas as pd
 
 from src.components import navmenu
 from src.components.precompute import precompute_all
 from src.components.cache import cache
+from src.utils.blastdb import create_dbs
 
 import warnings
 import logging
 
 warnings.filterwarnings("ignore")
 if not logging.getLogger().hasHandlers():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.ERROR)
     logging.getLogger("matplotlib.font_manager").disabled = True
 
 _dash_renderer._set_react_version("18.2.0")
@@ -71,5 +71,6 @@ def serve_app_layout():
 app.layout = serve_app_layout
 
 if __name__ == "__main__":
-    precompute_all()
     app.run_server(debug=False)
+    precompute_all()
+    create_dbs()

@@ -32,9 +32,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the code
 COPY ./ ./
 
-# build blast dbs from sql table
-RUN python src/utils/blastdb.py
-
 # Change permissions
 RUN chmod +x start-script.sh && chown -R $USER:$USER $HOME
 

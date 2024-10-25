@@ -58,7 +58,7 @@ def create_blast_database(fasta_path, dbtype):
     )
 
 
-if __name__ == "__main__":
+def create_dbs():
     ship_fasta_path = db_list["ship"]["nucl"]
     if not os.path.exists(ship_fasta_path):
         os.makedirs(ship_fasta_path)
