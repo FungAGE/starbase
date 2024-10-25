@@ -24,3 +24,4 @@ pygenomeviz==1.1.0
 dash-mantine-components==0.14.4
 sqlalchemy
 pymysql==1.1.1
+Flask-Caching==2.3.0
