@@ -502,7 +502,7 @@ def update_fasta_details(seq_content, seq_filename):
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])
 
 
@@ -524,5 +524,5 @@ def update_gff_details(anno_content, anno_filename):
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])

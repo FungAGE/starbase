@@ -4,8 +4,6 @@ warnings.filterwarnings("ignore")
 
 import logging
 
-logging.basicConfig(level=logging.ERROR)
-
 from dash import html
 
 from io import StringIO
@@ -14,6 +12,8 @@ import re
 import pandas as pd
 
 from Bio import SeqIO
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_fasta_header(text, default_header=">query"):
@@ -24,7 +24,7 @@ def ensure_fasta_header(text, default_header=">query"):
     lines = text.strip().splitlines()
 
     if not lines or not lines[0].startswith(">"):
-        logging.warning("No FASTA header found. Adding default header.")
+        logger.warning("No FASTA header found. Adding default header.")
         text = default_header + "\n" + text
 
     return text
@@ -38,25 +38,25 @@ def parse_fasta_from_text(text, format="fasta"):
     """
     try:
         if not text:
-            logging.error("Input text is empty.")
+            logger.error("Input text is empty.")
             raise
         text = ensure_fasta_header(text)
         queries = SeqIO.parse(StringIO(text), format)
         query = next(queries, None)  # Use `None` to avoid StopIteration
 
         if query is None:
-            logging.error("No sequence found in the provided text.")
+            logger.error("No sequence found in the provided text.")
             raise
 
         header, seq = str(query.id), str(query.seq)
-        logging.info(f"Parsed sequence: {header}")
+        logger.info(f"Parsed sequence: {header}")
         return header, seq
 
     except ValueError as ve:
-        logging.error(f"Value error: {ve}")
+        logger.error(f"Value error: {ve}")
         return None, None
     except Exception as e:
-        logging.error(f"Error parsing text: {e}")
+        logger.error(f"Error parsing text: {e}")
         return None, None
 
 
@@ -86,14 +86,14 @@ def parse_fasta_from_file(file_contents):
 
         query = sequences[0]
         header, seq = str(query.id), str(query.seq)
-        logging.info(f"Parsed sequence: {header}")
+        logger.info(f"Parsed sequence: {header}")
         return header, seq, None
 
     except ValueError as ve:
-        logging.error(f"Value error: {ve}")
+        logger.error(f"Value error: {ve}")
         return header, seq, str(ve)
     except Exception as e:
-        logging.error(f"Error parsing file: {e}")
+        logger.error(f"Error parsing file: {e}")
         return header, seq, str(e)
 
 
@@ -109,7 +109,7 @@ def parse_gff(contents, filename):
         gff = pd.read_csv(StringIO(decoded.decode("utf-8")), sep="\t")
 
         nanno = len(gff)
-        logging.info(f"Parsed {nanno} annotations from {filename}")
+        logger.info(f"Parsed {nanno} annotations from {filename}")
         return [
             html.Div(
                 [
@@ -120,7 +120,7 @@ def parse_gff(contents, filename):
         ]
 
     except Exception as e:
-        logging.error(f"Error parsing GFF file {filename}: {e}")
+        logger.error(f"Error parsing GFF file {filename}: {e}")
         return [
             html.Div(
                 [
@@ -144,7 +144,7 @@ def parse_fasta(contents, filename):
             records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
             nseq += 1
 
-        logging.info(f"Parsed {nseq} sequences from {filename}")
+        logger.info(f"Parsed {nseq} sequences from {filename}")
         return [
             html.Div(
                 [
@@ -155,7 +155,7 @@ def parse_fasta(contents, filename):
         ]
 
     except Exception as e:
-        logging.error(f"Error parsing FASTA file {filename}: {e}")
+        logger.error(f"Error parsing FASTA file {filename}: {e}")
         return [
             html.Div(
                 [
