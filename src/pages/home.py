@@ -1,12 +1,8 @@
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import dcc, html, callback
-from dash.dependencies import Output, Input
+from dash import dcc, html
 
-import pandas as pd
-
-from src.components.sqlite import engine
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
@@ -246,7 +242,7 @@ layout = html.Div(
                         dmc.GridCol(
                             span="content",
                             children=[
-                                dmc.Center([make_paper_table(engine)]),
+                                dmc.Center(make_paper_table()),
                             ],
                         ),
                     ],

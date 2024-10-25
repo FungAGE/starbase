@@ -13,8 +13,9 @@ import tempfile
 import base64
 from datetime import date
 import pandas as pd
-
 import plotly.graph_objects as go
+
+from src.components.cache import cache
 from src.utils.blast_utils import (
     check_input,
     guess_seq_type,
@@ -30,14 +31,15 @@ from src.utils.blast_utils import (
 )
 from src.components.callbacks import curated_switch
 from src.utils.parsing import parse_fasta, parse_fasta_from_file
-from src.components.sqlite import engine
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_meta_data
 from src.utils.blastdb import db_list
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 dash.register_page(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 def blast_family_button(family):
@@ -190,7 +192,7 @@ def update_fasta_details(seq_content, seq_filename):
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])
 
 
@@ -211,28 +213,28 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
 
     try:
-        logging.info(
+        logger.info(
             f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
         )
 
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-        logging.info(
+        logger.info(
             f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
         )
 
         if input_type in ("none", "both"):
-            logging.info("Invalid input type; returning None.")
+            logger.info("Invalid input type; returning None.")
             return None, None, None
 
         query_type = guess_seq_type(query_seq)
-        logging.info(f"guess_seq_type returned query_type={query_type}")
+        logger.info(f"guess_seq_type returned query_type={query_type}")
 
         return query_header, query_seq, query_type
 
     except Exception as e:
-        logging.error(f"Error in preprocess: {str(e)}")
+        logger.error(f"Error in preprocess: {str(e)}")
         return None, None, None
 
 
@@ -251,15 +253,15 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     try:
         if not query_header or not query_seq:
-            logging.error("Missing query header or sequence.")
+            logger.error("Missing query header or sequence.")
             return None, None, None
 
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logging.info(f"Temp FASTA written: {tmp_query_fasta}")
+        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
 
         # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
+        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
 
         try:
             blast_results = run_blast(
@@ -270,17 +272,17 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                 input_eval=0.01,
                 threads=2,
             )
-            logging.info(f"BLAST results: {blast_results.head()}")
+            logger.info(f"BLAST results: {blast_results.head()}")
             if blast_results is None:
                 raise ValueError("BLAST returned no results!")
         except Exception as e:
-            logging.error(f"BLAST error: {str(e)}")
+            logger.error(f"BLAST error: {str(e)}")
             raise
 
         blast_results_dict = blast_results.to_dict("records")
 
         # Run HMMER
-        logging.info(f"Running HMMER")
+        logger.info(f"Running HMMER")
 
         subject_seq_button = None
         # subject_seq = None
@@ -306,16 +308,16 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                 )
 
             if results_dict is None or len(results_dict) == 0:
-                logging.error("Diamond/HMMER returned no results!")
+                logger.error("Diamond/HMMER returned no results!")
                 raise
         except Exception as e:
-            logging.error(f"Diamond/HMMER error: {str(e)}")
+            logger.error(f"Diamond/HMMER error: {str(e)}")
             raise
 
         return blast_results_dict, results_dict, subject_seq_button
 
     except Exception as e:
-        logging.error(f"Error in fetch_captain: {str(e)}")
+        logger.error(f"Error in fetch_captain: {str(e)}")
         return None, None, None
 
 
@@ -326,12 +328,12 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
 def subject_seq_download(n_clicks, filename):
     try:
         if n_clicks:
-            logging.info(f"Download initiated for file: {filename}")
+            logger.info(f"Download initiated for file: {filename}")
             return dcc.send_file(filename)
         else:
             return dash.no_update
     except Exception as e:
-        logging.error(f"Error in subject_seq_download: {str(e)}")
+        logger.error(f"Error in subject_seq_download: {str(e)}")
         return dash.no_update
 
 
@@ -339,6 +341,11 @@ no_captain_alert = dbc.Alert(
     "No captain sequence found (e-value threshold 0.01).",
     color="warning",
 )
+
+
+@cache.memoize()
+def fn():
+    return
 
 
 @callback(
@@ -357,37 +364,23 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
     if blast_results_dict is None and captain_results_dict is None:
         raise PreventUpdate
     if n_clicks:
-        logging.info(f"Updating UI with n_clicks={n_clicks}")
+        logger.info(f"Updating UI with n_clicks={n_clicks}")
         try:
             ship_family = no_update
             ship_table = no_update
 
             blast_results_df = pd.DataFrame(blast_results_dict)
 
-            query = """
-            SELECT j.starshipID, a.accession_tag, f.familyName, t.species
-            FROM accessions a
-            LEFT JOIN joined_ships j ON a.id = j.ship_id
-            LEFT JOIN taxonomy t ON j.taxid = t.id
-            LEFT JOIN family_names f ON j.ship_family_id = f.id
-            WHERE j.orphan IS NULL
-            """
-            # user can switch back and forth between hq and all ships in the output, without having to run a new search
-            if curated:
-                query += "AND j.curated_status == 'curated'"
+            # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
+            initial_df = load_from_cache("meta_data")
 
-            # accessions = blast_results_df["sseqid"]
+            if initial_df is None:
+                initial_df = fetch_meta_data(curated)
 
-            # if accessions is not None and len(accessions) > 1:
-            #     placeholders = ",".join(["?"] * len(accessions))
-            #     query += f"AND accession_tag IN ({placeholders})"
-            #     initial_df = pd.read_sql_query(query, engine, params=accessions)
-            # else:
-
-            initial_df = pd.read_sql_query(query, engine)
+            initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
 
             if blast_results_dict:
-                logging.info("Rendering BLAST table")
+                logger.info("Rendering BLAST table")
                 df_for_table = pd.merge(
                     initial_df,
                     blast_results_df,
@@ -395,6 +388,12 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                     right_on="sseqid",
                     how="right",
                 )
+                # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
+                df_for_table = df_for_table.drop_duplicates(
+                    subset=["accession_tag", "pident", "length"]
+                )
+                df_for_table.fillna("", inplace=True)
+                df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
 
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
@@ -420,7 +419,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
 
                 else:
                     if captain_results_dict:
-                        logging.info("Processing Diamond/HMMER results")
+                        logger.info("Processing Diamond/HMMER results")
                         captain_results_df = pd.DataFrame(captain_results_dict)
                         # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
                         #     clean_shipID
@@ -450,7 +449,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                         )
 
                             except Exception as e:
-                                logging.error(f"Error selecting ship family: {str(e)}")
+                                logger.error(f"Error selecting ship family: {str(e)}")
                                 ship_family = html.Div(f"Error: {str(e)}")
                         else:
                             ship_family = no_captain_alert
@@ -460,10 +459,11 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
             return ship_family, ship_table
 
         except Exception as e:
-            logging.error(f"Error in update_ui: {str(e)}")
+            logger.error(f"Error in update_ui: {str(e)}")
             return no_update, no_update
 
 
+@cache.memoize()
 @callback(
     Output("ship-aln", "children"),
     [
@@ -475,7 +475,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
 )
 def blast_alignments(ship_blast_results, selected_row, curated, query_type):
     try:
-        logging.info(
+        logger.info(
             f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
         )
 
@@ -483,7 +483,7 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
             return [None]
 
         if not ship_blast_results or len(ship_blast_results) == 0:
-            logging.error(
+            logger.error(
                 "No BLAST results available because ship_blast_results is empty or None."
             )
             raise
@@ -500,7 +500,7 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
             sseqid = str(row["sseqid"])
 
         except IndexError:
-            logging.error(f"Error: Row index {row_idx} out of bounds.")
+            logger.error(f"Error: Row index {row_idx} out of bounds.")
             raise
         tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
@@ -508,14 +508,14 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
             with open(tmp_fasta.name, "w") as f:
                 f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
         except Exception as file_error:
-            logging.error(f"Error writing to FASTA file: {file_error}")
+            logger.error(f"Error writing to FASTA file: {file_error}")
             raise
 
         try:
             with open(tmp_fasta.name, "r") as file:
                 data = file.read()
         except Exception as read_error:
-            logging.error(f"Error reading FASTA file: {read_error}")
+            logger.error(f"Error reading FASTA file: {read_error}")
             raise
 
         color = "nucleotide" if query_type == "nucl" else "clustal2"
@@ -537,7 +537,7 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
         return [aln]
 
     except Exception as e:
-        logging.error(f"Error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         raise
 
 
@@ -551,7 +551,7 @@ def download_tsv(n_clicks, rows, columns):
         return None
 
     if not rows or not columns:
-        logging.error("Error: No data available for download.")
+        logger.error("Error: No data available for download.")
         return None
 
     try:
@@ -573,7 +573,7 @@ def download_tsv(n_clicks, rows, columns):
         )
 
     except Exception as e:
-        logging.error(f"Error while preparing TSV download: {e}")
+        logger.error(f"Error while preparing TSV download: {e}")
         return None
 
 
@@ -594,15 +594,15 @@ def create_alignment_plot(ship_blast_results, selected_row):
     try:
         ship_blast_results_df = pd.DataFrame(ship_blast_results)
         if ship_blast_results_df.empty:
-            logging.error("Error: No blast results available for plotting.")
+            logger.error("Error: No blast results available for plotting.")
             return None
     except Exception as e:
-        logging.error(f"Error converting blast results to DataFrame: {e}")
+        logger.error(f"Error converting blast results to DataFrame: {e}")
         return None
 
     # Check if selected row is valid
     if selected_row is None or not selected_row:
-        logging.error("No row selected for alignment.")
+        logger.error("No row selected for alignment.")
         return None
 
     try:
@@ -614,19 +614,19 @@ def create_alignment_plot(ship_blast_results, selected_row):
         sseqid = row["sseqid"]
 
         # Log selected sequence information
-        logging.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
+        logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
 
         # Write sequences to temporary FASTA file
         with open(tmp_fasta_clean.name, "w") as f:
             f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
 
-        logging.info("Running LASTZ...")
+        logger.info("Running LASTZ...")
         run_lastz(tmp_fasta_clean.name, lastz_output.name)
 
         lastz_df = parse_lastz_output(lastz_output.name)
 
         if lastz_df.empty:
-            logging.error("Error: No alignment data from LASTZ.")
+            logger.error("Error: No alignment data from LASTZ.")
             return None
 
         x_values = []
@@ -647,11 +647,11 @@ def create_alignment_plot(ship_blast_results, selected_row):
         return fig
 
     except IndexError as e:
-        logging.error(f"Error: Selected row index is out of bounds. Details: {e}")
+        logger.error(f"Error: Selected row index is out of bounds. Details: {e}")
         return None
 
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None
 
 
