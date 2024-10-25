@@ -167,5 +167,3 @@ src/data/ships/fna/blastdb/**
 src/data/ships/faa/blastdb/**
 .dockerignore
 .vscode/settings.json
-
-cache/**

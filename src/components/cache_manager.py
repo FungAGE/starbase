@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-CACHE_DIR = "cache"  # Directory where all cached objects will be saved
+CACHE_DIR = ".cache"  # Directory where all cached objects will be saved
 
 # Ensure the cache directory exists
 if not os.path.exists(CACHE_DIR):

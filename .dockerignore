@@ -8,7 +8,6 @@ database_folder/**
 database_folder/**
 database_folder/**
 database_folder/**
-cache/
 alembic/
 alembic.ini
 src/data/ships/fna/blastdb/
