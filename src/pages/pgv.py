@@ -37,7 +37,7 @@ ColorCycler.set_cmap("tab10")
 table_columns = [
     {
         "name": "Accession",
-        "id": "accession_tag",
+        "id": "accession",
         "deletable": False,
         "selectable": False,
         "presentation": "markdown",
@@ -217,17 +217,50 @@ def inject_svg_to_html(svg_file, html_template_file, output_html_file):
 
 
 def write_tmp(df, seqid, file_type=None, temp_dir=None):
-    # Create the file path with your desired naming convention
+    logger.debug(
+        "Entering write_tmp with seqid=%s, file_type=%s, temp_dir=%s",
+        seqid,
+        file_type,
+        temp_dir,
+    )
+
+    if temp_dir is None:
+        logger.warning("temp_dir is None; this may cause errors in file path creation.")
+
     file_path = os.path.join(temp_dir, f"{seqid}.{file_type}")
+    logger.debug("File path set to %s", file_path)
 
-    # Write to the file based on the type
-    if file_type == "gff":
-        df.to_csv(file_path, sep="\t", header=False, index=False)
-    elif file_type == "fa":
-        seq = df["sequence"][0]
-        with open(file_path, "w") as f:
-            f.write(f">{seqid}\n{seq}\n")
+    try:
+        if file_type == "gff":
+            logger.debug("file_type is 'gff'. Attempting to write dataframe to file.")
+            df.to_csv(file_path, sep="\t", header=False, index=False)
+            logger.debug("Dataframe written to %s", file_path)
+        elif file_type == "fa":
+            logger.debug(
+                "file_type is 'fa'. Checking for 'sequence' column and first entry."
+            )
 
+            if "sequence" not in df.columns:
+                logger.error("'sequence' column is missing from DataFrame.")
+                raise KeyError("'sequence' column is missing from DataFrame.")
+
+            if df.empty or df["sequence"].empty:
+                logger.error("The 'sequence' column is empty.")
+                raise ValueError("The 'sequence' column is empty.")
+
+            seq = df["sequence"].iloc[0]  # Use .iloc[0] to avoid KeyError
+            with open(file_path, "w") as f:
+                f.write(f">{seqid}\n{seq}\n")
+            logger.debug("Sequence data written to %s", file_path)
+        else:
+            logger.error("Unsupported file_type provided: %s", file_type)
+            raise ValueError("Unsupported file_type: %s" % file_type)
+
+    except Exception as e:
+        logger.exception("An error occurred while writing the file: %s", e)
+        raise
+
+    logger.debug("Exiting write_tmp with file_path=%s", file_path)
     return file_path
 
 
@@ -238,13 +271,21 @@ def load_gff(accession):
         df = fetch_accession_gff(accession)
 
     if df.empty:
-        print(f"No GFF records found for accession_tag: {accession}")
+        logger.error(f"No GFF records found for accession: {accession}")
     else:
         # Identify the rows where 'end' is less than 'start'
         mask = df["end"] < df["start"]
 
         # Swap the 'start' and 'end' values where the mask is True
         df.loc[mask, ["start", "end"]] = df.loc[mask, ["end", "start"]].values
+
+        # TODO: find a way to implement this
+        # # flip coordinates to favour captain order in starship
+        # df["priority"] = df["attributes"].str.contains("tyr").astype(int)
+
+        # df_sorted = df.sort_values(
+        #     by=["priority", "start", "end"], ascending=[False, True, True]
+        # ).drop(columns="priority")
 
     return df
 
@@ -260,7 +301,7 @@ def load_fa(accession):
         df = df[df["accession_tag"].isin(accession)]
 
     if df.empty:
-        print(f"No FA records found for accession_tag: {accession}")
+        logger.error(f"No fasta records found for accession: {accession}")
 
     return df
 
@@ -295,10 +336,10 @@ def multi_pgv(gff_files, seqs, tmp_file):
     for gff in gff_list:
         # Check GFF SeqIDs
         for seqid, features in gff.get_seqid2features("gene").items():
-            print(f"Processing seqid: {seqid}")
+            logger.info(f"Processing seqid: {seqid}")
 
             if seqid not in gff.get_seqid2size():
-                print(f"Error: SeqID {seqid} not found in GFF sizes")
+                logger.error(f"Error: SeqID {seqid} not found in GFF sizes")
                 continue
 
             track = gv.add_feature_track(seqid, gff.get_seqid2size(), align_label=False)
@@ -309,13 +350,13 @@ def multi_pgv(gff_files, seqs, tmp_file):
 
         for seq_file in seqs:
             if not os.path.isfile(seq_file):
-                print(f"Error: {seq_file} is not a valid file path.")
+                logger.error(f"Error: {seq_file} is not a valid file path.")
                 return
             if os.path.getsize(seq_file) == 0:
-                print(f"Error: {seq_file} is an empty file.")
+                logger.error(f"Error: {seq_file} is an empty file.")
                 return
             if not is_valid_sequence_file(seq_file):
-                print(f"Error: {seq_file} does not have a valid extension.")
+                logger.error(f"Error: {seq_file} does not have a valid extension.")
                 return
     # BLAST
     len_thr = 50
@@ -334,11 +375,11 @@ def multi_pgv(gff_files, seqs, tmp_file):
 
     if len(align_coords) > 0:
         min_ident = int(min([ac.identity for ac in align_coords if ac.identity]))
-        print(f"Minimum identity: {min_ident}")
+        logger.info(f"Minimum identity: {min_ident}")
 
         color, inverted_color = "blue", "orange"
         for ac in align_coords:
-            print(f"Adding link between {ac.query_link} and {ac.ref_link}")
+            logger.info(f"Adding link between {ac.query_link} and {ac.ref_link}")
             gv.add_link(
                 ac.query_link,
                 ac.ref_link,
@@ -388,11 +429,9 @@ def update_pgv(n_clicks, selected_rows, table_data):
     message = None
     if n_clicks > 0:
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
-
         if table_data and selected_rows is not None:
             try:
                 table_df = pd.DataFrame(table_data)
-                # Debug: Check columns and selected_rows
                 logger.info(f"Columns in table_df: {table_df.columns.tolist()}")
                 logger.info(f"Selected rows: {selected_rows}")
 
@@ -408,16 +447,19 @@ def update_pgv(n_clicks, selected_rows, table_data):
                         tmp_gffs = []
                         tmp_fas = []
                         for index, row in rows.iterrows():
-                            accession = row["accession_tag"]
-                            logging.info(f"Fetching GFF for accession: {accession}")
+                            accession = row["accession"]
+
+                            logger.info(f"Fetching FA for accession: {accession}")
+                            fa_df = load_fa(accession)
+                            tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
+                            tmp_fas.append(str(tmp_fa))
+
+                            logger.info(f"Fetching GFF for accession: {accession}")
                             gff_df = load_gff(accession)
 
                             tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
                             tmp_gffs.append(tmp_gff)
-                            logging.info(f"Fetching FA for accession: {accession}")
-                            fa_df = load_fa(accession)
-                            tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
-                            tmp_fas.append(str(tmp_fa))
+
                             output = html.P("Select up to four Starships to compare.")
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
                             message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
@@ -442,7 +484,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
                 else:
                     output = html.H4("Invalid row selection.")
             except Exception as e:
-                logging.error(f"Exception: {e}")
+                logger.error(f"Exception: {e}")
                 output = html.H4(
                     "Error while comparing ships using BLAST. Try another combination."
                 )
