@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from src.components.cache_manager import save_to_cache, load_from_cache, cache_exists
-from src.components.mariadb import engine
+from src.components.mariadb import engine, session
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
@@ -71,17 +71,21 @@ def fetch_paper_data():
     """
 
     try:
-        paper_df = pd.read_sql_query(paper_query, engine)
+        # Use the session to execute the query
+        paper_df = pd.read_sql_query(paper_query, session.bind)
+
         if paper_df.empty:
             logger.warning("Fetched paper DataFrame is empty.")
         else:
             logger.info(
                 f"Paper data successfully fetched from database, caching it under key '{cache_key}'"
             )
-        save_to_cache(paper_df, cache_key)
+            save_to_cache(paper_df, cache_key)
     except Exception as e:
         logger.error(f"Error fetching paper data: {str(e)}")
-        return None  # Ensure it returns None on error
+        return None
+    finally:
+        session.close()  # Ensure the session is closed
 
     return paper_df
 
