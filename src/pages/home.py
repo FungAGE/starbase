@@ -239,12 +239,7 @@ layout = html.Div(
                                 ),
                             ],
                         ),
-                        dmc.GridCol(
-                            span="content",
-                            children=[
-                                dmc.Center(make_paper_table()),
-                            ],
-                        ),
+                        dmc.GridCol(span=12, children=dmc.Center(download_ships_card)),
                     ],
                 ),
                 dmc.Grid(
@@ -253,7 +248,12 @@ layout = html.Div(
                     style={"paddingTop": "20px"},
                     grow=True,
                     children=[
-                        dmc.GridCol(span=12, children=dmc.Center(download_ships_card))
+                        dmc.GridCol(
+                            span="content",
+                            children=[
+                                dmc.Center(make_paper_table()),
+                            ],
+                        ),
                     ],
                 ),
             ],
