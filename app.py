@@ -72,6 +72,6 @@ def serve_app_layout():
 app.layout = serve_app_layout
 
 if __name__ == "__main__":
+    # precompute_all()
+    # create_dbs()
     app.run_server(debug=False)
-    precompute_all()
-    create_dbs()

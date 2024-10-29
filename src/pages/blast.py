@@ -392,8 +392,8 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 df_for_table = df_for_table.drop_duplicates(
                     subset=["accession_tag", "pident", "length"]
                 )
-                df_for_table.fillna("", inplace=True)
                 df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
+                df_for_table.fillna("", inplace=True)
 
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)

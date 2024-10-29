@@ -67,4 +67,6 @@ jobs:
           owner: "github"
           token: ${{ secrets.GH_PAT }}
           min-versions-to-keep: 10
-          delete-only-pre-release-versions: "true"
+          num-old-versions-to-delete: 1
+          delete-only-pre-release-versions: false
+          delete-only-untagged-versions: false
