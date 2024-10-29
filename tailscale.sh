@@ -7,8 +7,8 @@ if [ -z "$TS_AUTH_KEY" ]; then
 fi
 
 if [ -n "$TS_AUTH_KEY" ]; then
-  sudo tailscaled --tun=userspace-networking &
-  sudo tailscale up --authkey="${TS_AUTH_KEY}" --hostname="starbase-app" --accept-routes &
+  tailscaled --tun=userspace-networking &
+  tailscale up --authkey="${TS_AUTH_KEY}" --hostname="starbase-app" --accept-routes &
 
 else
   echo "Error: No Tailscale auth key provided. Please set TS_AUTH_KEY."

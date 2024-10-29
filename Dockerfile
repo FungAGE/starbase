@@ -36,8 +36,8 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh
 # Copy the rest of the code
 COPY ./ ./
 
-# Run the Tailscale login script (this should ideally run at container startup)
-RUN chmod +x tailscale.sh && chmod +x start-script.sh
+# Run the Tailscale login script
+RUN chmod +x tailscale.sh && chmod +x start-script.sh && sh tailscale.sh
 
 # Change permissions for user
 RUN chown -R $USER:$USER $HOME
