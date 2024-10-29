@@ -12,3 +12,4 @@ alembic/
 alembic.ini
 src/data/ships/fna/blastdb/
 src/data/ships/faa/blastdb/
+.cache
