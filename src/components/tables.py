@@ -6,16 +6,17 @@ from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 
-from src.components.sqlite import engine
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_paper_data
 
 
-def truncate_string(s, length=10):
+def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
 
 # Function to convert URL string to HTML link
 def url_to_link(url, label):
-    return f'<a href="{url}" target="_blank">{label}</a>'
+    return f"[{label}]({url})"
 
 
 def make_ship_table(df, id, columns=None, pg_sz=None):
@@ -58,26 +59,40 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
             "width": "100%",
             "height": "100%",
             "overflowX": "auto",
+            "overflowY": "auto",
         },
         style_data={
             "whiteSpace": "minimal",
         },
+        style_data_conditional=[
+            {
+                "if": {"column_id": "accession_tag"},
+                "color": "blue",
+                "textDecoration": "underline",
+                "cursor": "pointer",
+            }
+        ],
         style_cell={
             "minWidth": "0px",
             "maxWidth": "100%",
+            "textAlign": "left",
+        },
+        style_header={
+            "backgroundColor": "lightgrey",
+            "fontWeight": "bold",
             "textAlign": "left",
         },
     )
     return table
 
 
-def make_paper_table(engine):
-    query = """
-    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
-    FROM papers p
-    LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
-    """
-    df = pd.read_sql_query(query, engine)
+def make_paper_table():
+    df = load_from_cache("paper_data")
+    if df is None:
+        df = fetch_paper_data()
+    assert isinstance(
+        df, pd.DataFrame
+    ), f"Expected df to be a DataFrame, but got {type(df)}."
 
     df_summary = (
         df.groupby("Title")
@@ -95,23 +110,16 @@ def make_paper_table(engine):
 
     sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
-    sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=20))
-    sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=20))
+    # sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=40))
+    # sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=40))
     sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
     sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
 
     # rename columns
     sub_df_columns = [
         {
-            "name": "Title",
-            "id": "Title",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Authors",
-            "id": "Author",
+            "name": "Starship Families Described",
+            "id": "familyName",
             "deletable": False,
             "selectable": False,
             "presentation": "markdown",
@@ -124,8 +132,15 @@ def make_paper_table(engine):
             "presentation": "markdown",
         },
         {
-            "name": "Starship Families Described",
-            "id": "familyName",
+            "name": "Title",
+            "id": "Title",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Authors",
+            "id": "Author",
             "deletable": False,
             "selectable": False,
             "presentation": "markdown",
@@ -163,18 +178,19 @@ def make_paper_table(engine):
                         id="papers-table",
                         markdown_options={"html": True},
                         style_table={
-                            "overflowX": "auto",  # Enable horizontal scrolling
+                            "overflowX": "auto",
                         },
                         style_data={
-                            "whiteSpace": "normal",  # Allow text to wrap
+                            "height": "auto",
+                            "whiteSpace": "normal",
                             "overflow": "hidden",
                             "textOverflow": "ellipsis",
                         },
                         style_cell={
-                            "minWidth": "120px",  # Minimum column width
-                            "maxWidth": "100%",  # Maximum column width
-                            "textAlign": "left",  # Align text to the left
-                            "padding": "5px",  # Add padding for better spacing
+                            "minWidth": "120px",
+                            "maxWidth": "300px",
+                            "textAlign": "left",
+                            "padding": "5px",
                         },
                         style_header={
                             "backgroundColor": "lightgrey",

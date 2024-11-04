@@ -1,11 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -21,55 +13,33 @@ import tempfile
 import base64
 from datetime import date
 import pandas as pd
-
 import plotly.graph_objects as go
+
+from src.components.cache import cache
 from src.utils.blast_utils import (
     check_input,
     guess_seq_type,
     write_temp_fasta,
     run_blast,
     run_hmmer,
+    run_diamond,
     blast_table,
     run_lastz,
     select_ship_family,
     parse_lastz_output,
     blast_chords,
 )
-from src.utils.tree import plot_tree, default_highlight_families
 from src.components.callbacks import curated_switch
-from src.utils.parsing import parse_fasta
+from src.utils.parsing import parse_fasta, parse_fasta_from_file
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_meta_data
+from src.utils.blastdb import db_list
+
+import logging
 
 dash.register_page(__name__)
 
-db_list = {
-    "ship": {"nucl": "database_folder/Starships/ships/fna/blastdb/concatenated.fa"},
-    "gene": {
-        "tyr": {
-            "nucl": "database_folder/Starships/captain/tyr/fna/blastdb/concatenated.fa",
-            "prot": "database_folder/Starships/captain/tyr/faa/blastdb/concatenated.faa",
-            "hmm": {
-                "nucl": "database_folder/Starships/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "database_folder/Starships/captain/tyr/faa/hmm/combined.hmm",
-            },
-        },
-        "nlr": {
-            "nucl": "database_folder/Starships/cargo/nlr/fna/blastdb/nlr.fa",
-            "prot": "database_folder/Starships/cargo/nlr/faa/blastdb/nlr.mycoDB.faa",
-        },
-        "fre": {
-            "nucl": "database_folder/Starships/cargo/fre/fna/blastdb/fre.fa",
-            "prot": "database_folder/Starships/cargo/fre/faa/blastdb/fre.mycoDB.faa",
-        },
-        "plp": {
-            "nucl": "database_folder/Starships/cargo/plp/fna/blastdb/plp.fa",
-            "prot": "database_folder/Starships/cargo/plp/faa/blastdb/plp.mycoDB.faa",
-        },
-        "duf3723": {
-            "nucl": "database_folder/Starships/cargo/duf3723/fna/blastdb/duf3723.fa",
-            "prot": "database_folder/Starships/cargo/duf3723/faa/blastdb/duf3723.mycoDB.faa",
-        },
-    },
-}
+logger = logging.getLogger(__name__)
 
 
 def blast_family_button(family):
@@ -89,7 +59,7 @@ layout = dmc.Container(
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
-        dcc.Store(id="hmmer-results-store"),
+        dcc.Store(id="captain-results-store"),
         dmc.Grid(
             justify="start",
             align="start",
@@ -137,6 +107,11 @@ layout = dmc.Container(
                             multiple=False,
                             accept=".fa, .fas, .fasta, .fna",
                         ),
+                        html.Div(
+                            id="upload-error-message",
+                            style={"color": "red", "marginTop": "1rem"},
+                        ),
+                        dcc.Store(id="upload-error-store"),
                         curated_switch(
                             text="Only search curated Starships", size="normal"
                         ),
@@ -217,7 +192,7 @@ def update_fasta_details(seq_content, seq_filename):
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])
 
 
@@ -238,35 +213,35 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
 
     try:
-        # logging.info(
-        #     f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
-        # )
+        logger.info(
+            f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
+        )
 
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-        # logging.info(
-        #     f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
-        # )
+        logger.info(
+            f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
+        )
 
         if input_type in ("none", "both"):
-            logging.info("Invalid input type; returning None.")
+            logger.info("Invalid input type; returning None.")
             return None, None, None
 
         query_type = guess_seq_type(query_seq)
-        logging.info(f"guess_seq_type returned query_type={query_type}")
+        logger.info(f"guess_seq_type returned query_type={query_type}")
 
         return query_header, query_seq, query_type
 
     except Exception as e:
-        logging.error(f"Error in preprocess: {str(e)}")
+        logger.error(f"Error in preprocess: {str(e)}")
         return None, None, None
 
 
 @callback(
     [
         Output("blast-results-store", "data"),
-        Output("hmmer-results-store", "data"),
+        Output("captain-results-store", "data"),
         Output("subject-seq-button", "children"),
     ],
     [
@@ -275,19 +250,18 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-type-store", "data"),
     ],
 )
-def fetch_blast_hmmer_results(query_header, query_seq, query_type):
+def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     try:
         if not query_header or not query_seq:
-            logging.error("Missing query header or sequence.")
+            logger.error("Missing query header or sequence.")
             return None, None, None
 
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logging.info(f"Temp FASTA written: {tmp_query_fasta}")
+        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
 
         # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast").name
-        logging.info(f"Running BLAST with query_type={query_type}")
+        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
 
         try:
             blast_results = run_blast(
@@ -298,48 +272,52 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
                 input_eval=0.01,
                 threads=2,
             )
-            # logging.info(f"BLAST results: {blast_results}")
+            logger.info(f"BLAST results: {blast_results.head()}")
             if blast_results is None:
                 raise ValueError("BLAST returned no results!")
         except Exception as e:
-            logging.error(f"BLAST error: {str(e)}")
+            logger.error(f"BLAST error: {str(e)}")
             raise
 
         blast_results_dict = blast_results.to_dict("records")
 
         # Run HMMER
-        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-        tmp_hmmer_parsed = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-        logging.info(f"Running HMMER")
+        logger.info(f"Running HMMER")
 
-        # TODO: create grouped hmm profile for nucl captains so that hit_ID returned is a captain family
         subject_seq_button = None
-        subject_seq = None
+        # subject_seq = None
 
         try:
-            hmmer_results, subject_seq = run_hmmer(
-                db_list=db_list,
-                query_type=query_type,
-                input_genes="tyr",
-                input_eval=0.01,
-                query_fasta=tmp_query_fasta,
-                tmp_hmmer=tmp_hmmer,
-                tmp_hmmer_parsed=tmp_hmmer_parsed,
-                threads=2,
-            )
-            # logging.info(f"HMMER results: {hmmer_results}")
-            if hmmer_results is None:
-                logging.error("hmmsearch returned no results!")
+            if search_type == "diamond":
+                results_dict = run_diamond(
+                    db_list=db_list,
+                    query_type=query_type,
+                    input_genes="tyr",
+                    input_eval=0.01,
+                    query_fasta=tmp_query_fasta,
+                    threads=2,
+                )
+            if search_type == "hmmsearch":
+                results_dict = run_hmmer(
+                    db_list=db_list,
+                    query_type=query_type,
+                    input_genes="tyr",
+                    input_eval=0.01,
+                    query_fasta=tmp_query_fasta,
+                    threads=2,
+                )
+
+            if results_dict is None or len(results_dict) == 0:
+                logger.error("Diamond/HMMER returned no results!")
                 raise
         except Exception as e:
-            logging.error(f"HMMER error: {str(e)}")
+            logger.error(f"Diamond/HMMER error: {str(e)}")
             raise
 
-        hmmer_results_dict = hmmer_results.to_dict("records")
-        return blast_results_dict, hmmer_results_dict, subject_seq_button
+        return blast_results_dict, results_dict, subject_seq_button
 
     except Exception as e:
-        logging.error(f"Error in fetch_blast_hmmer_results: {str(e)}")
+        logger.error(f"Error in fetch_captain: {str(e)}")
         return None, None, None
 
 
@@ -350,12 +328,12 @@ def fetch_blast_hmmer_results(query_header, query_seq, query_type):
 def subject_seq_download(n_clicks, filename):
     try:
         if n_clicks:
-            logging.info(f"Download initiated for file: {filename}")
+            logger.info(f"Download initiated for file: {filename}")
             return dcc.send_file(filename)
         else:
             return dash.no_update
     except Exception as e:
-        logging.error(f"Error in subject_seq_download: {str(e)}")
+        logger.error(f"Error in subject_seq_download: {str(e)}")
         return dash.no_update
 
 
@@ -372,35 +350,46 @@ no_captain_alert = dbc.Alert(
     ],
     [
         Input("blast-results-store", "data"),
-        Input("hmmer-results-store", "data"),
-        Input("store-data", "data"),
+        Input("captain-results-store", "data"),
+        Input("curated-input", "value"),
     ],
-    [
-        State("submit-button", "n_clicks"),
-        State("query-type-store", "data"),
-    ],
+    State("submit-button", "n_clicks"),
 )
-def update_ui(
-    blast_results_dict, hmmer_results_dict, cached_data, n_clicks, query_type
-):
-    try:
-        ship_family = no_update
-        ship_table = no_update
+def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
+    if blast_results_dict is None and captain_results_dict is None:
+        raise PreventUpdate
+    if n_clicks:
+        logger.info(f"Updating UI with n_clicks={n_clicks}")
+        try:
+            ship_family = no_update
+            ship_table = no_update
 
-        if blast_results_dict is None and hmmer_results_dict is None:
-            raise PreventUpdate
+            blast_results_df = pd.DataFrame(blast_results_dict)
 
-        if n_clicks:
-            logging.info(f"Updating UI with n_clicks={n_clicks}")
-            initial_df = pd.DataFrame(cached_data)
+            # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
+            initial_df = load_from_cache("meta_data")
+
+            if initial_df is None:
+                initial_df = fetch_meta_data(curated)
+
+            initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
 
             if blast_results_dict:
-                logging.info("Rendering BLAST table")
-                blast_results_df = pd.DataFrame(blast_results_dict)
-                # ? instead of creating an additional set of blastdbs, why not just filter by quality in the results
-                # TODO: configure so that user can switch back and forth between hq and all ships in the output, without having to run a new search
-                # TODO: update blastdb's with accessions, rather than shipIDs?
-                df_for_table = blast_results_df[blast_results_df["sseqid"].isin(initial_df["starshipID"])]
+                logger.info("Rendering BLAST table")
+                df_for_table = pd.merge(
+                    initial_df,
+                    blast_results_df,
+                    left_on="accession_tag",
+                    right_on="sseqid",
+                    how="right",
+                )
+                # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
+                df_for_table = df_for_table.drop_duplicates(
+                    subset=["accession_tag", "pident", "length"]
+                )
+                df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
+                df_for_table.fillna("", inplace=True)
+
                 if len(df_for_table) > 0:
                     ship_table = blast_table(df_for_table)
                 else:
@@ -409,68 +398,86 @@ def update_ui(
                         color="danger",
                     )
 
-            if hmmer_results_dict:
-                logging.info("Processing HMMER results")
-                hmmer_results_df = pd.DataFrame(hmmer_results_dict)
-                df_for_hmmer = hmmer_results_df[hmmer_results_df["hit_IDs"].isin(initial_df["starshipID"])]
-                if len(df_for_hmmer) > 0:
-                    try:
-                        superfamily, family_aln_length, family_evalue = (
-                            select_ship_family(df_for_hmmer)
-                        )
-                        if superfamily:                                
-                            family = initial_df[initial_df["familyName"] == superfamily][
-                                "familyName"
-                            ].unique()[0]
-                            if family:
-                                ship_family = dbc.Alert(
-                                    [
-                                        f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                                    ],
-                                    color="warning",
-                                )
-                            else:
-                                ship_family = dbc.Alert(
-                                    [
-                                        f"Starship family could not be determined."
-                                    ],
-                                    color="danger",
-                                )
-                                
-                    except Exception as e:
-                        logging.error(f"Error selecting ship family: {str(e)}")
-                        ship_family = html.Div(f"Error: {str(e)}")
+                min_evalue_rows = df_for_table.loc[
+                    df_for_table.groupby("qseqid")["evalue"].idxmin()
+                ]
+                if min_evalue_rows["pident"][0] > 95:
+                    family_name = min_evalue_rows["familyName"][0]
+                    aln_len = min_evalue_rows["length"][0]
+                    ev = min_evalue_rows["evalue"][0]
+                    ship_family = dbc.Alert(
+                        [
+                            f"Your sequence is likely in Starship family: {family_name} (Alignment length = {aln_len}, evalue = {ev})",
+                        ],
+                        color="warning",
+                    )
+
                 else:
-                    ship_family = no_captain_alert
-            else:
-                ship_family = no_captain_alert
+                    if captain_results_dict:
+                        logger.info("Processing Diamond/HMMER results")
+                        captain_results_df = pd.DataFrame(captain_results_dict)
+                        # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
+                        #     clean_shipID
+                        # )
+                        if len(captain_results_df) > 0:
+                            try:
+                                superfamily, family_aln_length, family_evalue = (
+                                    select_ship_family(captain_results_df)
+                                )
+                                if superfamily:
+                                    family = initial_df[
+                                        initial_df["familyName"] == superfamily
+                                    ]["familyName"].unique()[0]
+                                    if family:
+                                        ship_family = dbc.Alert(
+                                            [
+                                                f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                            ],
+                                            color="warning",
+                                        )
+                                    else:
+                                        ship_family = dbc.Alert(
+                                            [
+                                                f"Starship family could not be determined."
+                                            ],
+                                            color="danger",
+                                        )
 
-        return ship_family, ship_table
+                            except Exception as e:
+                                logger.error(f"Error selecting ship family: {str(e)}")
+                                ship_family = html.Div(f"Error: {str(e)}")
+                        else:
+                            ship_family = no_captain_alert
+                    else:
+                        ship_family = no_captain_alert
+            return ship_family, ship_table
 
-    except Exception as e:
-        logging.error(f"Error in update_ui: {str(e)}")
-        return no_update, no_update
+        except Exception as e:
+            logger.error(f"Error in update_ui: {str(e)}")
+            return no_update, no_update
 
 
+@cache.memoize()
 @callback(
     Output("ship-aln", "children"),
     [
         Input("ship-blast-table", "derived_virtual_data"),
         Input("ship-blast-table", "derived_virtual_selected_rows"),
+        Input("curated-input", "value"),
     ],
     State("query-type-store", "data"),
 )
-def blast_alignments(ship_blast_results, selected_row, query_type):
+def blast_alignments(ship_blast_results, selected_row, curated, query_type):
     try:
-        # logging.info(
-        #     f"blast_alignments called with ship_blast_results: {ship_blast_results}, selected_row: {selected_row}, query_type: {query_type}"
-        # )
+        logger.info(
+            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
+        )
 
         if not selected_row or len(selected_row) == 0:
             return [None]
 
         if not ship_blast_results or len(ship_blast_results) == 0:
-            logging.error(
+            logger.error(
                 "No BLAST results available because ship_blast_results is empty or None."
             )
             raise
@@ -481,15 +488,13 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
-            qseq = re.sub("-", "", row["qseq"])
-            qseqid = row["qseqid"]
-            sseq = re.sub("-", "", row["sseq"])
-            sseqid = (
-                str(row["sseqid"]).replace("|-", "").replace("|+", "").replace("|", "")
-            )
+            qseq = str(row["qseq"])
+            qseqid = str(row["qseqid"])
+            sseq = str(row["sseq"])
+            sseqid = str(row["sseqid"])
 
         except IndexError:
-            logging.error(f"Error: Row index {row_idx} out of bounds.")
+            logger.error(f"Error: Row index {row_idx} out of bounds.")
             raise
         tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
 
@@ -497,14 +502,14 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
             with open(tmp_fasta.name, "w") as f:
                 f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
         except Exception as file_error:
-            logging.error(f"Error writing to FASTA file: {file_error}")
+            logger.error(f"Error writing to FASTA file: {file_error}")
             raise
 
         try:
             with open(tmp_fasta.name, "r") as file:
                 data = file.read()
         except Exception as read_error:
-            logging.error(f"Error reading FASTA file: {read_error}")
+            logger.error(f"Error reading FASTA file: {read_error}")
             raise
 
         color = "nucleotide" if query_type == "nucl" else "clustal2"
@@ -526,7 +531,7 @@ def blast_alignments(ship_blast_results, selected_row, query_type):
         return [aln]
 
     except Exception as e:
-        logging.error(f"Error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         raise
 
 
@@ -540,7 +545,7 @@ def download_tsv(n_clicks, rows, columns):
         return None
 
     if not rows or not columns:
-        logging.error("Error: No data available for download.")
+        logger.error("Error: No data available for download.")
         return None
 
     try:
@@ -562,7 +567,7 @@ def download_tsv(n_clicks, rows, columns):
         )
 
     except Exception as e:
-        logging.error(f"Error while preparing TSV download: {e}")
+        logger.error(f"Error while preparing TSV download: {e}")
         return None
 
 
@@ -583,15 +588,15 @@ def create_alignment_plot(ship_blast_results, selected_row):
     try:
         ship_blast_results_df = pd.DataFrame(ship_blast_results)
         if ship_blast_results_df.empty:
-            logging.error("Error: No blast results available for plotting.")
+            logger.error("Error: No blast results available for plotting.")
             return None
     except Exception as e:
-        logging.error(f"Error converting blast results to DataFrame: {e}")
+        logger.error(f"Error converting blast results to DataFrame: {e}")
         return None
 
     # Check if selected row is valid
     if selected_row is None or not selected_row:
-        logging.error("No row selected for alignment.")
+        logger.error("No row selected for alignment.")
         return None
 
     try:
@@ -603,19 +608,19 @@ def create_alignment_plot(ship_blast_results, selected_row):
         sseqid = row["sseqid"]
 
         # Log selected sequence information
-        logging.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
+        logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
 
         # Write sequences to temporary FASTA file
         with open(tmp_fasta_clean.name, "w") as f:
             f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
 
-        logging.info("Running LASTZ...")
+        logger.info("Running LASTZ...")
         run_lastz(tmp_fasta_clean.name, lastz_output.name)
 
         lastz_df = parse_lastz_output(lastz_output.name)
 
         if lastz_df.empty:
-            logging.error("Error: No alignment data from LASTZ.")
+            logger.error("Error: No alignment data from LASTZ.")
             return None
 
         x_values = []
@@ -636,9 +641,43 @@ def create_alignment_plot(ship_blast_results, selected_row):
         return fig
 
     except IndexError as e:
-        logging.error(f"Error: Selected row index is out of bounds. Details: {e}")
+        logger.error(f"Error: Selected row index is out of bounds. Details: {e}")
         return None
 
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None
+
+
+@callback(
+    Output("upload-error-message", "children"),
+    Output("upload-error-store", "data"),
+    Output("submit-button", "disabled"),
+    Input("blast-fasta-upload", "contents"),
+    State("blast-fasta-upload", "filename"),
+    prevent_initial_call=True,
+)
+def handle_fasta_upload(contents, filename):
+    if contents is None:
+        return "", None
+    max_size = 10 * 1024 * 1024  # 10 MB in bytes
+
+    content_type, content_string = contents.split(",")
+
+    header, seq, fasta_length_error_message = parse_fasta_from_file(contents)
+
+    decoded = base64.b64decode(content_string)
+    file_size = len(decoded)
+
+    if fasta_length_error_message:
+        error_message = dbc.Alert(
+            f"Error: {fasta_length_error_message}", color="danger"
+        )
+        return error_message, error_message, True
+    elif file_size > max_size:
+        error_message = dbc.Alert(
+            f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger"
+        )
+        return error_message, error_message, True
+    else:
+        return "", None, False

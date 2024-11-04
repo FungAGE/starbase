@@ -3,10 +3,22 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
+
 import pandas as pd
 
-from src.components.caching import cache
 from src.components import navmenu
+from src.components.precompute import precompute_all
+from src.components.cache import cache
+from src.utils.blastdb import create_dbs
+
+
+import warnings
+import logging
+
+warnings.filterwarnings("ignore")
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(level=logging.ERROR)
+    logging.getLogger("matplotlib.font_manager").disabled = True
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -26,6 +38,10 @@ external_scripts = [
 ]
 
 server = Flask(__name__)
+
+server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+
+# Initialize Dash app with the Flask server
 app = Dash(
     __name__,
     server=server,
@@ -34,13 +50,10 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
-    # external_scripts=external_scripts,
-    meta_tags=[
-        {"name": "viewport", "content": "width=device-width, initial-scale=1"},
-    ],
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 
-# Initialize cache with Flask server
+# Set up cache with app
 cache.init_app(server)
 
 
@@ -49,7 +62,6 @@ def serve_app_layout():
         html.Div(
             [
                 dcc.Location(id="url", refresh=False),
-                dcc.Store(id="store-data"),
                 navmenu.navmenu(),
                 html.Div(dash.page_container),
             ]
@@ -60,4 +72,6 @@ def serve_app_layout():
 app.layout = serve_app_layout
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    # precompute_all()
+    # create_dbs()
+    app.run_server(debug=False)

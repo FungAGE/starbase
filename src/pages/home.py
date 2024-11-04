@@ -1,19 +1,15 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import dcc, html, callback
-from dash.dependencies import Output, Input
+from dash import dcc, html
 
-import pandas as pd
-
-from src.components.sqlite import engine
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__, title="Home", name="Home", path="/")
 
@@ -84,97 +80,6 @@ layout = html.Div(
                     align="center",
                     style={"paddingTop": "20px"},
                     gutter="xl",
-                    children=[
-                        dmc.GridCol(
-                            span="content",
-                            children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [
-                                                html.Div(
-                                                    [
-                                                        "What can I currently use ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " for?",
-                                                    ],
-                                                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                )
-                                            ],
-                                            style={
-                                                "justify-content": "center",
-                                            },
-                                            className="card-header-custom",
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                dbc.Stack(
-                                                    working_buttons,
-                                                    # direction="horizontal",
-                                                    gap=3,
-                                                    className="justify-content-center",
-                                                )
-                                            ],
-                                            className="d-flex align-items-center",
-                                        ),
-                                    ],
-                                    className="w-100 mb-3",
-                                ),
-                            ],
-                        ),
-                        dmc.GridCol(
-                            span="content",
-                            children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [
-                                                html.Div(
-                                                    [
-                                                        "Functions of ",
-                                                        html.Span(
-                                                            "starbase",
-                                                            className="logo-text",
-                                                        ),
-                                                        " under active development:",
-                                                    ],
-                                                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                                                )
-                                            ],
-                                            style={
-                                                "justify-content": "center",
-                                            },
-                                            className="card-header-custom",
-                                        ),
-                                        dbc.CardBody(
-                                            [not_working_ul],
-                                            className="d-flex align-items-center",
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                dmc.Grid(
-                    justify="center",
-                    align="center",
-                    style={"paddingTop": "20px"},
-                    grow=True,
-                    children=[
-                        dmc.GridCol(
-                            span=12, children=[dmc.Center([download_ships_card])]
-                        )
-                    ],
-                ),
-                dmc.Grid(
-                    justify="center",
-                    align="center",
-                    style={"paddingTop": "20px"},
-                    grow=True,
                     children=[
                         dmc.GridCol(
                             span=12,
@@ -256,7 +161,7 @@ layout = html.Div(
                                             ],
                                             color="primary",
                                             inverse=True,
-                                            className="auto-resize-750",
+                                            className="auto-resize-900",
                                         ),
                                     ]
                                 ),
@@ -265,7 +170,88 @@ layout = html.Div(
                         dmc.GridCol(
                             span="content",
                             children=[
-                                dmc.Center([make_paper_table(engine)]),
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                html.Div(
+                                                    [
+                                                        "What can I currently use ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                        " for?",
+                                                    ],
+                                                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                                                )
+                                            ],
+                                            style={
+                                                "justify-content": "center",
+                                            },
+                                            className="card-header-custom",
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                dbc.Stack(
+                                                    working_buttons,
+                                                    # direction="horizontal",
+                                                    gap=3,
+                                                    className="justify-content-center",
+                                                )
+                                            ],
+                                            className="d-flex align-items-center",
+                                        ),
+                                    ],
+                                    className="w-100 mb-3",
+                                ),
+                            ],
+                        ),
+                        dmc.GridCol(
+                            span="content",
+                            children=[
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                html.Div(
+                                                    [
+                                                        "Functions of ",
+                                                        html.Span(
+                                                            "starbase",
+                                                            className="logo-text",
+                                                        ),
+                                                        " under active development:",
+                                                    ],
+                                                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                                                )
+                                            ],
+                                            style={
+                                                "justify-content": "center",
+                                            },
+                                            className="card-header-custom",
+                                        ),
+                                        dbc.CardBody(
+                                            [not_working_ul],
+                                            className="d-flex align-items-center",
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                        dmc.GridCol(span=12, children=dmc.Center(download_ships_card)),
+                    ],
+                ),
+                dmc.Grid(
+                    justify="center",
+                    align="center",
+                    style={"paddingTop": "20px"},
+                    grow=True,
+                    children=[
+                        dmc.GridCol(
+                            span="content",
+                            children=[
+                                dmc.Center(make_paper_table()),
                             ],
                         ),
                     ],

@@ -1,30 +1,56 @@
-# Select base image (can be ubuntu, python, shiny etc)
+# Select base image
 FROM python:3.9
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
+LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring large transposable elements in Fungi"
 
-# Create user name and home directory variables. 
-# The variables are later used as $USER and $HOME. 
+# Create variables for user name, home directory, and placeholders 
 ENV USER=starbase
 ENV HOME=/home/$USER
+
+# Define build arguments
+ARG DB_USER
+ARG DB_PASSWORD
+ARG DB_HOST
+ARG DB_PORT
+ARG DB_NAME
+
+# Set environment variables from build arguments
+ENV DB_USER=${DB_USER}
+ENV DB_PASSWORD=${DB_PASSWORD}
+ENV DB_HOST=${DB_HOST}
+ENV DB_PORT=${DB_PORT}
+ENV DB_NAME=${DB_NAME}
 
 # Add user to system
 RUN useradd -m -u 1000 $USER
 
-# Set working directory (this is where the code should go)
+# Set working directory
 WORKDIR $HOME/
 
-# Copy code and start script (this will place the files in home/username/)
+# Copy only the requirements.txt first for dependency installation
+COPY requirements.txt .
+
+# Update system and install system dependencies first
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies separately (cache this layer)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the code
 COPY ./ ./
 
-# Update system and install dependencies.
-RUN apt-get update && apt-get upgrade -y && apt-get install ncbi-blast+ hmmer clustalw -y && apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    pip install --no-cache-dir -r $HOME/requirements.txt && \
-    chmod +x start-script.sh && \
-    # mkdir database_folder/ && \
-    chown -R $USER:$USER $HOME
+RUN chmod +x start-script.sh
 
+# Change permissions for user
+RUN chown -R $USER:$USER $HOME
+
+# Switch to user
 USER $USER
 
+# Expose the application port
 EXPOSE 8000
 
+# Start the container by initializing Tailscale and running the main app script
 ENTRYPOINT ["./start-script.sh"]

@@ -163,6 +163,8 @@ tmp/
 
 database_folder
 database_folder/**
+src/data/ships/fna/blastdb/**
+src/data/ships/faa/blastdb/**
 .dockerignore
 src/data/ships/fna/blastdb/ships.fa
 src/data/ships/fna/blastdb/ships.fa.ndb
@@ -173,3 +175,4 @@ src/data/ships/fna/blastdb/ships.fa.not
 src/data/ships/fna/blastdb/ships.fa.nsq
 src/data/ships/fna/blastdb/ships.fa.ntf
 src/data/ships/fna/blastdb/ships.fa.nto
+.vscode/settings.json

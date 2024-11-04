@@ -1,7 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -11,21 +7,56 @@ from dash.dependencies import Output, Input, State
 import os
 import tempfile
 import pandas as pd
+import logging
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
 from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
-from pygenomeviz.align import Blast, AlignCoord
+from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
+from Bio import SeqIO
 from jinja2 import Template
 
-from src.components.sqlite import engine
-
+from src.components.cache import cache
+from src.components.mariadb import engine
 from src.components.tables import make_ship_table
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import (
+    fetch_all_ships,
+    fetch_accession_gff,
+    fetch_ship_table,
+)
+
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
 
 ColorCycler.set_cmap("tab10")
+
+table_columns = [
+    {
+        "name": "Accession",
+        "id": "accession",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Starship Family",
+        "id": "familyName",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Species",
+        "id": "species",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+]
 
 layout = dmc.Container(
     fluid=True,
@@ -47,14 +78,25 @@ layout = dmc.Container(
                             type="circle",
                             children=[
                                 html.Div(id="pgv-table", className="center-content"),
-                                dbc.Button(
+                            ],
+                        ),
+                    ],
+                ),
+                dmc.GridCol(
+                    span={
+                        "sm": 12,
+                        "lg": 8,
+                    },
+                    children=[
+                        dmc.Center(
+                            [
+                                dmc.Button(
                                     "Show Starship(s) in Viewer",
                                     id="update-button",
                                     n_clicks=0,
-                                    className="d-grid gap-2 mx-auto",
-                                    style={"fontSize": "1rem"},
+                                    className="text-custom text-custom-sm text-custom-md",
                                 ),
-                            ],
+                            ]
                         ),
                     ],
                 ),
@@ -69,13 +111,16 @@ layout = dmc.Container(
                             id="loading-1",
                             type="circle",
                             children=[
-                                html.Div(id="pgv-figure",
-                                        style={
-                                            "height": "800px",
-                                            "width": "100%",
-                                            "overflow": "auto",
-                                            "border": "1px solid #ccc",
-                                        }),
+                                html.Div(id="pgv-message"),
+                                html.Div(
+                                    id="pgv-figure",
+                                    style={
+                                        "height": "800px",
+                                        "width": "100%",
+                                        "overflow": "auto",
+                                        "border": "1px solid #ccc",
+                                    },
+                                ),
                             ],
                         )
                     ],
@@ -171,41 +216,93 @@ def inject_svg_to_html(svg_file, html_template_file, output_html_file):
         output_file.write(rendered_html)
 
 
-def write_tmp(df, type=None):
-    tmp = tempfile.NamedTemporaryFile(suffix=f".{type}", delete=False)
-    if type == "gff":
-        df.to_csv(tmp.name, sep="\t", header=False, index=False)
-    elif type == "fa":
-        seqid = df["accession_tag"]
-        seq = df["ship_sequence"]
-        with open(tmp.name, "w") as f:
-            f.write(f">{seqid}\n{seq}\n")
-    return tmp.name
+def write_tmp(df, seqid, file_type=None, temp_dir=None):
+    logger.debug(
+        "Entering write_tmp with seqid=%s, file_type=%s, temp_dir=%s",
+        seqid,
+        file_type,
+        temp_dir,
+    )
+
+    if temp_dir is None:
+        logger.warning("temp_dir is None; this may cause errors in file path creation.")
+
+    file_path = os.path.join(temp_dir, f"{seqid}.{file_type}")
+    logger.debug("File path set to %s", file_path)
+
+    try:
+        if file_type == "gff":
+            logger.debug("file_type is 'gff'. Attempting to write dataframe to file.")
+            df.to_csv(file_path, sep="\t", header=False, index=False)
+            logger.debug("Dataframe written to %s", file_path)
+        elif file_type == "fa":
+            logger.debug(
+                "file_type is 'fa'. Checking for 'sequence' column and first entry."
+            )
+
+            if "sequence" not in df.columns:
+                logger.error("'sequence' column is missing from DataFrame.")
+                raise KeyError("'sequence' column is missing from DataFrame.")
+
+            if df.empty or df["sequence"].empty:
+                logger.error("The 'sequence' column is empty.")
+                raise ValueError("The 'sequence' column is empty.")
+
+            seq = df["sequence"].iloc[0]  # Use .iloc[0] to avoid KeyError
+            with open(file_path, "w") as f:
+                f.write(f">{seqid}\n{seq}\n")
+            logger.debug("Sequence data written to %s", file_path)
+        else:
+            logger.error("Unsupported file_type provided: %s", file_type)
+            raise ValueError("Unsupported file_type: %s" % file_type)
+
+    except Exception as e:
+        logger.exception("An error occurred while writing the file: %s", e)
+        raise
+
+    logger.debug("Exiting write_tmp with file_path=%s", file_path)
+    return file_path
 
 
-def fetch_gff(accession):
-    query = """
-    SELECT g.*
-    FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
-    LEFT JOIN ships s on s.accession = a.id
-    LEFT JOIN joined_ships j ON j.ship_id = a.id
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    WHERE a.accession_tag = :accession_tag AND j.orphan IS NULL
-    """
-    df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+def load_gff(accession):
+
+    df = load_from_cache(f"accession_gff_{accession}")
+    if df is None:
+        df = fetch_accession_gff(accession)
+
+    if df.empty:
+        logger.error(f"No GFF records found for accession: {accession}")
+    else:
+        # Identify the rows where 'end' is less than 'start'
+        mask = df["end"] < df["start"]
+
+        # Swap the 'start' and 'end' values where the mask is True
+        df.loc[mask, ["start", "end"]] = df.loc[mask, ["end", "start"]].values
+
+        # TODO: find a way to implement this
+        # # flip coordinates to favour captain order in starship
+        # df["priority"] = df["attributes"].str.contains("tyr").astype(int)
+
+        # df_sorted = df.sort_values(
+        #     by=["priority", "start", "end"], ascending=[False, True, True]
+        # ).drop(columns="priority")
+
     return df
 
 
-def fetch_fa(accession):
-    query = """
-    SELECT s.*
-    FROM ships s
-    LEFT JOIN accessions a ON s.accession = a.id
-    WHERE a.accession_tag = :accession_tag
-    """
-    df = pd.read_sql_query(query, engine, params={"accession_tag": accession})
+def load_fa(accession):
+    df = load_from_cache("all_ships")
+    if df is None:
+        df = fetch_all_ships()
+
+    if isinstance(accession, str):
+        df = df[df["accession_tag"] == accession]
+    else:
+        df = df[df["accession_tag"].isin(accession)]
+
+    if df.empty:
+        logger.error(f"No fasta records found for accession: {accession}")
+
     return df
 
 
@@ -226,30 +323,63 @@ def single_pgv(gff_file, tmp_file):
     gv.savefig_html(tmp_file, fig)
 
 
+def is_valid_sequence_file(file_path):
+    valid_extensions = (".fa", ".fna", ".fasta", ".gb", ".gbk", ".gbff")
+    return file_path.endswith(valid_extensions)
+
+
 def multi_pgv(gff_files, seqs, tmp_file):
-
     gff_list = list(map(Gff, gff_files))
-
     gv = GenomeViz(track_align_type="center", fig_track_height=0.7)
     gv.set_scale_bar()
 
     for gff in gff_list:
+        # Check GFF SeqIDs
+        for seqid, features in gff.get_seqid2features("gene").items():
+            logger.info(f"Processing seqid: {seqid}")
 
-        track = gv.add_feature_track(gff.name, gff.get_seqid2size(), align_label=False)
-        for idx, (seqid, features) in enumerate(gff.get_seqid2features("gene").items()):
+            if seqid not in gff.get_seqid2size():
+                logger.error(f"Error: SeqID {seqid} not found in GFF sizes")
+                continue
+
+            track = gv.add_feature_track(seqid, gff.get_seqid2size(), align_label=False)
             segment = track.get_segment(seqid)
-            for gene in features:
+
+            for idx, gene in enumerate(features):
                 add_gene_feature(gene, segment, idx)
 
-    # Run BLAST alignment & filter by user-defined threshold
-    align_coords = Blast(seqs, seqtype="protein").run()
-    align_coords = AlignCoord.filter(align_coords, length_thr=200, identity_thr=50)
+        for seq_file in seqs:
+            if not os.path.isfile(seq_file):
+                logger.error(f"Error: {seq_file} is not a valid file path.")
+                return
+            if os.path.getsize(seq_file) == 0:
+                logger.error(f"Error: {seq_file} is an empty file.")
+                return
+            if not is_valid_sequence_file(seq_file):
+                logger.error(f"Error: {seq_file} does not have a valid extension.")
+                return
+    # BLAST
+    len_thr = 50
+    id_thr = 30
+    align_coords = Blast(seqs, seqtype="nucleotide").run()
 
-    # Plot BLAST alignment links
+    align_coords = AlignCoord.filter(
+        align_coords, length_thr=len_thr, identity_thr=id_thr
+    )
+
+    # Run MMseqs RBH search
+    # align_coords = MMseqs(seqs, threads=2).run()
+
+    # Run MuMMer
+    # align_coords = MUMmer(seqs).run()
+
     if len(align_coords) > 0:
         min_ident = int(min([ac.identity for ac in align_coords if ac.identity]))
-        color, inverted_color = "grey", "red"
+        logger.info(f"Minimum identity: {min_ident}")
+
+        color, inverted_color = "blue", "orange"
         for ac in align_coords:
+            logger.info(f"Adding link between {ac.query_link} and {ac.ref_link}")
             gv.add_link(
                 ac.query_link,
                 ac.ref_link,
@@ -259,14 +389,36 @@ def multi_pgv(gff_files, seqs, tmp_file):
                 vmin=min_ident,
             )
         gv.set_colorbar([color, inverted_color], vmin=min_ident)
+        message = None
+    else:
+        message = html.H4(
+            f"No alignments found between ships (Length threshold: {len_thr}bp, ID threshold: {id_thr}%)"
+        )
 
     fig = plot_legend(gv)
     gv.savefig_html(tmp_file, fig)
-    # gv.savefig("tmp/genbank_comparison_by_blast.svg")
+
+    return message
+
+
+@cache.memoize()
+@callback(
+    Output("pgv-table", "children"),
+    Input("url", "href"),
+)
+def load_ship_table(href):
+    table_df = load_from_cache("ship_table")
+    if table_df is None:
+        table_df = fetch_ship_table()
+    if href:
+        table = make_ship_table(
+            df=table_df, id="pgv-table", columns=table_columns, pg_sz=15
+        )
+        return table
 
 
 @callback(
-    Output("pgv-figure", "children"),
+    [Output("pgv-figure", "children"), Output("pgv-message", "children")],
     Input("update-button", "n_clicks"),
     [
         State("pgv-table", "derived_virtual_selected_rows"),
@@ -274,12 +426,14 @@ def multi_pgv(gff_files, seqs, tmp_file):
     ],
 )
 def update_pgv(n_clicks, selected_rows, table_data):
+    message = None
     if n_clicks > 0:
-        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=False).name
-
+        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
         if table_data and selected_rows is not None:
             try:
                 table_df = pd.DataFrame(table_data)
+                logger.info(f"Columns in table_df: {table_df.columns.tolist()}")
+                logger.info(f"Selected rows: {selected_rows}")
 
                 if isinstance(selected_rows, list) and all(
                     isinstance(idx, int) for idx in selected_rows
@@ -289,83 +443,64 @@ def update_pgv(n_clicks, selected_rows, table_data):
                     except IndexError as e:
                         return html.Div("Index out of bounds")
 
-                    tmp_gffs = []
-                    # TODO: need to do better filtering/catching for when sequences are missing in the list?
-                    tmp_fas = []
-                    for index, row in rows.iterrows():
-                        accession = row["accession_tag"]
-                        gff_df = fetch_gff(accession)
-                        tmp_gff = write_tmp(gff_df, "gff")
-                        tmp_gffs.append(tmp_gff)
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        tmp_gffs = []
+                        tmp_fas = []
+                        for index, row in rows.iterrows():
+                            accession = row["accession"]
 
-                    if len(selected_rows) > 1:
-                        if len(selected_rows) > 4:
-                            for index, row in rows.iterrows():
-                                fa_df = fetch_fa(accession)
-                                tmp_fa = write_tmp(fa_df, "fa")
-                                tmp_fas.append(tmp_fa)
+                            logger.info(f"Fetching FA for accession: {accession}")
+                            fa_df = load_fa(accession)
+                            tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
+                            tmp_fas.append(str(tmp_fa))
+
+                            logger.info(f"Fetching GFF for accession: {accession}")
+                            gff_df = load_gff(accession)
+
+                            tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
+                            tmp_gffs.append(tmp_gff)
 
                             output = html.P("Select up to four Starships to compare.")
+                        if len(selected_rows) > 1 and len(selected_rows) <= 4:
+                            message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
+                        elif len(selected_rows) == 1:
+                            single_pgv(tmp_gffs[0], tmp_pgv)
                         else:
-                            multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
-                    elif len(selected_rows) == 1:
-                        single_pgv(tmp_gffs[0], tmp_pgv)
-                    else:
-                        output = html.P("No valid selection.")
+                            output = html.P("No valid selection.")
+                        try:
+                            with open(tmp_pgv, "r") as file:
+                                pgv_content = file.read()
+                        except IOError:
+                            output = html.P("Failed to read the temporary file.")
 
-                    try:
-                        with open(tmp_pgv, "r") as file:
-                            pgv_content = file.read()
-                    except IOError:
-                        output = html.P("Failed to read the temporary file.")
-
-                    output = html.Iframe(
-                        srcDoc=pgv_content,
-                        style={
-                            "width": "100%",
-                            "height": "100%",
-                            "border": "none",
-                        },
-                        className="auto-resize-750",
-                    )
+                        output = html.Iframe(
+                            srcDoc=pgv_content,
+                            style={
+                                "width": "100%",
+                                "height": "100%",
+                                "border": "none",
+                            },
+                        )
                 else:
                     output = html.H4("Invalid row selection.")
             except Exception as e:
-                print("Exception:", e)
-                output = html.H4("Error processing data.")
+                logger.error(f"Exception: {e}")
+                output = html.H4(
+                    "Error while comparing ships using BLAST. Try another combination."
+                )
         else:
             output = html.H4("Select Starship(s) to visualize.")
     else:
         output = html.H4(
-            "Select the Starship(s) in the table above and click the button to visualize."
+            "Select up to 4 Starships in the table above and click the button to visualize."
         )
-    return html.Div(
-        [output],
-        className="center-content text-center",
+    return (
+        html.Div(
+            [output],
+            className="center-content text-center",
+        ),
+        message,
     )
-
-
-@callback(
-    Output("pgv-table", "children"),
-    Input("url", "href"),
-)
-def load_ship_table(href):
-    query = """
-    SELECT a.accession_tag, f.familyName, t.species
-    FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
-    LEFT JOIN ships s on s.accession = a.id
-    LEFT JOIN gff g ON a.id = g.ship_id
-    WHERE s.ship_sequence is NOT NULL AND g.ship_ID is NOT NULL AND j.orphan IS NULL
-    """
-    table_df = pd.read_sql_query(query, engine)
-    table_df = table_df.drop_duplicates(subset=["accession_tag"])
-
-    if href:
-        table = make_ship_table(df=table_df, id="pgv-table", columns=None, pg_sz=15)
-        return table
 
 
 # inject_svg_to_html(

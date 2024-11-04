@@ -1,21 +1,11 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-
-from dash import callback, html
+from dash import html
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash.dependencies import Output, Input
 
-import pandas as pd
+import os
+import logging
 
-import base64
-from src.utils.parsing import parse_fasta, parse_gff
-
+logger = logging.getLogger(__name__)
 
 download_ships_button = dbc.Button(
     html.Div(
