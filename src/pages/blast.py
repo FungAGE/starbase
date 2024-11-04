@@ -343,11 +343,6 @@ no_captain_alert = dbc.Alert(
 )
 
 
-@cache.memoize()
-def fn():
-    return
-
-
 @callback(
     [
         Output("ship-family", "children"),
@@ -455,7 +450,6 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                             ship_family = no_captain_alert
                     else:
                         ship_family = no_captain_alert
-
             return ship_family, ship_table
 
         except Exception as e:
