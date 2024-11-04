@@ -65,7 +65,7 @@ jobs:
       - name: Remove old packages
         uses: actions/delete-package-versions@v5
         with:
-          owner: "github"
+          owner: FungAGE
           token: ${{ secrets.GH_PAT }}
           min-versions-to-keep: 10
           num-old-versions-to-delete: 1
