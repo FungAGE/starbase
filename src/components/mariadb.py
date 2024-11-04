@@ -3,6 +3,7 @@ import logging
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from pymysql.err import OperationalError
 from models import Base
 from dotenv import load_dotenv
 
@@ -35,15 +36,23 @@ try:
 except Exception as e:
     logger.debug("No previous engine to dispose of, or disposal failed.")
 
-engine = create_engine(
-    connection_str,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=1800,
-    pool_timeout=30,
-    # echo=True,
-)
+# Attempt to connect to the SQL database
+try:
+    engine = create_engine(
+        connection_str,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=1800,
+        pool_timeout=30,
+        # echo=True,
+    )
+
+    sql_connected = True
+except OperationalError as e:
+    print("Could not connect to SQL server:", e)
+    sql_connected = False
+
 
 # metadata = MetaData()
 

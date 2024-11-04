@@ -35,7 +35,7 @@ def fetch_meta_data(curated=True):
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN accessions a ON j.ship_id = a.id
-    WHERE j.orphan IS NULL
+    WHERE j.orphan IS NULL  
     """
 
     if curated:
