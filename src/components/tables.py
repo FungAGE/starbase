@@ -16,7 +16,7 @@ def truncate_string(s, length=40):
 
 # Function to convert URL string to HTML link
 def url_to_link(url, label):
-    return f'<a href="{url}" target="_blank">{label}</a>'
+    return f"[{label}]({url})"
 
 
 def make_ship_table(df, id, columns=None, pg_sz=None):
@@ -64,6 +64,14 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         style_data={
             "whiteSpace": "minimal",
         },
+        style_data_conditional=[
+            {
+                "if": {"column_id": "accession_tag"},
+                "color": "blue",
+                "textDecoration": "underline",
+                "cursor": "pointer",
+            }
+        ],
         style_cell={
             "minWidth": "0px",
             "maxWidth": "100%",
@@ -110,15 +118,8 @@ def make_paper_table():
     # rename columns
     sub_df_columns = [
         {
-            "name": "Title",
-            "id": "Title",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Authors",
-            "id": "Author",
+            "name": "Starship Families Described",
+            "id": "familyName",
             "deletable": False,
             "selectable": False,
             "presentation": "markdown",
@@ -131,8 +132,15 @@ def make_paper_table():
             "presentation": "markdown",
         },
         {
-            "name": "Starship Families Described",
-            "id": "familyName",
+            "name": "Title",
+            "id": "Title",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Authors",
+            "id": "Author",
             "deletable": False,
             "selectable": False,
             "presentation": "markdown",
