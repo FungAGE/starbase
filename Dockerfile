@@ -13,7 +13,6 @@ ARG DB_PASSWORD
 ARG DB_HOST
 ARG DB_PORT
 ARG DB_NAME
-ARG TS_AUTH_KEY
 
 # Set environment variables from build arguments
 ENV DB_USER=${DB_USER}
@@ -21,7 +20,6 @@ ENV DB_PASSWORD=${DB_PASSWORD}
 ENV DB_HOST=${DB_HOST}
 ENV DB_PORT=${DB_PORT}
 ENV DB_NAME=${DB_NAME}
-ENV TS_AUTH_KEY=${TS_AUTH_KEY}
 
 # Add user to system
 RUN useradd -m -u 1000 $USER
@@ -40,14 +38,10 @@ RUN apt-get update && apt-get upgrade -y && \
 # Install Python dependencies separately (cache this layer)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Tailscale
-RUN curl -fsSL https://tailscale.com/install.sh | sh
-
 # Copy the rest of the code
 COPY ./ ./
 
-# Run the Tailscale login script
-RUN chmod +x tailscale.sh && chmod +x start-script.sh && sh tailscale.sh
+RUN chmod +x start-script.sh
 
 # Change permissions for user
 RUN chown -R $USER:$USER $HOME
