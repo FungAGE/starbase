@@ -359,30 +359,30 @@ def create_sidebar(active_item, cached_meta):
                 "selectable": False,
                 "presentation": "markdown",
             },
-            {
-                "name": "Species",
-                "id": "species",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "Contig ID",
-                "id": "contigID",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "Start Position in Genome",
-                "id": "elementBegin",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "End Position in Genome",
-                "id": "elementEnd",
-                "deletable": False,
-                "selectable": False,
-            },
+            # {
+            #     "name": "Species",
+            #     "id": "species",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
+            # {
+            #     "name": "Contig ID",
+            #     "id": "contigID",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
+            # {
+            #     "name": "Start Position in Genome",
+            #     "id": "elementBegin",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
+            # {
+            #     "name": "End Position in Genome",
+            #     "id": "elementEnd",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
             {
                 "name": "Element Length",
                 "id": "size",
@@ -413,13 +413,6 @@ def create_accession_modal(accession):
     modal_data = initial_df[initial_df["accession_tag"] == accession]
 
     modal_title = html.H2(f"Ship Accession: {accession}")
-
-    n_ships = html.Div(
-        [
-            html.Strong("Number of Ships With This Accession: "),
-            html.Span(f"{len(modal_data)}"),
-        ]
-    )
 
     # tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
 
@@ -457,35 +450,85 @@ def create_accession_modal(accession):
 
     # modal_content = output
 
-    # modal_content = [
-    #     html.Div([html.Strong("ship_id"), html.Span(modal_data["ship_id"][0])]),
-    #     html.Div(
-    #         [html.Strong("curated_status"), html.Span(modal_data["curated_status"][0])]
-    #     ),
-    #     n_ships,
-    #     html.Div([html.Strong("familyName"), html.Span(modal_data["familyName"][0])]),
-    #     html.Div(
-    #         [
-    #             html.Strong("type_element_reference"),
-    #             html.Span(modal_data["type_element_reference"][0]),
-    #         ]
-    #     ),
-    #     html.Div([html.Strong("size"), html.Span(modal_data["size"][0])]),
-    #     html.Div([html.Strong("contigID"), html.Span(modal_data["contigID"][0])]),
-    #     html.Div(
-    #         [html.Strong("elementBegin"), html.Span(modal_data["elementBegin"][0])]
-    #     ),
-    #     html.Div([html.Strong("elementEnd"), html.Span(modal_data["elementEnd"][0])]),
-    #     html.Div([html.Strong("taxid"), html.Span(modal_data["taxid"][0])]),
-    #     html.Div([html.Strong("order"), html.Span(modal_data["order"][0])]),
-    #     html.Div([html.Strong("family"), html.Span(modal_data["family"][0])]),
-    #     html.Div([html.Strong("species"), html.Span(modal_data["species"][0])]),
-    # ]
-
-    modal_content = [
-        html.Div([html.Strong(f"{col}: "), html.Span(f"{modal_data.iloc[0][col]}")])
-        for col in modal_data
-    ]
+    modal_content = html.Div(
+        [
+            html.Div(
+                [html.Strong("ship_id: "), html.Span(modal_data["ship_id"].iloc[0])]
+            ),
+            html.Div(
+                [
+                    html.Strong("curated_status: "),
+                    html.Span(modal_data["curated_status"].iloc[0]),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Strong("Number of genomes with ship present:"),
+                    html.Span(len(modal_data)),
+                ]
+            ),
+            html.Hr(),
+            # TODO: update genome accessions field
+            html.Div(
+                [
+                    html.Strong("Assembly Accession(s): "),
+                    html.Span(""),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Strong("Genome Source: "),
+                    html.Span(modal_data["genomeSource"].iloc[0]),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Strong("Citation: "),
+                    html.Span(modal_data["citation"].iloc[0]),
+                ]
+            ),
+            html.Div(
+                [html.Strong("contigID: "), html.Span(modal_data["contigID"].iloc[0])]
+            ),
+            html.Div(
+                [
+                    html.Strong("elementBegin: "),
+                    html.Span(modal_data["elementBegin"].iloc[0]),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Strong("elementEnd: "),
+                    html.Span(modal_data["elementEnd"].iloc[0]),
+                ]
+            ),
+            html.Div([html.Strong("size: "), html.Span(modal_data["size"].iloc[0])]),
+            html.Hr(),
+            html.Div([html.Strong("order: "), html.Span(modal_data["order"].iloc[0])]),
+            html.Div(
+                [html.Strong("family: "), html.Span(modal_data["family"].iloc[0])]
+            ),
+            html.Div(
+                [html.Strong("species: "), html.Span(modal_data["species"].iloc[0])]
+            ),
+            html.Div(
+                [html.Strong("strain: "), html.Span(modal_data["strain"].iloc[0])]
+            ),
+            html.Div(
+                [
+                    html.Strong("taxid: "),
+                    html.A(
+                        (
+                            int(modal_data["taxid"].iloc[0])
+                            if isinstance(modal_data["taxid"].iloc[0], (float, int))
+                            else modal_data["taxid"].iloc[0]
+                        ),
+                        href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={int(modal_data['taxid'].iloc[0]) if isinstance(modal_data['taxid'].iloc[0], (float, int)) else modal_data['taxid'].iloc[0]}",
+                    ),
+                ]
+            ),
+        ]
+    )
 
     return modal_content, modal_title
 

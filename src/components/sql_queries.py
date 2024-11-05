@@ -29,7 +29,7 @@ def fetch_meta_data(curated=True):
     SELECT j.ship_family_id, j.curated_status, j.taxid, j.ship_id, j.genome_id, 
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.species, 
-           g.version, g.genomeSource, g.citation, a.accession_tag
+           g.version, g.genomeSource, g.citation, a.accession_tag, g.strain
     FROM joined_ships j
     LEFT JOIN taxonomy t ON j.taxid = t.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
