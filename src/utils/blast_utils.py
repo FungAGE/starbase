@@ -732,6 +732,14 @@ def blast_table(ship_blast_results):
                     "whiteSpace": "normal",
                     "overflow": "hidden",
                 },
+                style_data_conditional=[
+                    {
+                        "if": {"column_id": "accession_tag"},
+                        "color": "blue",
+                        "textDecoration": "underline",
+                        "cursor": "pointer",
+                    }
+                ],
                 style_cell={
                     "minWidth": "120px",
                     "maxWidth": "300px",

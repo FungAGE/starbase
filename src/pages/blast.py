@@ -29,7 +29,7 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from src.components.callbacks import curated_switch
+from src.components.callbacks import curated_switch, create_accession_modal
 from src.utils.parsing import parse_fasta, parse_fasta_from_file
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_meta_data
@@ -49,6 +49,16 @@ def blast_family_button(family):
         href=f"/wiki?page={family}",
         external_link=False,
     )
+
+
+modal = dbc.Modal(
+    [
+        dbc.ModalHeader(dbc.ModalTitle(id="blast-modal-title")),
+        dbc.ModalBody(id="blast-modal-content"),
+    ],
+    id="blast-modal",
+    is_open=False,
+)
 
 
 layout = dmc.Container(
@@ -149,6 +159,7 @@ layout = dmc.Container(
                             className="dash-loading",
                             children=html.Div(id="ship-blast-table"),
                         ),
+                        modal,
                         dcc.Loading(
                             id="subject-seq-button-loading",
                             type="circle",
@@ -343,11 +354,6 @@ no_captain_alert = dbc.Alert(
 )
 
 
-@cache.memoize()
-def fn():
-    return
-
-
 @callback(
     [
         Output("ship-family", "children"),
@@ -406,56 +412,71 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 min_evalue_rows = df_for_table.loc[
                     df_for_table.groupby("qseqid")["evalue"].idxmin()
                 ]
-                if min_evalue_rows["pident"][0] > 95:
-                    family_name = min_evalue_rows["familyName"][0]
-                    aln_len = min_evalue_rows["length"][0]
-                    ev = min_evalue_rows["evalue"][0]
-                    ship_family = dbc.Alert(
-                        [
-                            f"Your sequence is likely in Starship family: {family_name} (Alignment length = {aln_len}, evalue = {ev})",
-                        ],
-                        color="warning",
+                if min_evalue_rows.empty:
+                    logger.warning(
+                        "min_evalue_rows is empty after grouping by qseqid and selecting min evalue."
                     )
-
                 else:
-                    if captain_results_dict:
-                        logger.info("Processing Diamond/HMMER results")
-                        captain_results_df = pd.DataFrame(captain_results_dict)
-                        # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
-                        #     clean_shipID
-                        # )
-                        if len(captain_results_df) > 0:
-                            try:
-                                superfamily, family_aln_length, family_evalue = (
-                                    select_ship_family(captain_results_df)
-                                )
-                                if superfamily:
-                                    family = initial_df[
-                                        initial_df["familyName"] == superfamily
-                                    ]["familyName"].unique()[0]
-                                    if family:
-                                        ship_family = dbc.Alert(
-                                            [
-                                                f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
-                                            ],
-                                            color="warning",
-                                        )
-                                    else:
-                                        ship_family = dbc.Alert(
-                                            [
-                                                f"Starship family could not be determined."
-                                            ],
-                                            color="danger",
-                                        )
+                    print(min_evalue_rows["pident"])
+                    # logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
 
-                            except Exception as e:
-                                logger.error(f"Error selecting ship family: {str(e)}")
-                                ship_family = html.Div(f"Error: {str(e)}")
+                if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
+                    if min_evalue_rows["pident"].iloc[0] > 95:
+                        family_name = min_evalue_rows["familyName"].iloc[0]
+                        aln_len = min_evalue_rows["length"].iloc[0]
+                        ev = min_evalue_rows["evalue"].iloc[0]
+                        ship_family = dbc.Alert(
+                            [
+                                f"Your sequence is likely in Starship family: {family_name} (Alignment length = {aln_len}, evalue = {ev})",
+                            ],
+                            color="warning",
+                        )
+
+                    else:
+                        if captain_results_dict:
+                            logger.info("Processing Diamond/HMMER results")
+                            captain_results_df = pd.DataFrame(captain_results_dict)
+                            # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
+                            #     clean_shipID
+                            # )
+                            if len(captain_results_df) > 0:
+                                try:
+                                    superfamily, family_aln_length, family_evalue = (
+                                        select_ship_family(captain_results_df)
+                                    )
+                                    if superfamily:
+                                        family = initial_df[
+                                            initial_df["familyName"] == superfamily
+                                        ]["familyName"].unique()[0]
+                                        if family:
+                                            ship_family = dbc.Alert(
+                                                [
+                                                    f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                                ],
+                                                color="warning",
+                                            )
+                                        else:
+                                            ship_family = dbc.Alert(
+                                                [
+                                                    f"Starship family could not be determined."
+                                                ],
+                                                color="danger",
+                                            )
+
+                                except Exception as e:
+                                    logger.error(
+                                        f"Error selecting ship family: {str(e)}"
+                                    )
+                                    ship_family = html.Div(f"Error: {str(e)}")
+                            else:
+                                ship_family = no_captain_alert
                         else:
                             ship_family = no_captain_alert
-                    else:
-                        ship_family = no_captain_alert
-
+                else:
+                    ship_family = dbc.Alert(
+                        "No matching rows found for minimum evalue selection.",
+                        color="danger",
+                    )
             return ship_family, ship_table
 
         except Exception as e:
@@ -555,18 +576,14 @@ def download_tsv(n_clicks, rows, columns):
         return None
 
     try:
-        # Convert rows and columns to DataFrame
         df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
 
-        # Generate TSV string
         tsv_string = df.to_csv(sep="\t", index=False)
         tsv_bytes = io.BytesIO(tsv_string.encode())
         b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
 
-        # Get today's date
         today = date.today().strftime("%Y-%m-%d")
 
-        # Return the data
         return dict(
             content=f"data:text/tab-separated-values;base64,{b64}",
             filename=f"starbase_blast_{today}.tsv",
@@ -600,23 +617,19 @@ def create_alignment_plot(ship_blast_results, selected_row):
         logger.error(f"Error converting blast results to DataFrame: {e}")
         return None
 
-    # Check if selected row is valid
     if selected_row is None or not selected_row:
         logger.error("No row selected for alignment.")
         return None
 
     try:
-        # Extract sequence info from selected row
         row = ship_blast_results_df.iloc[selected_row]
         qseq = re.sub("-", "", row["qseq"])
         qseqid = row["qseqid"]
         sseq = re.sub("-", "", row["sseq"])
         sseqid = row["sseqid"]
 
-        # Log selected sequence information
         logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
 
-        # Write sequences to temporary FASTA file
         with open(tmp_fasta_clean.name, "w") as f:
             f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
 
@@ -687,3 +700,20 @@ def handle_fasta_upload(contents, filename):
         return error_message, error_message, True
     else:
         return "", None, False
+
+
+@callback(
+    Output("blast-modal", "is_open"),
+    Output("blast-modal-content", "children"),
+    Output("blast-modal-title", "children"),
+    Input("ship-blast-table", "active_cell"),
+    State("blast-modal", "is_open"),
+    State("ship-blast-table", "data"),
+)
+def toggle_modal(active_cell, is_open, table_data):
+    if active_cell:
+        row = active_cell["row"]
+        row_data = table_data[row]
+        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
+        return True, modal_content, modal_title
+    return is_open, None, None
