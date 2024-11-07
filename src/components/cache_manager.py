@@ -10,7 +10,7 @@ CACHE_DIR = ".cache"  # Directory where all cached objects will be saved
 
 # Ensure the cache directory exists
 if not os.path.exists(CACHE_DIR):
-    os.makedirs(CACHE_DIR)
+    os.makedirs(CACHE_DIR, exist_ok=True)
     logger.info(f"Cache directory created at {CACHE_DIR}")
 
 

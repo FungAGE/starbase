@@ -10,6 +10,7 @@ from src.components import navmenu
 from src.components.precompute import precompute_all
 from src.components.cache import cache
 from src.utils.blastdb import create_dbs
+from src.components.mariadb import sql_connected
 
 
 import warnings
@@ -62,7 +63,7 @@ def serve_app_layout():
         html.Div(
             [
                 dcc.Location(id="url", refresh=False),
-                navmenu.navmenu(),
+                navmenu.navmenu(buttons_disabled=not sql_connected),
                 html.Div(dash.page_container),
             ]
         )

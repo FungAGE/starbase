@@ -23,10 +23,10 @@ from src.components.sql_queries import (
     cache_sunburst_plot,
     fetch_paper_data,
 )
-from src.components.mariadb import engine
 from src.components.tables import make_ship_table
 from src.utils.plot_utils import make_logo
 from src.utils.parsing import clean_contigIDs
+from src.components.callbacks import create_accession_modal
 
 dash.register_page(__name__)
 
@@ -147,10 +147,10 @@ def create_accordion_item(df, papers, category):
 
 modal = dbc.Modal(
     [
-        dbc.ModalHeader(dbc.ModalTitle(id="modal-title")),
-        dbc.ModalBody(id="modal-content"),
+        dbc.ModalHeader(dbc.ModalTitle(id="wiki-modal-title")),
+        dbc.ModalBody(id="wiki-modal-content"),
     ],
-    id="modal",
+    id="wiki-modal",
     is_open=False,
 )
 
@@ -359,30 +359,30 @@ def create_sidebar(active_item, cached_meta):
                 "selectable": False,
                 "presentation": "markdown",
             },
-            {
-                "name": "Species",
-                "id": "species",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "Contig ID",
-                "id": "contigID",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "Start Position in Genome",
-                "id": "elementBegin",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "End Position in Genome",
-                "id": "elementEnd",
-                "deletable": False,
-                "selectable": False,
-            },
+            # {
+            #     "name": "Species",
+            #     "id": "species",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
+            # {
+            #     "name": "Contig ID",
+            #     "id": "contigID",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
+            # {
+            #     "name": "Start Position in Genome",
+            #     "id": "elementBegin",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
+            # {
+            #     "name": "End Position in Genome",
+            #     "id": "elementEnd",
+            #     "deletable": False,
+            #     "selectable": False,
+            # },
             {
                 "name": "Element Length",
                 "id": "size",
@@ -405,97 +405,12 @@ def create_sidebar(active_item, cached_meta):
         raise
 
 
-def create_accession_modal(accession):
-    # import tempfile
-    # from src.pages.pgv import load_fa, write_tmp, load_gff, single_pgv
-
-    initial_df = load_from_cache("meta_data")
-    modal_data = initial_df[initial_df["accession_tag"] == accession]
-
-    modal_title = html.H2(f"Ship Accession: {accession}")
-
-    n_ships = html.Div(
-        [
-            html.Strong("Number of Ships With This Accession: "),
-            html.Span(f"{len(modal_data)}"),
-        ]
-    )
-
-    # tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
-
-    # with tempfile.TemporaryDirectory() as temp_dir:
-    #     tmp_gffs = []
-    #     tmp_fas = []
-    #     for index, row in modal_data.iterrows():
-    #         logger.info(f"Fetching FA for accession: {accession}")
-    #         fa_df = load_fa(accession)
-    #         tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
-    #         tmp_fas.append(str(tmp_fa))
-
-    #         logger.info(f"Fetching GFF for accession: {accession}")
-    #         gff_df = load_gff(accession)
-
-    #         tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
-    #         tmp_gffs.append(tmp_gff)
-
-    #         output = html.P("Select up to four Starships to compare.")
-    #     single_pgv(tmp_gffs[0], tmp_pgv)
-    #     try:
-    #         with open(tmp_pgv, "r") as file:
-    #             pgv_content = file.read()
-    #     except IOError:
-    #         output = html.P("Failed to read the temporary file.")
-
-    #     output = html.Iframe(
-    #         srcDoc=pgv_content,
-    #         style={
-    #             "width": "100%",
-    #             "height": "100%",
-    #             "border": "none",
-    #         },
-    #     )
-
-    # modal_content = output
-
-    # modal_content = [
-    #     html.Div([html.Strong("ship_id"), html.Span(modal_data["ship_id"][0])]),
-    #     html.Div(
-    #         [html.Strong("curated_status"), html.Span(modal_data["curated_status"][0])]
-    #     ),
-    #     n_ships,
-    #     html.Div([html.Strong("familyName"), html.Span(modal_data["familyName"][0])]),
-    #     html.Div(
-    #         [
-    #             html.Strong("type_element_reference"),
-    #             html.Span(modal_data["type_element_reference"][0]),
-    #         ]
-    #     ),
-    #     html.Div([html.Strong("size"), html.Span(modal_data["size"][0])]),
-    #     html.Div([html.Strong("contigID"), html.Span(modal_data["contigID"][0])]),
-    #     html.Div(
-    #         [html.Strong("elementBegin"), html.Span(modal_data["elementBegin"][0])]
-    #     ),
-    #     html.Div([html.Strong("elementEnd"), html.Span(modal_data["elementEnd"][0])]),
-    #     html.Div([html.Strong("taxid"), html.Span(modal_data["taxid"][0])]),
-    #     html.Div([html.Strong("order"), html.Span(modal_data["order"][0])]),
-    #     html.Div([html.Strong("family"), html.Span(modal_data["family"][0])]),
-    #     html.Div([html.Strong("species"), html.Span(modal_data["species"][0])]),
-    # ]
-
-    modal_content = [
-        html.Div([html.Strong(f"{col}: "), html.Span(f"{modal_data.iloc[0][col]}")])
-        for col in modal_data
-    ]
-
-    return modal_content, modal_title
-
-
 @callback(
-    Output("modal", "is_open"),
-    Output("modal-content", "children"),
-    Output("modal-title", "children"),
+    Output("wiki-modal", "is_open"),
+    Output("wiki-modal-content", "children"),
+    Output("wiki-modal-title", "children"),
     Input("wiki-table", "active_cell"),
-    State("modal", "is_open"),
+    State("wiki-modal", "is_open"),
     State("wiki-table", "data"),
 )
 def toggle_modal(active_cell, is_open, table_data):
