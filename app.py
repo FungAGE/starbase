@@ -7,10 +7,12 @@ from flask import Flask
 import pandas as pd
 
 from src.components import navmenu
-from src.components.precompute import precompute_all
+
+# from src.components.precompute import precompute_all
 from src.components.cache import cache
-from src.utils.blastdb import create_dbs
-from src.components.mariadb import sql_connected
+
+# from src.utils.blastdb import create_dbs
+from src.components.sql_engine import sql_connected
 
 
 import warnings
@@ -18,7 +20,7 @@ import logging
 
 warnings.filterwarnings("ignore")
 if not logging.getLogger().hasHandlers():
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.DEBUG)
     logging.getLogger("matplotlib.font_manager").disabled = True
 
 _dash_renderer._set_react_version("18.2.0")

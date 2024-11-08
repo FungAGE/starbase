@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from pymysql.err import OperationalError
+from sqlalchemy.exc import OperationalError
 from models import Base
 from dotenv import load_dotenv
 
@@ -38,17 +38,26 @@ try:
         pool_recycle=1800,
         pool_timeout=30,
     )
-    sql_connected = True
-    logger.info("Successfully connected to the SQL database.")
 
-    # Create session
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    logger.info("Session factory created and session started.")
+    # Test the connection by connecting and immediately disconnecting
+    with engine.connect() as connection:
+        sql_connected = True
+        logger.info("Successfully connected to the SQL database.")
+
+    if sql_connected:
+        # Create session
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        logger.info("Session factory created and session started.")
+    else:
+        engine = None
+        session = None
 
 except OperationalError as e:
+    sql_connected = False
     logger.error("Could not connect to SQL server: %s", e)
 except Exception as e:
+    sql_connected = False
     logger.exception(
         "An unexpected error occurred while trying to connect to the SQL server."
     )

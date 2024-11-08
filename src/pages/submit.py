@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 dash.register_page(__name__)
 
 
-from src.components.mariadb import engine
+from src.components.sql_engine import engine
 
 layout = dmc.Container(
     fluid=True,

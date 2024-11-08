@@ -90,118 +90,115 @@ def make_paper_table():
     df = load_from_cache("paper_data")
     if df is None:
         df = fetch_paper_data()
-    assert isinstance(
-        df, pd.DataFrame
-    ), f"Expected df to be a DataFrame, but got {type(df)}."
-
-    df_summary = (
-        df.groupby("Title")
-        .agg(
-            {
-                "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
-                "Author": "first",
-                "PublicationYear": "first",
-                "DOI": "first",
-                "Url": "first",
-            }
+    if df is not None:
+        df_summary = (
+            df.groupby("Title")
+            .agg(
+                {
+                    "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
+                    "Author": "first",
+                    "PublicationYear": "first",
+                    "DOI": "first",
+                    "Url": "first",
+                }
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
 
-    sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
+        sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
-    # sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=40))
-    # sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=40))
-    sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
-    sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
+        # sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=40))
+        # sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=40))
+        sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
+        sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
 
-    # rename columns
-    sub_df_columns = [
-        {
-            "name": "Starship Families Described",
-            "id": "familyName",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Publication Year",
-            "id": "PublicationYear",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Title",
-            "id": "Title",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Authors",
-            "id": "Author",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "DOI",
-            "id": "DOI",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Url",
-            "id": "Url",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-    ]
+        # rename columns
+        sub_df_columns = [
+            {
+                "name": "Starship Families Described",
+                "id": "familyName",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Publication Year",
+                "id": "PublicationYear",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Title",
+                "id": "Title",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Authors",
+                "id": "Author",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "DOI",
+                "id": "DOI",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Url",
+                "id": "Url",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+        ]
 
-    paper_table = dbc.Card(
-        [
-            dbc.CardHeader(
-                html.Div(
-                    ["Manuscripts Characterizing Starships"],
-                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                )
-            ),
-            dbc.CardBody(
-                [
-                    dash_table.DataTable(
-                        data=sub_df.to_dict("records"),
-                        sort_action="none",
-                        columns=sub_df_columns,
-                        id="papers-table",
-                        markdown_options={"html": True},
-                        style_table={
-                            "overflowX": "auto",
-                        },
-                        style_data={
-                            "height": "auto",
-                            "whiteSpace": "normal",
-                            "overflow": "hidden",
-                            "textOverflow": "ellipsis",
-                        },
-                        style_cell={
-                            "minWidth": "120px",
-                            "maxWidth": "300px",
-                            "textAlign": "left",
-                            "padding": "5px",
-                        },
-                        style_header={
-                            "backgroundColor": "lightgrey",
-                            "fontWeight": "bold",
-                            "textAlign": "left",
-                        },
-                    ),
-                ]
-            ),
-        ],
-        # className="auto-resize-900",
-    )
+        paper_table = dbc.Card(
+            [
+                dbc.CardHeader(
+                    html.Div(
+                        ["Manuscripts Characterizing Starships"],
+                        className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                    )
+                ),
+                dbc.CardBody(
+                    [
+                        dash_table.DataTable(
+                            data=sub_df.to_dict("records"),
+                            sort_action="none",
+                            columns=sub_df_columns,
+                            id="papers-table",
+                            markdown_options={"html": True},
+                            style_table={
+                                "overflowX": "auto",
+                            },
+                            style_data={
+                                "height": "auto",
+                                "whiteSpace": "normal",
+                                "overflow": "hidden",
+                                "textOverflow": "ellipsis",
+                            },
+                            style_cell={
+                                "minWidth": "120px",
+                                "maxWidth": "300px",
+                                "textAlign": "left",
+                                "padding": "5px",
+                            },
+                            style_header={
+                                "backgroundColor": "lightgrey",
+                                "fontWeight": "bold",
+                                "textAlign": "left",
+                            },
+                        ),
+                    ]
+                ),
+            ],
+            # className="auto-resize-900",
+        )
 
-    return paper_table
+        return paper_table

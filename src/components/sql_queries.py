@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from src.components.cache_manager import save_to_cache, load_from_cache, cache_exists
-from src.components.mariadb import engine, session
+from src.components.sql_engine import engine, session
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
