@@ -8,6 +8,7 @@ from dash.dependencies import Output, Input, State
 import dash_bio as dashbio
 
 import io
+import os
 import re
 import tempfile
 import base64
@@ -28,6 +29,8 @@ from src.utils.blast_utils import (
     select_ship_family,
     parse_lastz_output,
     blast_chords,
+    blast2html,
+    parse_blast_pairwise,
 )
 from src.components.callbacks import curated_switch, create_accession_modal
 from src.utils.parsing import parse_fasta, parse_fasta_from_file
@@ -69,6 +72,7 @@ layout = dmc.Container(
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
+        dcc.Store(id="blast-results-html-store"),
         dcc.Store(id="captain-results-store"),
         dmc.Grid(
             justify="start",
@@ -121,7 +125,6 @@ layout = dmc.Container(
                             id="upload-error-message",
                             style={"color": "red", "marginTop": "1rem"},
                         ),
-                        dcc.Store(id="upload-error-store"),
                         curated_switch(
                             text="Only search curated Starships", size="normal"
                         ),
@@ -154,21 +157,17 @@ layout = dmc.Container(
                         #     children=[html.Div(id="blast-chord")],
                         # ),
                         dcc.Loading(
-                            id="ship-blast-table-loading",
+                            id="ship-blasterjs-iframe-loading",
                             type="circle",
                             className="dash-loading",
-                            children=html.Div(id="ship-blast-table"),
+                            children=html.Div(id="ship-blasterjs-iframe"),
                         ),
+                        html.Button("Next Result", id="next-iframe-button"),
                         modal,
                         dcc.Loading(
                             id="subject-seq-button-loading",
                             type="circle",
                             children=html.Div(id="subject-seq-button"),
-                        ),
-                        dcc.Loading(
-                            id="ship-aln-loading",
-                            type="circle",
-                            children=html.Div(id="ship-aln"),
                         ),
                     ],
                 ),
@@ -249,9 +248,56 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         return None, None, None
 
 
+def captain_family_classification(
+    query_header, query_seq, query_type, tmp_query_fasta, search_type="hmmsearch"
+):
+    try:
+        if not query_header or not query_seq:
+            logger.error("Missing query header or sequence.")
+            return None, None, None
+
+        logger.info(f"Running HMMER")
+
+        subject_seq_button = None
+        try:
+            if search_type == "diamond":
+                classification_results_dict = run_diamond(
+                    db_list=db_list,
+                    query_type=query_type,
+                    input_genes="tyr",
+                    input_eval=0.01,
+                    query_fasta=tmp_query_fasta,
+                    threads=2,
+                )
+            if search_type == "hmmsearch":
+                classification_results_dict = run_hmmer(
+                    db_list=db_list,
+                    query_type=query_type,
+                    input_genes="tyr",
+                    input_eval=0.01,
+                    query_fasta=tmp_query_fasta,
+                    threads=2,
+                )
+
+            if (
+                classification_results_dict is None
+                or len(classification_results_dict) == 0
+            ):
+                logger.error("Diamond/HMMER returned no results!")
+                raise
+        except Exception as e:
+            logger.error(f"Diamond/HMMER error: {str(e)}")
+            raise
+    except Exception as e:
+        logger.error(f"Error in fetch_captain: {str(e)}")
+        return None
+    return classification_results_dict, subject_seq_button
+
+
 @callback(
     [
-        Output("blast-results-store", "data"),
+        # Output("blast-results-store", "data"),
+        Output("blast-results-html-store", "data"),
         Output("captain-results-store", "data"),
         Output("subject-seq-button", "children"),
     ],
@@ -261,75 +307,44 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-type-store", "data"),
     ],
 )
-def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
+def blast(query_header, query_seq, query_type):
+    tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
+    logger.info(f"Temp BLAST written: {tmp_blast}")
+    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+    logger.info(f"Temp FASTA written: {tmp_query_fasta}")
+
     try:
-        if not query_header or not query_seq:
-            logger.error("Missing query header or sequence.")
-            return None, None, None
-
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
-
-        # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
-
-        try:
-            blast_results = run_blast(
-                db_list=db_list,
-                query_type=query_type,
-                query_fasta=tmp_query_fasta,
-                tmp_blast=tmp_blast,
-                input_eval=0.01,
-                threads=2,
-            )
-            logger.info(f"BLAST results: {blast_results.head()}")
-            if blast_results is None:
-                raise ValueError("BLAST returned no results!")
-        except Exception as e:
-            logger.error(f"BLAST error: {str(e)}")
-            raise
-
-        blast_results_dict = blast_results.to_dict("records")
-
-        # Run HMMER
-        logger.info(f"Running HMMER")
-
-        subject_seq_button = None
-        # subject_seq = None
-
-        try:
-            if search_type == "diamond":
-                results_dict = run_diamond(
-                    db_list=db_list,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-            if search_type == "hmmsearch":
-                results_dict = run_hmmer(
-                    db_list=db_list,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-
-            if results_dict is None or len(results_dict) == 0:
-                logger.error("Diamond/HMMER returned no results!")
-                raise
-        except Exception as e:
-            logger.error(f"Diamond/HMMER error: {str(e)}")
-            raise
-
-        return blast_results_dict, results_dict, subject_seq_button
-
+        blast_out_file = run_blast(
+            db_list=db_list,
+            query_type=query_type,
+            query_fasta=tmp_query_fasta,
+            tmp_blast=tmp_blast,
+            input_eval=0.01,
+            threads=2,
+            outfmt="pairwise",
+        )
+        if isinstance(blast_out_file, str) and os.path.exists(blast_out_file):
+            blast_htmls = blast2html(input=blast_out_file)
+        else:
+            raise ValueError("BLAST returned no results!")
+            # raise ValueError(
+            #     "Invalid input: blast_results must be a DataFrame or a valid file path."
+            # )
     except Exception as e:
-        logger.error(f"Error in fetch_captain: {str(e)}")
-        return None, None, None
+        logger.error(f"BLAST error: {str(e)}")
+        raise
+
+    # blast_results_dict = parse_blast_pairwise(blast_out_file).to_dict("records")
+
+    classification_results_dict, subject_seq_button = captain_family_classification(
+        query_header, query_seq, query_type, tmp_query_fasta, search_type="hmmsearch"
+    )
+    return (
+        # blast_results_dict,
+        blast_htmls,
+        classification_results_dict,
+        subject_seq_button,
+    )
 
 
 @callback(
@@ -348,17 +363,8 @@ def subject_seq_download(n_clicks, filename):
         return dash.no_update
 
 
-no_captain_alert = dbc.Alert(
-    "No captain sequence found (e-value threshold 0.01).",
-    color="warning",
-)
-
-
 @callback(
-    [
-        Output("ship-family", "children"),
-        Output("ship-blast-table", "children"),
-    ],
+    Output("ship-family", "children"),
     [
         Input("blast-results-store", "data"),
         Input("captain-results-store", "data"),
@@ -366,27 +372,37 @@ no_captain_alert = dbc.Alert(
     ],
     State("submit-button", "n_clicks"),
 )
-def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
+def update_ui(
+    blast_results_dict,
+    captain_results_dict,
+    curated,
+    n_clicks,
+):
     if blast_results_dict is None and captain_results_dict is None:
         raise PreventUpdate
     if n_clicks:
         logger.info(f"Updating UI with n_clicks={n_clicks}")
+        no_captain_alert = dbc.Alert(
+            "No captain sequence found (e-value threshold 0.01).",
+            color="warning",
+        )
+
         try:
             ship_family = no_update
-            ship_table = no_update
-
-            blast_results_df = pd.DataFrame(blast_results_dict)
-
-            # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
-            initial_df = load_from_cache("meta_data")
-
-            if initial_df is None:
-                initial_df = fetch_meta_data(curated)
-
-            initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
 
             if blast_results_dict:
-                logger.info("Rendering BLAST table")
+                try:
+                    # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
+                    initial_df = load_from_cache("meta_data")
+
+                    if initial_df is None:
+                        initial_df = fetch_meta_data(curated)
+                except Exception as e:
+                    logger.error(f"Error fetching metadata: {str(e)}")
+
+                logger.info("Parsing BLAST Results for Classification")
+                blast_results_df = pd.DataFrame(blast_results_dict)
+
                 df_for_table = pd.merge(
                     initial_df,
                     blast_results_df,
@@ -400,14 +416,6 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 )
                 df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
                 df_for_table.fillna("", inplace=True)
-
-                if len(df_for_table) > 0:
-                    ship_table = blast_table(df_for_table)
-                else:
-                    ship_table = dbc.Alert(
-                        "No BLAST results found.",
-                        color="danger",
-                    )
 
                 min_evalue_rows = df_for_table.loc[
                     df_for_table.groupby("qseqid")["evalue"].idxmin()
@@ -477,89 +485,11 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                         "No matching rows found for minimum evalue selection.",
                         color="danger",
                     )
-            return ship_family, ship_table
+            return ship_family
 
         except Exception as e:
             logger.error(f"Error in update_ui: {str(e)}")
-            return no_update, no_update
-
-
-@cache.memoize()
-@callback(
-    Output("ship-aln", "children"),
-    [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
-        Input("curated-input", "value"),
-    ],
-    State("query-type-store", "data"),
-)
-def blast_alignments(ship_blast_results, selected_row, curated, query_type):
-    try:
-        logger.info(
-            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
-        )
-
-        if not selected_row or len(selected_row) == 0:
-            return [None]
-
-        if not ship_blast_results or len(ship_blast_results) == 0:
-            logger.error(
-                "No BLAST results available because ship_blast_results is empty or None."
-            )
-            raise
-
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
-
-        row_idx = selected_row[0]
-
-        try:
-            row = ship_blast_results_df.iloc[row_idx]
-            qseq = str(row["qseq"])
-            qseqid = str(row["qseqid"])
-            sseq = str(row["sseq"])
-            sseqid = str(row["sseqid"])
-
-        except IndexError:
-            logger.error(f"Error: Row index {row_idx} out of bounds.")
-            raise
-        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-
-        try:
-            with open(tmp_fasta.name, "w") as f:
-                f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-        except Exception as file_error:
-            logger.error(f"Error writing to FASTA file: {file_error}")
-            raise
-
-        try:
-            with open(tmp_fasta.name, "r") as file:
-                data = file.read()
-        except Exception as read_error:
-            logger.error(f"Error reading FASTA file: {read_error}")
-            raise
-
-        color = "nucleotide" if query_type == "nucl" else "clustal2"
-
-        aln = dashbio.AlignmentChart(
-            id="alignment-viewer",
-            data=data,
-            height=200,
-            tilewidth=30,
-            colorscale=color,
-            showconsensus=False,
-            showconservation=False,
-            showgap=False,
-            showid=False,
-            ticksteps=5,
-            tickstart=0,
-        )
-
-        return [aln]
-
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise
+            return no_update
 
 
 @callback(
@@ -669,9 +599,10 @@ def create_alignment_plot(ship_blast_results, selected_row):
 
 
 @callback(
-    Output("upload-error-message", "children"),
-    Output("upload-error-store", "data"),
-    Output("submit-button", "disabled"),
+    [
+        Output("upload-error-message", "children"),
+        Output("submit-button", "disabled"),
+    ],
     Input("blast-fasta-upload", "contents"),
     State("blast-fasta-upload", "filename"),
     prevent_initial_call=True,
@@ -692,14 +623,14 @@ def handle_fasta_upload(contents, filename):
         error_message = dbc.Alert(
             f"Error: {fasta_length_error_message}", color="danger"
         )
-        return error_message, error_message, True
+        return error_message, True
     elif file_size > max_size:
         error_message = dbc.Alert(
             f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger"
         )
-        return error_message, error_message, True
+        return error_message, True
     else:
-        return "", None, False
+        return "", False
 
 
 @callback(
@@ -717,3 +648,39 @@ def toggle_modal(active_cell, is_open, table_data):
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
         return True, modal_content, modal_title
     return is_open, None, None
+
+
+@callback(
+    Output(
+        "ship-blasterjs-iframe", "children"
+    ),  # Ensure "ship-blasterjs-iframe" is a container (e.g., html.Div)
+    Input("next-iframe-button", "n_clicks"),
+    State("blast-results-html-store", "data"),
+    prevent_initial_call=True,
+)
+def update_iframe(n_clicks, blast_results_html_dict):
+    if n_clicks is None:
+        raise dash.exceptions.PreventUpdate
+
+    if not blast_results_html_dict:
+        output = dbc.Alert("No BLAST results found.", color="danger")
+    else:
+        # Convert dictionary keys to a list
+        keys = list(blast_results_html_dict.keys())
+
+        # Use n_clicks to find the correct key
+        index = n_clicks % len(keys)
+        selected_key = keys[index]
+        file_path = blast_results_html_dict[selected_key]
+
+        # Read the HTML file contents
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                html_content = file.read()
+        except FileNotFoundError:
+            return dbc.Alert(f"File not found: {file_path}", color="danger")
+
+        # Create the Iframe with inline HTML content
+        output = html.Iframe(srcDoc=html_content, width="100%", height="600px")
+
+    return output

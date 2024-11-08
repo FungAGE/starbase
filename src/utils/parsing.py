@@ -191,3 +191,27 @@ def clean_contigIDs(string):
                 return suffix
             else:
                 return string
+
+
+def clean_sequence(seq):
+    valid_nucleotides = {"A", "T", "C", "G"}
+    seq = re.sub(r"\(.*?\)", "", seq)
+    seq = seq.upper()
+    if all(nuc in valid_nucleotides for nuc in seq):
+        return seq
+    else:
+        return None
+
+
+def read_lines(f, delimiter):  # a generator with a specified delimiter for newline
+    buf = ""
+    while True:
+        while delimiter in buf:
+            pos = buf.index(delimiter)
+            yield buf[:pos]
+            buf = buf[pos + len(delimiter) :]
+        chunk = f.read(4096)
+        if not chunk:
+            yield buf
+            break
+        buf += chunk

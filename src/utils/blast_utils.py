@@ -20,7 +20,12 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 
-from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
+from src.utils.parsing import (
+    parse_fasta_from_file,
+    parse_fasta_from_text,
+    clean_shipID,
+    read_lines,
+)
 from src.utils.blastdb import blast_db_exists, create_dbs
 
 import logging
@@ -299,8 +304,14 @@ def run_blast(
     tmp_blast=None,
     input_eval=None,
     threads=None,
-    stitch=True,
+    stitch=False,
+    outfmt="pairwise",
 ):
+    if outfmt == "pairwise":
+        outfmt_string = 0
+    elif outfmt == "tabular":
+        outfmt_string = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+
     try:
         db_type = "nucl"
 
@@ -331,7 +342,7 @@ def run_blast(
             db=blastdb,
             evalue=input_eval,
             out=tmp_blast,
-            outfmt="6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq",
+            outfmt=outfmt_string,
             num_threads=threads,
         )
 
@@ -340,35 +351,38 @@ def run_blast(
         logger.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
 
         # Stitch BLAST results
-        if stitch:
-            tmp_stitch = tempfile.NamedTemporaryFile(
-                suffix=".stitch", delete=False
-            ).name
-            logger.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
-            df = stitch_blast(tmp_blast, tmp_stitch)
-        else:
-            df = pd.read_csv(
-                tmp_blast,
-                sep="\t",
-                names=[
-                    "qseqid",
-                    "sseqid",
-                    "pident",
-                    "length",
-                    "mismatch",
-                    "gapopen",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                    "evalue",
-                    "bitscore",
-                    "qseq",
-                    "sseq",
-                ],
-            )
+        if outfmt != "pairwise":
+            if stitch:
+                tmp_stitch = tempfile.NamedTemporaryFile(
+                    suffix=".stitch", delete=False
+                ).name
+                logger.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
+                df = stitch_blast(tmp_blast, tmp_stitch)
+            else:
+                df = pd.read_csv(
+                    tmp_blast,
+                    sep="\t",
+                    names=[
+                        "qseqid",
+                        "sseqid",
+                        "pident",
+                        "length",
+                        "mismatch",
+                        "gapopen",
+                        "qstart",
+                        "qend",
+                        "sstart",
+                        "send",
+                        "evalue",
+                        "bitscore",
+                        "qseq",
+                        "sseq",
+                    ],
+                )
 
-        return df
+            return df
+        else:
+            return tmp_blast
     except Exception as e:
         logger.error(f"Error during BLAST search: {e}")
         return None
@@ -976,11 +990,134 @@ def get_protein_sequence(header, nuc_sequence):
         return None
 
 
-def clean_sequence(seq):
-    valid_nucleotides = {"A", "T", "C", "G"}
-    seq = re.sub(r"\(.*?\)", "", seq)
-    seq = seq.upper()
-    if all(nuc in valid_nucleotides for nuc in seq):
-        return seq
-    else:
-        return None
+def blast2html(outdir="tmp/", input=None):
+    import re
+    import textwrap
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    js1 = open("assets/js/blaster.min.js").read()
+    js2 = open("assets/js/html2canvas.min.js").read()
+    out_paths = {}
+    with open(input) as f:
+        for block in read_lines(f, "Query="):
+            if block.startswith("BLAST"):
+                continue
+            block = "Query=" + block
+            lines = block.split("\n")
+            ID = re.search(r"Query= ([\S]+)", lines[0]).group(1)
+            # invaild_symbol = re.search(r"[^\w]", ID)
+            # if invaild_symbol:
+            #     print(
+            #         "ERROR: Protein ID could not include invaild symbol, such as: '|,?,+,!...'"
+            #     )
+            #     sys.exit(-2)
+            out_path = os.path.join(outdir, ID + ".html")
+            out = open(out_path, "w")
+            out.write(
+                textwrap.dedent(
+                    r"""<html>
+            <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" />
+            </head>
+            <body>
+            <div id="blast-multiple-alignments"></div>
+            <div id="blast-alignments-table"></div>
+            <div id="blast-single-alignment"></div>
+            
+            <script type="text/javascript">%s</script>
+            <script type="text/javascript">%s</script>
+            <script type="text/javascript">
+            var alignments=[
+            """
+                )
+                % (js1, js2)
+            )
+
+            for line in lines:
+                out.write('"%s",\n' % (line))
+            out.write(
+                textwrap.dedent(
+                    r"""].join('\n');
+            var blasterjs = require("biojs-vis-blasterjs");
+            var instance = new blasterjs({
+                string: alignments,
+                multipleAlignments: "blast-multiple-alignments",
+                alignmentsTable: "blast-alignments-table",
+                singleAlignment: "blast-single-alignment",
+             });
+            </script>
+            </body>
+            </html>
+            """
+                )
+            )
+            out.close()
+            out_paths[ID] = out_path
+    return out_paths
+
+
+def parse_blast_pairwise(blast_file):
+    # Initialize an empty list to hold parsed data
+    parsed_data = []
+
+    # Open the blast file
+    with open(blast_file, "r") as f:
+        hit_data = {}
+
+        for line in f:
+            print(line)
+            # Parse various fields using conditional checks
+            if line.startswith("Query="):
+                if hit_data:
+                    parsed_data.append(hit_data)
+                hit_data = {"qseqid": line.split()[1]}
+            elif line.startswith("Sbjct="):
+                hit_data["sseqid"] = line.split()[0]
+            elif line.startswith("Identities"):
+                hit_data["pident"] = float(line.split()[1][:-1])  # Removing '%' symbol
+            elif line.startswith("Length="):
+                hit_data["length"] = int(line.split()[1])
+            elif line.startswith("Mismatches"):
+                hit_data["mismatch"] = int(line.split()[1])
+            elif line.startswith("Gap openings"):
+                hit_data["gapopen"] = int(line.split()[2])
+            elif line.startswith("Query"):
+                qstart, qend = map(int, line.split()[1::2])
+                hit_data["qstart"], hit_data["qend"] = qstart, qend
+            elif line.startswith("Sbjct"):
+                sstart, send = map(int, line.split()[1::2])
+                hit_data["sstart"], hit_data["send"] = sstart, send
+            elif line.startswith("Expect ="):
+                hit_data["evalue"] = float(line.split()[2])
+            elif line.startswith("Score ="):
+                hit_data["bitscore"] = float(line.split()[2])
+            elif line.startswith("Query:"):
+                hit_data["qseq"] = line.split(":")[1].strip()
+            elif line.startswith("Sbjct:"):
+                hit_data["sseq"] = line.split(":")[1].strip()
+
+        # Append the last hit after finishing the loop
+        if hit_data:
+            parsed_data.append(hit_data)
+
+    # Convert parsed data to a pandas DataFrame
+    df = pd.DataFrame(parsed_data)
+
+    # Ensure numerical columns have the correct data types
+    numeric_columns = [
+        "pident",
+        "length",
+        "mismatch",
+        "gapopen",
+        "qstart",
+        "qend",
+        "sstart",
+        "send",
+        "evalue",
+        "bitscore",
+    ]
+    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
+
+    return df
