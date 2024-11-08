@@ -212,8 +212,6 @@ developing_features_card = (
     ),
 )
 
-paper_table = make_paper_table()
-
 if sql_connected:
     layout = html.Div(
         [
@@ -258,7 +256,7 @@ if sql_connected:
                             dmc.GridCol(
                                 span="content",
                                 children=[
-                                    dmc.Center(paper_table),
+                                    dmc.Center(make_paper_table()),
                                 ],
                             ),
                         ],
