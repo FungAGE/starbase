@@ -26,7 +26,7 @@ def fetch_meta_data(curated=True):
     logger.info(f"Fetching meta data from database for key '{cache_key}'")
 
     meta_query = """
-    SELECT j.ship_family_id, j.curated_status, j.taxid, j.ship_id, j.genome_id, 
+    SELECT j.ship_family_id, j.curated_status, t.taxID,j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.species, 
            g.version, g.genomeSource, g.citation, a.accession_tag, g.strain
