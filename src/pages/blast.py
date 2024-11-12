@@ -706,7 +706,8 @@ def handle_fasta_upload(contents, filename):
     Output("blast-modal", "is_open"),
     Output("blast-modal-content", "children"),
     Output("blast-modal-title", "children"),
-    Input("ship-blast-table", "active_cell"),
+    Output("ship-blast-table", "active_cell"),
+    Input("blast-table", "active_cell"),
     State("blast-modal", "is_open"),
     State("ship-blast-table", "data"),
 )
@@ -715,5 +716,5 @@ def toggle_modal(active_cell, is_open, table_data):
         row = active_cell["row"]
         row_data = table_data[row]
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-        return True, modal_content, modal_title
-    return is_open, None, None
+        return True, modal_content, modal_title, None
+    return is_open, no_update, no_update, no_update

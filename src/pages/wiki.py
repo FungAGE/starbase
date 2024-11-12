@@ -409,6 +409,7 @@ def create_sidebar(active_item, cached_meta):
     Output("wiki-modal", "is_open"),
     Output("wiki-modal-content", "children"),
     Output("wiki-modal-title", "children"),
+    Output("wiki-table", "active_cell"),
     Input("wiki-table", "active_cell"),
     State("wiki-modal", "is_open"),
     State("wiki-table", "data"),
@@ -418,5 +419,9 @@ def toggle_modal(active_cell, is_open, table_data):
         row = active_cell["row"]
         row_data = table_data[row]
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-        return True, modal_content, modal_title
-    return is_open, None, None
+
+        # Return the modal open, content, title, and reset active_cell
+        return True, modal_content, modal_title, None
+
+    # Keep the modal closed if there's no active cell
+    return is_open, no_update, no_update, no_update
