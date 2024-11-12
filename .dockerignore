@@ -3,3 +3,4 @@ tmp/
 alembic/
 alembic.ini
 .cache
+src/data/db.tar.gz
