@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from src.components.cache_manager import save_to_cache, load_from_cache, cache_exists
-from src.components.sql_engine import starbase_engine, starbase_session_factory
+from src.components.sql_engine import starbase_session_factory
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
@@ -38,11 +38,13 @@ def fetch_meta_data(curated=True):
     WHERE j.orphan IS NULL  
     """
 
+    session = starbase_session_factory()
+
     if curated:
         meta_query += " AND j.curated_status = 'curated'"
 
     try:
-        meta_df = pd.read_sql_query(meta_query, engine)
+        meta_df = pd.read_sql_query(meta_query, session.bind)
         logger.info(
             f"Meta data successfully fetched from database, caching it under key '{cache_key}'"
         )
@@ -70,9 +72,11 @@ def fetch_paper_data():
     LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
     """
 
+    session = starbase_session_factory()
+
     try:
-        # Use the starbase_session_factory to execute the query
-        paper_df = pd.read_sql_query(paper_query, starbase_session_factory.bind)
+        # Use session.bind to execute the query through the starbase_engine
+        paper_df = pd.read_sql_query(paper_query, session.bind)
 
         if paper_df.empty:
             logger.warning("Fetched paper DataFrame is empty.")
@@ -85,7 +89,8 @@ def fetch_paper_data():
         logger.error(f"Error fetching paper data: {str(e)}")
         return None
     finally:
-        starbase_session_factory.close()  # Ensure the starbase_session_factory is closed
+        # Close the session instance instead of the session factory
+        session.close()
 
     return paper_df
 
@@ -116,10 +121,24 @@ def fetch_download_data():
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     WHERE j.orphan IS NULL
     """
-    df = pd.read_sql_query(query, engine)
 
-    save_to_cache(df, cache_key)
+    session = starbase_session_factory()
 
+    try:
+        df = pd.read_sql_query(query, session.bind)
+
+        if df.empty:
+            logger.warning("Fetched Download DataFrame is empty.")
+        else:
+            logger.info(
+                f"Download data successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(df, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching download data: {str(e)}")
+        return None
+    finally:
+        session.close()
     return df
 
 
@@ -133,9 +152,22 @@ def fetch_all_ships():
     FROM ships s
     JOIN accessions a ON s.accession = a.id
     """
-    df = pd.read_sql_query(query, engine)
+    session = starbase_session_factory()
+    try:
+        df = pd.read_sql_query(query, session.bind)
 
-    save_to_cache(df, cache_key)
+        if df.empty:
+            logger.warning("Fetched all_ships DataFrame is empty.")
+        else:
+            logger.info(
+                f"all_ships data successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(df, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching all_ships data: {str(e)}")
+        return None
+    finally:
+        session.close()
     return df
 
 
@@ -162,10 +194,22 @@ def fetch_accession_gff(accession):
     WHERE g.accession = %s AND j.orphan IS NULL
     """
 
-    df = pd.read_sql_query(query, engine, params=(accession,))
+    session = starbase_session_factory()
+    try:
+        df = pd.read_sql_query(query, session.bind, params=(accession,))
 
-    save_to_cache(df, cache_key)
-
+        if df.empty:
+            logger.warning("Fetched gff DataFrame is empty.")
+        else:
+            logger.info(
+                f"gff data successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(df, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching gff data: {str(e)}")
+        return None
+    finally:
+        session.close()
     return df
 
 
@@ -196,16 +240,26 @@ def fetch_ship_table(meta_df=None):
     LEFT JOIN ships s on s.accession = a.id
     WHERE s.sequence is NOT NULL AND g.ship_id is NOT NULL AND js.orphan IS NULL
     """
-    filtered_df = pd.read_sql_query(query, engine)
 
-    ship_table_df = filtered_df[
-        ["accession", "familyName", "species"]
-    ].drop_duplicates()
-    ship_table_df = ship_table_df.sort_values(by="familyName", ascending=True)
+    session = starbase_session_factory()
+    try:
+        df = pd.read_sql_query(query, session.bind)
 
-    save_to_cache(ship_table_df, cache_key)
-    logger.info(f"Ship table successfully created and cached under key '{cache_key}'")
+        if df.empty:
+            logger.warning("Fetched ship_table DataFrame is empty.")
+        else:
+            ship_table_df = df[["accession", "familyName", "species"]].drop_duplicates()
+            ship_table_df = ship_table_df.sort_values(by="familyName", ascending=True)
 
+            logger.info(
+                f"ship_table data successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(ship_table_df, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching ship_table data: {str(e)}")
+        return None
+    finally:
+        session.close()
     return ship_table_df
 
 
@@ -219,9 +273,23 @@ def fetch_all_captains():
     FROM captains c
     """
 
-    df = pd.read_sql_query(query, engine)
+    session = starbase_session_factory()
 
-    save_to_cache(df, cache_key)
+    try:
+        df = pd.read_sql_query(query, session.bind)
+
+        if df.empty:
+            logger.warning("Fetched captain DataFrame is empty.")
+        else:
+            logger.info(
+                f"captain data successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(df, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching captain data: {str(e)}")
+        return None
+    finally:
+        session.close()
     return df
 
 
@@ -231,9 +299,24 @@ def fetch_captain_tree():
         return load_from_cache(cache_key)
 
     tree_query = """SELECT string FROM trees WHERE id=1"""
-    with engine.connect() as connection:
-        tree_string = connection.execute(tree_query).fetchone()
-    save_to_cache(tree_string, cache_key)
+
+    session = starbase_session_factory()
+
+    try:
+        tree_string = session.execute(tree_query).fetchone()
+
+        if tree_string.empty:
+            logger.warning("Fetched tree string is empty.")
+        else:
+            logger.info(
+                f"tree string successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(tree_string, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching tree string: {str(e)}")
+        return None
+    finally:
+        session.close()
     return tree_string
 
 
@@ -242,10 +325,24 @@ def fetch_sf_data():
     if cache_exists(cache_key):
         return load_from_cache(cache_key)
 
-    sf_query = """
+    query = """
     SELECT sf.*
     FROM superfam-clades sf
     """
-    df = pd.read_sql_query(sf_query)
-    save_to_cache(df, cache_key)
+    session = starbase_session_factory()
+    try:
+        df = pd.read_sql_query(query, session.bind)
+
+        if df.empty:
+            logger.warning("Fetched sf DataFrame is empty.")
+        else:
+            logger.info(
+                f"sf data successfully fetched from database, caching it under key '{cache_key}'"
+            )
+            save_to_cache(df, cache_key)
+    except Exception as e:
+        logger.error(f"Error fetching sf data: {str(e)}")
+        return None
+    finally:
+        session.close()
     return df
