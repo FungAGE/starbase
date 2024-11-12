@@ -18,7 +18,7 @@ from Bio import SeqIO
 from jinja2 import Template
 
 from src.components.cache import cache
-from src.components.sql_engine import engine
+from src.components.sql_engine import starbase_engine
 from src.components.tables import make_ship_table
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import (

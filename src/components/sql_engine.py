@@ -1,63 +1,58 @@
 import os
 import logging
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import OperationalError
-from models import Base
-from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-# Load the environment variables from the .env file
-load_dotenv(dotenv_path=".env", override=True)
+sql_connected = False
 
-db_user = os.getenv("DB_USER")
-db_password = os.getenv("DB_PASSWORD")
-db_host = os.getenv("DB_HOST")
-db_port = os.getenv("DB_PORT", "3307")
-db_name = os.getenv("DB_NAME")
 
-connection_str = (
-    f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+def connect_to_database(db_path):
+    if not os.path.exists(db_path):
+        logger.error(f"Database file not found at {db_path}")
+        return None, None
+
+    connection_str = f"sqlite:///{db_path}"
+    try:
+        engine = create_engine(connection_str)
+        with engine.connect():
+            logger.info(f"Successfully connected to {db_path}")
+            Session = sessionmaker(bind=engine)
+            sql_connected = True
+            return engine, Session, sql_connected
+    except OperationalError as e:
+        logger.error(f"Operational error connecting to {db_path}: {e}")
+    except Exception as e:
+        logger.exception(f"Unexpected error connecting to {db_path}: {e}")
+    return None, None
+
+
+# Connect to databases
+starbase_path = (
+    "src/data/db/starbase.sqlite"
+    if os.path.exists("src/data/db/starbase.sqlite")
+    else "db/starbase.sqlite"
+)
+submissions_path = (
+    "src/data/db/submissions.sqlite"
+    if os.path.exists("src/data/db/submissions.sqlite")
+    else "db/submissions.sqlite"
 )
 
-sql_connected = False  # Default to False before trying to connect
+if "starbase_engine" in globals():
+    starbase_engine.dispose()  # Properly closes the connection pool
+    del starbase_engine
 
-try:
-    # Ensure the old engine is deleted from memory
-    if "engine" in globals():
-        del engine  # Remove reference to the existing engine
+if "submissions_engine" in globals():
+    submissions_engine.dispose()  # Properly closes the connection pool
+    del submissions_engine
 
-    # Attempt to connect to the SQL database
-    engine = create_engine(
-        connection_str,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-        pool_recycle=1800,
-        pool_timeout=30,
-    )
 
-    # Test the connection by connecting and immediately disconnecting
-    with engine.connect() as connection:
-        sql_connected = True
-        logger.info("Successfully connected to the SQL database.")
-
-    if sql_connected:
-        # Create session
-        Session = sessionmaker(bind=engine)
-        session = Session()
-        logger.info("Session factory created and session started.")
-    else:
-        engine = None
-        session = None
-
-except OperationalError as e:
-    sql_connected = False
-    logger.error("Could not connect to SQL server: %s", e)
-except Exception as e:
-    sql_connected = False
-    logger.exception(
-        "An unexpected error occurred while trying to connect to the SQL server."
-    )
+starbase_engine, starbase_session_factory, sql_connected = connect_to_database(
+    starbase_path
+)
+submissions_engine, submissions_session_factory, submissions_connected = (
+    connect_to_database(submissions_path)
+)

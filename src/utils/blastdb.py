@@ -7,14 +7,14 @@ logger = logging.getLogger(__name__)
 
 
 db_list = {
-    "ship": {"nucl": "src/data/ships/fna/blastdb/ships.fa"},
+    "ship": {"nucl": "src/data/db/ships/fna/blastdb/ships.fa"},
     "gene": {
         "tyr": {
-            "nucl": "src/data/captain/tyr/fna/blastdb/captains.fna",
-            "prot": "src/data/captain/tyr/faa/blastdb/captains.faa",
+            "nucl": "src/data/db/captain/tyr/fna/blastdb/captains.fna",
+            "prot": "src/data/db/captain/tyr/faa/blastdb/captains.faa",
             "hmm": {
-                "nucl": "src/data/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "src/data/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
+                "prot": "src/data/db/captain/tyr/faa/hmm/combined.hmm",
             },
         },
     },

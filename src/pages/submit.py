@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 dash.register_page(__name__)
 
 
-from src.components.sql_engine import engine
+from src.components.sql_engine import submissions_engine, submissions_connected
 
 layout = dmc.Container(
     fluid=True,
@@ -333,7 +333,7 @@ layout = dmc.Container(
 
 # Function to insert a new submission into the database
 def insert_submission(
-    engine,
+    submissions_engine,
     seq_contents,
     seq_filename,
     seq_date,
@@ -370,7 +370,7 @@ def insert_submission(
     if not comment:
         comment = ""
 
-    with engine.connect() as connection:
+    with submissions_engine.connect() as connection:
         query = """
             INSERT INTO submissions (
                 seq_contents, seq_filename, seq_date, anno_contents,
@@ -460,7 +460,7 @@ def submit_ship(
             )  # Return the error message if no file
 
         insert_submission(
-            engine,
+            submissions_engine,
             seq_contents,
             seq_filename,
             seq_date,

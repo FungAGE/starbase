@@ -5,7 +5,7 @@ from dash.dependencies import Output, Input
 import pandas as pd
 
 from src.components.cache import cache
-from src.components.sql_engine import engine
+from src.components.sql_engine import starbase_engine
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_download_data, fetch_all_ships
 

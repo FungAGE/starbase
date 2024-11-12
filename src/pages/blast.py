@@ -224,9 +224,9 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
 
     try:
-        logger.info(
-            f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
-        )
+        # logger.info(
+        #     f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
+        # )
 
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents

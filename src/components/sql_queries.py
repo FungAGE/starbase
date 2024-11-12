@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from src.components.cache_manager import save_to_cache, load_from_cache, cache_exists
-from src.components.sql_engine import engine, session
+from src.components.sql_engine import starbase_engine, starbase_session_factory
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
@@ -71,8 +71,8 @@ def fetch_paper_data():
     """
 
     try:
-        # Use the session to execute the query
-        paper_df = pd.read_sql_query(paper_query, session.bind)
+        # Use the starbase_session_factory to execute the query
+        paper_df = pd.read_sql_query(paper_query, starbase_session_factory.bind)
 
         if paper_df.empty:
             logger.warning("Fetched paper DataFrame is empty.")
@@ -85,7 +85,7 @@ def fetch_paper_data():
         logger.error(f"Error fetching paper data: {str(e)}")
         return None
     finally:
-        session.close()  # Ensure the session is closed
+        starbase_session_factory.close()  # Ensure the starbase_session_factory is closed
 
     return paper_df
 
