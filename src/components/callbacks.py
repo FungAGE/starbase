@@ -168,7 +168,10 @@ def create_accession_modal(accession):
     modal_content = html.Div(
         [
             html.Div(
-                [html.Strong("ship_id: "), html.Span(modal_data["ship_id"].iloc[0])]
+                [
+                    html.Strong("starshipID: "),
+                    html.Span(modal_data["starshipID"].iloc[0]),
+                ]
             ),
             html.Div(
                 [
@@ -231,14 +234,14 @@ def create_accession_modal(accession):
             ),
             html.Div(
                 [
-                    html.Strong("taxid: "),
+                    html.Strong("NCBI Taxonomy ID: "),
                     html.A(
                         (
-                            int(modal_data["taxid"].iloc[0])
-                            if isinstance(modal_data["taxid"].iloc[0], (float, int))
-                            else modal_data["taxid"].iloc[0]
+                            int(modal_data["taxID"].iloc[0])
+                            if isinstance(modal_data["taxID"].iloc[0], (float, int))
+                            else modal_data["taxID"].iloc[0]
                         ),
-                        href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={int(modal_data['taxid'].iloc[0]) if isinstance(modal_data['taxid'].iloc[0], (float, int)) else modal_data['taxid'].iloc[0]}",
+                        href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={int(modal_data['taxID'].iloc[0]) if isinstance(modal_data['taxID'].iloc[0], (float, int)) else modal_data['taxID'].iloc[0]}",
                     ),
                 ]
             ),

@@ -7,20 +7,6 @@ LABEL org.opencontainers.image.description="starbase is a database and toolkit f
 ENV USER=starbase
 ENV HOME=/home/$USER
 
-# Define build arguments
-ARG DB_USER
-ARG DB_PASSWORD
-ARG DB_HOST
-ARG DB_PORT
-ARG DB_NAME
-
-# Set environment variables from build arguments
-ENV DB_USER=${DB_USER}
-ENV DB_PASSWORD=${DB_PASSWORD}
-ENV DB_HOST=${DB_HOST}
-ENV DB_PORT=${DB_PORT}
-ENV DB_NAME=${DB_NAME}
-
 # Add user to system
 RUN useradd -m -u 1000 $USER
 

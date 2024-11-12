@@ -1,15 +1,6 @@
 .git
 tmp/
-database_folder/**
-database_folder/**
-database_folder/**
-database_folder/**
-database_folder/**
-database_folder/**
-database_folder/**
-database_folder/**
 alembic/
 alembic.ini
-src/data/ships/fna/blastdb/
-src/data/ships/faa/blastdb/
 .cache
+src/data/db.tar.gz

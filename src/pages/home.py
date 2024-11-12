@@ -7,11 +7,13 @@ import logging
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
-from src.components.mariadb import sql_connected
+from src.components.sql_engine import sql_connected
 
 logger = logging.getLogger(__name__)
 
-dash.register_page(__name__, title="Home", name="Home", path="/")
+dash.register_page(__name__, title="starbase Home", name="Home", path="/")
+
+logger.info(f"sql_connected? {sql_connected}")
 
 title = dmc.Title(
     [
@@ -212,8 +214,6 @@ developing_features_card = (
     ),
 )
 
-paper_table = make_paper_table()
-
 if sql_connected:
     layout = html.Div(
         [
@@ -258,7 +258,7 @@ if sql_connected:
                             dmc.GridCol(
                                 span="content",
                                 children=[
-                                    dmc.Center(paper_table),
+                                    dmc.Center(make_paper_table()),
                                 ],
                             ),
                         ],

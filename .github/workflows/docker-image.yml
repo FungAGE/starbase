@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
 
 env:
   REGISTRY: ghcr.io
@@ -22,8 +23,12 @@ jobs:
         with:
           lfs: true
 
-      - name: Git Semantic Version
-        uses: PaulHatch/semantic-version@v5.4.0
+      - name: Get Next Version
+        id: semver
+        uses: ietf-tools/semver-action@v1
+        with:
+          token: ${{ secrets.GH_PAT }}
+          branch: main
 
       - name: Log in to the Container registry
         uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
@@ -31,6 +36,16 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          allowUpdates: true
+          draft: false
+          makeLatest: true
+          name: ${{ steps.semver.outputs.next }}
+          body: Changelog Contents
+          token: ${{ secrets.GH_PAT }}
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta

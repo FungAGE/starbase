@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, relationship
 
-from src.components.mariadb import engine, Base
+from src.components.sql_engine import starbase_engine, Base
 
 
 # set up table classes
