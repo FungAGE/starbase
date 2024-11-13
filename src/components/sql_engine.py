@@ -41,6 +41,8 @@ submissions_path = (
     else "db/submissions.sqlite"
 )
 
+db_dir = os.path.dirname(starbase_path)
+
 if "starbase_engine" in globals():
     starbase_engine.dispose()  # Properly closes the connection pool
     del starbase_engine

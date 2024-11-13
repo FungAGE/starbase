@@ -3,18 +3,20 @@ import os
 import glob
 import logging
 
+from src.components.sql_engine import db_dir
+
 logger = logging.getLogger(__name__)
 
 
 db_list = {
-    "ship": {"nucl": "src/data/db/ships/fna/blastdb/ships.fa"},
+    "ship": {"nucl": f"{db_dir}/ships/fna/blastdb/ships.fa"},
     "gene": {
         "tyr": {
-            "nucl": "src/data/db/captain/tyr/fna/blastdb/captains.fna",
-            "prot": "src/data/db/captain/tyr/faa/blastdb/captains.faa",
+            "nucl": f"{db_dir}/captain/tyr/fna/blastdb/captains.fna",
+            "prot": f"{db_dir}/captain/tyr/faa/blastdb/captains.faa",
             "hmm": {
-                "nucl": "src/data/db/captain/tyr/fna/hmm/combined.hmm",
-                "prot": "src/data/db/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": f"{db_dir}/captain/tyr/fna/hmm/combined.hmm",
+                "prot": f"{db_dir}/captain/tyr/faa/hmm/combined.hmm",
             },
         },
     },
