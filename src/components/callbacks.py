@@ -6,6 +6,7 @@ import os
 import logging
 
 from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_meta_data
 
 logger = logging.getLogger(__name__)
 
@@ -121,49 +122,13 @@ def curated_switch(text, size="normal"):
 
 
 def create_accession_modal(accession):
-    # import tempfile
-    # from src.pages.pgv import load_fa, write_tmp, load_gff, single_pgv
-
     initial_df = load_from_cache("meta_data")
+    if initial_df is None:
+        initial_df = fetch_meta_data()
+
     modal_data = initial_df[initial_df["accession_tag"] == accession]
 
     modal_title = html.H2(f"Ship Accession: {accession}")
-
-    # tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
-
-    # with tempfile.TemporaryDirectory() as temp_dir:
-    #     tmp_gffs = []
-    #     tmp_fas = []
-    #     for index, row in modal_data.iterrows():
-    #         logger.info(f"Fetching FA for accession: {accession}")
-    #         fa_df = load_fa(accession)
-    #         tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
-    #         tmp_fas.append(str(tmp_fa))
-
-    #         logger.info(f"Fetching GFF for accession: {accession}")
-    #         gff_df = load_gff(accession)
-
-    #         tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
-    #         tmp_gffs.append(tmp_gff)
-
-    #         output = html.P("Select up to four Starships to compare.")
-    #     single_pgv(tmp_gffs[0], tmp_pgv)
-    #     try:
-    #         with open(tmp_pgv, "r") as file:
-    #             pgv_content = file.read()
-    #     except IOError:
-    #         output = html.P("Failed to read the temporary file.")
-
-    #     output = html.Iframe(
-    #         srcDoc=pgv_content,
-    #         style={
-    #             "width": "100%",
-    #             "height": "100%",
-    #             "border": "none",
-    #         },
-    #     )
-
-    # modal_content = output
 
     modal_content = html.Div(
         [
