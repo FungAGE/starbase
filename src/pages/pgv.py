@@ -1,7 +1,8 @@
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import dcc, html, callback
+from dash import dcc, html, callback, no_update
+
 from dash.dependencies import Output, Input, State
 
 import os
@@ -26,6 +27,7 @@ from src.components.sql_queries import (
     fetch_accession_gff,
     fetch_ship_table,
 )
+from src.components.callbacks import create_accession_modal
 
 
 logger = logging.getLogger(__name__)
@@ -37,26 +39,39 @@ ColorCycler.set_cmap("tab10")
 table_columns = [
     {
         "name": "Accession",
-        "id": "accession",
+        "id": "accession_tag",
         "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
+        "selectable": True,
     },
     {
         "name": "Starship Family",
         "id": "familyName",
         "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
+        "selectable": True,
     },
     {
         "name": "Species",
         "id": "species",
         "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
+        "selectable": True,
     },
 ]
+
+modal = html.Div(
+    id="pgv-modal",
+    className="center-content",
+    children=[
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle(id="pgv-modal-title")),
+                dbc.ModalBody(id="pgv-modal-content"),
+            ],
+            id="pgv-modal",
+            is_open=False,
+        )
+    ],
+)
+
 
 layout = dmc.Container(
     fluid=True,
@@ -78,6 +93,7 @@ layout = dmc.Container(
                             type="circle",
                             children=[
                                 html.Div(id="pgv-table", className="center-content"),
+                                modal,
                             ],
                         ),
                     ],
@@ -401,7 +417,6 @@ def multi_pgv(gff_files, seqs, tmp_file):
     return message
 
 
-@cache.memoize()
 @callback(
     Output("pgv-table", "children"),
     Input("url", "href"),
@@ -412,7 +427,7 @@ def load_ship_table(href):
         table_df = fetch_ship_table()
     if href:
         table = make_ship_table(
-            df=table_df, id="pgv-table", columns=table_columns, pg_sz=15
+            df=table_df, columns=table_columns, id="pgv-table", pg_sz=15
         )
         return table
 
@@ -447,7 +462,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
                         tmp_gffs = []
                         tmp_fas = []
                         for index, row in rows.iterrows():
-                            accession = row["accession"]
+                            accession = row["accession_tag"]
 
                             logger.info(f"Fetching FA for accession: {accession}")
                             fa_df = load_fa(accession)
@@ -503,76 +518,21 @@ def update_pgv(n_clicks, selected_rows, table_data):
     )
 
 
-# inject_svg_to_html(
-#     "tmp/genbank_comparison_by_blast.svg",
-#     "/home/adrian/anaconda3/lib/python3.8/site-packages/pygenomeviz/viewer/pgv-viewer-template.html",
-#     "tmp/genbank_comparison_by_blast.html",
-# )
+@callback(
+    Output("pgv-modal", "is_open"),
+    Output("pgv-modal-content", "children"),
+    Output("pgv-modal-title", "children"),
+    Output("pgv-table", "active_cell"),
+    Input("pgv-table", "active_cell"),
+    State("pgv-modal", "is_open"),
+    State("pgv-table", "data"),
+)
+def toggle_modal(active_cell, is_open, table_data):
+    if active_cell:
+        row = active_cell["row"]
+        row_data = table_data[row]
+        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
 
-# from Bio.SeqFeature import SeqFeature
+        return True, modal_content, modal_title, None
 
-# def to_stack_features(features: list[SeqFeature]) -> list[list[SeqFeature]]:
-#     """Convert feature list to non-overlap stack feature list of lists
-
-#     Parameters
-#     ----------
-#     features : list[SeqFeature]
-#         Features
-
-#     Returns
-#     -------
-#     stack_features : list[list[SeqFeature]]
-#         Stacked features
-#     """
-#     sorted_features = sorted(features, key=lambda f: int(f.location.start))  # type: ignore
-
-#     def is_overlap(feature1: SeqFeature, feature2: SeqFeature) -> bool:
-#         """Check if features overlap each other"""
-#         start1, end1 = int(feature1.location.start), int(feature1.location.end)  # type: ignore
-#         start2, end2 = int(feature2.location.start), int(feature2.location.end)  # type: ignore
-#         return start1 < end2 and start2 < end1
-
-#     stack_features: list[list[SeqFeature]] = []
-#     for feature in sorted_features:
-#         placed = False
-#         for sublist_features in stack_features:
-#             if not is_overlap(feature, sublist_features[-1]):
-#                 sublist_features.append(feature)
-#                 placed = True
-#                 break
-#         if not placed:
-#             stack_features.append([feature])
-
-#     return stack_features
-
-
-# def add_stacked_features(track, features):
-#     """Add stacked features to a GenomeViz track"""
-#     stacked_features = to_stack_features(features)
-
-#     # Iterate over each stack (sublists of non-overlapping features)
-#     for idx, stack in enumerate(stacked_features):
-#         # Adjust y_offset for each stack, with increasing offset for each new row
-#         y_offset = idx * 1  # Adjust this value as needed for spacing between stacks
-#         for feature in stack:
-#             # Get necessary feature details
-#             start = feature.location.start
-#             end = feature.location.end
-#             strand = feature.location.strand
-
-#             # Set color for the feature based on some condition (you can customize this)
-#             if "tyr" in feature.qualifiers.get("Alias", [""])[0]:
-#                 color = "tomato"
-#             else:
-#                 color = "grey"
-
-#             # Add feature to the track with a y_offset for stacking
-#             track.add_feature(
-#                 start=int(start),
-#                 end=int(end),
-#                 strand=strand,
-#                 plotstyle="bigarrow",
-#                 color=color,
-#                 label_type="gene",
-#                 y_offset=y_offset,  # Ensure stacked features have different y offsets
-#             )
+    return is_open, no_update, no_update, no_update

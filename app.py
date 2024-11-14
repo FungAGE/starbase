@@ -29,9 +29,8 @@ external_stylesheets = [
     dmc.styles.ALL,
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
-    "/assets/lib/styles.css",
+    "/assets/styles.css",
     "https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
-    "/assets/lib/micromodal.css",
 ]
 
 external_scripts = [
