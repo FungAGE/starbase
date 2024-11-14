@@ -10,7 +10,7 @@ from src.components import navmenu
 from src.components.precompute import precompute_all
 from src.components.cache import cache
 from src.utils.blastdb import create_dbs
-from src.components.mariadb import sql_connected
+from src.components.sql_engine import sql_connected
 
 
 import warnings

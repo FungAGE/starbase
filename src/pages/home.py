@@ -7,7 +7,7 @@ import logging
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
-from src.components.mariadb import sql_connected
+from src.components.sql_engine import sql_connected
 
 logger = logging.getLogger(__name__)
 
