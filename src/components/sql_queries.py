@@ -177,12 +177,6 @@ def fetch_accession_gff(accession):
     if cache_exists(cache_key):
         return load_from_cache(cache_key)
 
-    # query = """
-    # SELECT g.*
-    # FROM gff g
-    # WHERE g.accession = %s
-    # """
-
     query = """
     SELECT g.*
     FROM gff g
@@ -191,7 +185,7 @@ def fetch_accession_gff(accession):
     LEFT JOIN joined_ships j ON j.ship_id = a.id
     LEFT JOIN taxonomy t ON j.taxid = t.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
-    WHERE g.accession = %s AND j.orphan IS NULL
+    WHERE g.accession = ? AND j.orphan IS NULL
     """
 
     session = starbase_session_factory()
@@ -221,24 +215,17 @@ def fetch_ship_table(meta_df=None):
         logger.info(f"Ship table found in cache for key '{cache_key}'")
         return load_from_cache(cache_key)
 
-    # if meta_df is None:
-    #     meta_df = fetch_meta_data(curated=True)
-
-    # filtered_df = meta_df[
-    #     (meta_df["curated_status"] == "curated")
-    #     & (meta_df["familyName"].notna())
-    #     & (meta_df["accession_tag"].notna())
-    # ]
-
     query = """
-    SELECT DISTINCT g.accession, f.familyName, t.species
-    FROM gff g 
-    LEFT JOIN accessions a ON g.accession = a.accession_tag
-    LEFT JOIN joined_ships js ON a.id = js.ship_id 
-    LEFT JOIN taxonomy t ON js.taxid = t.id
-    LEFT JOIN family_names f ON js.ship_family_id = f.id
-    LEFT JOIN ships s on s.accession = a.id
-    WHERE s.sequence is NOT NULL AND g.ship_id is NOT NULL AND js.orphan IS NULL
+    SELECT DISTINCT a.accession_tag, f.familyName, t.species
+    FROM gff g
+    JOIN accessions a ON g.accession = a.accession_tag
+    JOIN joined_ships js ON a.id = js.ship_id 
+    JOIN taxonomy t ON js.taxid = t.id
+    JOIN family_names f ON js.ship_family_id = f.id
+    JOIN ships s ON s.accession = a.id
+    WHERE s.sequence IS NOT NULL
+    AND g.ship_id IS NOT NULL
+    AND js.orphan IS NULL
     """
 
     session = starbase_session_factory()
@@ -248,19 +235,18 @@ def fetch_ship_table(meta_df=None):
         if df.empty:
             logger.warning("Fetched ship_table DataFrame is empty.")
         else:
-            ship_table_df = df[["accession", "familyName", "species"]].drop_duplicates()
-            ship_table_df = ship_table_df.sort_values(by="familyName", ascending=True)
+            df = df.sort_values(by="familyName", ascending=True)
 
             logger.info(
                 f"ship_table data successfully fetched from database, caching it under key '{cache_key}'"
             )
-            save_to_cache(ship_table_df, cache_key)
+            save_to_cache(df, cache_key)
     except Exception as e:
         logger.error(f"Error fetching ship_table data: {str(e)}")
         return None
     finally:
         session.close()
-    return ship_table_df
+    return df
 
 
 def fetch_all_captains():
