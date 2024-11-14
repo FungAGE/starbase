@@ -223,16 +223,16 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
 
     try:
-        logger.info(
-            f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
-        )
+        # logger.info(
+        #     f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
+        # )
 
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-        logger.info(
-            f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
-        )
+        # logger.info(
+        #     f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
+        # )
 
         if input_type in ("none", "both"):
             logger.info("Invalid input type; returning None.")
@@ -345,22 +345,6 @@ def blast(query_header, query_seq, query_type):
         classification_results_dict,
         subject_seq_button,
     )
-
-
-@callback(
-    Output("subject-seq-dl-package", "data"),
-    [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
-)
-def subject_seq_download(n_clicks, filename):
-    try:
-        if n_clicks:
-            logger.info(f"Download initiated for file: {filename}")
-            return dcc.send_file(filename)
-        else:
-            return dash.no_update
-    except Exception as e:
-        logger.error(f"Error in subject_seq_download: {str(e)}")
-        return dash.no_update
 
 
 @callback(
@@ -490,112 +474,6 @@ def update_ui(
         except Exception as e:
             logger.error(f"Error in update_ui: {str(e)}")
             return no_update
-
-
-@callback(
-    Output("blast-dl", "data"),
-    [Input("blast-dl-button", "n_clicks")],
-    [State("ship-blast-table", "data"), State("ship-blast-table", "columns")],
-)
-def download_tsv(n_clicks, rows, columns):
-    if n_clicks == 0:
-        return None
-
-    if not rows or not columns:
-        logger.error("Error: No data available for download.")
-        return None
-
-    try:
-        df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
-
-        tsv_string = df.to_csv(sep="\t", index=False)
-        tsv_bytes = io.BytesIO(tsv_string.encode())
-        b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
-
-        today = date.today().strftime("%Y-%m-%d")
-
-        return dict(
-            content=f"data:text/tab-separated-values;base64,{b64}",
-            filename=f"starbase_blast_{today}.tsv",
-        )
-
-    except Exception as e:
-        logger.error(f"Error while preparing TSV download: {e}")
-        return None
-
-
-@callback(
-    Output("lastz-plot", "figure"),
-    [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
-    ],
-)
-def create_alignment_plot(ship_blast_results, selected_row):
-    """
-    Creates a Plotly scatter plot from the alignment DataFrame and saves it as a PNG.
-    """
-    tmp_fasta_clean = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-    lastz_output = tempfile.NamedTemporaryFile(suffix=".tsv", delete=True)
-
-    try:
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
-        if ship_blast_results_df.empty:
-            logger.error("Error: No blast results available for plotting.")
-            return None
-    except Exception as e:
-        logger.error(f"Error converting blast results to DataFrame: {e}")
-        return None
-
-    if selected_row is None or not selected_row:
-        logger.error("No row selected for alignment.")
-        return None
-
-    try:
-        row = ship_blast_results_df.iloc[selected_row]
-        qseq = re.sub("-", "", row["qseq"])
-        qseqid = row["qseqid"]
-        sseq = re.sub("-", "", row["sseq"])
-        sseqid = row["sseqid"]
-
-        logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
-
-        with open(tmp_fasta_clean.name, "w") as f:
-            f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-
-        logger.info("Running LASTZ...")
-        run_lastz(tmp_fasta_clean.name, lastz_output.name)
-
-        lastz_df = parse_lastz_output(lastz_output.name)
-
-        if lastz_df.empty:
-            logger.error("Error: No alignment data from LASTZ.")
-            return None
-
-        x_values = []
-        y_values = []
-
-        for _, lastz_row in lastz_df.iterrows():
-            x_values.extend([lastz_row["qstart"], lastz_row["qend"]])
-            y_values.extend([lastz_row["sstart"], lastz_row["send"]])
-
-        fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode="lines"))
-
-        fig.update_layout(
-            title="LASTZ Alignment",
-            xaxis_title=f"Query: {qseqid}",
-            yaxis_title=f"Subject: {sseqid}",
-        )
-
-        return fig
-
-    except IndexError as e:
-        logger.error(f"Error: Selected row index is out of bounds. Details: {e}")
-        return None
-
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return None
 
 
 @callback(

@@ -8,6 +8,7 @@ import tempfile
 import subprocess
 import json
 import pandas as pd
+import textwrap
 
 from Bio.Blast.Applications import (
     NcbiblastnCommandline,
@@ -991,70 +992,102 @@ def get_protein_sequence(header, nuc_sequence):
 
 
 def blast2html(outdir="tmp/", input=None):
-    import re
-    import textwrap
-
     if not os.path.exists(outdir):
         os.makedirs(outdir)
-    js1 = open("assets/js/blaster.min.js").read()
-    js2 = open("assets/js/html2canvas.min.js").read()
-    out_paths = {}
-    with open(input) as f:
-        for block in read_lines(f, "Query="):
-            if block.startswith("BLAST"):
-                continue
-            block = "Query=" + block
-            lines = block.split("\n")
-            ID = re.search(r"Query= ([\S]+)", lines[0]).group(1)
-            # invaild_symbol = re.search(r"[^\w]", ID)
-            # if invaild_symbol:
-            #     print(
-            #         "ERROR: Protein ID could not include invaild symbol, such as: '|,?,+,!...'"
-            #     )
-            #     sys.exit(-2)
-            out_path = os.path.join(outdir, ID + ".html")
-            out = open(out_path, "w")
-            out.write(
-                textwrap.dedent(
-                    r"""<html>
-            <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" />
-            </head>
-            <body>
-            <div id="blast-multiple-alignments"></div>
-            <div id="blast-alignments-table"></div>
-            <div id="blast-single-alignment"></div>
-            
-            <script type="text/javascript">%s</script>
-            <script type="text/javascript">%s</script>
-            <script type="text/javascript">
-            var alignments=[
-            """
-                )
-                % (js1, js2)
-            )
+        logger.info(f"Created output directory: {outdir}")
+    else:
+        logger.debug(f"Output directory already exists: {outdir}")
 
-            for line in lines:
-                out.write('"%s",\n' % (line))
-            out.write(
-                textwrap.dedent(
-                    r"""].join('\n');
-            var blasterjs = require("biojs-vis-blasterjs");
-            var instance = new blasterjs({
-                string: alignments,
-                multipleAlignments: "blast-multiple-alignments",
-                alignmentsTable: "blast-alignments-table",
-                singleAlignment: "blast-single-alignment",
-             });
-            </script>
-            </body>
-            </html>
-            """
-                )
-            )
-            out.close()
-            out_paths[ID] = out_path
+    try:
+        js1 = open("assets/js/blaster.min.js").read()
+        js2 = open("assets/js/html2canvas.min.js").read()
+        logger.debug("Successfully loaded JS files.")
+    except FileNotFoundError as e:
+        logger.error("Error loading JS files: %s", e)
+        raise
+
+    out_paths = {}
+
+    try:
+        with open(input) as f:
+            logger.info(f"Processing input file: {input}")
+            for block in read_lines(f, "Query="):
+                if block.startswith("BLAST"):
+                    continue
+                block = "Query=" + block
+                lines = block.split("\n")
+                try:
+                    ID = re.search(r"Query= ([\S]+)", lines[0]).group(1)
+                    logger.debug(f"Found query ID: {ID}")
+                except AttributeError:
+                    logger.error(
+                        "No valid ID found in the first line of block: %s", lines[0]
+                    )
+                    continue  # Skip the current block if ID extraction fails
+
+                # Validate the ID (if necessary)
+                # invaild_symbol = re.search(r"[^\w]", ID)
+                # if invaild_symbol:
+                #     logger.error("ERROR: Invalid symbol in Protein ID: %s", ID)
+                #     sys.exit(-2)
+
+                out_path = os.path.join(outdir, ID + ".html")
+                logger.debug(f"Generating HTML for ID {ID} at {out_path}")
+
+                try:
+                    with open(out_path, "w") as out:
+                        out.write(
+                            textwrap.dedent(
+                                r"""<html>
+                                <head>
+                                <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+                                <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" />
+                                </head>
+                                <body>
+                                <div id="blast-multiple-alignments"></div>
+                                <div id="blast-alignments-table"></div>
+                                <div id="blast-single-alignment"></div>
+                                
+                                <script type="text/javascript">%s</script>
+                                <script type="text/javascript">%s</script>
+                                <script type="text/javascript">
+                                var alignments=[
+                                """
+                            )
+                            % (js1, js2)
+                        )
+
+                        for line in lines:
+                            out.write('"%s",\n' % (line))
+                        out.write(
+                            textwrap.dedent(
+                                r"""].join('\n');
+                                var blasterjs = require("biojs-vis-blasterjs");
+                                var instance = new blasterjs({
+                                    string: alignments,
+                                    multipleAlignments: "blast-multiple-alignments",
+                                    alignmentsTable: "blast-alignments-table",
+                                    singleAlignment: "blast-single-alignment",
+                                 });
+                                </script>
+                                </body>
+                                </html>
+                                """
+                            )
+                        )
+                    out_paths[ID] = out_path
+                    logger.info(f"Successfully generated HTML for ID {ID}")
+                except Exception as e:
+                    logger.error(f"Error writing HTML for ID {ID}: {e}")
+                    continue
+    except FileNotFoundError as e:
+        logger.error(f"Error opening input file {input}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error while processing file {input}: {e}")
+        raise
+
+    logger.info(f"Generated HTML files: {list(out_paths.keys())}")
     return out_paths
 
 
