@@ -57,26 +57,20 @@ table_columns = [
     },
 ]
 
-modal = html.Div(
-    id="pgv-modal",
-    className="center-content",
-    children=[
-        dbc.Modal(
+modal =     dbc.Modal(
             [
                 dbc.ModalHeader(dbc.ModalTitle(id="pgv-modal-title")),
                 dbc.ModalBody(id="pgv-modal-content"),
             ],
             id="pgv-modal",
             is_open=False,
-        )
-    ],
 )
-
 
 layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
+        modal,
         dmc.Grid(
             justify="center",
             align="top",
@@ -93,7 +87,6 @@ layout = dmc.Container(
                             type="circle",
                             children=[
                                 html.Div(id="pgv-table", className="center-content"),
-                                modal,
                             ],
                         ),
                     ],
@@ -527,12 +520,24 @@ def update_pgv(n_clicks, selected_rows, table_data):
     State("pgv-modal", "is_open"),
     State("pgv-table", "data"),
 )
-def toggle_modal(active_cell, is_open, table_data):
-    if active_cell:
-        row = active_cell["row"]
-        row_data = table_data[row]
-        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-
-        return True, modal_content, modal_title, None
-
+def toggle_modal(cell_clicked, is_open, table_data):    
+    # If no cell was clicked, keep modal closed
+    if cell_clicked is None:
+        return False, no_update, no_update, no_update
+        
+    if table_data:
+        try:
+            row = cell_clicked["row"]
+            row_data = table_data[row]
+            accession = row_data.get("accession_tag")
+            if accession:
+                modal_content, modal_title = create_accession_modal(accession)
+                return True, modal_content, modal_title, None
+            else:
+                return False, "No accession data found", "Error", None
+                
+        except Exception as e:
+            logger.error(f"Error in toggle_modal: {str(e)}")
+            return False, "Error loading modal", "Error", None
+            
     return is_open, no_update, no_update, no_update

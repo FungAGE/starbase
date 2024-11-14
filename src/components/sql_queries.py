@@ -15,7 +15,7 @@ def generate_cache_key(base_key, unique_identifier=None):
         return base_key
 
 
-def fetch_meta_data(curated=True):
+def fetch_meta_data(curated=False):
     """Fetch metadata from the database and cache the result."""
     cache_key = generate_cache_key("meta_data")
 
@@ -26,16 +26,16 @@ def fetch_meta_data(curated=True):
     logger.info(f"Fetching meta data from database for key '{cache_key}'")
 
     meta_query = """
-    SELECT j.ship_family_id, j.curated_status, t.taxID,j.starshipID,
+    SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.species, 
            g.version, g.genomeSource, g.citation, a.accession_tag, g.strain
     FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    LEFT JOIN genomes g ON j.genome_id = g.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
-    WHERE j.orphan IS NULL  
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
+    JOIN genomes g ON j.genome_id = g.id
+    JOIN accessions a ON j.ship_id = a.id
+    WHERE j.orphan IS NULL
     """
 
     session = starbase_session_factory()
@@ -218,7 +218,7 @@ def fetch_ship_table(meta_df=None):
     query = """
     SELECT DISTINCT a.accession_tag, f.familyName, t.species
     FROM gff g
-    JOIN accessions a ON g.accession = a.accession_tag
+    JOIN accessions a ON g.ship_id = a.id
     JOIN joined_ships js ON a.id = js.ship_id 
     JOIN taxonomy t ON js.taxid = t.id
     JOIN family_names f ON js.ship_family_id = f.id

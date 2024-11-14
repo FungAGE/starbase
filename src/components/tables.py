@@ -53,6 +53,8 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         selected_columns=[],
         selected_rows=[],
         page_action="native",
+        cell_selectable=True,
+        active_cell=None,
         page_current=0,
         page_size=pg_sz,
         style_table={
