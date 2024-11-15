@@ -110,25 +110,57 @@ def create_time_series_figure(time_series_data):
     return fig
 
 def create_endpoints_figure(endpoints_data):
-    """Create endpoints visualization."""
+    """Create endpoints visualization for main app pages."""
+    # Define mapping of endpoints to display names
+    page_mapping = {
+        '/': 'Home',
+        '/blast': 'BLAST',
+        '/search': 'Search',
+        '/wiki': 'Wiki',
+        '/metrics': 'Metrics',
+        '/about': 'About'
+    }
+    
     if endpoints_data:
-        endpoints = [row[0] for row in endpoints_data]
-        counts = [row[1] for row in endpoints_data]
-        fig = px.bar(
-            x=endpoints,
-            y=counts,
-            title="Requests by Endpoint",
-            labels={"x": "Endpoint", "y": "Number of Requests"}
-        )
+        # Filter and transform the data
+        filtered_data = [
+            (page_mapping.get(row[0], row[0]), row[1]) 
+            for row in endpoints_data 
+            if row[0] in page_mapping
+        ]
+        
+        if filtered_data:  # Check if we have any data after filtering
+            endpoints = [row[0] for row in filtered_data]
+            counts = [row[1] for row in filtered_data]
+            
+            fig = px.bar(
+                x=endpoints,
+                y=counts,
+                title="Page Visits",
+                labels={"x": "Page", "y": "Number of Visits"}
+            )
+            
+            # Customize the layout
+            fig.update_layout(
+                xaxis_tickangle=-45,  # Angle the labels for better readability
+                bargap=0.3,           # Adjust space between bars
+            )
+        else:
+            fig = go.Figure()
+            fig.update_layout(
+                title="Page Visits (No Data)",
+                xaxis_title="Page",
+                yaxis_title="Number of Visits"
+            )
     else:
         fig = go.Figure()
         fig.update_layout(
-            title="Requests by Endpoint (No Data)",
-            xaxis_title="Endpoint",
-            yaxis_title="Number of Requests"
+            title="Page Visits (No Data)",
+            xaxis_title="Page",
+            yaxis_title="Number of Visits"
         )
+    
     return fig
-
 def get_ip_locations():
     """Get location data for IP addresses."""
     session = telemetry_session_factory()

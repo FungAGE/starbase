@@ -23,7 +23,7 @@ def get_metrics_layout():
             }
 
     layout = dmc.Container([
-        dmc.Stack([
+        dmc.Stack(style={"paddingTop": "20px"}, children=[
             dmc.Title('Telemetry Dashboard', order=1),
             dmc.Text('This dashboard shows the number of unique users and the most accessed endpoints.', size='lg'),
             dmc.Grid(style={"paddingTop": "20px"}, children=[
