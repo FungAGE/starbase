@@ -5,11 +5,11 @@ from src.pages import (
     HOME_URL,
     DL_URL,
     WIKI_URL,
-    # EXPLORE_URL,
     PGV_URL,
     BLAST_URL,
     SUBMIT_URL,
     ABOUT_URL,
+    METRICS_URL,
 )
 
 
@@ -41,17 +41,6 @@ def navmenu(buttons_disabled=False):
                 disabled=buttons_disabled,
             )
         ),
-        # dbc.NavItem(
-        #     dbc.NavLink(
-        #         html.P(
-        #             ["Explore"],
-        #             className="nav-item-text",
-        #         ),
-        #         href=EXPLORE_URL,
-        #         active="exact",
-        #         className="nav-item-link",disabled=buttons_disabled
-        #     )
-        # ),
         dbc.NavItem(
             dbc.NavLink(
                 html.P(
@@ -99,9 +88,11 @@ def navmenu(buttons_disabled=False):
         ),
     ]
 
+
+
     navbar = dbc.NavbarSimple(
         children=navbar_content,
-        brand=html.Span("starbase", className="logo-text"),
+        brand=dbc.NavbarBrand(html.Span("starbase", className="logo-text"), className="ms-2"),
         brand_href=HOME_URL,
         brand_style={
             "align-items": "center",

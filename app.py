@@ -3,10 +3,15 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
+from flask import request
 
-import pandas as pd
+from flask_limiter import Limiter
+import logging
 
 from src.components import navmenu
+from src.utils.telemetry import log_request, get_client_ip
+
+logging.basicConfig(level=logging.ERROR)
 
 # from src.components.precompute import precompute_all
 from src.components.cache import cache
@@ -58,6 +63,24 @@ app = Dash(
 # Set up cache with app
 cache.init_app(server)
 
+limiter = Limiter(
+    get_client_ip,
+    app=server,
+    default_limits=["60 per day", "20 per hour"],
+)
+
+
+@limiter.request_filter
+def log_rate_limit():
+    remote_addr = get_client_ip()
+    logging.info(f"Rate limit hit by IP: {remote_addr}")
+    return False
+
+
+@app.server.before_request
+def before_request_func():
+    log_request(get_client_ip(), request.path)
+
 
 def serve_app_layout():
     return dmc.MantineProvider(
@@ -72,6 +95,13 @@ def serve_app_layout():
 
 
 app.layout = serve_app_layout
+
+@app.server.route('/api/blast-submit', methods=['POST'])
+@limiter.limit("10 per hour")  # Adjust limits as needed
+def check_blast_limit():
+    remote_addr = get_client_ip()
+    logging.info(f"BLAST submission from IP: {remote_addr}")
+    return {"allowed": True}
 
 if __name__ == "__main__":
     # precompute_all()
