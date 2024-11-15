@@ -1,89 +1,55 @@
 from dash import html
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
+from dash_iconify import DashIconify
 
 import logging
 import pandas as pd
 
+from src.components.sql_engine import sql_connected
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_meta_data
 
 logger = logging.getLogger(__name__)
 
-download_ships_button = dbc.Button(
-    html.Div(
-        [
-            "Download Starships from the latest version of ",
-            html.Span(
-                "starbase",
-                className="logo-text",
-            ),
-            ".",
-        ],
-    ),
-    href="/download",
-    color="primary",
-    class_name="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl mx-auto",
-)
 
-download_ships_card = dbc.Card(
+download_ships_button = dmc.Button(
     [
-        dbc.CardHeader(
-            [
-                html.Div(
-                    "Data Availability",
-                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                )
-            ],
-            className="card-header-custom",
+        "Download Starships from the latest version of ",
+        html.Span(
+            "starbase",
+            className="logo-text",
         ),
-        dbc.CardBody(
-            [
-                dmc.Text(
-                    [
-                        "We have been maintaining ",
-                        html.Span(
-                            "starbase",
-                            className="logo-text",
-                        ),
-                        " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export",
-                    ],
-                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                    style={"paddingBottom": "20px"},
-                ),
-                dmc.Center(download_ships_button),
-            ],
-        ),
+        ".",
     ],
-    className="auto-resize-750",
-    # style={"height": "350px"},
-    #
+    id="dl-button",
+    variant="gradient",
+    gradient={"from": "indigo", "to": "cyan"},
+    size="lg",
+    radius="md",
+    fullWidth=True,
+    disabled=not sql_connected,
+    leftSection=DashIconify(icon="mdi:download"),
 )
 
-download_starbase_button = html.Div(
-    [
-        dbc.Button(
-            html.P(
-                [
-                    "Download Starships from the latest version of ",
-                    html.Span(
-                        "starbase",
-                        className="logo-text",
+
+download_ships_card = dmc.Paper([
+    dmc.Title("Data Availability",order=2,mb="md"),
+    dmc.Text(
+                        [
+                            "We have been maintaining ",
+                            html.Span(
+                                "starbase",
+                                className="logo-text",
+                            ),
+                            " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export",
+                        ],
+                        className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                        style={"paddingBottom": "20px"},
                     ),
-                    ".",
-                ]
-            ),
-            id="dl-button",
-            color="primary",
-            className="mt-2",
-        ),
-    ],
-    className="text-center",
-    style={
-        "font-size": "0.875rem",
-    },
-)
-
+                    dmc.Center(download_ships_button),
+                ], p="xl", radius="md", withBorder=True
+            )
 
 def curated_switch(text, size="normal"):
     if size == "normal":

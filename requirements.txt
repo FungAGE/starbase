@@ -6,6 +6,7 @@ dash_bio==1.0.2
 dash_bootstrap_components==1.5.0
 dash_core_components==2.0.0
 dash_html_components==2.0.0
+dash_iconify==0.1.2
 dash_mantine_components==0.14.4
 Flask==2.2.5
 Flask_Caching==2.3.0

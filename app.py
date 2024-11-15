@@ -11,7 +11,7 @@ import logging
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 
 # from src.components.precompute import precompute_all
 from src.components.cache import cache

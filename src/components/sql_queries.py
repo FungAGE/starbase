@@ -332,3 +332,37 @@ def fetch_sf_data():
     finally:
         session.close()
     return df
+
+def get_database_stats():
+    """Get statistics about the Starship database."""
+    cache_key = generate_cache_key("stats")
+    if cache_exists(cache_key):
+        return load_from_cache(cache_key)
+
+    session = starbase_session_factory()
+    try:
+        # Placeholder queries - adjust table/column names as needed
+        stats = {
+            "total_starships": session.execute(
+                "SELECT COUNT(*) FROM accessions"
+            ).scalar() or 0,
+            
+            "species_count": session.execute(
+                "SELECT COUNT(DISTINCT species) FROM taxonomy"
+            ).scalar() or 0,
+            
+            "family_count": session.execute(
+                "SELECT COUNT(DISTINCT newFamilyID) FROM family_names WHERE newFamilyID IS NOT NULL"
+            ).scalar() or 0
+        }
+        save_to_cache(stats, cache_key)
+        return stats
+    except Exception as e:
+        logger.error(f"Error fetching database stats: {str(e)}")
+        return {
+            "total_starships": 0,
+            "species_count": 0,
+            "family_count": 0
+        }
+    finally:
+        session.close()

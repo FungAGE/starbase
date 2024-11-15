@@ -160,17 +160,7 @@ def make_paper_table():
             },
         ]
 
-        paper_table = dbc.Card(
-            [
-                dbc.CardHeader(
-                    html.Div(
-                        ["Manuscripts Characterizing Starships"],
-                        className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                    )
-                ),
-                dbc.CardBody(
-                    [
-                        dash_table.DataTable(
+        paper_table = dash_table.DataTable(
                             data=sub_df.to_dict("records"),
                             sort_action="none",
                             columns=sub_df_columns,
@@ -196,11 +186,5 @@ def make_paper_table():
                                 "fontWeight": "bold",
                                 "textAlign": "left",
                             },
-                        ),
-                    ]
-                ),
-            ],
-            # className="auto-resize-900",
-        )
-
+                        )
         return paper_table
