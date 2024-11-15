@@ -3,7 +3,7 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
-import pandas as pd
+from flask import request
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -63,6 +63,31 @@ app = Dash(
 
 # Set up cache with app
 cache.init_app(server)
+
+def get_remote_address():
+    """Get the client's IP address from the request."""
+    if request.headers.get('X-Forwarded-For'):
+        # If behind a proxy, get real IP
+        return request.headers.get('X-Forwarded-For').split(',')[0]
+    return request.remote_addr
+
+limiter = Limiter(
+    get_remote_address,
+    app=server,
+    default_limits=["60 per day", "20 per hour"],
+)
+
+
+@limiter.request_filter
+def log_rate_limit():
+    remote_addr = get_remote_address()
+    logging.info(f"Rate limit hit by IP: {remote_addr}")
+    return False
+
+
+@app.server.before_request
+def before_request_func():
+    log_request(get_remote_address(), request.path)
 
 
 def serve_app_layout():
