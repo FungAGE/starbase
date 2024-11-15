@@ -14,6 +14,8 @@ import base64
 from datetime import date
 import pandas as pd
 import plotly.graph_objects as go
+import logging
+
 
 from src.components.cache import cache
 from src.utils.blast_utils import (
@@ -35,7 +37,7 @@ from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_meta_data
 from src.utils.blastdb import db_list
 
-import logging
+from src.utils.telemetry import get_client_ip, get_blast_limit_info
 
 dash.register_page(__name__)
 
@@ -125,13 +127,25 @@ layout = dmc.Container(
                         curated_switch(
                             text="Only search curated Starships", size="normal"
                         ),
-                        dbc.Button(
-                            "Submit BLAST",
-                            id="submit-button",
-                            n_clicks=0,
-                            className="d-grid gap-2 col-6 mx-auto",
-                            style={"fontSize": "1rem"},
-                        ),
+                        dmc.Group([
+                            dbc.Button(
+                                "Submit BLAST",
+                                id="submit-button",
+                                n_clicks=0,
+                                className="d-grid gap-2 col-6 mx-auto",
+                                style={"fontSize": "1rem"},
+                            ),
+                            dmc.Text(
+                                id="rate-limit-info",
+                                size="sm",
+                                c="dimmed"
+                            ),
+                            html.Div(
+                                id="rate-limit-alert",
+                                style={"display": "none"},
+                                className="mt-3 w-100"  # margin top and full width
+                            )
+                        ], pos="center"),
                         dcc.Loading(
                             id="family-loading",
                             type="circle",
@@ -206,6 +220,88 @@ def update_fasta_details(seq_content, seq_filename):
             logger.error(e)
             return html.Div(["There was an error processing this file."])
 
+@callback(
+    [
+        Output("submit-button", "disabled"),
+        Output("submit-button", "children"),
+        Output("rate-limit-info", "children"),
+        Output("rate-limit-alert", "children"),
+        Output("rate-limit-alert", "style"),
+        Output("upload-error-message", "children"),
+        Output("upload-error-store", "data"),
+    ],
+    [
+        Input("submit-button", "n_clicks"),
+        Input("blast-fasta-upload", "contents")
+    ],
+    State("blast-fasta-upload", "filename"),
+    prevent_initial_call=True
+)
+def handle_submission_and_upload(n_clicks, contents, filename):
+    triggered_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
+    
+    # Default return values
+    button_disabled = False
+    button_text = "Submit BLAST"
+    limit_info = ""
+    limit_alert = None
+    alert_style = {"display": "none"}
+    error_message = ""
+    error_store = None
+    
+    # Handle file upload
+    if triggered_id == "blast-fasta-upload" and contents is not None:
+        max_size = 10 * 1024 * 1024  # 10 MB
+        content_type, content_string = contents.split(",")
+        
+        header, seq, fasta_length_error_message = parse_fasta_from_file(contents)
+        
+        decoded = base64.b64decode(content_string)
+        file_size = len(decoded)
+        
+        if fasta_length_error_message:
+            error_message = dbc.Alert(f"Error: {fasta_length_error_message}", color="danger")
+            error_store = error_message
+            button_disabled = True
+        elif file_size > max_size:
+            error_message = dbc.Alert(f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger")
+            error_store = error_message
+            button_disabled = True
+    
+    # Handle rate limit check
+    if triggered_id == "submit-button" and n_clicks:
+        try:
+            ip_address = get_client_ip()
+            limit_info_data = get_blast_limit_info(ip_address)
+            
+            if limit_info_data["remaining"] <= 0:
+                button_disabled = True
+                button_text = "Rate limit exceeded"
+                limit_info = f"Limit reached: {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour"
+                limit_alert = dbc.Alert(
+                    [
+                        html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                        f"Rate limit exceeded. You have used {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour. Please try again later.",
+                    ],
+                    color="warning",
+                    className="d-flex align-items-center",
+                )
+                alert_style = {"display": "block"}
+            else:
+                limit_info = f"Remaining: {limit_info_data['remaining']}/{limit_info_data['limit']} submissions"
+        
+        except Exception as e:
+            logger.error(f"Error checking rate limit: {str(e)}")
+    
+    return [
+        button_disabled,
+        button_text,
+        limit_info,
+        limit_alert,
+        alert_style,
+        error_message,
+        error_store
+    ]
 
 @callback(
     [
@@ -666,40 +762,6 @@ def create_alignment_plot(ship_blast_results, selected_row):
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         return None
-
-
-@callback(
-    Output("upload-error-message", "children"),
-    Output("upload-error-store", "data"),
-    Output("submit-button", "disabled"),
-    Input("blast-fasta-upload", "contents"),
-    State("blast-fasta-upload", "filename"),
-    prevent_initial_call=True,
-)
-def handle_fasta_upload(contents, filename):
-    if contents is None:
-        return "", None
-    max_size = 10 * 1024 * 1024  # 10 MB in bytes
-
-    content_type, content_string = contents.split(",")
-
-    header, seq, fasta_length_error_message = parse_fasta_from_file(contents)
-
-    decoded = base64.b64decode(content_string)
-    file_size = len(decoded)
-
-    if fasta_length_error_message:
-        error_message = dbc.Alert(
-            f"Error: {fasta_length_error_message}", color="danger"
-        )
-        return error_message, error_message, True
-    elif file_size > max_size:
-        error_message = dbc.Alert(
-            f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger"
-        )
-        return error_message, error_message, True
-    else:
-        return "", None, False
 
 
 @callback(

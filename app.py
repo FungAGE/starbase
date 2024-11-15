@@ -6,11 +6,10 @@ from flask import Flask
 from flask import request
 
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 import logging
 
 from src.components import navmenu
-from src.utils.telemetry import log_request
+from src.utils.telemetry import log_request, get_client_ip
 
 logging.basicConfig(level=logging.INFO)
 
@@ -64,15 +63,8 @@ app = Dash(
 # Set up cache with app
 cache.init_app(server)
 
-def get_remote_address():
-    """Get the client's IP address from the request."""
-    if request.headers.get('X-Forwarded-For'):
-        # If behind a proxy, get real IP
-        return request.headers.get('X-Forwarded-For').split(',')[0]
-    return request.remote_addr
-
 limiter = Limiter(
-    get_remote_address,
+    get_client_ip,
     app=server,
     default_limits=["60 per day", "20 per hour"],
 )
@@ -80,14 +72,14 @@ limiter = Limiter(
 
 @limiter.request_filter
 def log_rate_limit():
-    remote_addr = get_remote_address()
+    remote_addr = get_client_ip()
     logging.info(f"Rate limit hit by IP: {remote_addr}")
     return False
 
 
 @app.server.before_request
 def before_request_func():
-    log_request(get_remote_address(), request.path)
+    log_request(get_client_ip(), request.path)
 
 
 def serve_app_layout():
@@ -103,6 +95,13 @@ def serve_app_layout():
 
 
 app.layout = serve_app_layout
+
+@app.server.route('/api/blast-submit', methods=['POST'])
+@limiter.limit("10 per hour")  # Adjust limits as needed
+def check_blast_limit():
+    remote_addr = get_client_ip()
+    logging.info(f"BLAST submission from IP: {remote_addr}")
+    return {"allowed": True}
 
 if __name__ == "__main__":
     # precompute_all()

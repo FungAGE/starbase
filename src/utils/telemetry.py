@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
+from flask import request
 from ip2geotools.databases.noncommercial import DbIpCity
 
 warnings.filterwarnings("ignore")
@@ -13,7 +14,15 @@ logger = logging.getLogger(__name__)
 
 from src.components.sql_engine import telemetry_session_factory, telemetry_connected
 
-# use the telemetry_engine to log requests
+def get_client_ip():
+    """Get the client's IP address from the request."""
+    if request.headers.get('X-Forwarded-For'):
+        # If behind a proxy, get real IP
+        return request.headers.get('X-Forwarded-For').split(',')[0]
+    return request.remote_addr
+
+
+# use the telemetry_engine to log request_logs
 def log_request(ip_address, endpoint):
     """Log request details to telemetry database."""
     if not telemetry_connected:
@@ -23,7 +32,7 @@ def log_request(ip_address, endpoint):
     
     try:
         query = """
-        INSERT INTO requests (ip_address, endpoint, timestamp)
+        INSERT INTO request_logs (ip_address, endpoint, timestamp)
         VALUES (:ip, :endpoint, :timestamp)
         """
         
@@ -211,3 +220,47 @@ def analyze_telemetry():
         "endpoints": endpoints_fig,
         "map": map_fig
     }
+
+def count_blast_submissions(ip_address, hours=1):
+    """Count BLAST submissions from an IP address in the last N hours."""
+    session = telemetry_session_factory()
+    try:
+        query = """
+        SELECT COUNT(*) as count 
+        FROM request_logs 
+        WHERE ip_address = :ip 
+        AND endpoint = '/api/blast-submit'
+        AND datetime(timestamp) >= datetime('now', :hours_ago)
+        """
+        result = session.execute(
+            query, 
+            {
+                "ip": ip_address,
+                "hours_ago": f'-{hours} hours'
+            }
+        ).scalar() or 0
+        return result
+    except Exception as e:
+        logger.error(f"Error counting BLAST submissions: {str(e)}")
+        return 0
+    finally:
+        session.close()
+
+def get_blast_limit_info(ip_address):
+    """Get rate limit info for an IP address."""
+    try:
+        submissions = count_blast_submissions(ip_address)
+        limit = 10  # Configurable limit per hour
+        remaining = max(0, limit - submissions)
+        return {
+            "remaining": remaining,
+            "limit": limit,
+            "submissions": submissions
+        }
+    except Exception as e:
+        logger.error(f"Error getting BLAST limit info: {str(e)}")
+        return {
+            "remaining": 0,
+            "limit": 10,
+            "submissions": 10
+        }
