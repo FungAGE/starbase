@@ -10,6 +10,7 @@ from src.pages import (
     BLAST_URL,
     SUBMIT_URL,
     ABOUT_URL,
+    METRICS_URL,
 )
 
 

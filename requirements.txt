@@ -9,6 +9,7 @@ dash_html_components==2.0.0
 dash_mantine_components==0.14.4
 Flask==2.2.5
 Flask_Caching==2.3.0
+Flask-Limiter==3.8.0
 Jinja2==3.0.3
 logomaker==0.8
 matplotlib==3.7.5
