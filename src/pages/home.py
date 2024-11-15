@@ -16,18 +16,60 @@ dash.register_page(__name__, title="starbase Home", name="Home", path="/")
 
 logger.info(f"sql_connected? {sql_connected}")
 
-title = dmc.Title(
-    [
-        html.Span(
-            "starbase: ",
-            className="logo-text",
-        ),
-        "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
-    ],
-    className="text-center",
-    style={"paddingTop": "20px"},
-    # className="text-center text-custom text-custom-xl",
+title = dmc.Paper([
+    dmc.Group(
+        [
+            dmc.Image(
+                src="/assets/logos/emblem.png",
+                fit="contain",
+                radius="md",
+                style={
+                    "minWidth": "100px",
+                    "minHeight": "100px",
+                    "width": "clamp(100px, 8vw, 150px)",
+                    "height": "clamp(100px, 8vw, 150px)",
+                },
+            ),
+            dmc.Title(
+                [
+                    html.Span(
+                        "starbase: ",
+                        className="logo-text",
+                        style={"color": "white"}
+                    ),
+                    "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                ],
+                order=1,
+                style={
+                    "flexGrow": 1,
+                    "fontSize": "clamp(1.5rem, 2.5vw, 2.5rem)",
+                    "maxWidth": "calc(100% - 200px)",
+                    "minWidth": "60%",
+                    "color": "white",
+                }
+            ),
+        ],
+        pos="center",
+        align="center",
+        gap="xl",
+        grow=True,
+        style={
+            "flexWrap": "wrap",
+            "width": "100%",
+            "maxWidth": "1400px",
+            "margin": "0 auto",
+        }
+    )
+], 
+    shadow="sm",
+    p="xl",
+    radius="md",
+    style={
+        "backgroundColor": "#2C2E33",
+        "marginBottom": "2rem",
+    }
 )
+
 
 working = {
     "wiki": "Catalogue/Wiki of Starship Metadata",
@@ -71,15 +113,6 @@ not_working = [
         ],
     ),
 ]
-not_working_ul = html.Ul(
-    [
-        html.Li(
-            item,
-            className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-        )
-        for item in not_working
-    ],
-)
 
 starship_card = dmc.Paper([
     dmc.Title("What is a Starship?", order=2, mb="md"),
@@ -171,7 +204,9 @@ developing_features_card = dmc.Paper(
         ),
         dmc.List(
             [
-                dmc.ListItem(item) for item in not_working
+                dmc.ListItem(
+                    dmc.Text(item, size="lg", c="dimmed")
+                ) for item in not_working
             ],
             size="lg",
             spacing="sm",
@@ -185,6 +220,7 @@ developing_features_card = dmc.Paper(
 
 def create_hero_section():
     return dmc.Container([
+        dmc.Space(h=20),
         dmc.Center(title),
         dmc.Space(h=40),
         dmc.Center(starship_card),
@@ -203,8 +239,10 @@ def create_features_section():
 
 def create_publications_section():
     return dmc.Container([
-        dmc.Title("Manuscripts Characterizing Starships", order=2, mb="xl"),
-        dmc.Center(make_paper_table()),
+        dmc.Paper([
+            dmc.Title("Manuscripts Characterizing Starships", order=2, mb="xl"),
+            dmc.Center(make_paper_table()),
+        ], shadow="sm", p="xl", radius="md", withBorder=True, mb="xl"),
     ], size="xl", py="xl",flex=True)
 
 def create_stats_section():

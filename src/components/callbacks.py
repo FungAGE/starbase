@@ -44,7 +44,7 @@ download_ships_card = dmc.Paper([
                             ),
                             " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export",
                         ],
-                        className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                        size="lg", c="dimmed",
                         style={"paddingBottom": "20px"},
                     ),
                     dmc.Center(download_ships_button),
