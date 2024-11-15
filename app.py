@@ -3,7 +3,6 @@ import dash_bootstrap_components as dbc
 import dash
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask
-from flask import request
 import pandas as pd
 
 from flask_limiter import Limiter
@@ -15,15 +14,29 @@ from src.utils.telemetry import log_request
 
 logging.basicConfig(level=logging.INFO)
 
+# from src.components.precompute import precompute_all
+from src.components.cache import cache
+
+# from src.utils.blastdb import create_dbs
+from src.components.sql_engine import sql_connected
+
+
+import warnings
+import logging
+
+warnings.filterwarnings("ignore")
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger("matplotlib.font_manager").disabled = True
+
 _dash_renderer._set_react_version("18.2.0")
 
 external_stylesheets = [
     dmc.styles.ALL,
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
-    "/assets/lib/styles.css",
+    "/assets/styles.css",
     "https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
-    "/assets/lib/micromodal.css",
 ]
 
 external_scripts = [
@@ -36,6 +49,7 @@ server = Flask(__name__)
 
 server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
 
+# Initialize Dash app with the Flask server
 app = Dash(
     __name__,
     server=server,
@@ -44,29 +58,11 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
-    # external_scripts=external_scripts,
-    meta_tags=[
-        {"name": "viewport", "content": "width=device-width, initial-scale=1"},
-    ],
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 
-limiter = Limiter(
-    get_remote_address,
-    app=server,
-    default_limits=["60 per day", "20 per hour"],
-)
-
-
-@limiter.request_filter
-def log_rate_limit():
-    remote_addr = get_remote_address()
-    logging.info(f"Rate limit hit by IP: {remote_addr}")
-    return False
-
-
-@app.server.before_request
-def before_request_func():
-    log_request(get_remote_address(), request.path)
+# Set up cache with app
+cache.init_app(server)
 
 
 def serve_app_layout():
@@ -74,7 +70,7 @@ def serve_app_layout():
         html.Div(
             [
                 dcc.Location(id="url", refresh=False),
-                navmenu.navmenu(),
+                navmenu.navmenu(buttons_disabled=not sql_connected),
                 html.Div(dash.page_container),
             ]
         )
@@ -84,4 +80,6 @@ def serve_app_layout():
 app.layout = serve_app_layout
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    # precompute_all()
+    # create_dbs()
+    app.run_server(debug=False)

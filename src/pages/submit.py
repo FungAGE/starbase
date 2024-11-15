@@ -1,8 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-import logging
-
 import base64
 import dash
 import dash_bootstrap_components as dbc
@@ -13,15 +8,14 @@ from dash import dcc, html, callback
 
 import datetime
 from src.utils.parsing import parse_fasta, parse_gff
+import logging
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
 
 
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
-from sqlalchemy.exc import NoSuchTableError
-import pandas as pd
-
-db_url = "sqlite:///submissions.sqlite"
+from src.components.sql_engine import submissions_engine, submissions_connected
 
 layout = dmc.Container(
     fluid=True,
@@ -150,7 +144,7 @@ layout = dmc.Container(
                                     accept=".gff, .gff3, .tsv",
                                     multiple=False,
                                     max_size=10000000,
-                                    className="upload-box text-red text-center",
+                                    className="upload-box text-center",
                                 ),
                                 dcc.Loading(
                                     id="loading-2",
@@ -337,52 +331,13 @@ layout = dmc.Container(
 )
 
 
-def init_db(db_url):
-    # Create an SQLAlchemy engine
-    engine = create_engine(db_url)
-
-    # Create metadata object to handle table creation
-    metadata = MetaData()
-
-    # Define the 'submissions' table schema
-    submissions_table = Table(
-        "submissions",
-        metadata,
-        Column("seq_contents", Text, nullable=False),
-        Column("seq_filename", Text, nullable=False),
-        Column("seq_date", Text),
-        Column("anno_contents", Text),
-        Column("anno_filename", Text),
-        Column("anno_date", Text),
-        Column("uploader", Text, nullable=False),
-        Column("evidence", Text, nullable=False),
-        Column("genus", Text),
-        Column("species", Text),
-        Column("hostchr", Text),
-        Column("shipstart", Integer, nullable=False),
-        Column("shipend", Integer, nullable=False),
-        Column("shipstrand", Text),
-        Column("comment", Text),
-        Column("id", Integer, primary_key=True, autoincrement=True),
-    )
-
-    # Try to reflect the table if it exists
-    try:
-        submissions_table = Table("submissions", metadata, autoload_with=engine)
-    except NoSuchTableError:
-        # If the table doesn't exist, create it
-        metadata.create_all(engine)
-
-    # Return the engine for future use
-    return engine
-
-
 # Function to insert a new submission into the database
 def insert_submission(
-    seq_content,
+    submissions_engine,
+    seq_contents,
     seq_filename,
     seq_date,
-    anno_content,
+    anno_contents,
     anno_filename,
     anno_date,
     uploader,
@@ -396,9 +351,7 @@ def insert_submission(
     comment,
 ):
 
-    engine = init_db(db_url)
-
-    content_type, content_string = seq_content.split(",")
+    content_type, content_string = seq_contents.split(",")
     seq_decoded = base64.b64decode(content_string).decode("utf-8")
     seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
         "%Y-%m-%d %H:%M:%S"
@@ -407,8 +360,8 @@ def insert_submission(
     anno_contents = ""
     anno_datetime_obj = ""
 
-    if anno_content:
-        content_type, content_string = anno_content.split(",")
+    if anno_contents:
+        content_type, content_string = anno_contents.split(",")
         anno_contents = base64.b64decode(content_string).decode("utf-8")
         anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
             "%Y-%m-%d %H:%M:%S"
@@ -417,18 +370,25 @@ def insert_submission(
     if not comment:
         comment = ""
 
-    with engine.connect() as connection:
+    with submissions_engine.connect() as connection:
+        query = """
+            INSERT INTO submissions (
+                seq_contents, seq_filename, seq_date, anno_contents,
+                anno_filename, anno_date, uploader, evidence,
+                genus, species, hostchr, shipstart, shipend,
+                shipstrand, comment
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
         connection.execute(
-            """INSERT INTO submissions (seq_contents, seq_filename, seq_date, anno_contents,
-            anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
-            shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            query,
             (
-                seq_decoded,
+                seq_contents,
                 seq_filename,
-                seq_datetime_obj,
+                seq_date,
                 anno_contents,
                 anno_filename,
-                anno_datetime_obj,
+                anno_date,
                 uploader,
                 evidence,
                 genus,
@@ -466,10 +426,10 @@ def insert_submission(
     [State("submit-modal", "is_open")],
 )
 def submit_ship(
-    seq_content,
+    seq_contents,
     seq_filename,
     seq_date,
-    anno_content,
+    anno_contents,
     anno_filename,
     anno_date,
     uploader,
@@ -493,17 +453,18 @@ def submit_ship(
             shipstrand = "+"
         else:
             shipstrand = "-"
-        if not seq_content:
+        if not seq_contents:
             return (
                 modal,
                 "No fasta file uploaded",
             )  # Return the error message if no file
 
         insert_submission(
-            seq_content,
+            submissions_engine,
+            seq_contents,
             seq_filename,
             seq_date,
-            anno_content,
+            anno_contents,
             anno_filename,
             anno_date,
             uploader,
@@ -530,8 +491,8 @@ def submit_ship(
         Input("submit-fasta-upload", "filename"),
     ],
 )
-def update_fasta_details(seq_content, seq_filename):
-    if seq_content is None:
+def update_fasta_details(seq_contents, seq_filename):
+    if seq_contents is None:
         return [
             html.Div(
                 html.P(
@@ -542,13 +503,13 @@ def update_fasta_details(seq_content, seq_filename):
     else:
         try:
             # "," is the delimeter for splitting content_type from content_string
-            content_type, content_string = seq_content.split(",")
+            content_type, content_string = seq_contents.split(",")
             query_string = base64.b64decode(content_string).decode("utf-8")
             children = parse_fasta(query_string, seq_filename)
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])
 
 
@@ -559,16 +520,16 @@ def update_fasta_details(seq_content, seq_filename):
         Input("submit-upload-gff", "filename"),
     ],
 )
-def update_gff_details(anno_content, anno_filename):
-    if anno_content is None:
+def update_gff_details(anno_contents, anno_filename):
+    if anno_contents is None:
         return [
             html.Div(["Select a GFF file to upload"]),
         ]
     else:
         try:
-            children = parse_gff(anno_content, anno_filename)
+            children = parse_gff(anno_contents, anno_filename)
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])

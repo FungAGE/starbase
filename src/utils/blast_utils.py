@@ -1,11 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-
 import dash_bootstrap_components as dbc
 from dash import dash_table, dcc, html
 import dash_bio as dashbio
@@ -29,6 +21,11 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 
 from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
+from src.utils.blastdb import blast_db_exists, create_dbs
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def write_temp_fasta(header, sequence):
@@ -36,10 +33,10 @@ def write_temp_fasta(header, sequence):
         cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
         SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
-        logging.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
+        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
         return tmp_query_fasta
     except Exception as e:
-        logging.error(f"Error writing temporary FASTA: {e}")
+        logger.error(f"Error writing temporary FASTA: {e}")
         return None
 
 
@@ -50,7 +47,7 @@ def check_input(query_text_input, query_file_contents):
                 "No input provided. Both text and file contents are empty."
             )
         elif query_text_input and query_file_contents:
-            logging.warning(
+            logger.warning(
                 "Both text input and file contents are provided. Only one will be processed."
             )
             return "both", None, None
@@ -59,13 +56,13 @@ def check_input(query_text_input, query_file_contents):
             header, query = parse_fasta_from_text(query_text_input)
         elif query_file_contents:
             input_type = "file"
-            header, query = parse_fasta_from_file(query_file_contents)
-        logging.debug(
+            header, query, error_message = parse_fasta_from_file(query_file_contents)
+        logger.debug(
             f"Input type: {input_type}, Header: {header}, Query Length: {len(query) if query else 'None'}"
         )
         return input_type, header, query
     except Exception as e:
-        logging.error(f"Error in check_input: {e}")
+        logger.error(f"Error in check_input: {e}")
         return None, None, None
 
 
@@ -81,14 +78,14 @@ def clean_lines(queries):
 
         return cleaned_seq
     except Exception as e:
-        logging.error(f"Error cleaning lines: {e}")
+        logger.error(f"Error cleaning lines: {e}")
         return None
 
 
 def guess_seq_type(query_seq):
     try:
         if query_seq is None:
-            logging.error("query_seq is None.")
+            logger.error("query_seq is None.")
             return None
 
         cleaned_seq = clean_lines(query_seq)
@@ -97,13 +94,13 @@ def guess_seq_type(query_seq):
         prot_count = sum(1 for aa in query_seq.upper() if aa in prot_char)
 
         query_type = "nucl" if nucl_count >= (0.8 * len(cleaned_seq)) else "prot"
-        logging.debug(
+        logger.debug(
             f"Cleaned sequence length: {len(cleaned_seq)}, Sequence type guessed: {query_type}, Nucleotide count: {nucl_count}, Protein count: {prot_count}"
         )
 
         return query_type
     except Exception as e:
-        logging.error(f"Error in guessing sequence type: {e}")
+        logger.error(f"Error in guessing sequence type: {e}")
         return None
 
 
@@ -291,7 +288,7 @@ def stitch_blast(tabfile, output_name):
     )
     df = df.dropna()
 
-    logging.info(f"BLAST results parsed with {len(df)} hits.")
+    logger.info(f"BLAST results parsed with {len(df)} hits.")
     return df
 
 
@@ -309,22 +306,26 @@ def run_blast(
 
         blastdb = db_list["ship"][db_type]
         if db_type == "nucl":
-            if query_type == "nucl":
-                blast_program = NcbiblastnCommandline
-            else:
-                blast_program = NcbitblastnCommandline
+            blast_program = (
+                NcbiblastnCommandline
+                if query_type == "nucl"
+                else NcbitblastnCommandline
+            )
         else:
-            if query_type == "prot":
-                blast_program = NcbiblastpCommandline
-            else:
-                blast_program = NcbiblastxCommandline
+            blast_program = (
+                NcbiblastpCommandline if query_type == "prot" else NcbiblastxCommandline
+            )
 
-        if not os.path.exists(blastdb) or os.path.getsize(blastdb) == 0:
-            raise ValueError(f"BLAST database {blastdb} not found or is empty.")
+        # Ensure the database exists
+        if not blast_db_exists(blastdb):
+            logger.warning(f"BLAST database {blastdb} does not exist. Creating it.")
+            create_dbs()  # Create the database if it doesn't exist
 
-        logging.info(
+        logger.info(
             f"Running BLAST with query: {query_fasta}, query_type={query_type}, Database: {blastdb}"
         )
+
+        # Construct the command
         blast_cline = blast_program(
             query=query_fasta,
             db=blastdb,
@@ -333,15 +334,17 @@ def run_blast(
             outfmt="6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq",
             num_threads=threads,
         )
-        stdout, stderr = blast_cline()
-        logging.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
 
-        # stitch BLAST results
+        # Execute the command
+        stdout, stderr = blast_cline()
+        logger.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
+
+        # Stitch BLAST results
         if stitch:
             tmp_stitch = tempfile.NamedTemporaryFile(
                 suffix=".stitch", delete=False
             ).name
-            logging.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
+            logger.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
             df = stitch_blast(tmp_blast, tmp_stitch)
         else:
             df = pd.read_csv(
@@ -365,17 +368,9 @@ def run_blast(
                 ],
             )
 
-        # with open(tmp_query_fasta, "r") as file:
-        #     file_contents = file.read()
-        logging.info(file_contents)
-
-        # with open(tmp_blast, "r") as file:
-        #     file_contents = file.read()
-        logging.info(file_contents)
-
         return df
     except Exception as e:
-        logging.error(f"Error during BLAST search: {e}")
+        logger.error(f"Error during BLAST search: {e}")
         return None
 
 
@@ -393,7 +388,7 @@ def hmmsearch(
         raise ValueError(f"HMMER database {hmmer_db} not found or is empty.")
 
     hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
-    logging.info(f"Running HMMER search: {hmmer_cmd}")
+    logger.info(f"Running HMMER search: {hmmer_cmd}")
     subprocess.run(hmmer_cmd, shell=True)
     return tmp_hmmer
 
@@ -436,18 +431,18 @@ def run_hmmer(
                     threads,
                 )
                 tmp_hmmer_protein_parsed = parse_hmmer(tmp_hmmer_protein)
-                logging.info(
+                logger.info(
                     f"Second hmmersearch run stored at: {tmp_hmmer_protein_parsed}"
                 )
                 hmmer_results = pd.read_csv(tmp_hmmer_protein_parsed, sep="\t")
         else:
             hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
 
-        logging.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
+        logger.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
 
         return hmmer_results.to_dict("records")
     except Exception as e:
-        logging.error(f"Error in HMMER search: {e}")
+        logger.error(f"Error in HMMER search: {e}")
         return None
 
 
@@ -485,12 +480,12 @@ def extract_gene_from_hmmer(parsed_file):
 
     # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".besthit.txt").name
     # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".best_hsp.fa").name
-    logging.info(f"Best hit for gene sequence: {top_hit_out_path}")
+    # logger.info(f"Best hit for gene sequence: {top_hit_out_path}")
 
     query = min_evalue_rows.loc[0, "query_id"]
     qseq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")
 
-    logging.info(f"Sequence has length {len(qseq)}")
+    logger.info(f"Sequence has length {len(qseq)}")
 
     return query, qseq
 
@@ -594,15 +589,15 @@ def blast_chords(blast_output):
             with open(tmp_layout_json) as f:
                 circos_layout = json.load(f)
         except Exception as e:
-            logging.error(f"Error loading JSON data: {e}")
+            logger.error(f"Error loading JSON data: {e}")
             return html.Div(["Error loading plot data."])
 
         # Check if the loaded data is not empty
         if not circos_graph_data or not circos_layout:
             return html.Div(["No valid data found for the BLAST search."])
 
-        logging.info("Circos graph data:", circos_graph_data)
-        logging.info("Circos layout data:", circos_layout)
+        logger.info("Circos graph data:", circos_graph_data)
+        logger.info("Circos layout data:", circos_layout)
 
         layout_config = {
             "innerRadius": 100,
@@ -656,7 +651,7 @@ def blast_chords(blast_output):
             return html.Div(circos_plot)
 
         except Exception as e:
-            logging.error(f"Error creating Circos plot: {e}")
+            logger.error(f"Error creating Circos plot: {e}")
             return html.Div(["Error creating plot."])
     else:
         return html.Div(["No results found for the BLAST search."])
@@ -664,31 +659,56 @@ def blast_chords(blast_output):
 
 # TODO: link in ship classification information for subjects here
 def blast_table(ship_blast_results):
+    df_columns = [
+        {
+            "name": "Accession",
+            "id": "accession_tag",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Starship Family",
+            "id": "familyName",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Percent Identity",
+            "id": "pident",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Hit Length",
+            "id": "length",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "E-value",
+            "id": "evalue",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+        {
+            "name": "Bitscore",
+            "id": "bitscore",
+            "deletable": False,
+            "selectable": False,
+            "presentation": "markdown",
+        },
+    ]
+
     tbl = html.Div(
         [
             dash_table.DataTable(
-                columns=[
-                    {
-                        "name": i,
-                        "id": i,
-                        "deletable": False,
-                        "selectable": True,
-                    }
-                    for i in ship_blast_results.columns
-                ],
+                columns=df_columns,
                 data=ship_blast_results.to_dict("records"),
-                hidden_columns=[
-                    "sseqid",
-                    "qseqid",
-                    "qseq",
-                    "sseq",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                    "mismatch",
-                    "gapopen",
-                ],
                 id="ship-blast-table",
                 editable=False,
                 sort_action="native",
@@ -712,6 +732,14 @@ def blast_table(ship_blast_results):
                     "whiteSpace": "normal",
                     "overflow": "hidden",
                 },
+                style_data_conditional=[
+                    {
+                        "if": {"column_id": "accession_tag"},
+                        "color": "blue",
+                        "textDecoration": "underline",
+                        "cursor": "pointer",
+                    }
+                ],
                 style_cell={
                     "minWidth": "120px",
                     "maxWidth": "300px",
@@ -743,7 +771,7 @@ def select_ship_family(hmmer_results):
     hmmer_results.dropna(subset=["evalue"], inplace=True)
 
     if hmmer_results.empty:
-        logging.warning("HMMER results DataFrame is empty after dropping NaNs.")
+        logger.warning("HMMER results DataFrame is empty after dropping NaNs.")
         return None, None, None
 
     try:
@@ -760,17 +788,17 @@ def select_ship_family(hmmer_results):
 
             return superfamily, aln_length, evalue
 
-        logging.warning("No valid rows found in hmmer_results DataFrame.")
+        logger.warning("No valid rows found in hmmer_results DataFrame.")
         return None, None, None
 
     except KeyError as e:
-        logging.error(f"KeyError encountered: {e}")
+        logger.error(f"KeyError encountered: {e}")
         return None, None, None
     except IndexError as e:
-        logging.error(f"IndexError encountered: {e}")
+        logger.error(f"IndexError encountered: {e}")
         return None, None, None
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None, None, None
 
 
@@ -944,5 +972,15 @@ def get_protein_sequence(header, nuc_sequence):
 
             SeqIO.write(records, protein_output_filename, "fasta")
         return protein_output_filename
+    else:
+        return None
+
+
+def clean_sequence(seq):
+    valid_nucleotides = {"A", "T", "C", "G"}
+    seq = re.sub(r"\(.*?\)", "", seq)
+    seq = seq.upper()
+    if all(nuc in valid_nucleotides for nuc in seq):
+        return seq
     else:
         return None

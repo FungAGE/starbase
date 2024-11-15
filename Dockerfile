@@ -1,9 +1,9 @@
 # Select base image
 FROM python:3.9
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
-LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring of large transposable elements in  Fungi"
+LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring large transposable elements in Fungi"
 
-# Create user name and home directory variables
+# Create variables for user name, home directory, and placeholders 
 ENV USER=starbase
 ENV HOME=/home/$USER
 
@@ -18,7 +18,7 @@ COPY requirements.txt .
 
 # Update system and install system dependencies first
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y ncbi-blast+ hmmer clustalw && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies separately (cache this layer)
@@ -27,19 +27,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the code
 COPY ./ ./
 
-# unzip db
-RUN cd src/data && gunzip -c db.tar.gz | tar -xf - && ls -l db/ && chmod 644 db/starbase.sqlite && cd ../../
-# to create the db.tar.gz 
-# cd src/data/ && tar -cf db.tar db/* && gzip -f db.tar
+RUN chmod +x start-script.sh
 
-# build blast dbs from sql table
-RUN python src/utils/blastdb.py
+# Change permissions for user
+RUN chown -R $USER:$USER $HOME
 
-# Change permissions
-RUN chmod +x start-script.sh && chown -R $USER:$USER $HOME
-
+# Switch to user
 USER $USER
 
+# Expose the application port
 EXPOSE 8000
 
+# Start the container by initializing Tailscale and running the main app script
 ENTRYPOINT ["./start-script.sh"]

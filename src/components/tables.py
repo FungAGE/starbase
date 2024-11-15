@@ -6,7 +6,8 @@ from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 
-from src.components.sqlite import engine
+from src.components.cache_manager import load_from_cache
+from src.components.sql_queries import fetch_paper_data
 
 
 def truncate_string(s, length=40):
@@ -15,7 +16,7 @@ def truncate_string(s, length=40):
 
 # Function to convert URL string to HTML link
 def url_to_link(url, label):
-    return f'<a href="{url}" target="_blank">{label}</a>'
+    return f"[{label}]({url})"
 
 
 def make_ship_table(df, id, columns=None, pg_sz=None):
@@ -52,6 +53,8 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         selected_columns=[],
         selected_rows=[],
         page_action="native",
+        cell_selectable=True,
+        active_cell=None,
         page_current=0,
         page_size=pg_sz,
         style_table={
@@ -63,6 +66,14 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         style_data={
             "whiteSpace": "minimal",
         },
+        style_data_conditional=[
+            {
+                "if": {"column_id": "accession_tag"},
+                "color": "blue",
+                "textDecoration": "underline",
+                "cursor": "pointer",
+            }
+        ],
         style_cell={
             "minWidth": "0px",
             "maxWidth": "100%",
@@ -77,122 +88,119 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
     return table
 
 
-def make_paper_table(engine):
-    query = """
-    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
-    FROM papers p
-    LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
-    """
-    df = pd.read_sql_query(query, engine)
-
-    df_summary = (
-        df.groupby("Title")
-        .agg(
-            {
-                "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
-                "Author": "first",
-                "PublicationYear": "first",
-                "DOI": "first",
-                "Url": "first",
-            }
+def make_paper_table():
+    df = load_from_cache("paper_data")
+    if df is None:
+        df = fetch_paper_data()
+    if df is not None:
+        df_summary = (
+            df.groupby("Title")
+            .agg(
+                {
+                    "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
+                    "Author": "first",
+                    "PublicationYear": "first",
+                    "DOI": "first",
+                    "Url": "first",
+                }
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
 
-    sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
+        sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
-    # sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=40))
-    # sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=40))
-    sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
-    sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
+        # sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=40))
+        # sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=40))
+        sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
+        sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
 
-    # rename columns
-    sub_df_columns = [
-        {
-            "name": "Title",
-            "id": "Title",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Authors",
-            "id": "Author",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Publication Year",
-            "id": "PublicationYear",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Starship Families Described",
-            "id": "familyName",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "DOI",
-            "id": "DOI",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Url",
-            "id": "Url",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-    ]
+        # rename columns
+        sub_df_columns = [
+            {
+                "name": "Starship Families Described",
+                "id": "familyName",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Publication Year",
+                "id": "PublicationYear",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Title",
+                "id": "Title",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Authors",
+                "id": "Author",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "DOI",
+                "id": "DOI",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+            {
+                "name": "Url",
+                "id": "Url",
+                "deletable": False,
+                "selectable": False,
+                "presentation": "markdown",
+            },
+        ]
 
-    paper_table = dbc.Card(
-        [
-            dbc.CardHeader(
-                html.Div(
-                    ["Manuscripts Characterizing Starships"],
-                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                )
-            ),
-            dbc.CardBody(
-                [
-                    dash_table.DataTable(
-                        data=sub_df.to_dict("records"),
-                        sort_action="none",
-                        columns=sub_df_columns,
-                        id="papers-table",
-                        markdown_options={"html": True},
-                        style_table={
-                            "overflowX": "auto",
-                        },
-                        style_data={
-                            "height": "auto",
-                            "whiteSpace": "normal",
-                            "overflow": "hidden",
-                            "textOverflow": "ellipsis",
-                        },
-                        style_cell={
-                            "minWidth": "120px",
-                            "maxWidth": "300px",
-                            "textAlign": "left",
-                            "padding": "5px",
-                        },
-                        style_header={
-                            "backgroundColor": "lightgrey",
-                            "fontWeight": "bold",
-                            "textAlign": "left",
-                        },
-                    ),
-                ]
-            ),
-        ],
-        # className="auto-resize-900",
-    )
+        paper_table = dbc.Card(
+            [
+                dbc.CardHeader(
+                    html.Div(
+                        ["Manuscripts Characterizing Starships"],
+                        className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
+                    )
+                ),
+                dbc.CardBody(
+                    [
+                        dash_table.DataTable(
+                            data=sub_df.to_dict("records"),
+                            sort_action="none",
+                            columns=sub_df_columns,
+                            id="papers-table",
+                            markdown_options={"html": True},
+                            style_table={
+                                "overflowX": "auto",
+                            },
+                            style_data={
+                                "height": "auto",
+                                "whiteSpace": "normal",
+                                "overflow": "hidden",
+                                "textOverflow": "ellipsis",
+                            },
+                            style_cell={
+                                "minWidth": "120px",
+                                "maxWidth": "300px",
+                                "textAlign": "left",
+                                "padding": "5px",
+                            },
+                            style_header={
+                                "backgroundColor": "lightgrey",
+                                "fontWeight": "bold",
+                                "textAlign": "left",
+                            },
+                        ),
+                    ]
+                ),
+            ],
+            # className="auto-resize-900",
+        )
 
-    return paper_table
+        return paper_table
