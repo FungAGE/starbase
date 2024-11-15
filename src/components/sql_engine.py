@@ -41,6 +41,12 @@ submissions_path = (
     else "db/submissions.sqlite"
 )
 
+telemetry_path = (
+    "src/data/db/telemetry.sqlite"
+    if os.path.exists("src/data/db/telemetry.sqlite")
+    else "db/telemetry.sqlite"
+)
+
 db_dir = os.path.dirname(starbase_path)
 
 if "starbase_engine" in globals():
@@ -52,9 +58,17 @@ if "submissions_engine" in globals():
     del submissions_engine
 
 
+if "telemetry_engine" in globals():
+    telemetry_engine.dispose()  # Properly closes the connection pool
+    del telemetry_engine
+
 starbase_engine, starbase_session_factory, sql_connected = connect_to_database(
     starbase_path
 )
 submissions_engine, submissions_session_factory, submissions_connected = (
     connect_to_database(submissions_path)
+)
+
+telemetry_engine, telemetry_session_factory, telemetry_connected = connect_to_database(
+    telemetry_path
 )

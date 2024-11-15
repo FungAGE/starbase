@@ -1,58 +1,36 @@
 import sqlite3
 from datetime import datetime
-
 import warnings
-
-import datetime
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
-from sqlalchemy.exc import NoSuchTableError
 
 warnings.filterwarnings("ignore")
 
-db_url = "sqlite:///telemetry.sqlite"
+from src.components.sql_engine import telemetry_session_factory, telemetry_connected
 
+# use the telemetry_engine to log requests
+def log_request(ip_address, endpoint):
+    """Log request details to telemetry database."""
+    if not telemetry_connected:
+        return
 
-def init_db(db_url):
-    engine = create_engine(db_url)
-    metadata = MetaData()
-    requests_table = Table(
-        "request_logs",
-        metadata,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("endpoint", Text, nullable=False),
-        Column("timestamp", Text, nullable=False),
-    )
-
+    session = telemetry_session_factory()
+    
     try:
-        requests_table = Table("request_logs", metadata, autoload_with=engine)
-    except NoSuchTableError:
-        metadata.create_all(engine)
-
-    return engine
-
-
-engine = init_db(db_url)
-
-
-# Connect to your telemetry database
-def add_request():
-    with engine.connect() as connection:
-        connection.execute(
-            """
-          CREATE TABLE IF NOT EXISTS request_logs (
-            id INTEGER PRIMARY KEY,
-            ip TEXT,
-            endpoint TEXT,
-            timestamp TEXT
-              )
-          """
+        query = """
+        INSERT INTO requests (ip_address, endpoint, timestamp)
+        VALUES (:ip, :endpoint, :timestamp)
+        """
+        
+        session.execute(
+            query,
+            {
+                "ip": ip_address,
+                "endpoint": endpoint, 
+                "timestamp": datetime.now()
+            }
         )
-
-
-def log_request(ip, endpoint):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with engine.connect() as connection:
-        connection.execute(
-            """INSERT INTO request_logs (ip, endpoint, timestamp) VALUES (?, ?, ?)""",
-            (ip, endpoint, timestamp),
-        )
+        session.commit()
+        
+    except Exception as e:
+        session.rollback()
+    finally:
+        session.close()
