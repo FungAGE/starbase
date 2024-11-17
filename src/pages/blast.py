@@ -72,122 +72,144 @@ layout = dmc.Container(
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="captain-results-store"),
+        
+        dmc.Space(h=20),
+        dmc.Paper(
+            children=[
+                dmc.Title("BLAST Search", order=1, mb="md"),
+                dmc.Text(
+                    "Search protein/nucleotide sequences for Starships and Starship-associated genes",
+                    c="dimmed",
+                    size="lg",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
+        ),
+        
         dmc.Grid(
-            justify="start",
-            align="start",
-            style={"paddingTop": "20px"},
-            gutter="xl",
             children=[
                 dmc.GridCol(
-                    span={
-                        "sm": 12,
-                        "lg": 4,
-                    },
+                    span={"sm": 12, "lg": 4},
                     children=[
-                        html.H3(
-                            "Search protein/nucleotide sequences for Starships and Starship-associated genes.",
-                            style={
-                                "textAlign": "center",
-                                "fontSize": "1.25rem",
-                            },
-                        ),
-                        dcc.Textarea(
-                            id="query-text",
-                            placeholder="Paste FASTA sequence here...",
-                            rows=5,
-                            style={
-                                "width": "100%",
-                                "fontSize": "1rem",
-                                "padding": "10px",
-                            },
-                        ),
-                        html.H3(
-                            "Or",
-                            style={
-                                "textAlign": "center",
-                                "fontSize": "1.25rem",
-                            },
-                        ),
-                        dcc.Upload(
-                            id="blast-fasta-upload",
-                            children=html.Div(
-                                "Drag and drop or click to select a FASTA file.",
-                                id="blast-fasta-sequence-upload",
-                                style={"fontSize": "1rem"},
-                            ),
-                            className="upload-box",
-                            multiple=False,
-                            accept=".fa, .fas, .fasta, .fna",
-                        ),
-                        html.Div(
-                            id="upload-error-message",
-                            style={"color": "red", "marginTop": "1rem"},
-                        ),
-                        dcc.Store(id="upload-error-store"),
-                        curated_switch(
-                            text="Only search curated Starships", size="normal"
-                        ),
-                        dmc.Group([
-                            dbc.Button(
-                                "Submit BLAST",
-                                id="submit-button",
-                                n_clicks=0,
-                                className="d-grid gap-2 col-6 mx-auto",
-                                style={"fontSize": "1rem"},
-                            ),
-                            dmc.Text(
-                                id="rate-limit-info",
-                                size="sm",
-                                c="dimmed"
-                            ),
-                            html.Div(
-                                id="rate-limit-alert",
-                                style={"display": "none"},
-                                className="mt-3 w-100"  # margin top and full width
-                            )
-                        ], pos="center"),
-                        dcc.Loading(
-                            id="family-loading",
-                            type="circle",
-                            children=html.Div(
-                                id="ship-family",
-                                style={"paddingTop": "20px"},
-                            ),
+                        dmc.Paper(
+                            children=dmc.Stack([
+                                # Input Section
+                                dmc.Stack([
+                                    dmc.Title("Input Sequence", order=3),
+                                    dmc.Textarea(
+                                        id="query-text",
+                                        placeholder="Paste FASTA sequence here...",
+                                        minRows=5,
+                                        style={"width": "100%"},
+                                    ),
+                                ], gap="xs"),
+                                
+                                # Upload Section
+                                dmc.Stack([
+                                    dmc.Center(
+                                        dmc.Text("Or", size="lg"),
+                                    ),
+                                    dmc.Paper(
+                                        children=dcc.Upload(
+                                            id="blast-fasta-upload",
+                                            children=html.Div(
+                                                id="blast-fasta-sequence-upload",
+                                                children="Drag and drop or click to select a FASTA file",
+                                                style={"textAlign": "center", "padding": "20px"}
+                                            ),
+                                            multiple=False,
+                                            accept=".fa, .fas, .fasta, .fna",
+                                            className="upload-box text-center",
+                                        ),
+                                        withBorder=False,
+                                        radius="md",
+                                        style={"cursor": "pointer"}
+                                    ),
+                                    html.Div(
+                                        id="upload-error-message",
+                                        style={"color": "red"}
+                                    ),
+                                ], gap="md"),
+                                
+                                # Options Section
+                                dmc.Stack([
+                                    dmc.Title("Search Options", order=3),
+                                    curated_switch(
+                                        text="Only search curated Starships",
+                                        size="sm"
+                                    ),
+                                ], gap="xs"),
+                                
+                                # Submit Section
+                                dmc.Stack([
+                                    dmc.Button(
+                                        "Submit BLAST",
+                                        id="submit-button",
+                                        variant="gradient",
+                                        gradient={"from": "indigo", "to": "cyan"},
+                                        size="lg",
+                                        fullWidth=True,
+                                    ),
+                                    dmc.Text(
+                                        id="rate-limit-info",
+                                        size="sm",
+                                        c="dimmed",
+                                        # align="center",
+                                    ),
+                                ], gap="xs"),
+                                
+                                # Results Preview
+                                dcc.Loading(
+                                    id="family-loading",
+                                    type="circle",
+                                    children=html.Div(id="ship-family"),
+                                ),
+                            ], gap="xl"),
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            style={"height": "100%"},  # Make paper fill grid column
                         ),
                     ],
                 ),
+                
+                # Right Column - Results Panel
                 dmc.GridCol(
-                    span={
-                        "sm": 12,
-                        "lg": 8,
-                    },
+                    span={"sm": 12, "lg": 8},
                     children=[
-                        # dcc.Loading(
-                        #     id="blast-chord-loading",
-                        #     type="circle",
-                        #     children=[html.Div(id="blast-chord")],
-                        # ),
-                        dcc.Loading(
-                            id="ship-blast-table-loading",
-                            type="circle",
-                            className="dash-loading",
-                            children=html.Div(id="ship-blast-table"),
-                        ),
-                        modal,
-                        dcc.Loading(
-                            id="subject-seq-button-loading",
-                            type="circle",
-                            children=html.Div(id="subject-seq-button"),
-                        ),
-                        dcc.Loading(
-                            id="ship-aln-loading",
-                            type="circle",
-                            children=html.Div(id="ship-aln"),
+                        dmc.Paper(
+                            children=dmc.Stack([
+                                dmc.Title("BLAST Results", order=3),
+                                dcc.Loading(
+                                    id="ship-blast-table-loading",
+                                    type="circle",
+                                    children=html.Div(id="ship-blast-table"),
+                                ),
+                                dcc.Loading(
+                                    id="subject-seq-button-loading",
+                                    type="circle",
+                                    children=html.Div(id="subject-seq-button"),
+                                ),
+                                dcc.Loading(
+                                    id="ship-aln-loading",
+                                    type="circle",
+                                    children=html.Div(id="ship-aln"),
+                                ),
+                            ], gap="xl"),
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            style={"height": "100%"},  # Make paper fill grid column
                         ),
                     ],
                 ),
             ],
+            gutter="xl",
         ),
+        modal,
     ],
 )
 
@@ -521,11 +543,20 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                         family_name = min_evalue_rows["familyName"].iloc[0]
                         aln_len = min_evalue_rows["length"].iloc[0]
                         ev = min_evalue_rows["evalue"].iloc[0]
-                        ship_family = dbc.Alert(
-                            [
-                                f"Your sequence is likely in Starship family: {family_name} (Alignment length = {aln_len}, evalue = {ev})",
+                        ship_family = dmc.Alert(
+                            title="Starship Family Found",
+                            children=[
+                                f"Your sequence is likely in Starship family: {family_name}",
+                                dmc.Space(h=5),
+                                dmc.Text(
+                                    f"Alignment length = {aln_len}, E-value = {ev}",
+                                    size="sm",
+                                    color="dimmed"
+                                ),
                             ],
-                            color="warning",
+                            color="yellow",
+                            variant="light",
+                            withCloseButton=False,
                         )
 
                     else:
@@ -545,18 +576,36 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                             initial_df["familyName"] == superfamily
                                         ]["familyName"].unique()[0]
                                         if family:
-                                            ship_family = dbc.Alert(
-                                                [
-                                                    f"Your sequence is likely in Starship family: {family} (Alignment length = {family_aln_length}, evalue = {family_evalue})",
+                                            ship_family = dmc.Alert(
+                                                title="Starship Family Found",
+                                                children=[
+                                                    f"Your sequence is likely in Starship family: {family}",
+                                                    dmc.Space(h=5),
+                                                    dmc.Text(
+                                                        f"Alignment length = {family_aln_length}, E-value = {family_evalue}",
+                                                        size="sm",
+                                                        color="dimmed"
+                                                    ),
                                                 ],
-                                                color="warning",
+                                                color="yellow",
+                                                variant="light",
+                                                withCloseButton=False,
                                             )
                                         else:
-                                            ship_family = dbc.Alert(
-                                                [
-                                                    f"Starship family could not be determined."
+                                            ship_family = dmc.Alert(
+                                                title="Starship Family Not Determined",
+                                                children=[
+                                                    "Starship family could not be determined.",
+                                                    dmc.Space(h=5),
+                                                    dmc.Text(
+                                                        "Please try a different query or increase the e-value threshold.",
+                                                        size="sm",
+                                                        color="dimmed"
+                                                    ),
                                                 ],
-                                                color="danger",
+                                                color="red",
+                                                variant="light",
+                                                withCloseButton=False,
                                             )
 
                                 except Exception as e:

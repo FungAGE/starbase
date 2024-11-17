@@ -51,40 +51,15 @@ download_ships_card = dmc.Paper([
                 ], p="xl", radius="md", withBorder=True
             )
 
-def curated_switch(text, size="normal"):
-    if size == "normal":
-        style = {
-            "display": "flex",
-            "alignItems": "baseline",
-            "justify-content": "center",
-        }
-    if size == "large":
-        style = {
-            "display": "flex",
-            "alignItems": "baseline",
-            "transform": "scale(1.5)",
-            "justify-content": "center",
-        }
-    switch = dbc.Row(
-        justify="center",
-        align="start",
-        style={"paddingTop": "20px"},
-        children=[
-            dbc.Col(
-                lg=6,
-                sm=8,
-                children=[
-                    dbc.Switch(
-                        id="curated-input",
-                        label=text,
-                        value=False,
-                        style=style,
-                    ),
-                ],
-            )
-        ],
+def curated_switch(text="Only search curated Starships", size="sm"):
+    """Create a switch component for toggling curated-only searches."""
+    return dmc.Switch(
+        id="curated-input",
+        label=text,
+        size=size,
+        onLabel="ON",
+        offLabel="OFF",
     )
-    return switch
 
 
 def create_accession_modal(accession):    
