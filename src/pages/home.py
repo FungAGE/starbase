@@ -266,21 +266,21 @@ def create_stats_section():
                     f"{stats['total_starships']:,}", 
                     order=3
                 ),
-            ], p="xl", radius="md", withBorder=True),
+            ], p="xl", radius="md",shadow="sm", withBorder=True),
             dmc.Paper([
                 dmc.Text("Species", size="lg", c="dimmed"),
                 dmc.Title(
                     f"{stats['species_count']:,}", 
                     order=3
                 ),
-            ], p="xl", radius="md", withBorder=True),
+            ], p="xl", radius="md",shadow="sm", withBorder=True),
             dmc.Paper([
                 dmc.Text("Starship Families", size="lg", c="dimmed"),
                 dmc.Title(
                     f"{stats['family_count']:,}", 
                     order=3
                 ),
-            ], p="xl", radius="md", withBorder=True),
+            ], p="xl", radius="md",shadow="sm", withBorder=True),
         ], cols=3),
     ], size="xl", py="xl")
 

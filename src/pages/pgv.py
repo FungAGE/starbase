@@ -67,78 +67,111 @@ modal =     dbc.Modal(
 )
 
 layout = dmc.Container(
-    fluid=True,
+    size="xl",  # Wider container for visualization
     children=[
         dcc.Location(id="url", refresh=False),
-        modal,
-        dmc.Grid(
-            justify="center",
-            align="top",
+        
+        # Header Section
+        dmc.Paper(
             children=[
+                dmc.Title("Starship Genome Viewer", order=1, mb="md"),
+                dmc.Text(
+                    "Compare and visualize up to 4 Starship sequences",
+                    size="lg",
+                    c="dimmed",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
+        ),
+        
+        # Main Content
+        dmc.Grid(
+            children=[
+                # Table Section
                 dmc.GridCol(
-                    style={"padding": "40px"},
-                    span={
-                        "sm": 12,
-                        "lg": 8,
-                    },
+                    span=12,
                     children=[
-                        dcc.Loading(
-                            id="loading",
-                            type="circle",
+                        dmc.Paper(
                             children=[
-                                html.Div(id="pgv-table", className="center-content"),
+                                dmc.Stack([
+                                    # Table Title
+                                    dmc.Group(
+                                        pos="apart",
+                                        children=[
+                                            dmc.Title("Select Starships", order=2),
+                                            dmc.Button(
+                                                "Show Selected Starships",
+                                                id="update-button",
+                                                variant="gradient",
+                                                gradient={"from": "indigo", "to": "cyan"},
+                                                leftSection=html.I(className="bi bi-eye"),
+                                            ),
+                                        ],
+                                    ),
+                                    # Table
+                                    dcc.Loading(
+                                        id="loading",
+                                        type="circle",
+                                        children=html.Div(
+                                            id="pgv-table",
+                                        ),
+                                    ),
+                                ], gap="md"),
                             ],
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            mb="xl",
                         ),
                     ],
                 ),
+                
+                # Visualization Section
                 dmc.GridCol(
-                    span={
-                        "sm": 12,
-                        "lg": 8,
-                    },
+                    span=12,
                     children=[
-                        dmc.Center(
-                            [
-                                dmc.Button(
-                                    "Show Starship(s) in Viewer",
-                                    id="update-button",
-                                    n_clicks=0,
-                                    className="text-custom text-custom-sm text-custom-md",
-                                ),
-                            ]
-                        ),
-                    ],
-                ),
-                dmc.GridCol(
-                    style={"padding": "40px"},
-                    span={
-                        "sm": 12,
-                        "lg": 8,
-                    },
-                    children=[
-                        dcc.Loading(
-                            id="loading-1",
-                            type="circle",
+                        dmc.Paper(
                             children=[
-                                html.Div(id="pgv-message"),
-                                html.Div(
-                                    id="pgv-figure",
-                                    style={
-                                        "height": "800px",
-                                        "width": "100%",
-                                        "overflow": "auto",
-                                        "border": "1px solid #ccc",
-                                    },
-                                ),
+                                dmc.Stack([
+                                    # Message Area
+                                    html.Div(
+                                        id="pgv-message",
+                                        style={"textAlign": "center"},
+                                    ),
+                                    # Visualization Area
+                                    dcc.Loading(
+                                        id="loading-1",
+                                        type="circle",
+                                        children=html.Div(
+                                            id="pgv-figure",
+                                            style={
+                                                "height": "800px",
+                                                "width": "100%",
+                                                "overflow": "auto",
+                                                "backgroundColor": "#f8f9fa",
+                                                "border": "1px solid #dee2e6",
+                                                "borderRadius": "4px",
+                                            },
+                                        ),
+                                    ),
+                                ], gap="md"),
                             ],
-                        )
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                        ),
                     ],
                 ),
             ],
+            gutter="xl",
         ),
+        modal,
     ],
+    py="xl",
 )
-
 
 def plot_legend(gv):
     fig = gv.plotfig(fast_render=False)

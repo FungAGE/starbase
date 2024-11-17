@@ -144,7 +144,6 @@ def create_accordion_item(df, papers, category):
             item_id=category,
         )
 
-
 modal = dbc.Modal(
     [
         dbc.ModalHeader(dbc.ModalTitle(id="wiki-modal-title")),
@@ -161,59 +160,95 @@ layout = dmc.Container(
         dcc.Store(id="meta-data"),
         dcc.Store(id="paper-data"),
         dcc.Store(id="active-item-cache"),
-        dmc.Grid(
-            justify="center",
-            align="begin",
-            style={"paddingTop": "20px"},
+        
+        # Header Section
+        dmc.Space(h=20),
+        dmc.Paper(
             children=[
+                dmc.Title(
+                    "Starship Family Wiki",
+                    order=1,
+                    mb="md",
+                ),
+                dmc.Text(
+                    "Explore characteristics and distributions of different Starship families",
+                    c="dimmed",
+                    size="lg",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            mb="xl",
+        ),
+        
+        # Main Content Grid
+        dmc.Grid(
+            children=[
+                # Left Column - Family Selector
                 dmc.GridCol(
-                    span={"lg": 6, "sm": 12},
-                    style={
-                        "overflow": "hidden",
-                        "padding": "10px",
-                    },
+                    span={"lg": 4, "md": 12},
                     children=[
-                        html.H1(
-                            "Summary and characteristics for each Starship family",
-                        ),
-                        dcc.Loading(
-                            id="wiki-loading",
-                            type="circle",
-                            children=html.Div(
-                                id="accordion",
-                                children=dbc.Accordion(id="category-accordion"),
-                            ),
+                        dmc.Paper(
+                            children=[
+                                dmc.Title("Starship Families", order=2, mb="md"),
+                                dcc.Loading(
+                                    id="wiki-loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="accordion",
+                                        children=dbc.Accordion(id="category-accordion"),
+                                    ),
+                                ),
+                            ],
+                            p="md",
+                            radius="md",
+                            withBorder=True,
+                            style={"height": "calc(100vh - 200px)", "overflowY": "auto"},
                         ),
                     ],
                 ),
+                
+                # Right Column - Family Details
                 dmc.GridCol(
-                    span={"lg": 6, "sm": 12},
-                    style={
-                        "overflow": "hidden",
-                        "padding": "10px",
-                    },
-                    children=[
-                        html.Div(id="sidebar-title"),
-                        dcc.Loading(
-                            id="sidebar-loading",
-                            type="circle",
+                    span={"lg": 8, "md": 12},
+                    children=[                       
+                        # Content for selected family
+                        dmc.Paper(
                             children=[
-                                dmc.Center(
-                                    html.Div(
-                                        id="sidebar",
-                                        style={
-                                            "width": "100%",
-                                            "overflowY": "auto",
-                                            "overflowX": "auto",
-                                        },
-                                    )
-                                )
+                                dcc.Loading(
+                                    id="sidebar-loading",
+                                    type="circle",
+                                    children=dmc.Stack([
+                                        # Sunburst Plot
+                                        dmc.Paper(
+                                            children=[
+                                                html.Div(id="sidebar-title"),
+                                                html.Div(
+                                                    id="sidebar",
+                                                    style={
+                                                        "width": "100%",
+                                                        "minHeight": "400px",
+                                                    },
+                                                ),
+                                            ],
+                                            p="md",
+                                            radius="md",
+                                            withBorder=True,
+                                        ),
+                                    ], gap=3),
+                                ),
                             ],
+                            p="md",
+                            radius="md",
+                            withBorder=True,
                         ),
                     ],
                 ),
             ],
+            gutter="xl",
         ),
+        modal,  # Keep the modal at the root level
     ],
 )
 
@@ -333,7 +368,7 @@ def create_sidebar(active_item, cached_meta):
     df = pd.DataFrame(cached_meta)
 
     try:
-        title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
+        title = dmc.Title(f"Taxonomy and Genomes for Starships in {active_item}", order=2, mb="md")
         filtered_meta_df = df[df["familyName"] == active_item].sort_values(
             by="accession_tag", ascending=False
         )

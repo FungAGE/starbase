@@ -199,25 +199,60 @@ def get_ip_locations():
 
 def create_map_figure(locations):
     """Create map visualization of user locations."""
-    if locations:
-        df = pd.DataFrame(locations)
-        fig = px.scatter_mapbox(
-            df,
-            lat='lat',
-            lon='lon',
-            hover_data=['city', 'country'],
+    fig = go.Figure(go.Scattermapbox())
+    
+    # Base layout for both empty and populated maps
+    fig.update_layout(
+        mapbox=dict(
+            style="carto-positron",
             zoom=1,
-            title="User Locations"
+            center=dict(lat=20, lon=0),
+        ),
+        margin={"r":0,"t":30,"l":0,"b":0},
+        height=400,
+        title="User Locations"
+    )
+    
+    if locations and len(locations) > 0:
+        df = pd.DataFrame(locations)
+        
+        # Count visitors per location
+        location_counts = df.groupby(['lat', 'lon', 'city', 'country']).size().reset_index(name='visits')
+        
+        # Calculate marker sizes (scale between 10 and 40 based on visit count)
+        min_visits = location_counts['visits'].min()
+        max_visits = location_counts['visits'].max()
+        location_counts['marker_size'] = 10 + (location_counts['visits'] - min_visits) * (
+            30 / (max_visits - min_visits if max_visits > min_visits else 1)
         )
+        
+        fig.add_trace(go.Scattermapbox(
+            lat=location_counts['lat'],
+            lon=location_counts['lon'],
+            mode='markers',
+            marker=dict(
+                size=location_counts['marker_size'],
+                color='indigo',
+                opacity=0.7,
+                sizemode='diameter'
+            ),
+            text=location_counts.apply(
+                lambda row: f"{row['city']}, {row['country']}<br>{int(row['visits'])} visits", 
+                axis=1
+            ),
+            hoverinfo='text'
+        ))
+        
+        # Adjust center and zoom if we have points
+        center_lat = location_counts['lat'].mean()
+        center_lon = location_counts['lon'].mean()
         fig.update_layout(
-            mapbox_style="open-street-map",
-            margin={"r":0,"t":30,"l":0,"b":0}
+            mapbox=dict(
+                center=dict(lat=center_lat, lon=center_lon),
+                zoom=1.5
+            )
         )
-    else:
-        fig = go.Figure()
-        fig.update_layout(
-            title="User Locations (No Data)",
-        )
+    
     return fig
 
 
