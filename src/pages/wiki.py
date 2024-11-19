@@ -368,7 +368,7 @@ def create_sidebar(active_item, cached_meta):
     df = pd.DataFrame(cached_meta)
 
     try:
-        title = dmc.Title(f"Taxonomy and Genomes for Starships in {active_item}", order=2, mb="md")
+        title = dmc.Title(f"Taxonomic Distribution of Starships in {active_item}", order=2, mb="md")
         filtered_meta_df = df[df["familyName"] == active_item].sort_values(
             by="accession_tag", ascending=False
         )
@@ -425,9 +425,9 @@ def create_sidebar(active_item, cached_meta):
                 "selectable": False,
             },
         ]
-        table = make_ship_table(
+        table = html.Div([dmc.Title("Starships in this family", order=3, mb="md"), make_ship_table(
             filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
-        )
+        )])
         logger.debug("Table for sidebar created successfully.")
 
         output = dbc.Stack(children=[fig, table, modal], direction="vertical", gap=5)
