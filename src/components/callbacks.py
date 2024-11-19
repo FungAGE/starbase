@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 
 download_ships_button = dmc.Button(
     [
-        "Download Starships from the latest version of ",
+        "Download Starships from the latest version of",
         html.Span(
             "starbase",
             className="logo-text",
+            style={"marginLeft": "0.25em"},
         ),
         ".",
     ],
