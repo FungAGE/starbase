@@ -41,49 +41,56 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
     else:
         table_df = []
     table = dash_table.DataTable(
-        id=id,
+        id="pgv-table",
         columns=table_columns,
-        data=table_df,
-        editable=False,
+        data=df.to_dict("records"),
         filter_action="native",
         sort_action="native",
         sort_mode="multi",
         row_selectable="multi",
-        row_deletable=False,
-        selected_columns=[],
-        selected_rows=[],
         page_action="native",
-        cell_selectable=True,
-        active_cell=None,
         page_current=0,
-        page_size=pg_sz,
+        page_size=20,
         style_table={
-            "width": "100%",
-            "height": "100%",
             "overflowX": "auto",
             "overflowY": "auto",
+            "maxHeight": "60vh",
         },
         style_data={
-            "whiteSpace": "minimal",
+            "height": "auto",
+            "lineHeight": "20px",
+            "padding": "10px",
+        },
+        style_cell={
+            "fontFamily": "Arial, sans-serif",
+            "textAlign": "left",
+            "minWidth": "100px",
+            "maxWidth": "300px",
+            "overflow": "hidden",
+            "textOverflow": "ellipsis",
+        },
+        style_header={
+            "backgroundColor": "#f8f9fa",
+            "fontWeight": "bold",
+            "borderBottom": "2px solid #dee2e6",
+            "textAlign": "left",
+            "padding": "12px",
+        },
+        style_filter={
+            "backgroundColor": "#f8f9fa",
+            "padding": "8px",
         },
         style_data_conditional=[
             {
-                "if": {"column_id": "accession_tag"},
-                "color": "blue",
-                "textDecoration": "underline",
-                "cursor": "pointer",
-            }
+                "if": {"row_index": "odd"},
+                "backgroundColor": "#f8f9fa",
+            },
+            {
+                "if": {"state": "selected"},
+                "backgroundColor": "#e3f2fd",
+                "border": "1px solid #2196f3",
+            },
         ],
-        style_cell={
-            "minWidth": "0px",
-            "maxWidth": "100%",
-            "textAlign": "left",
-        },
-        style_header={
-            "backgroundColor": "lightgrey",
-            "fontWeight": "bold",
-            "textAlign": "left",
-        },
     )
     return table
 
@@ -161,30 +168,53 @@ def make_paper_table():
         ]
 
         paper_table = dash_table.DataTable(
-                            data=sub_df.to_dict("records"),
-                            sort_action="none",
-                            columns=sub_df_columns,
-                            id="papers-table",
-                            markdown_options={"html": True},
-                            style_table={
-                                "overflowX": "auto",
-                            },
-                            style_data={
-                                "height": "auto",
-                                "whiteSpace": "normal",
-                                "overflow": "hidden",
-                                "textOverflow": "ellipsis",
-                            },
-                            style_cell={
-                                "minWidth": "120px",
-                                "maxWidth": "300px",
-                                "textAlign": "left",
-                                "padding": "5px",
-                            },
-                            style_header={
-                                "backgroundColor": "lightgrey",
-                                "fontWeight": "bold",
-                                "textAlign": "left",
-                            },
-                        )
+            data=sub_df.to_dict("records"),
+            sort_action="none",
+            columns=sub_df_columns,
+            id="papers-table",
+            markdown_options={"html": True},
+            style_table={
+                "overflowX": "auto",
+                "overflowY": "auto",
+                "maxHeight": "60vh",
+            },
+            style_data={
+                "height": "auto",
+                "lineHeight": "20px",
+                "padding": "10px",
+                "whiteSpace": "normal",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+            },
+            style_cell={
+                "fontFamily": "Arial, sans-serif",
+                "textAlign": "left",
+                "minWidth": "120px",
+                "maxWidth": "300px",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+            },
+            style_header={
+                "backgroundColor": "#f8f9fa",
+                "fontWeight": "bold",
+                "borderBottom": "2px solid #dee2e6",
+                "textAlign": "left",
+                "padding": "12px",
+            },
+            style_filter={
+                "backgroundColor": "#f8f9fa",
+                "padding": "8px",
+            },
+            style_data_conditional=[
+                {
+                    "if": {"row_index": "odd"},
+                    "backgroundColor": "#f8f9fa",
+                },
+                {
+                    "if": {"state": "selected"},
+                    "backgroundColor": "#e3f2fd",
+                    "border": "1px solid #2196f3",
+                },
+            ],
+        )
         return paper_table

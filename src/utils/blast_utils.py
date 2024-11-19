@@ -722,17 +722,45 @@ def blast_table(ship_blast_results):
                 page_current=0,
                 page_size=10,
                 export_format="tsv",
-                css=[{"selector": ".show-hide", "rule": "display: none"}],
                 style_table={
-                    "overflow": "hidden",
                     "overflowX": "auto",
+                    "overflowY": "auto",
+                    "maxHeight": "60vh",
                 },
                 style_data={
                     "height": "auto",
-                    "whiteSpace": "normal",
+                    "lineHeight": "20px",
+                    "padding": "10px",
+                },
+                style_cell={
+                    "fontFamily": "Arial, sans-serif",
+                    "textAlign": "left",
+                    "minWidth": "100px",
+                    "maxWidth": "300px",
                     "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                },
+                style_header={
+                    "backgroundColor": "#f8f9fa",
+                    "fontWeight": "bold",
+                    "borderBottom": "2px solid #dee2e6",
+                    "textAlign": "left",
+                    "padding": "12px",
+                },
+                style_filter={
+                    "backgroundColor": "#f8f9fa",
+                    "padding": "8px",
                 },
                 style_data_conditional=[
+                    {
+                        "if": {"row_index": "odd"},
+                        "backgroundColor": "#f8f9fa",
+                    },
+                    {
+                        "if": {"state": "selected"},
+                        "backgroundColor": "#e3f2fd",
+                        "border": "1px solid #2196f3",
+                    },
                     {
                         "if": {"column_id": "accession_tag"},
                         "color": "blue",
@@ -740,25 +768,13 @@ def blast_table(ship_blast_results):
                         "cursor": "pointer",
                     }
                 ],
-                style_cell={
-                    "minWidth": "120px",
-                    "maxWidth": "300px",
-                    "padding": "5px",
-                    "whiteSpace": "normal",
-                    "textAlign": "left",
-                },
-                style_header={
-                    "backgroundColor": "lightgrey",
-                    "fontWeight": "bold",
-                    "textAlign": "left",
-                },
             ),
             dbc.Button(
                 "Download BLAST results",
                 id="blast-dl-button",
                 n_clicks=0,
                 style={"textAlign": "center", "fontSize": "1rem"},
-                className="d-grid gap-2 col-3 mx-auto",
+                className="d-grid gap-2 col-3 mx-auto mt-3",
             ),
             dcc.Download(id="blast-dl"),
         ]
