@@ -59,8 +59,6 @@ layout = dmc.Container(
     size="xl",  # More reasonable max-width
     children=[
         dcc.Location(id="url", refresh=False),
-        dmc.NotificationProvider(position="top-center"),  # Main notification provider
-        html.Div(id="notifications-container"),  # Container for notifications
         
         # Header Section
         dmc.Paper(
@@ -244,8 +242,8 @@ def make_dl_table(url):
 def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
     # Determine which button was clicked using callback context
     ctx = dash.callback_context
-    if not ctx.triggered:
-        return dash.no_update, None, False, False
+    if not ctx.triggered or not any([dl_all_clicks, dl_select_clicks]):
+        raise dash.exceptions.PreventUpdate
     
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
     

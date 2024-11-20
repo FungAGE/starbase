@@ -1,4 +1,4 @@
-from dash import html
+from dash import html, Output, Input, callback
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
@@ -13,26 +13,29 @@ from src.components.sql_queries import fetch_meta_data
 logger = logging.getLogger(__name__)
 
 
-download_ships_button = dmc.Button(
-    [
-        "Download Starships from the latest version of",
-        html.Span(
-            "starbase",
-            className="logo-text",
-            style={"marginLeft": "0.25em"},
-        ),
-        ".",
-    ],
-    id="dl-button",
-    variant="gradient",
-    gradient={"from": "indigo", "to": "cyan"},
-    size="lg",
-    radius="md",
-    fullWidth=True,
-    disabled=not sql_connected,
-    leftSection=DashIconify(icon="mdi:download"),
+download_ships_button = dmc.Anchor(
+    dmc.Button(
+        [
+            "Download Starships from the latest version of",
+            html.Span(
+                "starbase",
+                className="logo-text",
+                style={"marginLeft": "0.25em"},
+            ),
+            ".",
+        ],
+        id="navigate-to-download-btn",
+        variant="gradient",
+        gradient={"from": "indigo", "to": "cyan"},
+        size="lg",
+        radius="md",
+        fullWidth=True,
+        disabled=not sql_connected,
+        leftSection=DashIconify(icon="mdi:download"),
+    ),
+    href="/download",
+    style={"textDecoration": "none"},
 )
-
 
 download_ships_card = dmc.Paper([
     dmc.Title("Data Availability",order=2,mb="md"),
