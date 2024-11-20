@@ -203,6 +203,7 @@ layout = dmc.Container(
                                         dmc.Paper(
                                             children=[
                                                 html.Div(id="sidebar-title"),
+                                                modal,
                                                 html.Div(
                                                     id="sidebar",
                                                     style={
@@ -227,7 +228,6 @@ layout = dmc.Container(
             ],
             gutter="xl",
         ),
-        modal,  # Keep the modal at the root level
     ],
 )
 
@@ -373,30 +373,12 @@ def create_sidebar(active_item, cached_meta):
                 "selectable": False,
                 "presentation": "markdown",
             },
-            # {
-            #     "name": "Species",
-            #     "id": "species",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
-            # {
-            #     "name": "Contig ID",
-            #     "id": "contigID",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
-            # {
-            #     "name": "Start Position in Genome",
-            #     "id": "elementBegin",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
-            # {
-            #     "name": "End Position in Genome",
-            #     "id": "elementEnd",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
+            {
+                "name": "Species",
+                "id": "species",
+                "deletable": False,
+                "selectable": False,
+            },
             {
                 "name": "Element Length",
                 "id": "size",
@@ -426,12 +408,15 @@ def create_sidebar(active_item, cached_meta):
     Output("wiki-table", "active_cell"),
     Input("wiki-table", "active_cell"),
     State("wiki-modal", "is_open"),
-    State("wiki-table", "data"),
+    State("wiki-table", "data"),  # This contains the filtered data
+    State("wiki-table", "derived_virtual_data"),  # Add this to get filtered data
 )
-def toggle_modal(active_cell, is_open, table_data):
+def toggle_modal(active_cell, is_open, table_data, filtered_data):
     if active_cell:
+        # Use filtered data if available, otherwise fall back to table_data
+        data_to_use = filtered_data if filtered_data is not None else table_data
         row = active_cell["row"]
-        row_data = table_data[row]
+        row_data = data_to_use[row]  # Use the filtered data
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
 
         # Return the modal open, content, title, and reset active_cell

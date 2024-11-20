@@ -826,18 +826,24 @@ def create_alignment_plot(ship_blast_results, selected_row):
 
 
 @callback(
-    Output("blast-modal", "is_open"),
-    Output("blast-modal-content", "children"),
-    Output("blast-modal-title", "children"),
-    Output("ship-blast-table", "active_cell"),
-    Input("blast-table", "active_cell"),
-    State("blast-modal", "is_open"),
-    State("ship-blast-table", "data"),
+    [
+        Output("blast-modal", "is_open"),
+        Output("blast-modal-content", "children"),
+        Output("blast-modal-title", "children"),
+        Output("ship-blast-table", "active_cell"),
+    ],
+    [Input("blast-table", "active_cell")],
+    [
+        State("blast-modal", "is_open"),
+        State("ship-blast-table", "data"),
+        State("ship-blast-table", "derived_virtual_data")  # Add this
+    ],
 )
-def toggle_modal(active_cell, is_open, table_data):
+def toggle_modal(active_cell, is_open, table_data, filtered_data):
     if active_cell:
-        row = active_cell["row"]
-        row_data = table_data[row]
+        # Use filtered data if available
+        data_to_use = filtered_data if filtered_data is not None else table_data
+        row_data = data_to_use[active_cell["row"]]
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
         return True, modal_content, modal_title, None
     return is_open, no_update, no_update, no_update
