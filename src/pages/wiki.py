@@ -8,6 +8,10 @@ from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
+from dash_iconify import DashIconify
+
+from dash.long_callback import DiskcacheLongCallbackManager
+from functools import lru_cache
 
 import pandas as pd
 import pickle
@@ -137,6 +141,7 @@ layout = dmc.Container(
     children=[
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="meta-data"),
+        dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
         dcc.Store(id="active-item-cache"),
         
@@ -150,7 +155,7 @@ layout = dmc.Container(
                     mb="md",
                 ),
                 dmc.Text(
-                    "Explore characteristics and distributions of different Starship families",
+                    "Search and explore the characteristics of different Starship families",
                     c="dimmed",
                     size="lg",
                 ),
@@ -161,6 +166,119 @@ layout = dmc.Container(
             mb="xl",
         ),
         
+        dmc.Grid(
+            children=[
+                # Left Column - Search Section
+                dmc.GridCol(
+                    span={"lg": 4, "md": 12},
+                    children=[
+
+                        dmc.Paper(
+                            children=[
+                                dmc.Title("Search Starships", order=3, mb="md"),
+                                dmc.Grid(
+                                    children=[
+                                        # Taxonomy Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="taxonomy-search",
+                                                    label="Taxonomy",
+                                                    placeholder="Search by taxonomy...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                        # Family Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="family-search",
+                                                    label="Starship Family",
+                                                    placeholder="Search by family...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                        # Navis Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="navis-search",
+                                                    label="Navis",
+                                                    placeholder="Search by navis...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                        # Haplotype Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="haplotype-search",
+                                                    label="Haplotype",
+                                                    placeholder="Search by haplotype...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                    gutter="xl",
+                                ),
+                                # Search Actions
+                                dmc.Group(
+                                    align="right",
+                                    mt="md",
+                                    children=[
+                                        dmc.Button(
+                                            "Reset",
+                                            id="reset-search",
+                                            variant="outline",
+                                            leftSection=DashIconify(icon="tabler:refresh"),
+                                        ),
+                                        dmc.Button(
+                                            "Search",
+                                            id="apply-search",
+                                            variant="filled",
+                                            leftSection=DashIconify(icon="tabler:search"),
+                                        ),
+                                    ],
+                                ),
+                            ],
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            mb="xl",
+                        ),
+                    ]),
+                # Right Column - Search Results
+                dmc.GridCol(
+                    span={"lg": 8, "md": 12},
+                    children=html.Div(id="search-results")
+                )
+            ],
+        ),
+
         # Main Content Grid
         dmc.Grid(
             children=[
@@ -328,51 +446,39 @@ def create_accordion(cached_meta, cached_papers):
         raise
 
 
-# Callback to create sidebar content
 @callback(
-    [
-        Output("sidebar", "children"),
-        Output("sidebar-title", "children"),
-        Output("active-item-cache", "value"),
-    ],
-    Input("category-accordion", "active_item"),
+    Output("search-results", "children"),
+    Input("filtered-meta-data", "data"),
     State("meta-data", "data"),
 )
-def create_sidebar(active_item, cached_meta):
-    if active_item is None or cached_meta is None:
-        logger.warning("No active item or cached meta data provided.")
-        raise PreventUpdate
-
-    logger.debug(f"Creating sidebar for active item: {active_item}")
-    df = pd.DataFrame(cached_meta)
+def create_search_results(filtered_meta, cached_meta):
+    # Use filtered data if available, otherwise use original data
+    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
     
+    if data_to_use is None:
+        return dmc.Text("No data available", align="center", size="lg", color="dimmed")
+
     try:
-        title = dmc.Title(f"Taxonomy and Genomes for Starships in {active_item}", order=2, mb="md")
+        df = pd.DataFrame(data_to_use)
         
-        # First calculate the count for each accession_tag across the entire dataset
+        # Calculate the count for each accession_tag
         genome_counts = df.groupby('accession_tag').size()
         
-        # Filter for the specific family and add the counts
-        filtered_meta_df = df[df["familyName"] == active_item].sort_values(
+        # Remove duplicates and add counts
+        filtered_meta_df = df.sort_values(
             by="accession_tag", ascending=False
-        ).drop_duplicates(subset=['accession_tag'])  # Remove duplicates if any
+        ).drop_duplicates(subset=['accession_tag'])
         
-        # Add the n_genomes column by mapping the counts
+        # Add the n_genomes column
         filtered_meta_df['n_genomes'] = filtered_meta_df['accession_tag'].map(genome_counts)
         
-        logger.info(
-            f"Filtered metadata for {active_item} contains {len(filtered_meta_df)} rows."
-        )
-
-        sunburst_figure = load_from_cache(f"sunburst_{active_item}")
-        if sunburst_figure is None:
-            sunburst_figure = cache_sunburst_plot(
-                family=active_item, df=filtered_meta_df
+        if filtered_meta_df.empty:
+            return dmc.Text(
+                "No results found",
+                align="center",
+                size="lg",
+                color="dimmed"
             )
-
-        fig = dcc.Graph(
-            figure=sunburst_figure, style={"width": "100%", "height": "100%"}
-        )
 
         table_columns = [
             {
@@ -383,7 +489,25 @@ def create_sidebar(active_item, cached_meta):
                 "presentation": "markdown",
             },
             {
-                "name": "Number of genomes with ship present",
+                "name": "Starship Family",
+                "id": "familyName",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Starship Navis",
+                "id": "starship_navis",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Starship Haplotype",
+                "id": "starship_haplotype",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Number of genomes",
                 "id": "n_genomes",
                 "deletable": False,
                 "selectable": False,
@@ -401,13 +525,58 @@ def create_sidebar(active_item, cached_meta):
                 "selectable": False,
             },
         ]
+        
         table = make_ship_table(
             filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
         )
-        logger.debug("Table for sidebar created successfully.")
+        
+        title = dmc.Title("Search Results", order=2, mb="md")
+        return dmc.Paper(children=[
+            dbc.Stack([title, table], gap=3)
+        ], p="xl", radius="md", withBorder=True)
 
-        output = dbc.Stack(children=[fig, table, modal], direction="vertical", gap=5)
-        return output, title, active_item
+    except Exception as e:
+        logger.error(f"Error in create_search_results: {str(e)}", exc_info=True)
+        return dmc.Alert(
+            "An error occurred while loading the results",
+            color="red",
+            variant="filled"
+        )
+
+
+# Callback to create sidebar content
+@callback(
+    [
+        Output("sidebar", "children"),
+        Output("sidebar-title", "children"),
+        Output("active-item-cache", "value"),
+    ],
+    Input("category-accordion", "active_item"),
+    State("meta-data", "data"),
+)
+def create_sidebar(active_item, cached_meta):
+    if active_item is None or cached_meta is None:
+        logger.warning("No active item or meta data provided.")
+        raise PreventUpdate
+    
+    try:
+        title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
+        
+        # Load or create sunburst plot
+        sunburst_figure = load_from_cache(f"sunburst_{active_item}")
+        if sunburst_figure is None:
+            df = pd.DataFrame(cached_meta)
+            filtered_df = df[df["familyName"] == active_item]
+            sunburst_figure = cache_sunburst_plot(
+                family=active_item, df=filtered_df
+            )
+
+        fig = dcc.Graph(
+            figure=sunburst_figure, 
+            style={"width": "100%", "height": "100%"}
+        )
+
+        return fig, title, active_item
     except Exception as e:
         logger.error(
             f"Error occurred while creating the sidebar for {active_item}.",
@@ -439,3 +608,129 @@ def toggle_modal(active_cell, is_open, table_data, filtered_data):
 
     # Keep the modal closed if there's no active cell
     return is_open, no_update, no_update, no_update
+
+# Add this cache decorator for common filter combinations
+@lru_cache(maxsize=128)
+def get_filtered_options(taxonomy_tuple, family_tuple, navis_tuple, haplotype_tuple, data_hash):
+    """Cache-friendly version of option filtering"""
+    df = pd.DataFrame(pickle.loads(data_hash))
+    
+    if taxonomy_tuple:
+        df = df[df["genus"].isin(taxonomy_tuple)]
+    if family_tuple:
+        df = df[df["familyName"].isin(family_tuple)]
+    if navis_tuple:
+        df = df[df["starship_navis"].isin(navis_tuple)]
+    if haplotype_tuple:
+        df = df[df["starship_haplotype"].isin(haplotype_tuple)]
+    
+    return {
+        "taxonomy": sorted(df["genus"].dropna().unique()),
+        "family": sorted(df["familyName"].dropna().unique()),
+        "navis": sorted(df["starship_navis"].dropna().unique()),
+        "haplotype": sorted(df["starship_haplotype"].dropna().unique())
+    }
+
+@callback(
+    [
+        Output("taxonomy-search", "data"),
+        Output("family-search", "data"),
+        Output("navis-search", "data"),
+        Output("haplotype-search", "data"),
+    ],
+    [
+        Input("taxonomy-search", "value"),
+        Input("family-search", "value"),
+        Input("navis-search", "value"),
+        Input("haplotype-search", "value"),
+        Input("meta-data", "data"),
+    ],
+    prevent_initial_call=False
+)
+def populate_search_options(taxonomy_val, family_val, navis_val, haplotype_val, meta_data):
+    if not meta_data:
+        empty_data = []
+        return empty_data, empty_data, empty_data, empty_data
+    
+    try:
+        # Convert lists to tuples for caching
+        taxonomy_tuple = tuple(taxonomy_val) if taxonomy_val else ()
+        family_tuple = tuple(family_val) if family_val else ()
+        navis_tuple = tuple(navis_val) if navis_val else ()
+        haplotype_tuple = tuple(haplotype_val) if haplotype_val else ()
+        
+        # Create a hash of the data for caching
+        data_hash = pickle.dumps(meta_data)
+        
+        # Get filtered options from cache
+        options = get_filtered_options(
+            taxonomy_tuple, family_tuple, navis_tuple, haplotype_tuple, data_hash
+        )
+        
+        # Format options for Mantine MultiSelect
+        taxonomy_data = [{"value": str(x), "label": str(x)} for x in options["taxonomy"]]
+        family_data = [{"value": str(x), "label": str(x)} for x in options["family"]]
+        navis_data = [{"value": str(x), "label": str(x)} for x in options["navis"]]
+        haplotype_data = [{"value": str(x), "label": str(x)} for x in options["haplotype"]]
+        
+        return taxonomy_data, family_data, navis_data, haplotype_data
+    except Exception as e:
+        logger.error(
+            f"Error occurred while populating search options.",
+            exc_info=True,
+        )
+        raise
+
+@callback(
+    [
+        Output("filtered-meta-data", "data"),
+        Output("taxonomy-search", "value"),
+        Output("family-search", "value"),
+        Output("navis-search", "value"),
+        Output("haplotype-search", "value"),
+    ],
+    [
+        Input("apply-search", "n_clicks"),
+        Input("reset-search", "n_clicks"),
+    ],
+    [
+        State("taxonomy-search", "value"),
+        State("family-search", "value"),
+        State("navis-search", "value"),
+        State("haplotype-search", "value"),
+        State("meta-data", "data"),
+    ],
+    prevent_initial_call=True
+)
+def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotype, original_data):
+    if not original_data:
+        raise PreventUpdate
+        
+    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+    
+    # If reset button clicked, clear all filters
+    if triggered_id == "reset-search":
+        return None, [], [], [], []  # Return None for filtered data to use original
+    
+    # If no search clicked, prevent update
+    if not search_clicks:
+        raise PreventUpdate
+    
+    df = pd.DataFrame(original_data)
+    
+    # Apply filters if they exist
+    if taxonomy and len(taxonomy) > 0:
+        df = df[df["genus"].isin(taxonomy)]
+    if family and len(family) > 0:
+        df = df[df["familyName"].isin(family)]
+    if navis and len(navis) > 0:
+        df = df[df["starship_navis"].isin(navis)]
+    if haplotype and len(haplotype) > 0:
+        df = df[df["starship_haplotype"].isin(haplotype)]
+    
+    # If no filters selected, return None to use original data
+    if not any([taxonomy, family, navis, haplotype]):
+        return None, [], [], [], []
+    
+    # Return filtered data and keep current filter values
+    return df.to_dict("records"), taxonomy or [], family or [], navis or [], haplotype or []
