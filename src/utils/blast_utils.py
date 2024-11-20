@@ -22,6 +22,7 @@ from Bio.SeqUtils import nt_search
 
 from src.utils.parsing import parse_fasta_from_file, parse_fasta_from_text, clean_shipID
 from src.utils.blastdb import blast_db_exists, create_dbs
+from src.components.tables import make_ship_blast_table
 
 import logging
 
@@ -706,69 +707,7 @@ def blast_table(ship_blast_results):
 
     tbl = html.Div(
         [
-            dash_table.DataTable(
-                columns=df_columns,
-                data=ship_blast_results.to_dict("records"),
-                id="ship-blast-table",
-                editable=False,
-                sort_action="native",
-                sort_by=[{"column_id": "evalue", "direction": "asc"}],
-                sort_mode="single",
-                row_selectable="single",
-                selected_rows=[0],
-                row_deletable=False,
-                selected_columns=[],
-                page_action="native",
-                page_current=0,
-                page_size=10,
-                export_format="tsv",
-                style_table={
-                    "overflowX": "auto",
-                    "overflowY": "auto",
-                    "maxHeight": "60vh",
-                },
-                style_data={
-                    "height": "auto",
-                    "lineHeight": "20px",
-                    "padding": "10px",
-                },
-                style_cell={
-                    "fontFamily": "Arial, sans-serif",
-                    "textAlign": "left",
-                    "minWidth": "100px",
-                    "maxWidth": "300px",
-                    "overflow": "hidden",
-                    "textOverflow": "ellipsis",
-                },
-                style_header={
-                    "backgroundColor": "#f8f9fa",
-                    "fontWeight": "bold",
-                    "borderBottom": "2px solid #dee2e6",
-                    "textAlign": "left",
-                    "padding": "12px",
-                },
-                style_filter={
-                    "backgroundColor": "#f8f9fa",
-                    "padding": "8px",
-                },
-                style_data_conditional=[
-                    {
-                        "if": {"row_index": "odd"},
-                        "backgroundColor": "#f8f9fa",
-                    },
-                    {
-                        "if": {"state": "selected"},
-                        "backgroundColor": "#e3f2fd",
-                        "border": "1px solid #2196f3",
-                    },
-                    {
-                        "if": {"column_id": "accession_tag"},
-                        "color": "blue",
-                        "textDecoration": "underline",
-                        "cursor": "pointer",
-                    }
-                ],
-            ),
+            make_ship_blast_table(ship_blast_results,"ship-blast-table",df_columns),
             dbc.Button(
                 "Download BLAST results",
                 id="blast-dl-button",

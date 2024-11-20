@@ -218,3 +218,145 @@ def make_paper_table():
             ],
         )
         return paper_table
+
+def make_ship_blast_table(ship_blast_results, id,df_columns):
+    dash_table.DataTable(
+        columns=df_columns,
+        data=ship_blast_results.to_dict("records"),
+        id=id,
+        editable=False,
+        sort_action="native",
+        sort_by=[{"column_id": "evalue", "direction": "asc"}],
+        sort_mode="single",
+        row_selectable="single",
+        selected_rows=[0],
+        row_deletable=False,
+        selected_columns=[],
+        page_action="native",
+        page_current=0,
+        page_size=10,
+        export_format="tsv",
+        style_table={
+            "overflowX": "auto",
+            "overflowY": "auto",
+            "maxHeight": "60vh",
+        },
+        style_data={
+            "height": "auto",
+            "lineHeight": "20px",
+            "padding": "10px",
+        },
+        style_cell={
+            "fontFamily": "Arial, sans-serif",
+            "textAlign": "left",
+            "minWidth": "100px",
+            "maxWidth": "300px",
+            "overflow": "hidden",
+            "textOverflow": "ellipsis",
+        },
+        style_header={
+            "backgroundColor": "#f8f9fa",
+            "fontWeight": "bold",
+            "borderBottom": "2px solid #dee2e6",
+            "textAlign": "left",
+            "padding": "12px",
+        },
+        style_filter={
+            "backgroundColor": "#f8f9fa",
+            "padding": "8px",
+        },
+        style_data_conditional=[
+            {
+                "if": {"row_index": "odd"},
+                "backgroundColor": "#f8f9fa",
+            },
+            {
+                "if": {"state": "selected"},
+                "backgroundColor": "#e3f2fd",
+                "border": "1px solid #2196f3",
+            },
+            {
+                "if": {"column_id": "accession_tag"},
+                "color": "blue",
+                "textDecoration": "underline",
+                "cursor": "pointer",
+            }
+        ],
+    )
+
+def make_dl_table(df, id, table_columns):
+    return  dash_table.DataTable(
+        id=id,
+        columns=table_columns,
+        data=df.to_dict("records"),
+        filter_action="native",
+        sort_action="native",
+        sort_mode="multi",
+        row_selectable="multi",
+        page_action="native",
+        page_current=0,
+        page_size=20,
+        markdown_options={"html": True, "link_target": "_blank"},
+        cell_selectable=True,
+        style_data={
+            "height": "auto",
+            "lineHeight": "20px",
+            "padding": "10px",
+            "cursor": "pointer",
+        },
+        style_cell={
+            "fontFamily": "Arial, sans-serif",
+            "textAlign": "left",
+            "minWidth": "100px",
+            "maxWidth": "300px",
+            "overflow": "hidden",
+            "textOverflow": "ellipsis",
+        },
+        style_header={
+            "backgroundColor": "#f8f9fa",
+            "fontWeight": "bold",
+            "borderBottom": "2px solid #dee2e6",
+            "textAlign": "left",
+            "padding": "12px",
+        },
+        style_filter={
+            "backgroundColor": "#f8f9fa",
+            "padding": "8px",
+        },
+        style_data_conditional=[
+            {
+                "if": {"row_index": "odd"},
+                "backgroundColor": "#f8f9fa",
+            },
+            {
+                "if": {"state": "selected"},
+                "backgroundColor": "#e3f2fd",
+                "border": "1px solid #2196f3",
+            },
+        ],
+    )
+
+def make_wiki_table(category, n_ships, max_size, min_size):
+    return dash_table.DataTable(
+        columns=[
+            {"name": "Metric", "id": "metric"},
+            {"name": "Value", "id": "value"},
+        ],
+        data=[
+            {
+                "metric": "Total Number of Starships in {}".format(category),
+                "value": f"{n_ships:,.0f}",
+            },
+            {
+                "metric": "Maximum Starship Size (bp)",
+                "value": f"{max_size:,.0f}",
+            },
+            {
+                "metric": "Minimum Starship Size (bp)",
+                "value": f"{min_size:,.0f}",
+            },
+        ],
+        style_table={"overflowX": "auto", "maxWidth": "500px"},
+        style_cell={"textAlign": "left"},
+        style_header={"fontWeight": "bold"},
+    )

@@ -23,7 +23,7 @@ from src.components.sql_queries import (
     cache_sunburst_plot,
     fetch_paper_data,
 )
-from src.components.tables import make_ship_table
+from src.components.tables import make_ship_table, make_wiki_table
 from src.utils.plot_utils import make_logo
 from src.utils.parsing import clean_contigIDs
 from src.components.callbacks import create_accession_modal
@@ -88,29 +88,8 @@ def create_accordion_item(df, papers, category):
             downlogo_img = None
 
         accordion_content = [
-            dash_table.DataTable(
-                columns=[
-                    {"name": "Metric", "id": "metric"},
-                    {"name": "Value", "id": "value"},
-                ],
-                data=[
-                    {
-                        "metric": "Total Number of Starships in {}".format(category),
-                        "value": f"{n_ships:,.0f}",
-                    },
-                    {
-                        "metric": "Maximum Starship Size (bp)",
-                        "value": f"{max_size:,.0f}",
-                    },
-                    {
-                        "metric": "Minimum Starship Size (bp)",
-                        "value": f"{min_size:,.0f}",
-                    },
-                ],
-                style_table={"overflowX": "auto", "maxWidth": "500px"},
-                style_cell={"textAlign": "left"},
-                style_header={"fontWeight": "bold"},
-            )
+            make_wiki_table(category, n_ships, max_size, min_size)
+
         ]
         if type_element_reference.size > 0:
             # Get unique URLs and convert to strings

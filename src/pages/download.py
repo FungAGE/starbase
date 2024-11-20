@@ -1,15 +1,15 @@
 import dash
 from dash import html, dcc, dash_table, callback
 import dash_mantine_components as dmc
-from dash.dependencies import Output, Input
+from dash.dependencies import Output, Input, State
 from dash_iconify import DashIconify
 import pandas as pd
 
-from src.components.callbacks import curated_switch
+from src.components.callbacks import curated_switch, create_accession_modal
 from src.components.cache import cache
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_download_data, fetch_all_ships
-
+from src.components.tables import make_dl_table
 import logging
 
 logger = logging.getLogger(__name__)
@@ -139,60 +139,15 @@ layout = dmc.Container(
                         ),
                     ],
                 ),
-
-                dash_table.DataTable(
-                    id="dl-table",
-                    columns=table_columns,
-                    data=[],
-                    filter_action="native",
-                    sort_action="native",
-                    sort_mode="multi",
-                    row_selectable="multi",
-                    page_action="native",
-                    page_current=0,
-                    page_size=20,
-                    markdown_options={"html": True},
-                    style_table={
-                        "overflowX": "auto",
-                        "overflowY": "auto",
-                        "maxHeight": "60vh",  # Responsive height
-                    },
-                    style_data={
-                        "height": "auto",
-                        "lineHeight": "20px",
-                        "padding": "10px",
-                    },
-                    style_cell={
-                        "fontFamily": "Arial, sans-serif",
-                        "textAlign": "left",
-                        "minWidth": "100px",
-                        "maxWidth": "300px",
-                        "overflow": "hidden",
-                        "textOverflow": "ellipsis",
-                    },
-                    style_header={
-                        "backgroundColor": "#f8f9fa",
-                        "fontWeight": "bold",
-                        "borderBottom": "2px solid #dee2e6",
-                        "textAlign": "left",
-                        "padding": "12px",
-                    },
-                    style_filter={
-                        "backgroundColor": "#f8f9fa",
-                        "padding": "8px",
-                    },
-                    style_data_conditional=[
-                        {
-                            "if": {"row_index": "odd"},
-                            "backgroundColor": "#f8f9fa",
-                        },
-                        {
-                            "if": {"state": "selected"},
-                            "backgroundColor": "#e3f2fd",
-                            "border": "1px solid #2196f3",
-                        },
+                dmc.Modal(
+                    id="accession-modal",
+                    size="lg",
+                    centered=True,
+                    children=[
+                        html.Div(id="modal-content"),
                     ],
                 ),
+                make_dl_table(df=[],d="dl-table", df_columns=table_columns),
             ],
         ),
     ],
@@ -214,12 +169,12 @@ def make_dl_table(url, curated=True):
             
         logger.info(f"Retrieved {len(df)} records from the database (curated={curated}).")
         df.fillna("", inplace=True)
+        
         return df.to_dict("records")
 
     except Exception as e:
         logger.error(f"Failed to execute query in make_dl_table. Details: {e}")
         return []
-
 
 @callback(
     Output("download-selected-btn", "disabled"),
@@ -376,3 +331,22 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
             False,
             False,
         )
+
+@callback(
+    [
+        Output("accession-modal", "opened"),
+        Output("modal-content", "children"),
+    ],
+    [Input("dl-table", "active_cell")],
+    [State("dl-table", "data")],
+    prevent_initial_call=True,
+)
+def show_accession_modal(active_cell, table_data):
+    if not active_cell or active_cell["column_id"] != "accession_tag":
+        return False, dash.no_update
+    
+    row_data = table_data[active_cell["row"]]
+    accession = row_data["accession_tag"].strip("[]").split("/")[-1]
+    
+    modal_content, modal_title = create_accession_modal(accession)
+    return True, [modal_title, modal_content]
