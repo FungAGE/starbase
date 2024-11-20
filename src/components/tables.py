@@ -31,7 +31,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                 "name": i,
                 "id": i,
                 "deletable": False,
-                "selectable": True,
+                "selectable": False,
             }
             for i in df.columns
         ]
@@ -41,16 +41,17 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
     else:
         table_df = []
     table = dash_table.DataTable(
-        id="pgv-table",
+        id=id,
         columns=table_columns,
         data=df.to_dict("records"),
         filter_action="native",
         sort_action="native",
         sort_mode="multi",
-        row_selectable="multi",
+        row_selectable=False,
         page_action="native",
         page_current=0,
         page_size=20,
+        cell_selectable=True,  # Added to enable cell clicking
         style_table={
             "overflowX": "auto",
             "overflowY": "auto",
@@ -90,6 +91,12 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                 "backgroundColor": "#e3f2fd",
                 "border": "1px solid #2196f3",
             },
+            {
+                "if": {"column_id": "accession_tag"},
+                "color": "blue",
+                "textDecoration": "underline",
+                "cursor": "pointer",
+            }
         ],
     )
     return table
