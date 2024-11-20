@@ -355,11 +355,11 @@ def make_dl_table(df, id, table_columns):
     )
     )
 
-def make_wiki_table(category, n_ships, max_size, min_size):
+def make_wiki_table(n_ships, max_size, min_size):
     """Create a summary table for a Starship family."""
     data = [
         {
-            "metric": f"Total Number of Starships in {category}",
+            "metric": "Total Number of Starships",
             "value": f"{n_ships:,.0f}",
         },
         {

@@ -81,10 +81,12 @@ def create_accordion_item(df, papers, category):
                 lg=6,
                 sm=12,
                 children=[
-                    html.H5("Downstream DRs"),
-                    html.Img(
-                        src=downlogo_img_path,
-                        style={"width": "100%"},
+                    dmc.Center(html.H5("Downstream DRs")),
+                    dmc.Center(
+                        html.Img(
+                            src=downlogo_img_path,
+                            style={"width": "100%"},
+                        ),
                     ),
                 ],
             )
@@ -92,7 +94,7 @@ def create_accordion_item(df, papers, category):
             downlogo_img = None
 
         accordion_content = [
-            make_wiki_table(category, n_ships, max_size, min_size)
+            make_wiki_table(n_ships, max_size, min_size)
 
         ]
         if type_element_reference.size > 0:
