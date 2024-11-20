@@ -8,8 +8,15 @@ from flask import request
 from flask_limiter import Limiter
 import logging
 
+from functools import wraps
+from flask import jsonify
+import secrets
+import os
+
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip
+from src.components.sql_manager import refresh_cache
+
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -81,7 +88,23 @@ def log_rate_limit():
 def before_request_func():
     log_request(get_client_ip(), request.path)
 
+# Create a secure token for the maintenance endpoint
+MAINTENANCE_TOKEN = os.getenv('MAINTENANCE_TOKEN', secrets.token_urlsafe(32))
 
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or auth_token != f'Bearer {MAINTENANCE_TOKEN}':
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+@app.server.route('/maintenance/refresh-cache', methods=['POST'])
+@requires_auth
+def refresh_cache_endpoint():
+    result = refresh_cache()
+    return jsonify(result)
 def serve_app_layout():
     return dmc.MantineProvider(
         html.Div(
@@ -106,6 +129,4 @@ def check_blast_limit():
     return {"allowed": True}
 
 if __name__ == "__main__":
-    # precompute_all()
-    # create_dbs()
     app.run_server(debug=False)

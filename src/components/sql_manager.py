@@ -497,15 +497,25 @@ families = [
 
 def precompute_all():
     """Precompute and cache all necessary data and figures."""
-
     logger.info("Starting precomputation of all data and figures.")
-
-    # Dictionary to track what was successfully cached
+    
     cache_status = {}
-
+    
+    # Dictionary of functions to execute with their cache keys
+    precompute_tasks = {
+        "meta_data": lambda: fetch_meta_data(curated=True),
+        "paper_data": fetch_paper_data,
+        "download_data": fetch_download_data,
+        "all_ships": fetch_all_ships,
+        "ship_table": fetch_ship_table,
+        "all_captains": fetch_all_captains,
+        "captain_tree": fetch_captain_tree,
+        "sf_data": fetch_sf_data,
+    }
+    
     try:
-        # Basic metadata and options (from initialize_cache)
-        meta_data = fetch_meta_data(curated=True)
+        # Handle meta_data first as other operations depend on it
+        meta_data = precompute_tasks["meta_data"]()
         df = pd.DataFrame(meta_data)
         
         # Cache both in memory and file
@@ -524,55 +534,75 @@ def precompute_all():
             save_to_cache(value, generate_cache_key(key))
         
         cache_status["meta_data"] = True
-    except Exception as e:
-        logger.error(f"Failed to precompute meta data: {str(e)}")
-        cache_status["meta_data"] = False
-
-    try:
-        logger.info("Precomputing paper data...")
-        paper_data = fetch_paper_data()
-        logger.info("Paper data precomputed and cached successfully.")
-    except Exception as e:
-        logger.error(f"Failed to precompute paper data: {str(e)}")
-
-    try:
+        
+        # Create sunburst plots (depends on meta_data)
         logger.info("Creating sunburst figures...")
         for family in families:
-            sunburst_figure = cache_sunburst_plot(family, meta_data)
-        logger.info("Sunburst figures created and cached successfully.")
+            try:
+                sunburst_figure = cache_sunburst_plot(family, meta_data)
+                cache_status[f"sunburst_{family}"] = True
+            except Exception as e:
+                logger.error(f"Failed to create sunburst for {family}: {str(e)}")
+                cache_status[f"sunburst_{family}"] = False
+        
+        # Execute remaining precompute tasks
+        for key, func in precompute_tasks.items():
+            if key != "meta_data":  # Skip meta_data as it's already done
+                try:
+                    logger.info(f"Precomputing {key}...")
+                    result = func()
+                    if result is not None:
+                        cache_status[key] = True
+                    else:
+                        cache_status[key] = False
+                        logger.error(f"Failed to precompute {key}: returned None")
+                except Exception as e:
+                    logger.error(f"Failed to precompute {key}: {str(e)}")
+                    cache_status[key] = False
+                    
     except Exception as e:
-        logger.error(f"Failed to create sunburst figures: {str(e)}")
-
-    try:
-        logger.info("Precomputing fetch_download_data...")
-        download_data = fetch_download_data()
-    except Exception as e:
-        logger.error(f"Failed to fetch_download_data: {str(e)} ")
-    try:
-        logger.info("Precomputing fetch_all_ships...")
-        all_ships = fetch_all_ships()
-    except Exception as e:
-        logger.error(f"Failed to fetch_all_ships: {str(e)} ")
-    try:
-        logger.info("Precomputing fetch_ship_table...")
-        ship_table = fetch_ship_table()
-    except Exception as e:
-        logger.error(f"Failed to fetch_ship_table: {str(e)} ")
-    try:
-        logger.info("Precomputing fetch_all_captains...")
-        all_captains = fetch_all_captains()
-    except Exception as e:
-        logger.error(f"Failed to fetch_all_captains: {str(e)} ")
-    try:
-        logger.info("Precomputing fetch_captain_tree...")
-        captain_tree = fetch_captain_tree()
-    except Exception as e:
-        logger.error(f"Failed to fetch_captain_tree: {str(e)} ")
-    try:
-        logger.info("Precomputing fetch_sf_data...")
-        sf_data = fetch_sf_data()
-    except Exception as e:
-        logger.error(f"Failed to fetch_sf_data: {str(e)} ")
-
-    logger.info(f"Precomputation complete. Status: {cache_status}")
+        logger.error(f"Critical error during precomputation: {str(e)}")
+        cache_status["meta_data"] = False
+    
+    # Log final status
+    success_rate = sum(1 for v in cache_status.values() if v) / len(cache_status)
+    logger.info(f"Precomputation complete. Success rate: {success_rate:.1%}")
+    logger.info(f"Cache status: {cache_status}")
+    
     return cache_status
+
+def refresh_cache():
+    """Refresh all cached data. Can be called after database updates."""
+    try:
+        logger.info("Starting cache refresh...")
+        
+        # Invalidate all existing cache
+        for family in families:
+            invalidate_cache(generate_cache_key("sunburst", family))
+        
+        # Invalidate all precomputed data
+        for key in [
+            "meta_data",
+            "paper_data",
+            "download_data",
+            "all_ships",
+            "ship_table",
+            "all_captains",
+            "captain_tree",
+            "sf_data",
+            "taxonomy_options",
+            "family_options",
+            "navis_options",
+            "haplotype_options"
+        ]:
+            invalidate_cache(generate_cache_key(key))
+            cache.delete(key)  # Also clear from memory cache
+        
+        # Recompute everything
+        cache_status = precompute_all()
+        
+        logger.info(f"Cache refresh complete. Status: {cache_status}")
+        return {"success": True, "status": cache_status}
+    except Exception as e:
+        logger.error(f"Error refreshing cache: {str(e)}")
+        return {"success": False, "error": str(e)}
