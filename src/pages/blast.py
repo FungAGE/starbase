@@ -565,7 +565,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                 dmc.Text(
                                     f"Alignment length = {aln_len}, E-value = {ev}",
                                     size="sm",
-                                    color="dimmed"
+                                    c="dimmed"
                                 ),
                             ],
                             color="yellow",
@@ -598,7 +598,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                                     dmc.Text(
                                                         f"Alignment length = {family_aln_length}, E-value = {family_evalue}",
                                                         size="sm",
-                                                        color="dimmed"
+                                                        c="dimmed"
                                                     ),
                                                 ],
                                                 color="yellow",
@@ -614,7 +614,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                                     dmc.Text(
                                                         "Please try a different query or increase the e-value threshold.",
                                                         size="sm",
-                                                        color="dimmed"
+                                                        c="dimmed"
                                                     ),
                                                 ],
                                                 color="red",
