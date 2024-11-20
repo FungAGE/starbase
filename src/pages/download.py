@@ -5,8 +5,8 @@ from dash.dependencies import Output, Input
 from dash_iconify import DashIconify
 import pandas as pd
 
+from src.components.callbacks import curated_switch
 from src.components.cache import cache
-from src.components.sql_engine import starbase_engine
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_download_data, fetch_all_ships
 
@@ -56,7 +56,7 @@ table_columns = [
 
 
 layout = dmc.Container(
-    size="xl",  # More reasonable max-width
+    size="xl", 
     children=[
         dcc.Location(id="url", refresh=False),
         
@@ -66,15 +66,46 @@ layout = dmc.Container(
                 dmc.Title(
                     "Download Starship Sequences",
                     order=1,
-                    
                     mb="md",
                 ),
                 dmc.Text(
                     "Select individual Starships or download the complete dataset",
-                    
                     size="lg",
                     c="dimmed",
                 ),
+                # Add curated switch here
+                dmc.Stack([
+                    dmc.Group(
+                        children=[
+                            curated_switch(text="Only show curated Starships", size="md"),
+                        ],
+                        mt="md",
+                    ),
+                    # Download Options
+                    dmc.Center(
+                        dmc.Group(
+                            gap="xl",
+                            children=[
+                                dmc.Button(
+                                    "Download All Starships",
+                                    id="download-all-btn",
+                                    variant="gradient",
+                                    gradient={"from": "indigo", "to": "cyan"},
+                                    leftSection=html.I(className="bi bi-cloud-download"),
+                                    size="md",
+                                ),
+                                dmc.Button(
+                                    "Download Selected Starships",
+                                    id="download-selected-btn",
+                                    variant="gradient",
+                                    gradient={"from": "teal", "to": "lime"},
+                                    leftSection=html.I(className="bi bi-download"),
+                                    size="md",
+                                ),
+                            ],
+                            ),
+                        ),
+                ], gap="xl"),
             ],
             p="xl",
             radius="md",
@@ -83,124 +114,86 @@ layout = dmc.Container(
         ),
         
         # Main Content
-        dmc.Paper(
+        # Notification Area
+        html.Div(id="dl-notify"),
+        dcc.Download(id="dl-package"),
+        
+        # Table Section
+        html.Div(
             children=[
-                dmc.Stack([
-                    # Download Options
-                    dmc.Group(
-                        
-                        gap="xl",
-                        children=[
-                            dmc.Button(
-                                "Download All Starships",
-                                id="download-all-btn",
-                                variant="gradient",
-                                gradient={"from": "indigo", "to": "cyan"},
-                                leftSection=html.I(className="bi bi-cloud-download"),
-                                size="md",
-                            ),
-                            dmc.Button(
-                                "Download Selected Starships",
-                                id="download-selected-btn",
-                                variant="gradient",
-                                gradient={"from": "teal", "to": "lime"},
-                                leftSection=html.I(className="bi bi-download"),
-                                size="md",
-                            ),
-                        ],
-                    ),
-                    
-                    # Notification Area
-                    html.Div(id="dl-notify"),
-                    dcc.Download(id="dl-package"),
-                    
-                    # Table Section
-                    html.Div(
-                        children=[
-                            dmc.Title(
-                                "Available Starships",
-                                order=3,
-                                mb="md",
-                            ),
-                            # Table Header with Stats
-                            dmc.Group(
-                                gap="apart",
-                                mt="md",
-                                children=[
-                                    dmc.Text(
-                                        id="table-stats",
-                                        size="sm",
-                                        c="dimmed",
-                                    ),
-                                    dmc.Text(
-                                        "Click rows to select Starships",
-                                        size="sm",
-                                        c="dimmed",
-                                        style={"fontStyle": "italic"},
-                                    ),
-                                ],
-                            ),
+                # Table Header with Stats
+                dmc.Group(
+                    gap="apart",
+                    mt="md",
+                    children=[
+                        dmc.Text(
+                            id="table-stats",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                        dmc.Text(
+                            "Click rows to select Starships",
+                            size="sm",
+                            c="dimmed",
+                            style={"fontStyle": "italic"},
+                        ),
+                    ],
+                ),
 
-                            dash_table.DataTable(
-                                id="dl-table",
-                                columns=table_columns,
-                                data=[],
-                                filter_action="native",
-                                sort_action="native",
-                                sort_mode="multi",
-                                row_selectable="multi",
-                                page_action="native",
-                                page_current=0,
-                                page_size=20,
-                                markdown_options={"html": True},
-                                style_table={
-                                    "overflowX": "auto",
-                                    "overflowY": "auto",
-                                    "maxHeight": "60vh",  # Responsive height
-                                },
-                                style_data={
-                                    "height": "auto",
-                                    "lineHeight": "20px",
-                                    "padding": "10px",
-                                },
-                                style_cell={
-                                    "fontFamily": "Arial, sans-serif",
-                                    "textAlign": "left",
-                                    "minWidth": "100px",
-                                    "maxWidth": "300px",
-                                    "overflow": "hidden",
-                                    "textOverflow": "ellipsis",
-                                },
-                                style_header={
-                                    "backgroundColor": "#f8f9fa",
-                                    "fontWeight": "bold",
-                                    "borderBottom": "2px solid #dee2e6",
-                                    "textAlign": "left",
-                                    "padding": "12px",
-                                },
-                                style_filter={
-                                    "backgroundColor": "#f8f9fa",
-                                    "padding": "8px",
-                                },
-                                style_data_conditional=[
-                                    {
-                                        "if": {"row_index": "odd"},
-                                        "backgroundColor": "#f8f9fa",
-                                    },
-                                    {
-                                        "if": {"state": "selected"},
-                                        "backgroundColor": "#e3f2fd",
-                                        "border": "1px solid #2196f3",
-                                    },
-                                ],
-                            ),
-                        ],
-                    ),
-                ], gap="xl"),
+                dash_table.DataTable(
+                    id="dl-table",
+                    columns=table_columns,
+                    data=[],
+                    filter_action="native",
+                    sort_action="native",
+                    sort_mode="multi",
+                    row_selectable="multi",
+                    page_action="native",
+                    page_current=0,
+                    page_size=20,
+                    markdown_options={"html": True},
+                    style_table={
+                        "overflowX": "auto",
+                        "overflowY": "auto",
+                        "maxHeight": "60vh",  # Responsive height
+                    },
+                    style_data={
+                        "height": "auto",
+                        "lineHeight": "20px",
+                        "padding": "10px",
+                    },
+                    style_cell={
+                        "fontFamily": "Arial, sans-serif",
+                        "textAlign": "left",
+                        "minWidth": "100px",
+                        "maxWidth": "300px",
+                        "overflow": "hidden",
+                        "textOverflow": "ellipsis",
+                    },
+                    style_header={
+                        "backgroundColor": "#f8f9fa",
+                        "fontWeight": "bold",
+                        "borderBottom": "2px solid #dee2e6",
+                        "textAlign": "left",
+                        "padding": "12px",
+                    },
+                    style_filter={
+                        "backgroundColor": "#f8f9fa",
+                        "padding": "8px",
+                    },
+                    style_data_conditional=[
+                        {
+                            "if": {"row_index": "odd"},
+                            "backgroundColor": "#f8f9fa",
+                        },
+                        {
+                            "if": {"state": "selected"},
+                            "backgroundColor": "#e3f2fd",
+                            "border": "1px solid #2196f3",
+                        },
+                    ],
+                ),
             ],
-            p="xl",
-            radius="md",
-            withBorder=True,
         ),
     ],
     py="xl",
@@ -208,15 +201,19 @@ layout = dmc.Container(
 
 
 @cache.memoize()
-@callback(Output("dl-table", "data"), Input("url", "href"))
-def make_dl_table(url):
+@callback(
+    Output("dl-table", "data"), 
+    [Input("url", "href"),
+     Input("curated-input", "checked")]
+)
+def make_dl_table(url, curated=True):
     try:
-        df = load_from_cache("download_data")
+        df = fetch_download_data(curated=curated)
         if df is None:
-            df = fetch_download_data()
-        logger.info(f"Retrieved {len(df)} records from the database.")
-
-        df.fillna("", inplace=True)  # Replace NaN with an empty string
+            return []
+            
+        logger.info(f"Retrieved {len(df)} records from the database (curated={curated}).")
+        df.fillna("", inplace=True)
         return df.to_dict("records")
 
     except Exception as e:

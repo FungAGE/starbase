@@ -108,8 +108,8 @@ def cache_sunburst_plot(family, df):
     return sunburst
 
 
-def fetch_download_data():
-    cache_key = generate_cache_key("download_data")
+def fetch_download_data(curated=True):
+    cache_key = generate_cache_key("download_data", f"curated_{curated}")
     if cache_exists(cache_key):
         return load_from_cache(cache_key)
 
@@ -121,12 +121,14 @@ def fetch_download_data():
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     WHERE j.orphan IS NULL
     """
+    
+    if curated:
+        query += " AND j.curated_status = 'curated'"
 
     session = starbase_session_factory()
 
     try:
         df = pd.read_sql_query(query, session.bind)
-
         if df.empty:
             logger.warning("Fetched Download DataFrame is empty.")
         else:
@@ -142,8 +144,8 @@ def fetch_download_data():
     return df
 
 
-def fetch_all_ships():
-    cache_key = generate_cache_key("all_ships")
+def fetch_all_ships(curated=True):
+    cache_key = generate_cache_key("all_ships", f"curated_{curated}")
     if cache_exists(cache_key):
         return load_from_cache(cache_key)
 
@@ -151,11 +153,16 @@ def fetch_all_ships():
     SELECT s.*, a.accession_tag
     FROM ships s
     JOIN accessions a ON s.accession = a.id
+    JOIN joined_ships j ON j.ship_id = a.id
+    WHERE 1=1
     """
+    
+    if curated:
+        query += " AND j.curated_status = 'curated'"
+
     session = starbase_session_factory()
     try:
         df = pd.read_sql_query(query, session.bind)
-
         if df.empty:
             logger.warning("Fetched all_ships DataFrame is empty.")
         else:
