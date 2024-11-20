@@ -18,10 +18,22 @@ import logging
 
 
 from src.components.cache import cache
-from src.utils.blast_utils import (
+from src.utils.seq_utils import ( guess_seq_type,
     check_input,
-    guess_seq_type,
     write_temp_fasta,
+                                 )
+from src.utils.blast_utils import (
+    run_blast,
+    run_hmmer,
+    run_diamond,
+    blast_table,
+    run_lastz,
+    select_ship_family,
+    parse_lastz_output,
+    blast_chords,
+)
+
+from src.utils.blast_utils import (
     run_blast,
     run_hmmer,
     run_diamond,
@@ -32,12 +44,13 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch, create_accession_modal
-from src.utils.parsing import parse_fasta, parse_fasta_from_file
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_meta_data
+from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_meta_data
 from src.utils.blastdb import db_list
 
-from src.utils.telemetry import get_client_ip, get_blast_limit_info
+from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
+
 
 dash.register_page(__name__)
 
@@ -325,6 +338,7 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         error_store
     ]
 
+@blast_limit_decorator
 @callback(
     [
         Output("query-header-store", "data"),
@@ -551,7 +565,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                 dmc.Text(
                                     f"Alignment length = {aln_len}, E-value = {ev}",
                                     size="sm",
-                                    color="dimmed"
+                                    c="dimmed"
                                 ),
                             ],
                             color="yellow",
@@ -584,7 +598,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                                     dmc.Text(
                                                         f"Alignment length = {family_aln_length}, E-value = {family_evalue}",
                                                         size="sm",
-                                                        color="dimmed"
+                                                        c="dimmed"
                                                     ),
                                                 ],
                                                 color="yellow",
@@ -600,7 +614,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                                     dmc.Text(
                                                         "Please try a different query or increase the e-value threshold.",
                                                         size="sm",
-                                                        color="dimmed"
+                                                        c="dimmed"
                                                     ),
                                                 ],
                                                 color="red",
@@ -814,18 +828,24 @@ def create_alignment_plot(ship_blast_results, selected_row):
 
 
 @callback(
-    Output("blast-modal", "is_open"),
-    Output("blast-modal-content", "children"),
-    Output("blast-modal-title", "children"),
-    Output("ship-blast-table", "active_cell"),
-    Input("blast-table", "active_cell"),
-    State("blast-modal", "is_open"),
-    State("ship-blast-table", "data"),
+    [
+        Output("blast-modal", "is_open"),
+        Output("blast-modal-content", "children"),
+        Output("blast-modal-title", "children"),
+        Output("ship-blast-table", "active_cell"),
+    ],
+    [Input("blast-table", "active_cell")],
+    [
+        State("blast-modal", "is_open"),
+        State("ship-blast-table", "data"),
+        State("ship-blast-table", "derived_virtual_data")  # Add this
+    ],
 )
-def toggle_modal(active_cell, is_open, table_data):
+def toggle_modal(active_cell, is_open, table_data, filtered_data):
     if active_cell:
-        row = active_cell["row"]
-        row_data = table_data[row]
+        # Use filtered data if available
+        data_to_use = filtered_data if filtered_data is not None else table_data
+        row_data = data_to_use[active_cell["row"]]
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
         return True, modal_content, modal_title, None
     return is_open, no_update, no_update, no_update

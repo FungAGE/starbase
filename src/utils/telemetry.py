@@ -6,13 +6,28 @@ from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from flask import request
+from functools import wraps
 from ip2geotools.databases.noncommercial import DbIpCity
+from dash.exceptions import PreventUpdate
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
-
 from src.components.sql_engine import telemetry_session_factory, telemetry_connected
+
+# Define valid pages
+page_mapping = {
+    '/': 'Home',
+    '/download': 'Download',
+    '/pgv': 'PGV',
+    '/submit': 'Submit',
+    '/blast': 'BLAST',
+    '/wiki': 'Wiki',
+    '/metrics': 'Metrics',
+    '/starfish': 'Starfish',
+    '/about': 'About'
+}
+
 
 def get_client_ip():
     """Get the client's IP address from the request."""
@@ -54,24 +69,30 @@ def log_request(ip_address, endpoint):
 def fetch_telemetry_data():
     """Fetch telemetry data from the database."""
     session = telemetry_session_factory()
+    
+    # Define valid pages as a comma-separated string of quoted values
+    valid_endpoints = "'/','/download','/pgv','/submit','/blast','/wiki','/metrics','/starfish','/about'"
+    
     try:
-        # Get unique users count
+        # Get unique users count (still count all unique users)
         unique_users_query = "SELECT COUNT(DISTINCT ip_address) as count FROM request_logs"
         unique_users = session.execute(unique_users_query).scalar() or 0
 
-        # Get time series data
-        time_series_query = """
+        # Get time series data for valid endpoints only
+        time_series_query = f"""
         SELECT DATE(timestamp) as date, COUNT(*) as count 
         FROM request_logs 
+        WHERE endpoint IN ({valid_endpoints})
         GROUP BY DATE(timestamp) 
         ORDER BY date
         """
         time_series_data = session.execute(time_series_query).fetchall()
         
-        # Get endpoint statistics
-        endpoints_query = """
+        # Get endpoint statistics for valid endpoints only
+        endpoints_query = f"""
         SELECT endpoint, COUNT(*) as count 
         FROM request_logs 
+        WHERE endpoint IN ({valid_endpoints})
         GROUP BY endpoint 
         ORDER BY count DESC
         """
@@ -90,16 +111,41 @@ def fetch_telemetry_data():
         session.close()
 
 def create_time_series_figure(time_series_data):
-    """Create time series visualization."""
+    """Create time series visualization focusing on recent activity."""
     if time_series_data:
-        dates = [row[0] for row in time_series_data]
-        counts = [row[1] for row in time_series_data]
+        # Convert dates to pandas datetime objects
+        df = pd.DataFrame(time_series_data, columns=['date', 'count'])
+        df['date'] = pd.to_datetime(df['date'])  # Convert to datetime
+        
         fig = px.line(
-            x=dates, 
-            y=counts,
-            title="Daily Requests",
-            labels={"x": "Date", "y": "Number of Requests"}
+            df,
+            x='date', 
+            y='count',
+            title="Daily Requests (Last 7 Days)",
+            labels={"date": "Date", "count": "Number of Requests"}
         )
+        
+        # Focus on the last 7 days
+        if not df.empty:
+            end_date = df['date'].max()
+            start_date = end_date - pd.Timedelta(days=7)
+            
+            fig.update_layout(
+                xaxis_range=[start_date, end_date],
+                xaxis_title="Date",
+                yaxis_title="Number of Requests",
+                showlegend=False
+            )
+            
+            # Improve tick format
+            fig.update_xaxes(
+                dtick="D1",  # Show daily ticks
+                tickformat="%Y-%m-%d",  # Date format
+            )
+            
+            # Add markers to show actual data points
+            fig.update_traces(mode='lines+markers')
+            
     else:
         fig = go.Figure()
         fig.update_layout(
@@ -107,20 +153,24 @@ def create_time_series_figure(time_series_data):
             xaxis_title="Date",
             yaxis_title="Number of Requests"
         )
+    
+    # General layout improvements
+    fig.update_layout(
+        height=400,
+        margin=dict(l=50, r=20, t=40, b=50),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        hovermode='x unified'
+    )
+    
+    # Grid lines
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
+    
     return fig
 
 def create_endpoints_figure(endpoints_data):
     """Create endpoints visualization for main app pages."""
-    # Define mapping of endpoints to display names
-    page_mapping = {
-        '/': 'Home',
-        '/blast': 'BLAST',
-        '/search': 'Search',
-        '/wiki': 'Wiki',
-        '/metrics': 'Metrics',
-        '/about': 'About'
-    }
-    
     if endpoints_data:
         # Filter and transform the data
         filtered_data = [
@@ -257,7 +307,7 @@ def create_map_figure(locations):
 
 
 def analyze_telemetry():
-    """Analyze telemetry data and create visualizations."""
+    """Analyze telemetry data and create visualizations."""    
     # Fetch data
     data = fetch_telemetry_data()
     locations = get_ip_locations()
@@ -277,8 +327,11 @@ def analyze_telemetry():
     endpoints_fig = create_endpoints_figure(data["endpoints_data"])
     map_fig = create_map_figure(locations)
     
-    # Calculate total requests
-    total_requests = sum(row[1] for row in data["endpoints_data"]) if data["endpoints_data"] else 0
+    # Calculate total requests only for valid pages
+    total_requests = sum(
+        row[1] for row in data["endpoints_data"] 
+        if row[0] in page_mapping
+    ) if data["endpoints_data"] else 0
 
     return {
         "unique_users": data["unique_users"],
@@ -331,3 +384,32 @@ def get_blast_limit_info(ip_address):
             "limit": 10,
             "submissions": 10
         }
+    
+def blast_limit_decorator(f):
+    """Decorator to limit BLAST operations per user"""
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        try:
+            # Get client IP using existing function
+            client_ip = get_client_ip()
+            
+            # Use existing limit checking function
+            limit_info = get_blast_limit_info(client_ip)
+            
+            if limit_info["remaining"] <= 0:
+                logger.warning(f"BLAST limit exceeded for IP: {client_ip}")
+                raise PreventUpdate("Hourly BLAST limit exceeded")
+            
+            # Log the BLAST request
+            log_request(client_ip, '/api/blast-submit')
+            
+            # Execute the callback
+            return f(*args, **kwargs)
+            
+        except PreventUpdate:
+            raise
+        except Exception as e:
+            logger.error(f"Error in blast_limit_decorator: {str(e)}")
+            raise
+    
+    return wrapped

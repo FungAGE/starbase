@@ -8,12 +8,19 @@ from flask import request
 from flask_limiter import Limiter
 import logging
 
+from functools import wraps
+from flask import jsonify
+import secrets
+import os
+
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip
+from src.components.sql_manager import refresh_cache
+
 
 logging.basicConfig(level=logging.ERROR)
 
-# from src.components.precompute import precompute_all
+# from src.components.sql_manager import precompute_all
 from src.components.cache import cache
 
 # from src.utils.blastdb import create_dbs
@@ -81,11 +88,29 @@ def log_rate_limit():
 def before_request_func():
     log_request(get_client_ip(), request.path)
 
+# Create a secure token for the maintenance endpoint
+MAINTENANCE_TOKEN = os.getenv('MAINTENANCE_TOKEN', secrets.token_urlsafe(32))
 
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or auth_token != f'Bearer {MAINTENANCE_TOKEN}':
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+@app.server.route('/maintenance/refresh-cache', methods=['POST'])
+@requires_auth
+def refresh_cache_endpoint():
+    result = refresh_cache()
+    return jsonify(result)
 def serve_app_layout():
     return dmc.MantineProvider(
         html.Div(
             [
+                dmc.NotificationProvider(position="top-center"),
+                html.Div(id="notifications-container"),
                 dcc.Location(id="url", refresh=False),
                 navmenu.navmenu(buttons_disabled=not sql_connected),
                 html.Div(dash.page_container),
@@ -104,6 +129,4 @@ def check_blast_limit():
     return {"allowed": True}
 
 if __name__ == "__main__":
-    # precompute_all()
-    # create_dbs()
     app.run_server(debug=False)

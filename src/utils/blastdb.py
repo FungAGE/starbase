@@ -68,8 +68,8 @@ def blast_db_exists(blastdb):
 
 
 def create_dbs():
-    from src.components.cache_manager import load_from_cache
-    from src.components.sql_queries import fetch_all_captains, fetch_all_ships
+    from src.components.sql_manager import load_from_cache
+    from src.components.sql_manager import fetch_all_captains, fetch_all_ships
 
     # Create BLAST database for ships
     ship_fasta_path = db_list["ship"]["nucl"]

@@ -13,7 +13,7 @@ from Bio.Seq import Seq
 import logomaker as lm
 from Bio.Align.Applications import ClustalwCommandline
 
-from src.utils.blast_utils import clean_sequence
+from src.utils.seq_utils import clean_sequence
 
 
 def agg_df(df, groups):
@@ -31,45 +31,88 @@ def agg_df(df, groups):
         )
 
 
-def create_sunburst_plot(df, type, title_switch=True, cache_file=None):
-    if type == "ship":
-        groups = ["familyName"]
-        title = "Starships by Family/Navis"
-        colors = px.colors.qualitative.Plotly
-    if type == "tax":
-        groups = ["order", "family"]
-        title = "Starships by Order/Family"
-        colors = px.colors.qualitative.Set2
-
-    selection = agg_df(df, groups)
-
-    pie = px.sunburst(
+def create_sunburst_plot(df, type, title_switch=True):
+    # Define color schemes and settings based on type
+    settings = {
+        "ship": {
+            "groups": ["familyName"],
+            "title": "Starships by Family/Navis",
+            "color_sequence": px.colors.qualitative.Set3,  # Discrete colors for families
+            "hover_data": ["count", "nunique", "duplicates"]
+        },
+        "tax": {
+            "groups": ["order", "family"],
+            "title": "Starships by Order/Family",
+            "color_sequence": px.colors.qualitative.Pastel,  # Discrete colors for taxonomy
+            "hover_data": ["count", "nunique"]
+        }
+    }
+    
+    if type not in settings:
+        raise ValueError(f"Unknown plot type: {type}")
+        
+    config = settings[type]
+    selection = agg_df(df, config["groups"])
+    
+    # Create enhanced sunburst plot
+    fig = px.sunburst(
         selection,
-        path=groups,
+        path=config["groups"],
         values="count",
-        color_discrete_sequence=colors,
+        color=config["groups"][0],  # Color by the first grouping level
+        color_discrete_sequence=config["color_sequence"],
+        custom_data=config["hover_data"],
+        branchvalues="total",
+        maxdepth=2,
     )
-
-    if title_switch:
-        pie.update_layout(
-            autosize=True,
-            title_font=dict(size=24),
-            title={
-                "text": title,
-                "y": 1,
-                "x": 0.5,
-                "xanchor": "center",
-                "yanchor": "top",
-            },
-            margin=dict(t=30, l=0, r=0, b=0),
-        )
-    else:
-        pie.update_layout(
-            autosize=True,
-            margin=dict(t=30, l=0, r=0, b=0),
-        )
-
-    return pie
+    
+    # Enhanced styling
+    fig.update_layout(
+        template="plotly_white",
+        font_family="Arial, sans-serif",
+        autosize=True,
+        width=800,
+        height=800,
+        showlegend=True,
+        title={
+            "text": config["title"] if title_switch else None,
+            "y": 0.95,
+            "x": 0.5,
+            "xanchor": "center",
+            "yanchor": "top",
+            "font": {"size": 24}
+        },
+        margin=dict(t=50, l=0, r=0, b=0),
+        transition={
+            "duration": 500,
+            "easing": "cubic-in-out"
+        },
+        hoverlabel=dict(
+            bgcolor="white",
+            font_size=14,
+            font_family="Arial, sans-serif"
+        ),
+    )
+    
+    # Customize hover information
+    hover_template = (
+        "<b>%{label}</b><br><br>" +
+        "Count: %{value}<br>" +  # Changed from customdata to value
+        "Percentage: %{percentParent:.1%}<br>" +
+        "<extra></extra>"
+    )
+    
+    fig.update_traces(
+        hovertemplate=hover_template,
+        textinfo="label+percent parent",
+        insidetextorientation="radial",
+        selector=dict(type="sunburst"),
+        marker=dict(
+            line=dict(color="white", width=1)
+        ),
+    )
+    
+    return fig
 
 
 def are_all_strings_same_length(strings):

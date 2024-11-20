@@ -7,7 +7,7 @@ from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
 
 import datetime
-from src.utils.parsing import parse_fasta, parse_gff
+from src.utils.seq_utils import parse_fasta, parse_gff
 import logging
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ layout = dmc.Container(
                         # FASTA Upload
                         dmc.Paper(
                             children=[
-                                dmc.Text("Starship Sequence *", fw=500, mb="sm"),
+                                dmc.Text(["Starship Sequence ", html.Span("*", style={"color": "red"})], fw=500, mb="sm"),
                                 dcc.Upload(
                                     id="submit-fasta-upload",
                                     children=html.Div(
@@ -111,14 +111,14 @@ layout = dmc.Container(
                         # Curator Info
                         dmc.TextInput(
                             id="uploader",
-                            label="Email of curator *",
+                            label="Email of curator",
                             placeholder="Enter email",
                             required=True,
                         ),
                         
                         dmc.TextInput(
                             id="evidence",
-                            label="How were Starships annotated? *",
+                            label="How were Starships annotated?",
                             placeholder="i.e. starfish",
                             required=True,
                         ),
@@ -127,14 +127,14 @@ layout = dmc.Container(
                         dmc.Group([
                             dmc.TextInput(
                                 id="genus",
-                                label="Genus *",
+                                label="Genus",
                                 placeholder="Alternaria",
                                 required=True,
                                 style={"flex": 1},
                             ),
                             dmc.TextInput(
                                 id="species",
-                                label="Species *",
+                                label="Species",
                                 placeholder="alternata",
                                 required=True,
                                 style={"flex": 1},
@@ -144,7 +144,7 @@ layout = dmc.Container(
                         # Location Info
                         dmc.TextInput(
                             id="hostchr",
-                            label="Host genome contig/scaffold/chromosome ID *",
+                            label="Host genome contig/scaffold/chromosome ID",
                             placeholder="'chr1', or GenBank Accession",
                             required=True,
                         ),
@@ -152,14 +152,14 @@ layout = dmc.Container(
                         dmc.Group([
                             dmc.NumberInput(
                                 id="shipstart",
-                                label="Start coordinate *",
+                                label="Start coordinate",
                                 placeholder="1200",
                                 required=True,
                                 style={"flex": 1},
                             ),
                             dmc.NumberInput(
                                 id="shipend",
-                                label="End coordinate *",
+                                label="End coordinate",
                                 placeholder="20500",
                                 required=True,
                                 style={"flex": 1},

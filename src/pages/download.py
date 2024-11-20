@@ -1,14 +1,15 @@
 import dash
 from dash import html, dcc, dash_table, callback
 import dash_mantine_components as dmc
-from dash.dependencies import Output, Input
+from dash.dependencies import Output, Input, State
+from dash_iconify import DashIconify
 import pandas as pd
 
+from src.components.callbacks import curated_switch, create_accession_modal
 from src.components.cache import cache
-from src.components.sql_engine import starbase_engine
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_download_data, fetch_all_ships
-
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_download_data, fetch_all_ships
+from src.components.tables import make_dl_table
 import logging
 
 logger = logging.getLogger(__name__)
@@ -55,266 +56,302 @@ table_columns = [
 
 
 layout = dmc.Container(
-    fluid=True,
+    size="xl", 
     children=[
         dcc.Location(id="url", refresh=False),
-        dmc.Center(
+        
+        # Header Section
+        dmc.Paper(
             children=[
                 dmc.Title(
-                    ["Choose Starships to Download:"], style={"paddingTop": "20px"}
+                    "Download Starship Sequences",
+                    order=1,
+                    mb="md",
                 ),
-            ],
-        ),
-        dmc.Grid(
-            justify="center",
-            align="center",
-            style={"paddingTop": "20px"},
-            gutter="xl",
-            children=[
-                dmc.GridCol(
-                    span=12,
-                    children=[
-                        dmc.Center(
+                dmc.Text(
+                    "Select individual Starships or download the complete dataset",
+                    size="lg",
+                    c="dimmed",
+                ),
+                # Add curated switch here
+                dmc.Stack([
+                    dmc.Group(
+                        children=[
+                            curated_switch(text="Only show curated Starships", size="md"),
+                        ],
+                        mt="md",
+                    ),
+                    # Download Options
+                    dmc.Center(
+                        dmc.Group(
+                            gap="xl",
                             children=[
-                                dmc.Stack(
-                                    children=[
-                                        html.Div(
-                                            [
-                                                dmc.NotificationProvider(),
-                                                html.Div(id="dl-notify"),
-                                                dmc.SimpleGrid(
-                                                    cols={"md": 2, "sm": 1},
-                                                    spacing={"base": 10, "sm": "xl"},
-                                                    verticalSpacing={
-                                                        "base": "md",
-                                                        "sm": "xl",
-                                                    },
-                                                    children=[
-                                                        dmc.Button(
-                                                            "Download All Starships",
-                                                            id="download-all-btn",
-                                                            className="text-custom text-custom-sm text-custom-md",
-                                                            style={"width": "100%"},
-                                                        ),
-                                                        dmc.Button(
-                                                            "Download Selected Starships",
-                                                            id="download-selected-btn",
-                                                            className="text-custom text-custom-sm text-custom-md",
-                                                            style={"width": "100%"},
-                                                        ),
-                                                    ],
-                                                ),
-                                            ]
-                                        ),
-                                        dcc.Download(id="dl-package"),
-                                        html.Div(
-                                            [
-                                                dash_table.DataTable(
-                                                    id="dl-table",
-                                                    data=[],
-                                                    columns=table_columns,
-                                                    selected_columns=[],
-                                                    selected_rows=[],
-                                                    editable=False,
-                                                    filter_action="native",
-                                                    sort_action="native",
-                                                    sort_mode="multi",
-                                                    row_selectable="multi",
-                                                    row_deletable=False,
-                                                    page_action="native",
-                                                    page_current=0,
-                                                    page_size=24,
-                                                    markdown_options={"html": True},
-                                                    style_table={
-                                                        "overflowX": "auto",
-                                                        "overflowY": "auto",
-                                                        "maxHeight": "400px",
-                                                    },
-                                                    style_data={
-                                                        "height": "auto",
-                                                        "whiteSpace": "minimal",
-                                                        "overflow": "hidden",
-                                                    },
-                                                    style_cell={
-                                                        "minWidth": "0px",
-                                                        "maxWidth": "300px",
-                                                        "whiteSpace": "minimal",
-                                                        "textAlign": "left",
-                                                    },
-                                                    style_header={
-                                                        "backgroundColor": "lightgrey",
-                                                        "fontWeight": "bold",
-                                                        "textAlign": "left",
-                                                    },
-                                                ),
-                                            ],
-                                        ),
-                                    ]
-                                )
+                                dmc.Button(
+                                    "Download All Starships",
+                                    id="download-all-btn",
+                                    variant="gradient",
+                                    gradient={"from": "indigo", "to": "cyan"},
+                                    leftSection=html.I(className="bi bi-cloud-download"),
+                                    size="md",
+                                ),
+                                dmc.Button(
+                                    "Download Selected Starships",
+                                    id="download-selected-btn",
+                                    variant="gradient",
+                                    gradient={"from": "teal", "to": "lime"},
+                                    leftSection=html.I(className="bi bi-download"),
+                                    size="md",
+                                ),
                             ],
+                            ),
+                        ),
+                ], gap="xl"),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            mb="xl",
+        ),
+        
+        # Main Content
+        # Notification Area
+        html.Div(id="dl-notify"),
+        dcc.Download(id="dl-package"),
+        
+        # Table Section
+        html.Div(
+            children=[
+                # Table Header with Stats
+                dmc.Group(
+                    gap="apart",
+                    mt="md",
+                    children=[
+                        dmc.Text(
+                            id="table-stats",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                        dmc.Text(
+                            "Click rows to select Starships",
+                            size="sm",
+                            c="dimmed",
+                            style={"fontStyle": "italic"},
                         ),
                     ],
                 ),
+                dmc.Modal(
+                    id="accession-modal",
+                    size="lg",
+                    centered=True,
+                    children=[
+                        html.Div(id="modal-content"),
+                    ],
+                ),
+                make_dl_table(df=[],id="dl-table", table_columns=table_columns),
             ],
         ),
     ],
+    py="xl",
 )
 
 
 @cache.memoize()
-@callback(Output("dl-table", "data"), Input("url", "href"))
-def make_dl_table(url):
+@callback(
+    Output("dl-table", "data"), 
+    [Input("url", "href"),
+     Input("curated-input", "checked")]
+)
+def update_dl_table(url, curated=True):
     try:
-        df = load_from_cache("download_data")
+        df = fetch_download_data(curated=curated)
         if df is None:
-            df = fetch_download_data()
-        logger.info(f"Retrieved {len(df)} records from the database.")
-
-        df.fillna("", inplace=True)  # Replace NaN with an empty string
+            return []
+            
+        logger.info(f"Retrieved {len(df)} records from the database (curated={curated}).")
+        df.fillna("", inplace=True)
+        
         return df.to_dict("records")
 
     except Exception as e:
         logger.error(f"Failed to execute query in make_dl_table. Details: {e}")
         return []
 
-
-def notification_base(title, message):
-    dmc.Notification(
-        title=title,
-        id="simple-notify",
-        action="show",
-        message=message,
-    )
+@callback(
+    Output("download-selected-btn", "disabled"),
+    [Input("dl-table", "derived_virtual_selected_rows")],
+)
+def update_download_selected_button(selected_rows):
+    # Button is disabled if no rows are selected
+    return not selected_rows or len(selected_rows) == 0
 
 
 @callback(
     [
         Output("dl-package", "data"),
-        Output("dl-notify", "children"),
+        Output("notifications-container", "children"),
         Output("download-all-btn", "disabled"),
-        Output("download-selected-btn", "disabled"),
-    ],
+    ],  # Removed download-selected-btn from outputs
     [
         Input("download-all-btn", "n_clicks"),
         Input("download-selected-btn", "n_clicks"),
         Input("dl-table", "data"),
         Input("dl-table", "derived_virtual_selected_rows"),
     ],
+    prevent_initial_call=True,
 )
-def generate_download(dl_all, dl_select, table_data, selected_rows):
-    logger.info(
-        f"dl_all={dl_all}, dl_select={dl_select}, table_data_length={len(table_data)}, selected_rows={selected_rows}"
-    )
-
+def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
+    # Determine which button was clicked using callback context
+    ctx = dash.callback_context
+    if not ctx.triggered or not any([dl_all_clicks, dl_select_clicks]):
+        raise dash.exceptions.PreventUpdate
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
     if not table_data or len(table_data) == 0:
-        logger.error("No data available from the table for processing.")
         return (
             dash.no_update,
-            notification_base(title="error", message="No data available for download"),
-            False,
-            False,
+            dmc.Notification(
+                title="Error",
+                message="No data available for download",
+                color="red",
+                icon=DashIconify(icon="ic:round-error"),
+                action="show",
+            ),
+            False,  # Only return one boolean for download-all-btn
         )
 
-    if not dl_all and not dl_select:
-        logger.debug("No download action triggered. dl_all or dl_select not active.")
-        return dash.no_update, None, False, False
-
-    table_df = pd.DataFrame(table_data)
     try:
+        table_df = pd.DataFrame(table_data)
+        
+        # Get all ships data first
+        df = load_from_cache("all_ships")
+        if df is None:
+            df = fetch_all_ships()
+            
+        if df is None or df.empty:
+            raise ValueError("Failed to fetch ship data from database")
 
-        if dl_all:
+        # Handle download based on which button was clicked
+        if button_id == "download-all-btn":
             accessions = table_df["accession_tag"].to_list()
             logger.info("Using all table data for download.")
+            
+            # Filter all ships by the accessions in the table
+            df = df[df["accession_tag"].isin(accessions)]
 
-            df = load_from_cache("all_ships")
-            if df is None:
-                df = fetch_all_ships()
-
-        elif dl_select:
+        elif button_id == "download-selected-btn":
             if not selected_rows or len(selected_rows) == 0:
-                logger.warning(
-                    "Download selected was triggered but no rows are selected."
-                )
+                logger.warning("Download selected was triggered but no rows are selected.")
                 return (
                     dash.no_update,
-                    notification_base(
-                        title="Warning:", message="Make a selection in the table first"
+                    dmc.Notification(
+                        title="Warning",
+                        message="Make a selection in the table first",
+                        color="yellow",
+                        icon=DashIconify(icon="ic:round-warning"),
+                        action="show",
                     ),
                     False,
                     False,
                 )
 
-            else:
-                if isinstance(selected_rows, list) and all(
-                    isinstance(i, int) for i in selected_rows
-                ):
-                    selected_df = table_df.iloc[selected_rows]
-                else:
-                    logger.error(
-                        "Invalid index type for iloc. Must be a list of integers."
-                    )
-
-                accessions = selected_df["accession_tag"].to_list()
-                logger.info(f"Using selected table data: {accessions}")
-
-                df = df[df["accession_tag"].isin(accessions)]
-
-            if df.empty:
-                logger.error("No data available for selected rows.")
-                return (
-                    dash.no_update,
-                    notification_base(
-                        title="Error:", message="No data available for selected rows."
-                    ),
-                    False,
-                    False,
-                )
+            # Get selected accessions
+            selected_df = table_df.iloc[selected_rows]
+            accessions = selected_df["accession_tag"].to_list()
+            logger.info(f"Using selected table data: {accessions}")
+            
+            # Filter all ships by selected accessions
+            df = df[df["accession_tag"].isin(accessions)]
+        else:
+            return dash.no_update, None, False, False
 
         if df.empty:
-            logger.warning("Query returned no matching records.")
+            logger.warning("No matching records found.")
             return (
                 dash.no_update,
-                notification_base(
-                    title="Error:",
+                dmc.Notification(
+                    title="Error",
                     message="No matching records found for the selected accessions",
+                    color="red",
+                    icon=DashIconify(icon="ic:round-error"),
+                    action="show",
                 ),
                 False,
                 False,
             )
-        else:
-            logger.info(f"Retrieved {len(df)} records from the database.")
-            try:
-                fasta_content = [
-                    f">{row['accession_tag']}\n{row['sequence']}"
-                    for _, row in df.iterrows()
-                ]
-                fasta_str = "\n".join(fasta_content)
-                logger.info("FASTA content created successfully.")
-                return (
-                    dcc.send_string(fasta_str, filename="starships.fasta"),
-                    None,
-                    True,
-                    False,
-                )
-            except Exception as e:
-                logger.error(f"Failed to create FASTA content. Details: {e}")
-                return (
-                    dash.no_update,
-                    notification_base(
-                        title="Error:",
-                        message="Error when creating FASTA file for download",
-                    ),
-                    False,
-                    False,
-                )
+
+        # Create FASTA file
+        try:
+            fasta_content = [
+                f">{row['accession_tag']}\n{row['sequence']}"
+                for _, row in df.iterrows()
+            ]
+            fasta_str = "\n".join(fasta_content)
+            logger.info(f"FASTA content created successfully for {len(df)} sequences.")
+            
+            return (
+                dcc.send_string(fasta_str, filename="starships.fasta"),
+                dmc.Notification(
+                    title="Success",
+                    message=f"Downloaded {len(df)} Starship sequences",
+                    color="green",
+                    icon=DashIconify(icon="ic:round-check-circle"),
+                    action="show",
+                ),
+                True,
+                False,
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to create FASTA content. Details: {e}")
+            return (
+                dash.no_update,
+                dmc.Notification(
+                    title="Error",
+                    message="Error when creating FASTA file for download",
+                    color="red",
+                    icon=DashIconify(icon="ic:round-error"),
+                    action="show",
+                ),
+                False,
+                False,
+            )
+            
     except Exception as e:
         logger.error(f"Failed to execute database query. Details: {e}")
         return (
             dash.no_update,
-            notification_base(
-                title="Error:",
-                message=f"Failed to execute database query. Details: {e}",
+            dmc.Notification(
+                title="Error",
+                message="Failed to download sequences",
+                color="red",
+                icon=DashIconify(icon="ic:round-error"),
+                action="show",
             ),
             False,
             False,
         )
+
+@callback(
+    [
+        Output("accession-modal", "opened"),
+        Output("modal-content", "children"),
+    ],
+    [Input("dl-table", "active_cell")],
+    [
+        State("dl-table", "data"),
+        State("dl-table", "derived_virtual_data")  # Add this
+    ],
+    prevent_initial_call=True,
+)
+def show_accession_modal(active_cell, table_data, filtered_data):
+    if not active_cell or active_cell["column_id"] != "accession_tag":
+        return False, dash.no_update
+    
+    # Use filtered data if available
+    data_to_use = filtered_data if filtered_data is not None else table_data
+    row_data = data_to_use[active_cell["row"]]
+    accession = row_data["accession_tag"].strip("[]").split("/")[-1]
+    
+    modal_content, modal_title = create_accession_modal(accession)
+    return True, [modal_title, modal_content]

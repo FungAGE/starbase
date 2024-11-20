@@ -21,8 +21,8 @@ from jinja2 import Template
 from src.components.cache import cache
 from src.components.sql_engine import starbase_engine
 from src.components.tables import make_ship_table
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import (
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import (
     fetch_all_ships,
     fetch_accession_gff,
     fetch_ship_table,
@@ -453,7 +453,7 @@ def load_ship_table(href):
         table_df = fetch_ship_table()
     if href:
         table = make_ship_table(
-            df=table_df, columns=table_columns, id="pgv-table", pg_sz=15
+            df=table_df, columns=table_columns, id="pgv-table", select_rows=True, pg_sz=15
         )
         return table
 
@@ -545,32 +545,24 @@ def update_pgv(n_clicks, selected_rows, table_data):
 
 
 @callback(
-    Output("pgv-modal", "is_open"),
-    Output("pgv-modal-content", "children"),
-    Output("pgv-modal-title", "children"),
-    Output("pgv-table", "active_cell"),
-    Input("pgv-table", "active_cell"),
-    State("pgv-modal", "is_open"),
-    State("pgv-table", "data"),
+    [
+        Output("pgv-modal", "is_open"),
+        Output("pgv-modal-content", "children"),
+        Output("pgv-modal-title", "children"),
+        Output("pgv-table", "active_cell"),
+    ],
+    [Input("pgv-table", "active_cell")],
+    [
+        State("pgv-modal", "is_open"),
+        State("pgv-table", "data"),
+        State("pgv-table", "derived_virtual_data")  # Add this
+    ],
 )
-def toggle_modal(cell_clicked, is_open, table_data):    
-    # If no cell was clicked, keep modal closed
-    if cell_clicked is None:
-        return False, no_update, no_update, no_update
-        
-    if table_data:
-        try:
-            row = cell_clicked["row"]
-            row_data = table_data[row]
-            accession = row_data.get("accession_tag")
-            if accession:
-                modal_content, modal_title = create_accession_modal(accession)
-                return True, modal_content, modal_title, None
-            else:
-                return False, "No accession data found", "Error", None
-                
-        except Exception as e:
-            logger.error(f"Error in toggle_modal: {str(e)}")
-            return False, "Error loading modal", "Error", None
-            
+def toggle_modal(active_cell, is_open, table_data, filtered_data):
+    if active_cell:
+        # Use filtered data if available
+        data_to_use = filtered_data if filtered_data is not None else table_data
+        row_data = data_to_use[active_cell["row"]]
+        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
+        return True, modal_content, modal_title, None
     return is_open, no_update, no_update, no_update
