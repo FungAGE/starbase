@@ -21,8 +21,8 @@ from jinja2 import Template
 from src.components.cache import cache
 from src.components.sql_engine import starbase_engine
 from src.components.tables import make_ship_table
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import (
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import (
     fetch_all_ships,
     fetch_accession_gff,
     fetch_ship_table,
@@ -453,7 +453,7 @@ def load_ship_table(href):
         table_df = fetch_ship_table()
     if href:
         table = make_ship_table(
-            df=table_df, columns=table_columns, id="pgv-table", pg_sz=15
+            df=table_df, columns=table_columns, id="pgv-table", select_rows=True, pg_sz=15
         )
         return table
 

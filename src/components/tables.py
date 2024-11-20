@@ -6,8 +6,8 @@ from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_paper_data
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_paper_data
 
 
 def truncate_string(s, length=40):
@@ -19,7 +19,7 @@ def url_to_link(url, label):
     return f"[{label}]({url})"
 
 
-def make_ship_table(df, id, columns=None, pg_sz=None):
+def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     if pg_sz is None:
         pg_sz = 10
 
@@ -31,7 +31,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                 "name": i,
                 "id": i,
                 "deletable": False,
-                "selectable": False,
+                "selectable": select_rows,
             }
             for i in df.columns
         ]
@@ -47,7 +47,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         filter_action="native",
         sort_action="native",
         sort_mode="multi",
-        row_selectable=False,
+        row_selectable=select_rows,
         page_action="native",
         page_current=0,
         page_size=20,

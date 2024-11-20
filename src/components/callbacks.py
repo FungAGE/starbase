@@ -7,8 +7,8 @@ import logging
 import pandas as pd
 
 from src.components.sql_engine import sql_connected
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_meta_data
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_meta_data
 
 logger = logging.getLogger(__name__)
 

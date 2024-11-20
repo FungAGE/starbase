@@ -1,19 +1,13 @@
+import os
+import pickle
+from typing import Any
 import logging
 import pandas as pd
-from src.components.cache_manager import save_to_cache, load_from_cache, cache_exists
+from src.components.cache import cache
 from src.components.sql_engine import starbase_session_factory
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
-
-
-def generate_cache_key(base_key, unique_identifier=None):
-    """Generate a cache key by combining a base key with a unique identifier."""
-    if unique_identifier:
-        return f"{base_key}_{unique_identifier}"
-    else:
-        return base_key
-
 
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database and cache the result."""
@@ -385,3 +379,98 @@ def get_database_stats():
         }
     finally:
         session.close()
+
+#########################
+# Cache functions
+#########################
+CACHE_DIR = ".cache"  # Directory where all cached objects will be saved
+
+def generate_cache_key(base_key, unique_identifier=None):
+    """Generate a cache key by combining a base key with a unique identifier."""
+    if unique_identifier:
+        return f"{base_key}_{unique_identifier}"
+    else:
+        return base_key
+
+
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    logger.info(f"Cache directory created at {CACHE_DIR}")
+
+
+def get_cache_filepath(cache_key: str) -> str:
+    """Generate the full path for a cache file based on a cache key."""
+    filepath = os.path.join(CACHE_DIR, f"{cache_key}.pkl")
+    logger.debug(f"Cache file path for key '{cache_key}': {filepath}")
+    return filepath
+
+
+def save_to_cache(obj: Any, cache_key: str):
+    """Save an object to a cache file."""
+    filepath = get_cache_filepath(cache_key)
+    try:
+        with open(filepath, "wb") as f:
+            pickle.dump(obj, f)
+        logger.info(f"Cached object under key '{cache_key}' at {filepath}")
+    except Exception as e:
+        logger.error(f"Failed to save cache for key '{cache_key}': {str(e)}")
+
+
+def load_from_cache(cache_key: str) -> Any:
+    """Load an object from the cache."""
+    filepath = get_cache_filepath(cache_key)
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "rb") as f:
+                logger.info(f"Loaded cached object for key '{cache_key}'")
+                return pickle.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load cache for key '{cache_key}': {str(e)}")
+    else:
+        logger.warning(f"No cache file found for key '{cache_key}'")
+    return None
+
+
+def cache_exists(cache_key: str) -> bool:
+    """Check if a cached file exists for a given cache key."""
+    exists = os.path.exists(get_cache_filepath(cache_key))
+    if exists:
+        logger.debug(f"Cache exists for key '{cache_key}'")
+    else:
+        logger.debug(f"Cache does not exist for key '{cache_key}'")
+    return exists
+
+
+def invalidate_cache(cache_key: str):
+    """Delete the cached file for a specific cache key."""
+    filepath = get_cache_filepath(cache_key)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        logger.info(
+            f"Cache invalidated for key '{cache_key}' (file deleted: {filepath})"
+        )
+    else:
+        logger.warning(f"No cache file found to invalidate for key '{cache_key}'")
+
+def initialize_cache() -> None:
+    """Initialize cache with commonly used data during app startup."""
+    try:
+        # Cache metadata
+        meta_data = fetch_meta_data()
+        cache.set("meta_data", meta_data)
+        
+        # Cache paper data
+        paper_data = fetch_paper_data()
+        cache.set("paper_data", paper_data)
+        
+        # Pre-calculate and cache filtered options
+        df = pd.DataFrame(meta_data)
+        cache.set("taxonomy_options", sorted(df["genus"].dropna().unique()))
+        cache.set("family_options", sorted(df["familyName"].dropna().unique()))
+        cache.set("navis_options", sorted(df["starship_navis"].dropna().unique()))
+        cache.set("haplotype_options", sorted(df["starship_haplotype"].dropna().unique()))
+        
+        logger.info("Cache initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing cache: {str(e)}", exc_info=True)
+        raise

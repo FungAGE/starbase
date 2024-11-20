@@ -45,11 +45,12 @@ from src.utils.blast_utils import (
 )
 from src.components.callbacks import curated_switch, create_accession_modal
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_meta_data
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_meta_data
 from src.utils.blastdb import db_list
 
-from src.utils.telemetry import get_client_ip, get_blast_limit_info
+from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
+
 
 dash.register_page(__name__)
 
@@ -337,6 +338,7 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         error_store
     ]
 
+@blast_limit_decorator
 @callback(
     [
         Output("query-header-store", "data"),

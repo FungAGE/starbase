@@ -7,8 +7,8 @@ import pandas as pd
 
 from src.components.callbacks import curated_switch, create_accession_modal
 from src.components.cache import cache
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_download_data, fetch_all_ships
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_download_data, fetch_all_ships
 from src.components.tables import make_dl_table
 import logging
 

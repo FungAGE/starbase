@@ -7,8 +7,8 @@ import plotly.graph_objs as go
 
 import tempfile
 
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_captain_tree, fetch_sf_data
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import fetch_captain_tree, fetch_sf_data
 
 default_highlight_colors = {
     "Phoenix": "#00cc96",

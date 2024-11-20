@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from flask import request
+from functools import wraps
 from ip2geotools.databases.noncommercial import DbIpCity
+from dash.exceptions import PreventUpdate
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -382,3 +384,32 @@ def get_blast_limit_info(ip_address):
             "limit": 10,
             "submissions": 10
         }
+    
+def blast_limit_decorator(f):
+    """Decorator to limit BLAST operations per user"""
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        try:
+            # Get client IP using existing function
+            client_ip = get_client_ip()
+            
+            # Use existing limit checking function
+            limit_info = get_blast_limit_info(client_ip)
+            
+            if limit_info["remaining"] <= 0:
+                logger.warning(f"BLAST limit exceeded for IP: {client_ip}")
+                raise PreventUpdate("Hourly BLAST limit exceeded")
+            
+            # Log the BLAST request
+            log_request(client_ip, '/api/blast-submit')
+            
+            # Execute the callback
+            return f(*args, **kwargs)
+            
+        except PreventUpdate:
+            raise
+        except Exception as e:
+            logger.error(f"Error in blast_limit_decorator: {str(e)}")
+            raise
+    
+    return wrapped

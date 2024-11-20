@@ -21,8 +21,8 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.components.cache import cache
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import (
+from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import (
     fetch_meta_data,
     cache_sunburst_plot,
     fetch_paper_data,
@@ -458,7 +458,7 @@ def create_search_results(filtered_meta, cached_meta):
     data_to_use = filtered_meta if filtered_meta is not None else cached_meta
     
     if data_to_use is None:
-        return dmc.Text("No data available", align="center", size="lg", color="dimmed")
+        return dmc.Text("Start a search to see results", size="lg", c="dimmed")
 
     try:
         df = pd.DataFrame(data_to_use)
@@ -477,9 +477,8 @@ def create_search_results(filtered_meta, cached_meta):
         if filtered_meta_df.empty:
             return dmc.Text(
                 "No results found",
-                align="center",
                 size="lg",
-                color="dimmed"
+                c="dimmed"
             )
 
         table_columns = [
@@ -529,7 +528,7 @@ def create_search_results(filtered_meta, cached_meta):
         ]
         
         table = make_ship_table(
-            filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
+            filtered_meta_df, id="wiki-table", columns=table_columns, select_rows=False,pg_sz=15
         )
         
         title = dmc.Title("Search Results", order=2, mb="md")
@@ -640,47 +639,29 @@ def get_filtered_options(taxonomy_tuple, family_tuple, navis_tuple, haplotype_tu
         Output("navis-search", "data"),
         Output("haplotype-search", "data"),
     ],
-    [
-        Input("taxonomy-search", "value"),
-        Input("family-search", "value"),
-        Input("navis-search", "value"),
-        Input("haplotype-search", "value"),
-        Input("meta-data", "data"),
-    ],
-    prevent_initial_call=False
+    [Input("meta-data", "data")],
 )
-def populate_search_options(taxonomy_val, family_val, navis_val, haplotype_val, meta_data):
+def populate_search_options(meta_data):
     if not meta_data:
         empty_data = []
         return empty_data, empty_data, empty_data, empty_data
     
     try:
-        # Convert lists to tuples for caching
-        taxonomy_tuple = tuple(taxonomy_val) if taxonomy_val else ()
-        family_tuple = tuple(family_val) if family_val else ()
-        navis_tuple = tuple(navis_val) if navis_val else ()
-        haplotype_tuple = tuple(haplotype_val) if haplotype_val else ()
-        
-        # Create a hash of the data for caching
-        data_hash = pickle.dumps(meta_data)
-        
-        # Get filtered options from cache
-        options = get_filtered_options(
-            taxonomy_tuple, family_tuple, navis_tuple, haplotype_tuple, data_hash
-        )
+        # Use pre-cached options
+        taxonomy_options = cache.get("taxonomy_options") or []
+        family_options = cache.get("family_options") or []
+        navis_options = cache.get("navis_options") or []
+        haplotype_options = cache.get("haplotype_options") or []
         
         # Format options for Mantine MultiSelect
-        taxonomy_data = [{"value": str(x), "label": str(x)} for x in options["taxonomy"]]
-        family_data = [{"value": str(x), "label": str(x)} for x in options["family"]]
-        navis_data = [{"value": str(x), "label": str(x)} for x in options["navis"]]
-        haplotype_data = [{"value": str(x), "label": str(x)} for x in options["haplotype"]]
+        taxonomy_data = [{"value": str(x), "label": str(x)} for x in taxonomy_options]
+        family_data = [{"value": str(x), "label": str(x)} for x in family_options]
+        navis_data = [{"value": str(x), "label": str(x)} for x in navis_options]
+        haplotype_data = [{"value": str(x), "label": str(x)} for x in haplotype_options]
         
         return taxonomy_data, family_data, navis_data, haplotype_data
     except Exception as e:
-        logger.error(
-            f"Error occurred while populating search options.",
-            exc_info=True,
-        )
+        logger.error("Error in populate_search_options", exc_info=True)
         raise
 
 @callback(
