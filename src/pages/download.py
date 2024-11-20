@@ -222,12 +222,20 @@ def make_dl_table(url, curated=True):
 
 
 @callback(
+    Output("download-selected-btn", "disabled"),
+    [Input("dl-table", "derived_virtual_selected_rows")],
+)
+def update_download_selected_button(selected_rows):
+    # Button is disabled if no rows are selected
+    return not selected_rows or len(selected_rows) == 0
+
+
+@callback(
     [
         Output("dl-package", "data"),
         Output("notifications-container", "children"),
         Output("download-all-btn", "disabled"),
-        Output("download-selected-btn", "disabled"),
-    ],
+    ],  # Removed download-selected-btn from outputs
     [
         Input("download-all-btn", "n_clicks"),
         Input("download-selected-btn", "n_clicks"),
@@ -254,8 +262,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                 icon=DashIconify(icon="ic:round-error"),
                 action="show",
             ),
-            False,
-            False,
+            False,  # Only return one boolean for download-all-btn
         )
 
     try:
