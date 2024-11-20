@@ -63,6 +63,7 @@ def curated_switch(text="Only search curated Starships", size="sm"):
         size=size,
         onLabel="ON",
         offLabel="OFF",
+        checked=True
     )
 
 
