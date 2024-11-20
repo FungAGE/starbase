@@ -13,7 +13,7 @@ from src.utils.telemetry import log_request, get_client_ip
 
 logging.basicConfig(level=logging.ERROR)
 
-# from src.components.precompute import precompute_all
+# from src.components.sql_manager import precompute_all
 from src.components.cache import cache
 
 # from src.utils.blastdb import create_dbs
