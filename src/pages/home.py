@@ -248,7 +248,8 @@ def create_publications_section():
 def create_stats_section():
     # Get stats from database
     stats = get_database_stats() if sql_connected else {
-        "total_starships": "—",
+        "curated_starships": "—",
+        "uncurated_starships": "—",
         "species_count": "—",
         "family_count": "—"
     }
@@ -262,25 +263,39 @@ def create_stats_section():
         dmc.SimpleGrid([
             dmc.Paper([
                 dmc.Text("Total Starships", size="lg", c="dimmed"),
-                dmc.Title(
-                    f"{stats['total_starships']:,}", 
-                    order=3
-                ),
-            ], p="xl", radius="md",shadow="sm", withBorder=True),
+                dmc.Group([
+                    dmc.Stack([
+                        dmc.Text("Curated", size="sm", c="dimmed"),
+                        dmc.Title(
+                            f"{stats['curated_starships']:,}", 
+                            order=3,
+                            c="green"
+                        ),
+                    ]),
+                    dmc.Stack([
+                        dmc.Text("Uncurated", size="sm", c="dimmed"),
+                        dmc.Title(
+                            f"{stats['uncurated_starships']:,}", 
+                            order=3,
+                            c="orange"
+                        ),
+                    ]),
+                ], gap="apart"),
+            ], p="xl", radius="md", shadow="sm", withBorder=True),
             dmc.Paper([
                 dmc.Text("Species", size="lg", c="dimmed"),
                 dmc.Title(
                     f"{stats['species_count']:,}", 
                     order=3
                 ),
-            ], p="xl", radius="md",shadow="sm", withBorder=True),
+            ], p="xl", radius="md", shadow="sm", withBorder=True),
             dmc.Paper([
                 dmc.Text("Starship Families", size="lg", c="dimmed"),
                 dmc.Title(
                     f"{stats['family_count']:,}", 
                     order=3
                 ),
-            ], p="xl", radius="md",shadow="sm", withBorder=True),
+            ], p="xl", radius="md", shadow="sm", withBorder=True),
         ], cols=3),
     ], size="xl", py="xl")
 
@@ -297,7 +312,7 @@ layout = dmc.MantineProvider([
     dmc.Notification(
         title="Database Connection Failed",
         message="Many features will be disabled until connection is re-established.",
-        color="red",
+        c="red",
         style={"position": "fixed", "top": 20, "right": 20}
     ) if not sql_connected else None,
 ], 

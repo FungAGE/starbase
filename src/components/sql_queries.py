@@ -348,16 +348,27 @@ def get_database_stats():
 
     session = starbase_session_factory()
     try:
-        # Placeholder queries - adjust table/column names as needed
+        # Get curated and uncurated counts
+        curated_count = session.execute("""
+            SELECT COUNT(*) 
+            FROM accessions a
+            JOIN joined_ships j ON j.ship_id = a.id
+            WHERE j.curated_status = 'curated'
+        """).scalar() or 0
+        
+        uncurated_count = session.execute("""
+            SELECT COUNT(*) 
+            FROM accessions a
+            JOIN joined_ships j ON j.ship_id = a.id
+            WHERE j.curated_status != 'curated' OR j.curated_status IS NULL
+        """).scalar() or 0
+        
         stats = {
-            "total_starships": session.execute(
-                "SELECT COUNT(*) FROM accessions"
-            ).scalar() or 0,
-            
+            "curated_starships": curated_count,
+            "uncurated_starships": uncurated_count,
             "species_count": session.execute(
                 "SELECT COUNT(DISTINCT species) FROM taxonomy"
             ).scalar() or 0,
-            
             "family_count": session.execute(
                 "SELECT COUNT(DISTINCT newFamilyID) FROM family_names WHERE newFamilyID IS NOT NULL"
             ).scalar() or 0
@@ -367,7 +378,8 @@ def get_database_stats():
     except Exception as e:
         logger.error(f"Error fetching database stats: {str(e)}")
         return {
-            "total_starships": 0,
+            "curated_starships": 0,
+            "uncurated_starships": 0,
             "species_count": 0,
             "family_count": 0
         }
