@@ -13,7 +13,7 @@ from Bio.Seq import Seq
 import logomaker as lm
 from Bio.Align.Applications import ClustalwCommandline
 
-from src.utils.blast_utils import clean_sequence
+from src.utils.seq_utils import clean_sequence
 
 
 def agg_df(df, groups):

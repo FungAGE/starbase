@@ -7,7 +7,7 @@ from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
 
 import datetime
-from src.utils.parsing import parse_fasta, parse_gff
+from src.utils.seq_utils import parse_fasta, parse_gff
 import logging
 
 logger = logging.getLogger(__name__)

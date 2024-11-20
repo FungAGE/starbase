@@ -285,10 +285,17 @@ def make_ship_blast_table(ship_blast_results, id,df_columns):
     )
 
 def make_dl_table(df, id, table_columns):
-    return  dash_table.DataTable(
+    if isinstance(df, pd.DataFrame):
+        data = df.to_dict("records")
+    elif isinstance(df, list):
+        data = df
+    else:
+        data = []
+        
+    return dash_table.DataTable(
         id=id,
         columns=table_columns,
-        data=df.to_dict("records"),
+        data=data,
         filter_action="native",
         sort_action="native",
         sort_mode="multi",
@@ -296,13 +303,11 @@ def make_dl_table(df, id, table_columns):
         page_action="native",
         page_current=0,
         page_size=20,
-        markdown_options={"html": True, "link_target": "_blank"},
         cell_selectable=True,
         style_data={
             "height": "auto",
             "lineHeight": "20px",
             "padding": "10px",
-            "cursor": "pointer",
         },
         style_cell={
             "fontFamily": "Arial, sans-serif",
@@ -333,6 +338,12 @@ def make_dl_table(df, id, table_columns):
                 "backgroundColor": "#e3f2fd",
                 "border": "1px solid #2196f3",
             },
+            {
+                "if": {"column_id": "accession_tag"},
+                "color": "blue",
+                "textDecoration": "underline",
+                "cursor": "pointer",
+            }
         ],
     )
 

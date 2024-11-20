@@ -18,10 +18,22 @@ import logging
 
 
 from src.components.cache import cache
-from src.utils.blast_utils import (
+from src.utils.seq_utils import ( guess_seq_type,
     check_input,
-    guess_seq_type,
     write_temp_fasta,
+                                 )
+from src.utils.blast_utils import (
+    run_blast,
+    run_hmmer,
+    run_diamond,
+    blast_table,
+    run_lastz,
+    select_ship_family,
+    parse_lastz_output,
+    blast_chords,
+)
+
+from src.utils.blast_utils import (
     run_blast,
     run_hmmer,
     run_diamond,
@@ -32,7 +44,7 @@ from src.utils.blast_utils import (
     blast_chords,
 )
 from src.components.callbacks import curated_switch, create_accession_modal
-from src.utils.parsing import parse_fasta, parse_fasta_from_file
+from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 from src.components.cache_manager import load_from_cache
 from src.components.sql_queries import fetch_meta_data
 from src.utils.blastdb import db_list

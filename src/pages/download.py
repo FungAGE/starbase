@@ -147,7 +147,7 @@ layout = dmc.Container(
                         html.Div(id="modal-content"),
                     ],
                 ),
-                make_dl_table(df=[],d="dl-table", df_columns=table_columns),
+                make_dl_table(df=[],id="dl-table", table_columns=table_columns),
             ],
         ),
     ],
@@ -161,7 +161,7 @@ layout = dmc.Container(
     [Input("url", "href"),
      Input("curated-input", "checked")]
 )
-def make_dl_table(url, curated=True):
+def update_dl_table(url, curated=True):
     try:
         df = fetch_download_data(curated=curated)
         if df is None:

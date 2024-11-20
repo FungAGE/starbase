@@ -25,7 +25,7 @@ from src.components.sql_queries import (
 )
 from src.components.tables import make_ship_table, make_wiki_table
 from src.utils.plot_utils import make_logo
-from src.utils.parsing import clean_contigIDs
+from src.utils.seq_utils import clean_contigIDs
 from src.components.callbacks import create_accession_modal
 
 dash.register_page(__name__)
