@@ -40,7 +40,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
         table_df = df.to_dict("records")
     else:
         table_df = []
-    table = dash_table.DataTable(
+    table = html.Div(dash_table.DataTable(
         id=id,
         columns=table_columns,
         data=df.to_dict("records"),
@@ -98,7 +98,7 @@ def make_ship_table(df, id, columns=None, pg_sz=None):
                 "cursor": "pointer",
             }
         ],
-    )
+    ))
     return table
 
 
@@ -174,7 +174,7 @@ def make_paper_table():
             },
         ]
 
-        paper_table = dash_table.DataTable(
+        paper_table = html.Div(dash_table.DataTable(
             data=sub_df.to_dict("records"),
             sort_action="none",
             columns=sub_df_columns,
@@ -223,11 +223,11 @@ def make_paper_table():
                     "border": "1px solid #2196f3",
                 },
             ],
-        )
+        ))
         return paper_table
 
 def make_ship_blast_table(ship_blast_results, id,df_columns):
-    dash_table.DataTable(
+    return html.Div(dash_table.DataTable(
         columns=df_columns,
         data=ship_blast_results.to_dict("records"),
         id=id,
@@ -289,7 +289,7 @@ def make_ship_blast_table(ship_blast_results, id,df_columns):
                 "cursor": "pointer",
             }
         ],
-    )
+    ))
 
 def make_dl_table(df, id, table_columns):
     if isinstance(df, pd.DataFrame):
@@ -299,7 +299,7 @@ def make_dl_table(df, id, table_columns):
     else:
         data = []
         
-    return dash_table.DataTable(
+    return html.Div(dash_table.DataTable(
         id=id,
         columns=table_columns,
         data=data,
@@ -353,28 +353,33 @@ def make_dl_table(df, id, table_columns):
             }
         ],
     )
+    )
 
 def make_wiki_table(category, n_ships, max_size, min_size):
-    return dash_table.DataTable(
-        columns=[
-            {"name": "Metric", "id": "metric"},
-            {"name": "Value", "id": "value"},
-        ],
-        data=[
-            {
-                "metric": "Total Number of Starships in {}".format(category),
-                "value": f"{n_ships:,.0f}",
-            },
-            {
-                "metric": "Maximum Starship Size (bp)",
-                "value": f"{max_size:,.0f}",
-            },
-            {
-                "metric": "Minimum Starship Size (bp)",
-                "value": f"{min_size:,.0f}",
-            },
-        ],
-        style_table={"overflowX": "auto", "maxWidth": "500px"},
-        style_cell={"textAlign": "left"},
-        style_header={"fontWeight": "bold"},
+    """Create a summary table for a Starship family."""
+    data = [
+        {
+            "metric": f"Total Number of Starships in {category}",
+            "value": f"{n_ships:,.0f}",
+        },
+        {
+            "metric": "Maximum Starship Size (bp)",
+            "value": f"{max_size:,.0f}",
+        },
+        {
+            "metric": "Minimum Starship Size (bp)",
+            "value": f"{min_size:,.0f}",
+        },
+    ]
+
+    return html.Div(
+        dash_table.DataTable(
+            data=data,
+            columns=[
+                {"name": col, "id": col} for col in ["metric", "value"]
+            ],
+            style_table={"overflowX": "auto", "maxWidth": "500px"},
+            style_cell={"textAlign": "left"},
+            style_header={"fontWeight": "bold"},
+        )
     )
