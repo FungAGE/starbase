@@ -57,7 +57,7 @@ def create_accordion_item(df, papers, category):
                 lg=6,
                 sm=12,
                 children=[
-                    dmc.Center(html.H5(f"Sequence logo of upstream DRs in {category}")),
+                    dmc.Center(html.H5("Upstream DRs")),
                     dmc.Center(
                         html.Img(
                             src=uplogo_img_path,
@@ -77,7 +77,7 @@ def create_accordion_item(df, papers, category):
                 lg=6,
                 sm=12,
                 children=[
-                    html.H5(f"Sequence logo of downstream DRs in {category}"),
+                    html.H5("Downstream DRs"),
                     html.Img(
                         src=downlogo_img_path,
                         style={"width": "100%"},
@@ -341,16 +341,25 @@ def create_accordion(cached_meta, cached_papers):
 def create_sidebar(active_item, cached_meta):
     if active_item is None or cached_meta is None:
         logger.warning("No active item or cached meta data provided.")
-        raise PreventUpdate  # Prevent the callback from running if the inputs are invalid
+        raise PreventUpdate
 
     logger.debug(f"Creating sidebar for active item: {active_item}")
     df = pd.DataFrame(cached_meta)
-
+    
     try:
         title = dmc.Title(f"Taxonomy and Genomes for Starships in {active_item}", order=2, mb="md")
+        
+        # First calculate the count for each accession_tag across the entire dataset
+        genome_counts = df.groupby('accession_tag').size()
+        
+        # Filter for the specific family and add the counts
         filtered_meta_df = df[df["familyName"] == active_item].sort_values(
             by="accession_tag", ascending=False
-        )
+        ).drop_duplicates(subset=['accession_tag'])  # Remove duplicates if any
+        
+        # Add the n_genomes column by mapping the counts
+        filtered_meta_df['n_genomes'] = filtered_meta_df['accession_tag'].map(genome_counts)
+        
         logger.info(
             f"Filtered metadata for {active_item} contains {len(filtered_meta_df)} rows."
         )
@@ -374,13 +383,19 @@ def create_sidebar(active_item, cached_meta):
                 "presentation": "markdown",
             },
             {
+                "name": "Number of genomes with ship present",
+                "id": "n_genomes",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
                 "name": "Species",
                 "id": "species",
                 "deletable": False,
                 "selectable": False,
             },
             {
-                "name": "Element Length",
+                "name": "Element Length (bp)",
                 "id": "size",
                 "deletable": False,
                 "selectable": False,
