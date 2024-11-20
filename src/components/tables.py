@@ -363,11 +363,11 @@ def make_wiki_table(category, n_ships, max_size, min_size):
             "value": f"{n_ships:,.0f}",
         },
         {
-            "metric": "Maximum Starship Size (bp)",
+            "metric": "Maximum Size (bp)",
             "value": f"{max_size:,.0f}",
         },
         {
-            "metric": "Minimum Starship Size (bp)",
+            "metric": "Minimum Size (bp)",
             "value": f"{min_size:,.0f}",
         },
     ]
