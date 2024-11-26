@@ -16,13 +16,37 @@ logger = logging.getLogger(__name__)
 download_ships_button = dmc.Anchor(
     dmc.Button(
         [
-            "Download Starships from the latest version of",
-            html.Span(
-                "starbase",
-                className="logo-text",
-                style={"marginLeft": "0.25em"},
+            dmc.Group(
+                [
+                    DashIconify(icon="mdi:download"),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                "Download Starships",
+                                style={"display": "block"}
+                            ),
+                            dmc.Text(
+                                [
+                                    "from the latest version of ",
+                                    html.Span(
+                                        "starbase",
+                                        className="logo-text",
+                                    ),
+                                ],
+                                style={"display": "block"}
+                            ),
+                        ],
+                        gap=0,
+                        style={
+                            "whiteSpace": "normal",
+                            "textAlign": "left",
+                            "lineHeight": "1.2",
+                        }
+                    ),
+                ],
+                gap="xs",
+                style={"flexWrap": "nowrap"}
             ),
-            ".",
         ],
         id="navigate-to-download-btn",
         variant="gradient",
@@ -31,10 +55,24 @@ download_ships_button = dmc.Anchor(
         radius="md",
         fullWidth=True,
         disabled=not sql_connected,
-        leftSection=DashIconify(icon="mdi:download"),
+        styles={
+            "root": {
+                "minHeight": "auto",
+                "height": "auto",
+                "whiteSpace": "normal",
+                "padding": "1rem",
+            },
+            "inner": {
+                "justifyContent": "flex-start",
+            }
+        }
     ),
     href="/download",
-    style={"textDecoration": "none"},
+    style={
+        "textDecoration": "none",
+        "width": "100%",
+        "display": "block",
+    }
 )
 
 download_ships_card = dmc.Paper([

@@ -128,11 +128,11 @@ def make_paper_table():
         sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
         sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
 
-        # rename columns
+        # Modify columns for mobile responsiveness
         sub_df_columns = [
             {
-                "name": "Starship Families Described",
-                "id": "familyName",
+                "name": "Title",
+                "id": "Title",
                 "deletable": False,
                 "selectable": False,
                 "presentation": "markdown",
@@ -143,13 +143,7 @@ def make_paper_table():
                 "deletable": False,
                 "selectable": False,
                 "presentation": "markdown",
-            },
-            {
-                "name": "Title",
-                "id": "Title",
-                "deletable": False,
-                "selectable": False,
-                "presentation": "markdown",
+                "hideable": True,  # Allow column to be hidden
             },
             {
                 "name": "Authors",
@@ -157,17 +151,11 @@ def make_paper_table():
                 "deletable": False,
                 "selectable": False,
                 "presentation": "markdown",
+                "hideable": True,  # Allow column to be hidden
             },
             {
                 "name": "DOI",
                 "id": "DOI",
-                "deletable": False,
-                "selectable": False,
-                "presentation": "markdown",
-            },
-            {
-                "name": "Url",
-                "id": "Url",
                 "deletable": False,
                 "selectable": False,
                 "presentation": "markdown",
@@ -184,23 +172,45 @@ def make_paper_table():
                 "overflowX": "auto",
                 "overflowY": "auto",
                 "maxHeight": "60vh",
+                "minWidth": "300px",  # Ensure minimum width on mobile
             },
             style_data={
                 "height": "auto",
                 "lineHeight": "20px",
                 "padding": "10px",
-                "whiteSpace": "normal",
+                "whiteSpace": "normal",  # Allow text wrapping
                 "overflow": "hidden",
                 "textOverflow": "ellipsis",
             },
             style_cell={
                 "fontFamily": "Arial, sans-serif",
                 "textAlign": "left",
-                "minWidth": "120px",
-                "maxWidth": "300px",
+                "minWidth": "100px",
+                "maxWidth": {  # Responsive column widths
+                    "Title": "300px",
+                    "PublicationYear": "100px",
+                    "Author": "200px",
+                    "DOI": "150px",
+                },
+                "width": {  # Default widths for different columns
+                    "Title": "300px",
+                    "PublicationYear": "100px",
+                    "Author": "200px",
+                    "DOI": "150px",
+                },
                 "overflow": "hidden",
                 "textOverflow": "ellipsis",
             },
+            style_cell_conditional=[  # Hide certain columns on small screens
+                {
+                    "if": {"column_id": "Author"},
+                    "@media screen and (max-width: 768px)": {"display": "none"},
+                },
+                {
+                    "if": {"column_id": "PublicationYear"},
+                    "@media screen and (max-width: 480px)": {"display": "none"},
+                },
+            ],
             style_header={
                 "backgroundColor": "#f8f9fa",
                 "fontWeight": "bold",
