@@ -21,7 +21,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.components.cache import cache
-from src.components.sql_manager import load_from_cache
+from src.components.sql_manager import load_from_cache, fetch_meta_data
 from src.components.sql_manager import (
     fetch_meta_data,
     cache_sunburst_plot,
@@ -138,11 +138,23 @@ modal = dbc.Modal(
     is_open=False,
 )
 
+def load_initial_data():
+    """Load initial data for the page"""
+    meta_data = load_from_cache("meta_data")
+    if meta_data is None:
+        # Fallback to fetching directly if not in cache
+        meta_data = fetch_meta_data()
+        dcc.Store(id="filtered-meta-data"),
+    # Convert DataFrame to dictionary before storing
+    if isinstance(meta_data, pd.DataFrame):
+        return meta_data.to_dict('records')
+    return meta_data
+
 layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="meta-data"),
+        dcc.Store(id="meta-data", data=load_initial_data()),
         dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
         dcc.Store(id="active-item-cache"),
@@ -280,7 +292,7 @@ layout = dmc.Container(
                 )
             ],
         ),
-
+        dmc.Space(h=20),
         # Main Content Grid
         dmc.Grid(
             children=[
@@ -462,17 +474,16 @@ def create_search_results(filtered_meta, cached_meta):
 
     try:
         df = pd.DataFrame(data_to_use)
-        
+                    
         # Calculate the count for each accession_tag
-        genome_counts = df.groupby('accession_tag').size()
+        genome_counts = df.groupby('accession_tag').size().reset_index(name='n_genomes')
         
-        # Remove duplicates and add counts
-        filtered_meta_df = df.sort_values(
-            by="accession_tag", ascending=False
-        ).drop_duplicates(subset=['accession_tag'])
-        
-        # Add the n_genomes column
-        filtered_meta_df['n_genomes'] = filtered_meta_df['accession_tag'].map(genome_counts)
+        # Remove duplicates and merge with counts
+        filtered_meta_df = df.drop_duplicates(subset=['accession_tag']).merge(
+            genome_counts, 
+            on='accession_tag', 
+            how='left'
+        )
         
         if filtered_meta_df.empty:
             return dmc.Text(
@@ -528,7 +539,11 @@ def create_search_results(filtered_meta, cached_meta):
         ]
         
         table = make_ship_table(
-            filtered_meta_df, id="wiki-table", columns=table_columns, select_rows=False,pg_sz=15
+            filtered_meta_df, 
+            id="wiki-table", 
+            columns=table_columns, 
+            select_rows=False,
+            pg_sz=15
         )
         
         title = dmc.Title("Search Results", order=2, mb="md")
@@ -539,7 +554,7 @@ def create_search_results(filtered_meta, cached_meta):
     except Exception as e:
         logger.error(f"Error in create_search_results: {str(e)}", exc_info=True)
         return dmc.Alert(
-            "An error occurred while loading the results",
+            f"An error occurred while loading the results: {str(e)}",
             color="red",
             variant="filled"
         )
@@ -639,30 +654,49 @@ def get_filtered_options(taxonomy_tuple, family_tuple, navis_tuple, haplotype_tu
         Output("navis-search", "data"),
         Output("haplotype-search", "data"),
     ],
-    [Input("meta-data", "data")],
+    [
+        Input("taxonomy-search", "value"),
+        Input("family-search", "value"),
+        Input("navis-search", "value"),
+        Input("haplotype-search", "value"),
+        Input("meta-data", "data"),
+    ]
 )
-def populate_search_options(meta_data):
+def update_search_options(taxonomy_val, family_val, navis_val, haplotype_val, meta_data):
     if not meta_data:
         empty_data = []
         return empty_data, empty_data, empty_data, empty_data
     
     try:
-        # Use pre-cached options
-        taxonomy_options = cache.get("taxonomy_options") or []
-        family_options = cache.get("family_options") or []
-        navis_options = cache.get("navis_options") or []
-        haplotype_options = cache.get("haplotype_options") or []
+        df = pd.DataFrame(meta_data)
+        
+        # Apply filters based on current selections
+        if taxonomy_val:
+            df = df[df["genus"].isin(taxonomy_val)]
+        if family_val:
+            df = df[df["familyName"].isin(family_val)]
+        if navis_val:
+            df = df[df["starship_navis"].isin(navis_val)]
+        if haplotype_val:
+            df = df[df["starship_haplotype"].isin(haplotype_val)]
+        
+        # Get available options based on filtered data
+        taxonomy_options = sorted(df["genus"].dropna().unique())
+        family_options = sorted(df["familyName"].dropna().unique())
+        navis_options = sorted(df["starship_navis"].dropna().unique())
+        haplotype_options = sorted(df["starship_haplotype"].dropna().unique())
         
         # Format options for Mantine MultiSelect
-        taxonomy_data = [{"value": str(x), "label": str(x)} for x in taxonomy_options]
-        family_data = [{"value": str(x), "label": str(x)} for x in family_options]
-        navis_data = [{"value": str(x), "label": str(x)} for x in navis_options]
-        haplotype_data = [{"value": str(x), "label": str(x)} for x in haplotype_options]
+        taxonomy_data = [{"value": x, "label": x} for x in taxonomy_options]
+        family_data = [{"value": x, "label": x} for x in family_options]
+        navis_data = [{"value": x, "label": x} for x in navis_options]
+        haplotype_data = [{"value": x, "label": x} for x in haplotype_options]
         
         return taxonomy_data, family_data, navis_data, haplotype_data
     except Exception as e:
-        logger.error("Error in populate_search_options", exc_info=True)
-        raise
+        logger.error(f"Error in update_search_options: {str(e)}", exc_info=True)
+        empty_data = []
+        return empty_data, empty_data, empty_data, empty_data
 
 @callback(
     [
