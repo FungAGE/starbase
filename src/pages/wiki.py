@@ -339,6 +339,8 @@ layout = dmc.Container(
                                             style={
                                                 "width": "100%",
                                                 "minHeight": "400px",
+                                                "maxHeight": "calc(100vh - 300px)",
+                                                "overflow": "auto",
                                             },
                                         ),
                                     ], gap=3),
@@ -584,10 +586,25 @@ def create_sidebar(active_item, cached_meta):
             sunburst_figure = cache_sunburst_plot(
                 family=active_item, df=filtered_df
             )
+        
+        # Make the plot responsive
+        sunburst_figure.update_layout(
+            autosize=True,
+            margin=dict(l=0, r=0, t=30, b=0),  # Reduce margins
+            height=None,  # Allow height to be determined by container
+        )
 
         fig = dcc.Graph(
-            figure=sunburst_figure, 
-            style={"width": "100%", "height": "100%"}
+            figure=sunburst_figure,
+            style={
+                "width": "100%",
+                "height": "100%"
+            },
+            config={
+                'responsive': True,
+                'displayModeBar': False,  # Hide the mode bar for cleaner mobile view
+                'scrollZoom': False  # Disable scroll zoom on mobile
+            }
         )
 
         return fig, title, active_item
