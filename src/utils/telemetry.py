@@ -37,20 +37,32 @@ def get_client_ip():
     return request.remote_addr
 
 
+def is_development_ip(ip_address):
+    """Check if IP is a development/local IP"""
+    development_ips = {
+        '127.0.0.1',      # localhost
+        '0.0.0.0',        # all interfaces
+        '::1'             # IPv6 localhost
+    }
+    return ip_address in development_ips
+
+
 # use the telemetry_engine to log request_logs
 def log_request(ip_address, endpoint):
     """Log request details to telemetry database."""
-    if not telemetry_connected:
+    if not telemetry_connected or is_development_ip(ip_address):
         return
-
-    session = telemetry_session_factory()
+        
+    # Only log BLAST endpoints
+    if endpoint != '/api/blast-submit':
+        return
     
+    session = telemetry_session_factory()
     try:
         query = """
         INSERT INTO request_logs (ip_address, endpoint, timestamp)
         VALUES (:ip, :endpoint, :timestamp)
         """
-        
         session.execute(
             query,
             {
@@ -60,9 +72,9 @@ def log_request(ip_address, endpoint):
             }
         )
         session.commit()
-        
     except Exception as e:
         session.rollback()
+        logger.error(f"Error logging request: {str(e)}")
     finally:
         session.close()
 
@@ -390,20 +402,24 @@ def blast_limit_decorator(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
         try:
-            # Get client IP using existing function
             client_ip = get_client_ip()
             
-            # Use existing limit checking function
-            limit_info = get_blast_limit_info(client_ip)
+            # Skip rate limiting for development IPs
+            if is_development_ip(client_ip):
+                return f(*args, **kwargs)
             
-            if limit_info["remaining"] <= 0:
-                logger.warning(f"BLAST limit exceeded for IP: {client_ip}")
-                raise PreventUpdate("Hourly BLAST limit exceeded")
+            # Only check limits for BLAST-related endpoints
+            if request.path == '/api/blast-submit':
+                limit_info = get_blast_limit_info(client_ip)
+                
+                if limit_info["remaining"] <= 0:
+                    logger.warning(f"BLAST limit exceeded for IP: {client_ip}")
+                    raise PreventUpdate("Hourly BLAST limit exceeded")
+                
+                # Log the BLAST request
+                logger.info(f"BLAST submission from IP: {client_ip}")
+                log_request(client_ip, '/api/blast-submit')
             
-            # Log the BLAST request
-            log_request(client_ip, '/api/blast-submit')
-            
-            # Execute the callback
             return f(*args, **kwargs)
             
         except PreventUpdate:

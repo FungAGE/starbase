@@ -14,7 +14,7 @@ import secrets
 import os
 
 from src.components import navmenu
-from src.utils.telemetry import log_request, get_client_ip
+from src.utils.telemetry import log_request, get_client_ip, is_development_ip
 from src.components.sql_manager import refresh_cache
 
 
@@ -76,17 +76,20 @@ limiter = Limiter(
     default_limits=["60 per day", "20 per hour"],
 )
 
-
 @limiter.request_filter
 def log_rate_limit():
     remote_addr = get_client_ip()
+    # Skip rate limit logging for development IPs
+    if is_development_ip(remote_addr):
+        return True  # Bypass rate limit for local IPs
     logging.info(f"Rate limit hit by IP: {remote_addr}")
     return False
 
-
 @app.server.before_request
 def before_request_func():
-    log_request(get_client_ip(), request.path)
+    # Log requests only if not a development IP
+    if not is_development_ip(get_client_ip()):
+        log_request(get_client_ip(), request.path)
 
 # Create a secure token for the maintenance endpoint
 MAINTENANCE_TOKEN = os.getenv('MAINTENANCE_TOKEN', secrets.token_urlsafe(32))
