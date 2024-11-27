@@ -473,8 +473,13 @@ def create_search_results(filtered_meta, cached_meta):
         return dmc.Text("Start a search to see results", size="lg", c="dimmed")
 
     try:
-        df = pd.DataFrame(data_to_use)
-                    
+        df = pd.DataFrame(data_to_use)       
+        if df.empty:
+            return dmc.Alert(
+                "No results match your search criteria.",
+                color="blue",
+                variant="filled"
+            )
         # Calculate the count for each accession_tag
         genome_counts = df.groupby('accession_tag').size().reset_index(name='n_genomes')
         
