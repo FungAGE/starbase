@@ -129,13 +129,17 @@ def create_accordion_item(df, papers, category):
             item_id=category,
         )
 
-modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle(id="wiki-modal-title")),
-        dbc.ModalBody(id="wiki-modal-content"),
-    ],
+modal = dmc.Modal(
     id="wiki-modal",
-    is_open=False,
+    opened=False,
+    centered=True,
+    overlayProps={"blur": 3},
+    size="lg",
+    children=[
+        dmc.Title(id="wiki-modal-title", order=3),
+        dmc.Space(h="md"),
+        html.Div(id="wiki-modal-content"),
+    ],
 )
 
 def load_initial_data():
@@ -617,27 +621,23 @@ def create_sidebar(active_item, cached_meta):
 
 
 @callback(
-    Output("wiki-modal", "is_open"),
+    Output("wiki-modal", "opened"),
     Output("wiki-modal-content", "children"),
     Output("wiki-modal-title", "children"),
     Output("wiki-table", "active_cell"),
     Input("wiki-table", "active_cell"),
-    State("wiki-modal", "is_open"),
-    State("wiki-table", "data"),  # This contains the filtered data
-    State("wiki-table", "derived_virtual_data"),  # Add this to get filtered data
+    State("wiki-modal", "opened"),
+    State("wiki-table", "data"),
+    State("wiki-table", "derived_virtual_data"),
 )
 def toggle_modal(active_cell, is_open, table_data, filtered_data):
     if active_cell:
-        # Use filtered data if available, otherwise fall back to table_data
         data_to_use = filtered_data if filtered_data is not None else table_data
         row = active_cell["row"]
-        row_data = data_to_use[row]  # Use the filtered data
+        row_data = data_to_use[row]
         modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-
-        # Return the modal open, content, title, and reset active_cell
         return True, modal_content, modal_title, None
 
-    # Keep the modal closed if there's no active cell
     return is_open, no_update, no_update, no_update
 
 # Add this cache decorator for common filter combinations
