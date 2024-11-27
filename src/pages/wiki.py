@@ -332,21 +332,14 @@ layout = dmc.Container(
                                     type="circle",
                                     children=dmc.Stack([
                                         # Sunburst Plot
-                                        dmc.Paper(
-                                            children=[
-                                                html.Div(id="sidebar-title"),
-                                                modal,
-                                                html.Div(
-                                                    id="sidebar",
-                                                    style={
-                                                        "width": "100%",
-                                                        "minHeight": "400px",
-                                                    },
-                                                ),
-                                            ],
-                                            p="md",
-                                            radius="md",
-                                            withBorder=True,
+                                        html.Div(id="sidebar-title"),
+                                        modal,
+                                        html.Div(
+                                            id="sidebar",
+                                            style={
+                                                "width": "100%",
+                                                "minHeight": "400px",
+                                            },
                                         ),
                                     ], gap=3),
                                 ),
