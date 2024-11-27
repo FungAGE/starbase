@@ -102,41 +102,48 @@ def cache_sunburst_plot(family, df):
     return sunburst
 
 
-def fetch_download_data(curated=True):
-    cache_key = generate_cache_key("download_data", f"curated_{curated}")
+def fetch_download_data(curated=True, dereplicate=False):
+    """Fetch download data from the database and cache the result."""
+    cache_key = generate_cache_key(f"download_data_curated_{curated}_derep_{dereplicate}")
+    
     if cache_exists(cache_key):
         return load_from_cache(cache_key)
-
+    
     query = """
     SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
-    FROM accessions a
-    LEFT JOIN joined_ships j ON a.id = j.ship_id
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    FROM joined_ships j
+    JOIN taxonomy t ON j.taxid = t.id
+    JOIN family_names f ON j.ship_family_id = f.id
+    JOIN genomes g ON j.genome_id = g.id
+    JOIN accessions a ON j.ship_id = a.id
     WHERE j.orphan IS NULL
     """
     
     if curated:
         query += " AND j.curated_status = 'curated'"
-
+    
     session = starbase_session_factory()
-
     try:
-        df = pd.read_sql_query(query, session.bind)
+        df = pd.read_sql_query(query.strip(), session.bind)
+        
+        if dereplicate:
+            df = df.drop_duplicates(subset='accession_tag')
+            logger.info(f"Dereplicated to {len(df)} unique accession tags.")
+        
         if df.empty:
             logger.warning("Fetched Download DataFrame is empty.")
         else:
-            logger.info(
-                f"Download data successfully fetched from database, caching it under key '{cache_key}'"
-            )
+            logger.debug(f"Attempting to cache download data with key: {cache_key}")
+            logger.debug(f"Cache status before save: exists={cache_exists(cache_key)}")
             save_to_cache(df, cache_key)
+            logger.debug(f"Cache status after save: exists={cache_exists(cache_key)}")
+            
+        return df
     except Exception as e:
         logger.error(f"Error fetching download data: {str(e)}")
         return None
     finally:
         session.close()
-    return df
-
 
 def fetch_all_ships(curated=True):
     cache_key = generate_cache_key("all_ships", f"curated_{curated}")
@@ -497,15 +504,15 @@ families = [
 
 def precompute_all():
     """Precompute and cache all necessary data and figures."""
-    logger.info("Starting precomputation of all data and figures.")
-    
     cache_status = {}
-    
-    # Dictionary of functions to execute with their cache keys
+
     precompute_tasks = {
         "meta_data": lambda: fetch_meta_data(curated=True),
         "paper_data": fetch_paper_data,
-        "download_data": fetch_download_data,
+        "download_data_curated_true_derep_false": lambda: fetch_download_data(curated=True, dereplicate=False),
+        "download_data_curated_true_derep_true": lambda: fetch_download_data(curated=True, dereplicate=True),
+        "download_data_curated_false_derep_false": lambda: fetch_download_data(curated=False, dereplicate=False),
+        "download_data_curated_false_derep_true": lambda: fetch_download_data(curated=False, dereplicate=True),
         "all_ships": fetch_all_ships,
         "ship_table": fetch_ship_table,
         "all_captains": fetch_all_captains,
@@ -552,7 +559,11 @@ def precompute_all():
                     logger.info(f"Precomputing {key}...")
                     result = func()
                     if result is not None:
+                        # Save both to memory cache and file cache
+                        cache.set(key, result)
+                        save_to_cache(result, generate_cache_key(key))
                         cache_status[key] = True
+                        logger.info(f"Successfully cached {key}")
                     else:
                         cache_status[key] = False
                         logger.error(f"Failed to precompute {key}: returned None")
@@ -584,7 +595,10 @@ def refresh_cache():
         for key in [
             "meta_data",
             "paper_data",
-            "download_data",
+            "download_data_curated_true_derep_false",
+            "download_data_curated_true_derep_true",
+            "download_data_curated_false_derep_false",
+            "download_data_curated_false_derep_true",
             "all_ships",
             "ship_table",
             "all_captains",

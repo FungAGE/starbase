@@ -27,7 +27,7 @@ from src.components.sql_manager import (
     fetch_accession_gff,
     fetch_ship_table,
 )
-from src.components.callbacks import create_accession_modal
+from src.components.callbacks import create_accession_modal, create_modal_callback
 
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,17 @@ table_columns = [
     },
 ]
 
-modal =     dbc.Modal(
-            [
-                dbc.ModalHeader(dbc.ModalTitle(id="pgv-modal-title")),
-                dbc.ModalBody(id="pgv-modal-content"),
-            ],
-            id="pgv-modal",
-            is_open=False,
+modal = dmc.Modal(
+    id="pgv-modal",
+    opened=False,
+    centered=True,
+    overlayProps={"blur": 3},
+    size="lg",
+    children=[
+        dmc.Title(id="pgv-modal-title", order=3),
+        dmc.Space(h="md"),
+        html.Div(id="pgv-modal-content"),
+    ],
 )
 
 layout = dmc.Container(
@@ -544,25 +548,9 @@ def update_pgv(n_clicks, selected_rows, table_data):
     )
 
 
-@callback(
-    [
-        Output("pgv-modal", "is_open"),
-        Output("pgv-modal-content", "children"),
-        Output("pgv-modal-title", "children"),
-        Output("pgv-table", "active_cell"),
-    ],
-    [Input("pgv-table", "active_cell")],
-    [
-        State("pgv-modal", "is_open"),
-        State("pgv-table", "data"),
-        State("pgv-table", "derived_virtual_data")  # Add this
-    ],
+toggle_modal = create_modal_callback(
+    "pgv-table",
+    "pgv-modal",
+    "pgv-modal-content",
+    "pgv-modal-title"
 )
-def toggle_modal(active_cell, is_open, table_data, filtered_data):
-    if active_cell:
-        # Use filtered data if available
-        data_to_use = filtered_data if filtered_data is not None else table_data
-        row_data = data_to_use[active_cell["row"]]
-        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-        return True, modal_content, modal_title, None
-    return is_open, no_update, no_update, no_update

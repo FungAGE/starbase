@@ -43,7 +43,7 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from src.components.callbacks import curated_switch, create_accession_modal
+from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 from src.components.sql_manager import load_from_cache
 from src.components.sql_manager import fetch_meta_data
@@ -66,13 +66,17 @@ def blast_family_button(family):
     )
 
 
-modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle(id="blast-modal-title")),
-        dbc.ModalBody(id="blast-modal-content"),
-    ],
+modal = dmc.Modal(
     id="blast-modal",
-    is_open=False,
+    opened=False,
+    centered=True,
+    overlayProps={"blur": 3},
+    size="lg",
+    children=[
+        dmc.Title(id="blast-modal-title", order=3),
+        dmc.Space(h="md"),
+        html.Div(id="blast-modal-content"),
+    ],
 )
 
 
@@ -530,6 +534,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 df_for_table = df_for_table.drop_duplicates(
                     subset=["accession_tag", "pident", "length"]
                 )
+                df_for_table["accession_tag"] = df_for_table["accession_tag"].apply(lambda x: x.strip("[]").split("/")[-1])
                 df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
                 df_for_table.fillna("", inplace=True)
 
@@ -827,25 +832,9 @@ def create_alignment_plot(ship_blast_results, selected_row):
         return None
 
 
-@callback(
-    [
-        Output("blast-modal", "is_open"),
-        Output("blast-modal-content", "children"),
-        Output("blast-modal-title", "children"),
-        Output("ship-blast-table", "active_cell"),
-    ],
-    [Input("blast-table", "active_cell")],
-    [
-        State("blast-modal", "is_open"),
-        State("ship-blast-table", "data"),
-        State("ship-blast-table", "derived_virtual_data")  # Add this
-    ],
+toggle_modal = create_modal_callback(
+    "blast-table",
+    "blast-modal",
+    "blast-modal-content",
+    "blast-modal-title"
 )
-def toggle_modal(active_cell, is_open, table_data, filtered_data):
-    if active_cell:
-        # Use filtered data if available
-        data_to_use = filtered_data if filtered_data is not None else table_data
-        row_data = data_to_use[active_cell["row"]]
-        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-        return True, modal_content, modal_title, None
-    return is_open, no_update, no_update, no_update

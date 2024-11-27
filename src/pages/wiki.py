@@ -30,7 +30,7 @@ from src.components.sql_manager import (
 from src.components.tables import make_ship_table, make_wiki_table
 from src.utils.plot_utils import make_logo
 from src.utils.seq_utils import clean_contigIDs
-from src.components.callbacks import create_accession_modal
+from src.components.callbacks import create_accession_modal, create_modal_callback
 
 dash.register_page(__name__)
 
@@ -620,25 +620,12 @@ def create_sidebar(active_item, cached_meta):
         raise
 
 
-@callback(
-    Output("wiki-modal", "opened"),
-    Output("wiki-modal-content", "children"),
-    Output("wiki-modal-title", "children"),
-    Output("wiki-table", "active_cell"),
-    Input("wiki-table", "active_cell"),
-    State("wiki-modal", "opened"),
-    State("wiki-table", "data"),
-    State("wiki-table", "derived_virtual_data"),
+toggle_modal = create_modal_callback(
+    "wiki-table",
+    "wiki-modal",
+    "wiki-modal-content",
+    "wiki-modal-title"
 )
-def toggle_modal(active_cell, is_open, table_data, filtered_data):
-    if active_cell:
-        data_to_use = filtered_data if filtered_data is not None else table_data
-        row = active_cell["row"]
-        row_data = data_to_use[row]
-        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-        return True, modal_content, modal_title, None
-
-    return is_open, no_update, no_update, no_update
 
 # Add this cache decorator for common filter combinations
 @lru_cache(maxsize=128)

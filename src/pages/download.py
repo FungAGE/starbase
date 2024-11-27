@@ -5,7 +5,7 @@ from dash.dependencies import Output, Input, State
 from dash_iconify import DashIconify
 import pandas as pd
 
-from src.components.callbacks import curated_switch, create_accession_modal
+from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback, dereplicated_switch
 from src.components.cache import cache
 from src.components.sql_manager import load_from_cache
 from src.components.sql_manager import fetch_download_data, fetch_all_ships
@@ -78,6 +78,7 @@ layout = dmc.Container(
                     dmc.Group(
                         children=[
                             curated_switch(text="Only show curated Starships", size="md"),
+                            dereplicated_switch(text="Only show dereplicated Starships", size="md"),
                         ],
                         mt="md",
                     ),
@@ -141,9 +142,13 @@ layout = dmc.Container(
                 ),
                 dmc.Modal(
                     id="accession-modal",
-                    size="lg",
+                    opened=False,
                     centered=True,
+                    overlayProps={"blur": 3},
+                    size="lg",
                     children=[
+                        dmc.Title(id="modal-title", order=3),
+                        dmc.Space(h="md"),
                         html.Div(id="modal-content"),
                     ],
                 ),
@@ -155,48 +160,35 @@ layout = dmc.Container(
 )
 
 
-@cache.memoize()
 @callback(
-    Output("dl-table", "data"), 
+    Output("dl-table", "data"),
     [Input("url", "href"),
-     Input("curated-input", "checked")]
+     Input("curated-input", "checked"),
+     Input("dereplicated-input", "checked")]
 )
-def update_dl_table(url, curated=True):
+def update_dl_table(url, curated=True, dereplicate=False):
+    logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
     try:
-        df = fetch_download_data(curated=curated)
+        df = fetch_download_data(curated=curated, dereplicate=dereplicate)
         if df is None:
+            logger.warning("fetch_download_data returned None")
             return []
             
-        logger.info(f"Retrieved {len(df)} records from the database (curated={curated}).")
+        logger.info(f"Retrieved {len(df)} records (curated={curated}, dereplicated={dereplicate}).")
         df.fillna("", inplace=True)
         
         return df.to_dict("records")
-
     except Exception as e:
         logger.error(f"Failed to execute query in make_dl_table. Details: {e}")
         return []
 
 @callback(
-    Output("download-selected-btn", "disabled"),
-    [Input("dl-table", "derived_virtual_selected_rows")],
-)
-def update_download_selected_button(selected_rows):
-    # Button is disabled if no rows are selected
-    return not selected_rows or len(selected_rows) == 0
-
-
-@callback(
-    [
-        Output("dl-package", "data"),
-        Output("notifications-container", "children"),
-        Output("download-all-btn", "disabled"),
-    ],  # Removed download-selected-btn from outputs
-    [
-        Input("download-all-btn", "n_clicks"),
-        Input("download-selected-btn", "n_clicks"),
-        Input("dl-table", "data"),
-        Input("dl-table", "derived_virtual_selected_rows"),
-    ],
+    [Output("dl-package", "data"),
+     Output("notifications-container", "children")],
+    [Input("download-all-btn", "n_clicks"),
+     Input("download-selected-btn", "n_clicks"),
+     Input("dl-table", "data"),
+     Input("dl-table", "derived_virtual_selected_rows")],
     prevent_initial_call=True,
 )
 def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
@@ -216,8 +208,15 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                 color="red",
                 icon=DashIconify(icon="ic:round-error"),
                 action="show",
-            ),
-            False,  # Only return one boolean for download-all-btn
+                style={
+                    "width": "100%",
+                    "maxWidth": "500px",  # Limit width on larger screens
+                    "margin": "0 auto",   # Center the notification
+                    "@media (max-width: 600px)": {
+                        "maxWidth": "100%"  # Full width on mobile
+                    }
+                }
+            )
         )
 
     try:
@@ -250,9 +249,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                         color="yellow",
                         icon=DashIconify(icon="ic:round-warning"),
                         action="show",
-                    ),
-                    False,
-                    False,
+                    )
                 )
 
             # Get selected accessions
@@ -263,7 +260,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
             # Filter all ships by selected accessions
             df = df[df["accession_tag"].isin(accessions)]
         else:
-            return dash.no_update, None, False, False
+            return dash.no_update, None
 
         if df.empty:
             logger.warning("No matching records found.")
@@ -275,9 +272,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                     color="red",
                     icon=DashIconify(icon="ic:round-error"),
                     action="show",
-                ),
-                False,
-                False,
+                )
             )
 
         # Create FASTA file
@@ -297,9 +292,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                     color="green",
                     icon=DashIconify(icon="ic:round-check-circle"),
                     action="show",
-                ),
-                True,
-                False,
+                )
             )
             
         except Exception as e:
@@ -312,9 +305,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                     color="red",
                     icon=DashIconify(icon="ic:round-error"),
                     action="show",
-                ),
-                False,
-                False,
+                )
             )
             
     except Exception as e:
@@ -327,31 +318,21 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                 color="red",
                 icon=DashIconify(icon="ic:round-error"),
                 action="show",
-            ),
-            False,
-            False,
+            )
         )
 
 @callback(
-    [
-        Output("accession-modal", "opened"),
-        Output("modal-content", "children"),
-    ],
-    [Input("dl-table", "active_cell")],
-    [
-        State("dl-table", "data"),
-        State("dl-table", "derived_virtual_data")  # Add this
-    ],
-    prevent_initial_call=True,
+    Output("download-selected-btn", "disabled"),
+    [Input("dl-table", "derived_virtual_selected_rows")]
 )
-def show_accession_modal(active_cell, table_data, filtered_data):
-    if not active_cell or active_cell["column_id"] != "accession_tag":
-        return False, dash.no_update
-    
-    # Use filtered data if available
-    data_to_use = filtered_data if filtered_data is not None else table_data
-    row_data = data_to_use[active_cell["row"]]
-    accession = row_data["accession_tag"].strip("[]").split("/")[-1]
-    
-    modal_content, modal_title = create_accession_modal(accession)
-    return True, [modal_title, modal_content]
+def update_download_selected_button(selected_rows):
+    # Disable the button if no rows are selected
+    return not selected_rows or len(selected_rows) == 0
+
+toggle_modal = create_modal_callback(
+    "dl-table",
+    "accession-modal",
+    "modal-content",
+    "modal-title",
+    column_check="accession_tag"
+)
