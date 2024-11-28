@@ -24,10 +24,10 @@ title = dmc.Paper([
                 fit="contain",
                 radius="md",
                 style={
-                    "minWidth": "100px",
-                    "minHeight": "100px",
-                    "width": "clamp(100px, 8vw, 150px)",
-                    "height": "clamp(100px, 8vw, 150px)",
+                    "minWidth": "80px",
+                    "minHeight": "80px",
+                    "width": "clamp(80px, 8vw, 150px)",
+                    "height": "clamp(80px, 8vw, 150px)",
                 },
             ),
             dmc.Title(
@@ -42,27 +42,33 @@ title = dmc.Paper([
                 order=1,
                 style={
                     "flexGrow": 1,
-                    "fontSize": "clamp(1.5rem, 2.5vw, 2.5rem)",
-                    "maxWidth": "calc(100% - 200px)",
-                    "minWidth": "60%",
+                    "fontSize": "clamp(1.2rem, 4vw, 2.5rem)",
+                    "maxWidth": "100%",
                     "color": "white",
+                    "textAlign": "left",
+                    "wordBreak": "break-word"
                 }
             ),
         ],
         pos="center",
-        align="center",
-        gap="xl",
+        align="flex-start",
+        gap="md",
         grow=True,
         style={
             "flexWrap": "wrap",
             "width": "100%",
             "maxWidth": "1400px",
             "margin": "0 auto",
+            "padding": "clamp(1rem, 2vw, 2rem)"
         }
     )
 ], 
     shadow="sm",
-    p="xl",
+    p={
+        "base": "md",
+        "sm": "lg",
+        "md": "xl"
+    },
     radius="md",
     style={
         "backgroundColor": "#2C2E33",
@@ -150,14 +156,19 @@ starship_card = dmc.Paper([
                                         ],
                                     ),
             ], size="lg", c="dimmed"),
-        ], span=7),
+        ], 
+        span={"sm": 12, "md": 7}
+        ),
         dmc.GridCol([
             dmc.Image(
                 src="assets/images/starship-model.png",
                 fit="contain",
-                radius="md"
+                radius="md",
+                style={"maxWidth": "100%"}
             )
-        ], span=5),
+        ], 
+        span={"sm": 12, "md": 5}
+        ),
     ]),
 ], shadow="sm", p="xl", radius="md", withBorder=True)
 
@@ -232,8 +243,13 @@ def create_features_section():
             dmc.GridCol([
                 working_features_card,
                 developing_features_card
-            ], span=6),
-            dmc.GridCol(download_ships_card, span=6)
+            ], 
+            span={"sm": 12, "md": 6}
+            ),
+            dmc.GridCol(
+                download_ships_card, 
+                span={"sm": 12, "md": 6}
+            )
         ], gutter="xl"),
     ], size="xl", py="xl", flex=True)
 
@@ -246,7 +262,6 @@ def create_publications_section():
     ], size="xl", py="xl",flex=True)
 
 def create_stats_section():
-    # Get stats from database
     stats = get_database_stats() if sql_connected else {
         "curated_starships": "—",
         "uncurated_starships": "—",
@@ -280,7 +295,7 @@ def create_stats_section():
                             c="orange"
                         ),
                     ]),
-                ], gap="apart"),
+                ], gap="apart", grow=True),
             ], p="xl", radius="md", shadow="sm", withBorder=True),
             dmc.Paper([
                 dmc.Text("Species", size="lg", c="dimmed"),
@@ -296,7 +311,10 @@ def create_stats_section():
                     order=3
                 ),
             ], p="xl", radius="md", shadow="sm", withBorder=True),
-        ], cols=3),
+        ], 
+        cols=1,
+        spacing="lg"
+        ),
     ], size="xl", py="xl")
 
 layout = dmc.MantineProvider([

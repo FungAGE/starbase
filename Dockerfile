@@ -13,21 +13,21 @@ RUN useradd -m -u 1000 $USER
 # Set working directory
 WORKDIR $HOME/
 
-# Copy only the requirements.txt first for dependency installation
-COPY requirements.txt .
-
-# Update system and install system dependencies first
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies separately (cache this layer)
+COPY requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the code
 COPY ./ ./
 
+# Make script executable
 RUN chmod +x start-script.sh
+
+# Run precomputation after code is available
+RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
 
 # Change permissions for user
 RUN chown -R $USER:$USER $HOME
@@ -38,5 +38,5 @@ USER $USER
 # Expose the application port
 EXPOSE 8000
 
-# Start the container by initializing Tailscale and running the main app script
+# Start the container
 ENTRYPOINT ["./start-script.sh"]
