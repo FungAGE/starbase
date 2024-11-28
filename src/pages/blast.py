@@ -89,6 +89,7 @@ layout = dmc.Container(
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="captain-results-store"),
+        dcc.Store(id="upload-error-store"),
         
         dmc.Space(h=20),
         dmc.Paper(
@@ -157,6 +158,15 @@ layout = dmc.Container(
                                     curated_switch(
                                         text="Only search curated Starships",
                                         size="sm"
+                                    ),
+                                    dmc.Text(
+                                        id="rate-limit-info",
+                                        size="sm",
+                                        c="dimmed",
+                                    ),
+                                    html.Div(
+                                        id="rate-limit-alert",
+                                        style={"display": "none"}
                                     ),
                                 ], gap="xs"),
                                 
@@ -534,7 +544,6 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 df_for_table = df_for_table.drop_duplicates(
                     subset=["accession_tag", "pident", "length"]
                 )
-                df_for_table["accession_tag"] = df_for_table["accession_tag"].apply(lambda x: x.strip("[]").split("/")[-1])
                 df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
                 df_for_table.fillna("", inplace=True)
 
