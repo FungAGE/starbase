@@ -27,7 +27,7 @@ COPY ./ ./
 RUN chmod +x start-script.sh
 
 # Run precomputation after code is available
-RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
+# RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
 
 # Change permissions for user
 RUN chown -R $USER:$USER $HOME
