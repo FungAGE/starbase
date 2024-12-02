@@ -1,19 +1,44 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
 from datetime import datetime
 import warnings
 import logging
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from flask import request
+import time
+import requests
+from functools import lru_cache
+import ipaddress
 from functools import wraps
-from ip2geotools.databases.noncommercial import DbIpCity
 from dash.exceptions import PreventUpdate
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+from sqlalchemy import text
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 from src.components.sql_engine import telemetry_session_factory, telemetry_connected
+
+# Load environment variables from .env file
+env_path = Path('.') / '.env'
+load_dotenv(dotenv_path=env_path)
+
+# Get environment variables with defaults
+IPSTACK_API_KEY = os.getenv('IPSTACK_API_KEY')
+
+def validate_config():
+    """Validate that all required environment variables are set"""
+    if not IPSTACK_API_KEY:
+        raise EnvironmentError("IPSTACK_API_KEY environment variable is not set")
+
 
 # Define valid pages
 page_mapping = {
@@ -28,6 +53,283 @@ page_mapping = {
     '/about': 'About'
 }
 
+IP_LOCATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS ip_locations (
+    ip_address TEXT PRIMARY KEY,
+    latitude REAL,
+    longitude REAL,
+    city TEXT,
+    country TEXT,
+    last_updated TIMESTAMP,
+    lookup_attempted BOOLEAN DEFAULT FALSE
+)
+"""
+
+@dataclass
+class LocationInfo:
+    ip: str
+    lat: float
+    lon: float
+    city: Optional[str] = None
+    country: Optional[str] = None
+    
+    @classmethod
+    def create_empty(cls, ip: str):
+        return cls(ip=ip, lat=0.0, lon=0.0)
+
+def initialize_ip_locations_table():
+    """Create the ip_locations table if it doesn't exist."""
+    session = telemetry_session_factory()
+    try:
+        session.execute(text(IP_LOCATIONS_TABLE_SQL))
+        session.commit()
+    except Exception as e:
+        logger.error(f"Error creating ip_locations table: {str(e)}")
+        session.rollback()
+    finally:
+        session.close()
+
+class GeolocatorService:
+    def __init__(self):
+        self.cache_timeout = 3600  # 1 hour cache
+        self.session = self._create_retry_session()
+        
+    def _create_retry_session(self):
+        """Create a requests session with retry logic"""
+        session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504]
+        )
+        session.mount('http://', HTTPAdapter(max_retries=retries))
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        return session
+        
+    def is_private_ip(self, ip: str) -> bool:
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            return (
+                ip_obj.is_private or
+                ip_obj.is_loopback or
+                ip_obj.is_link_local or
+                ip_obj.is_multicast
+            )
+        except ValueError:
+            return True  # Consider invalid IPs as private
+
+    @lru_cache(maxsize=1000)
+    def get_location_from_ipapi(self, ip: str) -> Optional[LocationInfo]:
+        """Primary method using ip-api.com (free tier, limited to 45 req/minute)."""
+        try:
+            response = self.session.get(f'http://ip-api.com/json/{ip}', timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 'success':
+                    return LocationInfo(
+                        ip=ip,
+                        lat=float(data.get('lat', 0)),
+                        lon=float(data.get('lon', 0)),
+                        city=data.get('city'),
+                        country=data.get('country')
+                    )
+            return None
+        except Exception as e:
+            logger.warning(f"ip-api.com lookup failed for IP {ip}: {str(e)}")
+            return None
+
+    @lru_cache(maxsize=1000)
+    def get_location_from_ipstack(self, ip: str, api_key: Optional[str] = None) -> Optional[LocationInfo]:
+        """Fallback using ipstack.com (requires API key)."""
+        if not api_key:
+            return None
+            
+        try:
+            response = self.session.get(
+                f'http://api.ipstack.com/{ip}?access_key={api_key}',
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return LocationInfo(
+                    ip=ip,
+                    lat=float(data.get('latitude', 0)),
+                    lon=float(data.get('longitude', 0)),
+                    city=data.get('city'),
+                    country=data.get('country_name')
+                )
+            return None
+        except Exception as e:
+            logger.warning(f"ipstack lookup failed for IP {ip}: {str(e)}")
+            return None
+
+    @lru_cache(maxsize=1000)
+    def get_location_from_ipwhois(self, ip: str) -> Optional[LocationInfo]:
+        """Second fallback using ipwhois.app (free tier, 10k requests per month)."""
+        try:
+            response = self.session.get(f'http://ipwho.is/{ip}', timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    return LocationInfo(
+                        ip=ip,
+                        lat=float(data.get('latitude', 0)),
+                        lon=float(data.get('longitude', 0)),
+                        city=data.get('city'),
+                        country=data.get('country')
+                    )
+            return None
+        except Exception as e:
+            logger.warning(f"ipwhois lookup failed for IP {ip}: {str(e)}")
+            return None
+
+    def get_location(self, ip: str, ipstack_api_key: Optional[str] = None) -> LocationInfo:
+        """
+        Get location information for an IP address using multiple fallback services.
+        Returns LocationInfo with zeroed coordinates if all services fail.
+        """
+        # Skip private/invalid IPs
+        if self.is_private_ip(ip):
+            logger.debug(f"Skipping private/invalid IP: {ip}")
+            return LocationInfo.create_empty(ip)
+
+        # Try primary service
+        location = self.get_location_from_ipapi(ip)
+        if location:
+            time.sleep(1.5)  # Rate limiting for ip-api.com
+            return location
+
+        # Try first fallback
+        location = self.get_location_from_ipwhois(ip)
+        if location:
+            return location
+
+        # Try second fallback if API key is provided
+        if ipstack_api_key:
+            location = self.get_location_from_ipstack(ip, ipstack_api_key)
+            if location:
+                return location
+
+        # Return empty location if all methods fail
+        logger.warning(f"All geolocation methods failed for IP: {ip}")
+        return LocationInfo.create_empty(ip)
+
+def update_ip_locations(ipstack_api_key: Optional[str] = None):
+    """
+    Update locations for any new IPs in request_logs that aren't in ip_locations.
+    This should be run periodically (e.g., daily) rather than on every app launch.
+    """
+    session = telemetry_session_factory()
+    geolocator = GeolocatorService()
+    
+    try:
+        # Find IPs that haven't been looked up yet
+        query = """
+        SELECT DISTINCT r.ip_address 
+        FROM request_logs r 
+        LEFT JOIN ip_locations i ON r.ip_address = i.ip_address 
+        WHERE i.ip_address IS NULL 
+        OR (i.lookup_attempted = FALSE AND i.last_updated < datetime('now', '-7 days'))
+        """
+        new_ips = session.execute(text(query)).fetchall()
+        
+        for (ip,) in new_ips:
+            try:
+                # Get location data
+                location = geolocator.get_location(ip, ipstack_api_key)
+                
+                # Insert or update the location data
+                upsert_query = """
+                INSERT INTO ip_locations (
+                    ip_address, latitude, longitude, city, country, 
+                    last_updated, lookup_attempted
+                ) VALUES (
+                    :ip, :lat, :lon, :city, :country, 
+                    :timestamp, TRUE
+                )
+                ON CONFLICT(ip_address) DO UPDATE SET
+                    latitude = :lat,
+                    longitude = :lon,
+                    city = :city,
+                    country = :country,
+                    last_updated = :timestamp,
+                    lookup_attempted = TRUE
+                """
+                
+                session.execute(text(upsert_query), {
+                    "ip": location.ip,
+                    "lat": location.lat,
+                    "lon": location.lon,
+                    "city": location.city or "Unknown",
+                    "country": location.country or "Unknown",
+                    "timestamp": datetime.now()
+                })
+                
+                session.commit()
+                
+            except Exception as e:
+                logger.error(f"Error updating location for IP {ip}: {str(e)}")
+                session.rollback()
+                
+                # Mark the lookup as attempted even if it failed
+                session.execute(
+                    text("""
+                    INSERT INTO ip_locations (
+                        ip_address, lookup_attempted, last_updated
+                    ) VALUES (
+                        :ip, TRUE, :timestamp
+                    )
+                    ON CONFLICT(ip_address) DO UPDATE SET
+                        lookup_attempted = TRUE,
+                        last_updated = :timestamp
+                    """),
+                    {"ip": ip, "timestamp": datetime.now()}
+                )
+                session.commit()
+                
+    except Exception as e:
+        logger.error(f"Error in update_ip_locations: {str(e)}")
+    finally:
+        session.close()
+
+def get_ip_locations():
+    """
+    Get cached location data from the ip_locations table.
+    This is now a fast database query instead of making API calls.
+    """
+    session = telemetry_session_factory()
+    try:
+        # Only get locations that were successfully looked up
+        query = """
+        SELECT ip_address, latitude, longitude, city, country
+        FROM ip_locations
+        WHERE lookup_attempted = TRUE
+        AND latitude != 0 AND longitude != 0
+        """
+        results = session.execute(text(query)).fetchall()
+        
+        return [{
+            'ip': row[0],
+            'lat': row[1],
+            'lon': row[2],
+            'city': row[3] or 'Unknown',
+            'country': row[4] or 'Unknown'
+        } for row in results]
+        
+    except Exception as e:
+        logger.error(f"Error fetching IP locations: {str(e)}")
+        return []
+    finally:
+        session.close()
+
+# Function to be called by your maintenance scripts
+def maintain_ip_locations(ipstack_api_key: Optional[str] = None):
+    """
+    Maintenance function to be run periodically (e.g., daily cron job)
+    to update IP location data.
+    """
+    initialize_ip_locations_table()
+    update_ip_locations(ipstack_api_key)
 
 def get_client_ip():
     """Get the client's IP address from the request."""
@@ -86,9 +388,9 @@ def fetch_telemetry_data():
     valid_endpoints = "'/','/download','/pgv','/submit','/blast','/wiki','/metrics','/starfish','/about'"
     
     try:
-        # Get unique users count (still count all unique users)
+        # Get unique users count
         unique_users_query = "SELECT COUNT(DISTINCT ip_address) as count FROM request_logs"
-        unique_users = session.execute(unique_users_query).scalar() or 0
+        unique_users = session.execute(text(unique_users_query)).scalar() or 0
 
         # Get time series data for valid endpoints only
         time_series_query = f"""
@@ -98,7 +400,7 @@ def fetch_telemetry_data():
         GROUP BY DATE(timestamp) 
         ORDER BY date
         """
-        time_series_data = session.execute(time_series_query).fetchall()
+        time_series_data = session.execute(text(time_series_query)).fetchall()
         
         # Get endpoint statistics for valid endpoints only
         endpoints_query = f"""
@@ -108,7 +410,7 @@ def fetch_telemetry_data():
         GROUP BY endpoint 
         ORDER BY count DESC
         """
-        endpoints_data = session.execute(endpoints_query).fetchall()
+        endpoints_data = session.execute(text(endpoints_query)).fetchall()
 
         return {
             "unique_users": unique_users,
@@ -119,6 +421,33 @@ def fetch_telemetry_data():
     except Exception as e:
         logger.error(f"Error fetching telemetry data: {str(e)}")
         return None
+    finally:
+        session.close()
+
+def get_cached_locations():
+    """Get locations from the ip_locations table."""
+    session = telemetry_session_factory()
+    try:
+        # Only get successfully looked up locations
+        query = """
+        SELECT ip_address, latitude, longitude, city, country
+        FROM ip_locations
+        WHERE lookup_attempted = TRUE
+        AND latitude != 0 AND longitude != 0
+        """
+        results = session.execute(text(query)).fetchall()
+        
+        return [{
+            'ip': row[0],
+            'lat': row[1],
+            'lon': row[2],
+            'city': row[3] or 'Unknown',
+            'country': row[4] or 'Unknown'
+        } for row in results]
+        
+    except Exception as e:
+        logger.error(f"Error fetching cached locations: {str(e)}")
+        return []
     finally:
         session.close()
 
@@ -223,41 +552,6 @@ def create_endpoints_figure(endpoints_data):
         )
     
     return fig
-def get_ip_locations():
-    """Get location data for IP addresses."""
-    session = telemetry_session_factory()
-    try:
-        # Get unique IP addresses
-        query = "SELECT DISTINCT ip_address FROM request_logs"
-        ip_addresses = session.execute(query).fetchall()
-        
-        # Get location data for each IP
-        locations = []
-        for (ip,) in ip_addresses:
-            try:
-                # Skip localhost/private IPs
-                if ip in ('127.0.0.1', 'localhost') or ip.startswith(('192.168.', '10.', '172.')):
-                    continue
-                    
-                response = DbIpCity.get(ip)
-                locations.append({
-                    'ip': ip,
-                    'lat': response.latitude,
-                    'lon': response.longitude,
-                    'city': response.city,
-                    'country': response.country
-                })
-            except Exception as e:
-                logger.warning(f"Could not get location for IP {ip}: {str(e)}")
-                continue
-                
-        return locations
-        
-    except Exception as e:
-        logger.error(f"Error fetching IP locations: {str(e)}")
-        return []
-    finally:
-        session.close()
 
 def create_map_figure(locations):
     """Create map visualization of user locations."""
@@ -318,41 +612,54 @@ def create_map_figure(locations):
     return fig
 
 
-def analyze_telemetry():
-    """Analyze telemetry data and create visualizations."""    
-    # Fetch data
-    data = fetch_telemetry_data()
-    locations = get_ip_locations()
-    
-    if data is None:
-        empty_fig = go.Figure()
+def analyze_telemetry() -> Dict[str, Any]:
+    """Analyze telemetry data and create visualizations."""
+    try:
+        # Fetch basic telemetry data
+        data = fetch_telemetry_data()
+        if data is None:
+            return {
+                "unique_users": 0,
+                "total_requests": 0,
+                "time_series": go.Figure(),
+                "endpoints": go.Figure(),
+                "map": go.Figure()
+            }
+
+        # Create time series visualization
+        time_series_fig = create_time_series_figure(data["time_series_data"])
+        
+        # Create endpoints visualization
+        endpoints_fig = create_endpoints_figure(data["endpoints_data"])
+        
+        # Get cached locations and create map
+        locations = get_cached_locations()
+        map_fig = create_map_figure(locations)
+        
+        # Calculate total requests
+        total_requests = sum(
+            row[1] for row in data["endpoints_data"] 
+            if row[0] in page_mapping
+        ) if data["endpoints_data"] else 0
+
+        return {
+            "unique_users": data["unique_users"],
+            "total_requests": total_requests,
+            "time_series": time_series_fig,
+            "endpoints": endpoints_fig,
+            "map": map_fig
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in analyze_telemetry: {str(e)}")
         return {
             "unique_users": 0,
             "total_requests": 0,
-            "time_series": empty_fig,
-            "endpoints": empty_fig,
-            "map": empty_fig
+            "time_series": go.Figure(),
+            "endpoints": go.Figure(),
+            "map": go.Figure()
         }
-
-    # Create visualizations
-    time_series_fig = create_time_series_figure(data["time_series_data"])
-    endpoints_fig = create_endpoints_figure(data["endpoints_data"])
-    map_fig = create_map_figure(locations)
     
-    # Calculate total requests only for valid pages
-    total_requests = sum(
-        row[1] for row in data["endpoints_data"] 
-        if row[0] in page_mapping
-    ) if data["endpoints_data"] else 0
-
-    return {
-        "unique_users": data["unique_users"],
-        "total_requests": total_requests,
-        "time_series": time_series_fig,
-        "endpoints": endpoints_fig,
-        "map": map_fig
-    }
-
 def count_blast_submissions(ip_address, hours=1):
     """Count BLAST submissions from an IP address in the last N hours."""
     session = telemetry_session_factory()
