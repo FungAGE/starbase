@@ -102,7 +102,7 @@ layout = dmc.Container(
         # Header Section
         dmc.Paper(
             children=[
-                dmc.Title(["About ",html.Span("starbase", className="logo-text"),], order=1,  mb="md"),
+                dmc.Title(["About ", html.Span("starbase", className="logo-text")], order=1, mb="md"),
                 dmc.Text(
                     [
                         html.Span("starbase", className="logo-text"),
@@ -115,7 +115,6 @@ layout = dmc.Container(
                         ),
                         " in collaboration with the Gluck-Thaler lab.",
                     ],
-                    
                     size="lg",
                 ),
             ],
@@ -128,14 +127,9 @@ layout = dmc.Container(
         # Team Section
         dmc.Paper(
             children=[
-                # dmc.Title("Meet the Team", order=2,  mb="xl"),
                 dmc.SimpleGrid(
-                    cols=3,
+                    cols={"md":3,"sm":1},  # Default number of columns
                     spacing="xl",
-                    # breakpoints=[
-                    #     {"maxWidth": "md", "cols": 2, "spacing": "md"},
-                    #     {"maxWidth": "sm", "cols": 1, "spacing": "sm"},
-                    # ],
                     children=[
                         make_card("aaron"),
                         make_card("adrian"),
@@ -159,7 +153,6 @@ layout = dmc.Container(
                             html.Span("starbase", className="logo-text"),
                             " webserver will soon be available on GitHub",
                         ],
-                        
                         size="lg",
                     ),
                     dmc.Image(
@@ -167,7 +160,7 @@ layout = dmc.Container(
                         fit="contain",
                         className="auto-resize-750",
                     ),
-                ],  gap="xl"),
+                ], gap="xl"),
             ],
             p="xl",
             radius="md",
