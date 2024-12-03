@@ -32,7 +32,7 @@ env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
 
 # Get environment variables with defaults
-IPSTACK_API_KEY = os.getenv('IPSTACK_API_KEY')
+IPSTACK_API_KEY = os.environ.get('IPSTACK_API_KEY') or os.getenv('IPSTACK_API_KEY')
 
 def validate_config():
     """Validate that all required environment variables are set"""
