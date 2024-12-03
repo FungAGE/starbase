@@ -19,7 +19,7 @@ RUN useradd -m -u 1000 $USER
 WORKDIR $HOME/
 
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw cron && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -45,3 +45,18 @@ EXPOSE 8000
 
 # Start the container
 ENTRYPOINT ["./start-script.sh"]
+
+# Add the cron job
+RUN echo "0 * * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
+
+# Give execution rights on the cron job
+RUN chmod 0644 /etc/cron.d/telemetry-cron
+
+# Apply the cron job
+RUN crontab /etc/cron.d/telemetry-cron
+
+# Create the log file to be able to run tail
+RUN touch /var/log/cron.log
+
+# Run the command on container startup
+CMD cron && tail -f /var/log/cron.log
