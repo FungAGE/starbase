@@ -344,7 +344,8 @@ def is_development_ip(ip_address):
     development_ips = {
         '127.0.0.1',      # localhost
         '0.0.0.0',        # all interfaces
-        '::1'             # IPv6 localhost
+        '::1',            # IPv6 localhost
+        '192.168.*'       # local network
     }
     return ip_address in development_ips
 
@@ -392,9 +393,9 @@ def fetch_telemetry_data():
         unique_users_query = "SELECT COUNT(DISTINCT ip_address) as count FROM request_logs"
         unique_users = session.execute(text(unique_users_query)).scalar() or 0
 
-        # Get time series data for valid endpoints only
+        # Get time series data for unique daily visitors
         time_series_query = f"""
-        SELECT DATE(timestamp) as date, COUNT(*) as count 
+        SELECT DATE(timestamp) as date, COUNT(DISTINCT ip_address) as count 
         FROM request_logs 
         WHERE endpoint IN ({valid_endpoints})
         GROUP BY DATE(timestamp) 
@@ -402,9 +403,9 @@ def fetch_telemetry_data():
         """
         time_series_data = session.execute(text(time_series_query)).fetchall()
         
-        # Get endpoint statistics for valid endpoints only
+        # Get unique visitors per endpoint
         endpoints_query = f"""
-        SELECT endpoint, COUNT(*) as count 
+        SELECT endpoint, COUNT(DISTINCT ip_address) as count 
         FROM request_logs 
         WHERE endpoint IN ({valid_endpoints})
         GROUP BY endpoint 
@@ -462,10 +463,9 @@ def create_time_series_figure(time_series_data):
             df,
             x='date', 
             y='count',
-            title="Daily Requests (Last 7 Days)",
-            labels={"date": "Date", "count": "Number of Requests"}
-        )
-        
+            title="Daily Unique Visitors (Last 7 Days)",
+            labels={"date": "Date", "count": "Number of Unique Visitors"}
+        )        
         # Focus on the last 7 days
         if not df.empty:
             end_date = df['date'].max()
@@ -527,10 +527,9 @@ def create_endpoints_figure(endpoints_data):
             fig = px.bar(
                 x=endpoints,
                 y=counts,
-                title="Page Visits",
-                labels={"x": "Page", "y": "Number of Visits"}
-            )
-            
+                title="Unique Visitors per Page",
+                labels={"x": "Page", "y": "Number of Unique Visitors"}
+            )            
             # Customize the layout
             fig.update_layout(
                 xaxis_tickangle=-45,  # Angle the labels for better readability
