@@ -47,7 +47,7 @@ EXPOSE 8000
 ENTRYPOINT ["./start-script.sh"]
 
 # Add the cron job
-RUN echo "0 * * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
+RUN echo "0 0 * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
 
 # Give execution rights on the cron job
 RUN chmod 0644 /etc/cron.d/telemetry-cron
