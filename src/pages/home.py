@@ -1,5 +1,4 @@
 import dash
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import dcc, html
 from dash_iconify import DashIconify
@@ -24,10 +23,11 @@ title = dmc.Paper([
                 fit="contain",
                 radius="md",
                 style={
-                    "minWidth": "80px",
-                    "minHeight": "80px",
-                    "width": "clamp(80px, 8vw, 150px)",
-                    "height": "clamp(80px, 8vw, 150px)",
+                    "minWidth": "120px",
+                    "minHeight": "120px",
+                    "width": "clamp(120px, 8vw, 160px)",
+                    "height": "clamp(120px, 8vw, 160px)",
+                    "flex": "0 0 auto",  # Prevent image from growing/shrinking
                 },
             ),
             dmc.Title(
@@ -41,28 +41,22 @@ title = dmc.Paper([
                 ],
                 order=1,
                 style={
-                    "flexGrow": 1,
                     "fontSize": "clamp(1.2rem, 4vw, 2.5rem)",
-                    "maxWidth": "100%",
                     "color": "white",
                     "textAlign": "left",
-                    "wordBreak": "break-word"
+                    "wordBreak": "break-word",
+                    "flex": "1",  # Allow title to take remaining space
                 }
             ),
         ],
-        pos="center",
-        align="flex-start",
-        gap="md",
-        grow=True,
+        className="responsive-group",
         style={
-            "flexWrap": "wrap",
             "width": "100%",
             "maxWidth": "1400px",
             "margin": "0 auto",
-            "padding": "clamp(1rem, 2vw, 2rem)"
+            "padding": "clamp(1rem, 2vw, 2rem)",
         }
-    )
-], 
+    )], 
     shadow="sm",
     p={
         "base": "md",
@@ -73,9 +67,9 @@ title = dmc.Paper([
     style={
         "backgroundColor": "#2C2E33",
         "marginBottom": "2rem",
-    }
+    },
+    className="responsive-group"
 )
-
 
 working = {
     "wiki": "Catalogue/Wiki of Starship Metadata",
