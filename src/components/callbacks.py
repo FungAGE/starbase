@@ -40,13 +40,13 @@ download_ships_button = dmc.Anchor(
                         gap=0,
                         style={
                             "whiteSpace": "normal",
-                            "textAlign": "left",
+                            "textAlign": "center",
                             "lineHeight": "1.2",
                         }
                     ),
                 ],
                 gap="xs",
-                style={"flexWrap": "nowrap"}
+                style={"flexWrap": "nowrap", "justifyContent": "center"}
             ),
         ],
         id="navigate-to-download-btn",
@@ -64,7 +64,7 @@ download_ships_button = dmc.Anchor(
                 "padding": "1rem",
             },
             "inner": {
-                "justifyContent": "flex-start",
+                "justifyContent": "center",
             }
         }
     ),
