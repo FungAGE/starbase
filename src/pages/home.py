@@ -1,5 +1,4 @@
 import dash
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import dcc, html
 from dash_iconify import DashIconify
@@ -24,10 +23,10 @@ title = dmc.Paper([
                 fit="contain",
                 radius="md",
                 style={
-                    "minWidth": "80px",
-                    "minHeight": "80px",
-                    "width": "clamp(80px, 8vw, 150px)",
-                    "height": "clamp(80px, 8vw, 150px)",
+                    "minWidth": "120px",
+                    "minHeight": "120px",
+                    "width": "clamp(120px, 8vw, 160px)",
+                    "height": "clamp(120px, 8vw, 160px)",
                 },
             ),
             dmc.Title(
@@ -55,14 +54,16 @@ title = dmc.Paper([
         gap="md",
         grow=True,
         style={
+            "display": "flex",
+            "flexDirection": "row",
             "flexWrap": "wrap",
             "width": "100%",
             "maxWidth": "1400px",
             "margin": "0 auto",
             "padding": "clamp(1rem, 2vw, 2rem)"
-        }
-    )
-], 
+        },
+        className="responsive-group"
+    )], 
     shadow="sm",
     p={
         "base": "md",
@@ -73,8 +74,7 @@ title = dmc.Paper([
     style={
         "backgroundColor": "#2C2E33",
         "marginBottom": "2rem",
-    }
-)
+    })
 
 
 working = {

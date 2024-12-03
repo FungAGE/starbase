@@ -223,3 +223,16 @@
 .explore-card-text {
   margin: auto;
 }
+
+.responsive-group {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+@media (max-width: 768px) {
+    .responsive-group {
+        flex-direction: column; /* Switch to column for smaller screens */
+    }
+}
