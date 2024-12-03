@@ -34,6 +34,19 @@ RUN chmod +x start-script.sh
 # Run precomputation after code is available
 RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
 
+# Add the cron job
+RUN echo "0 0 * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
+
+# Give execution rights on the cron job
+RUN chmod 0644 /etc/cron.d/telemetry-cron
+
+# Apply the cron job
+RUN crontab /etc/cron.d/telemetry-cron
+
+# Create the log file
+RUN touch /var/log/cron.log && \
+    chmod 666 /var/log/cron.log
+
 # Change permissions for user
 RUN chown -R $USER:$USER $HOME
 
@@ -46,17 +59,5 @@ EXPOSE 8000
 # Start the container
 ENTRYPOINT ["./start-script.sh"]
 
-# Add the cron job
-RUN echo "0 0 * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
-
-# Give execution rights on the cron job
-RUN chmod 0644 /etc/cron.d/telemetry-cron
-
-# Apply the cron job
-RUN crontab /etc/cron.d/telemetry-cron
-
-# Create the log file to be able to run tail
-RUN touch /var/log/cron.log
-
-# Run the command on container startup
+# Run cron and tail the log
 CMD cron && tail -f /var/log/cron.log
