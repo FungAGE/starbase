@@ -49,16 +49,23 @@
   height: auto;
 }
 
-/* Responsive group layout */
+/* Responsive layout for title group */
 .responsive-group {
     display: flex;
     flex-direction: row;
-    align-items: flex-start;
-    gap: 1rem;
+    align-items: center;
+    gap: 2rem;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
     .responsive-group {
-        flex-direction: column;
+        flex-direction: column !important;
+        align-items: center !important;
+        text-align: center !important;
+        gap: 1rem !important;
+    }
+    
+    .responsive-group .mantine-Title-root {
+        text-align: center !important;
     }
 }

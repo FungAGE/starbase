@@ -27,6 +27,7 @@ title = dmc.Paper([
                     "minHeight": "120px",
                     "width": "clamp(120px, 8vw, 160px)",
                     "height": "clamp(120px, 8vw, 160px)",
+                    "flex": "0 0 auto",  # Prevent image from growing/shrinking
                 },
             ),
             dmc.Title(
@@ -40,29 +41,21 @@ title = dmc.Paper([
                 ],
                 order=1,
                 style={
-                    "flexGrow": 1,
                     "fontSize": "clamp(1.2rem, 4vw, 2.5rem)",
-                    "maxWidth": "100%",
                     "color": "white",
                     "textAlign": "left",
-                    "wordBreak": "break-word"
+                    "wordBreak": "break-word",
+                    "flex": "1",  # Allow title to take remaining space
                 }
             ),
         ],
-        pos="center",
-        align="flex-start",
-        gap="md",
-        grow=True,
+        className="responsive-group",
         style={
-            "display": "flex",
-            "flexDirection": "row",
-            "flexWrap": "wrap",
             "width": "100%",
             "maxWidth": "1400px",
             "margin": "0 auto",
-            "padding": "clamp(1rem, 2vw, 2rem)"
-        },
-        className="responsive-group"
+            "padding": "clamp(1rem, 2vw, 2rem)",
+        }
     )], 
     shadow="sm",
     p={
@@ -74,8 +67,9 @@ title = dmc.Paper([
     style={
         "backgroundColor": "#2C2E33",
         "marginBottom": "2rem",
-    })
-
+    },
+    className="responsive-group"
+)
 
 working = {
     "wiki": "Catalogue/Wiki of Starship Metadata",
