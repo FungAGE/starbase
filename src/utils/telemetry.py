@@ -234,9 +234,19 @@ def update_ip_locations(ipstack_api_key: Optional[str] = None):
         new_ips = session.execute(text(query)).fetchall()
         
         for (ip,) in new_ips:
+            # Skip private IPs entirely
+            if geolocator.is_private_ip(ip):
+                logger.debug(f"Skipping private IP: {ip}")
+                continue
+                
             try:
                 # Get location data
                 location = geolocator.get_location(ip, ipstack_api_key)
+                
+                # Skip if we got an empty location
+                if location.lat == 0 and location.lon == 0:
+                    logger.debug(f"Skipping IP with no location data: {ip}")
+                    continue
                 
                 # Insert or update the location data
                 upsert_query = """
@@ -270,22 +280,6 @@ def update_ip_locations(ipstack_api_key: Optional[str] = None):
             except Exception as e:
                 logger.error(f"Error updating location for IP {ip}: {str(e)}")
                 session.rollback()
-                
-                # Mark the lookup as attempted even if it failed
-                session.execute(
-                    text("""
-                    INSERT INTO ip_locations (
-                        ip_address, lookup_attempted, last_updated
-                    ) VALUES (
-                        :ip, TRUE, :timestamp
-                    )
-                    ON CONFLICT(ip_address) DO UPDATE SET
-                        lookup_attempted = TRUE,
-                        last_updated = :timestamp
-                    """),
-                    {"ip": ip, "timestamp": datetime.now()}
-                )
-                session.commit()
                 
     except Exception as e:
         logger.error(f"Error in update_ip_locations: {str(e)}")
@@ -344,10 +338,36 @@ def is_development_ip(ip_address):
     development_ips = {
         '127.0.0.1',      # localhost
         '0.0.0.0',        # all interfaces
-        '::1',            # IPv6 localhost
-        '192.168.*'       # local network
+        '::1'             # IPv6 localhost
     }
-    return ip_address in development_ips
+    
+    # Check exact matches first
+    if ip_address in development_ips:
+        return True
+        
+    # Check for local network ranges
+    local_prefixes = (
+        '192.168.',
+        '10.',
+        '172.16.',
+        '172.17.',
+        '172.18.',
+        '172.19.',
+        '172.20.',
+        '172.21.',
+        '172.22.',
+        '172.23.',
+        '172.24.',
+        '172.25.',
+        '172.26.',
+        '172.27.',
+        '172.28.',
+        '172.29.',
+        '172.30.',
+        '172.31.'
+    )
+    
+    return any(ip_address.startswith(prefix) for prefix in local_prefixes)
 
 
 # use the telemetry_engine to log request_logs
@@ -389,8 +409,19 @@ def fetch_telemetry_data():
     valid_endpoints = "'/','/download','/pgv','/submit','/blast','/wiki','/metrics','/starfish','/about'"
     
     try:
-        # Get unique users count
-        unique_users_query = "SELECT COUNT(DISTINCT ip_address) as count FROM request_logs"
+        # Get unique users count, excluding private IPs
+        unique_users_query = """
+        SELECT COUNT(DISTINCT r.ip_address) as count 
+        FROM request_logs r
+        WHERE r.ip_address NOT LIKE '192.168.%'
+        AND r.ip_address NOT LIKE '10.%'
+        AND r.ip_address NOT LIKE '172.1_%'
+        AND r.ip_address NOT LIKE '172.2_%'
+        AND r.ip_address NOT LIKE '172.3_%'
+        AND r.ip_address != '127.0.0.1'
+        AND r.ip_address != 'localhost'
+        AND r.ip_address != '::1'
+        """
         unique_users = session.execute(text(unique_users_query)).scalar() or 0
 
         # Get time series data for unique daily visitors
@@ -398,6 +429,14 @@ def fetch_telemetry_data():
         SELECT DATE(timestamp) as date, COUNT(DISTINCT ip_address) as count 
         FROM request_logs 
         WHERE endpoint IN ({valid_endpoints})
+        AND ip_address NOT LIKE '192.168.%'
+        AND ip_address NOT LIKE '10.%'
+        AND ip_address NOT LIKE '172.1_%'
+        AND ip_address NOT LIKE '172.2_%'
+        AND ip_address NOT LIKE '172.3_%'
+        AND ip_address != '127.0.0.1'
+        AND ip_address != 'localhost'
+        AND ip_address != '::1'
         GROUP BY DATE(timestamp) 
         ORDER BY date
         """
@@ -408,6 +447,14 @@ def fetch_telemetry_data():
         SELECT endpoint, COUNT(DISTINCT ip_address) as count 
         FROM request_logs 
         WHERE endpoint IN ({valid_endpoints})
+        AND ip_address NOT LIKE '192.168.%'
+        AND ip_address NOT LIKE '10.%'
+        AND ip_address NOT LIKE '172.1_%'
+        AND ip_address NOT LIKE '172.2_%'
+        AND ip_address NOT LIKE '172.3_%'
+        AND ip_address != '127.0.0.1'
+        AND ip_address != 'localhost'
+        AND ip_address != '::1'
         GROUP BY endpoint 
         ORDER BY count DESC
         """
