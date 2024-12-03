@@ -1,11 +1,16 @@
 # Select base image
 FROM python:3.9
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
-LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring large transposable elements in Fungi"
+LABEL org.opencontainers.image.description="STARBASE is a database and toolkit for exploring large transposable elements in Fungi"
 
-# Create variables for user name, home directory, and placeholders 
+ARG IPSTACK_API_KEY
+ARG MAINTENANCE_TOKEN
+
+# Create variables for user name, home directory, and secrets
 ENV USER=starbase
 ENV HOME=/home/$USER
+ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
+ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
 
 # Add user to system
 RUN useradd -m -u 1000 $USER
