@@ -1,7 +1,4 @@
-from dotenv import load_dotenv
 import os
-
-load_dotenv("env")
 
 HOME_URL = os.getenv("HOME_URL")
 WIKI_URL = os.getenv("WIKI_URL")
