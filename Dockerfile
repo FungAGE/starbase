@@ -32,7 +32,7 @@ COPY ./ ./
 RUN chmod +x start-script.sh
 
 # Run precomputation after code is available
-RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
+# RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
 
 # Add the cron job
 RUN echo "0 0 * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
