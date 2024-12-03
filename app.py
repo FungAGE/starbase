@@ -14,7 +14,7 @@ import secrets
 import os
 
 from src.components import navmenu
-from src.utils.telemetry import log_request, get_client_ip, is_development_ip
+from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.components.sql_manager import refresh_cache
 
 
@@ -90,6 +90,10 @@ def before_request_func():
     # Log requests only if not a development IP
     if not is_development_ip(get_client_ip()):
         log_request(get_client_ip(), request.path)
+
+@app.server.before_first_request
+def initialize_telemetry():
+    maintain_ip_locations()
 
 # Create a secure token for the maintenance endpoint
 MAINTENANCE_TOKEN = os.getenv('MAINTENANCE_TOKEN', secrets.token_urlsafe(32))
