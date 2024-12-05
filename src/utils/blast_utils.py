@@ -18,7 +18,7 @@ from Bio.Blast.Applications import (
 from Bio import SearchIO
 
 from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
-from src.utils.blastdb import blast_db_exists, create_dbs
+from src.database.blastdb import blast_db_exists, create_dbs
 from src.components.tables import make_ship_blast_table
 
 import logging

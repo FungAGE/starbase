@@ -3,20 +3,21 @@ import os
 import glob
 import logging
 
-from src.components.sql_engine import db_dir
+from src.config.cache import cache
+from src.config.database import DB_PATHS
 
 logger = logging.getLogger(__name__)
 
 
 db_list = {
-    "ship": {"nucl": f"{db_dir}/ships/fna/blastdb/ships.fa"},
+    "ship": {"nucl": f"{DB_PATHS['starbase']}/ships/fna/blastdb/ships.fa"},
     "gene": {
         "tyr": {
-            "nucl": f"{db_dir}/captain/tyr/fna/blastdb/captains.fna",
-            "prot": f"{db_dir}/captain/tyr/faa/blastdb/captains.faa",
+            "nucl": f"{DB_PATHS['starbase']}/captain/tyr/fna/blastdb/captains.fna",
+            "prot": f"{DB_PATHS['starbase']}/captain/tyr/faa/blastdb/captains.faa",
             "hmm": {
-                "nucl": f"{db_dir}/captain/tyr/fna/hmm/combined.hmm",
-                "prot": f"{db_dir}/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": f"{DB_PATHS['starbase']}/captain/tyr/fna/hmm/combined.hmm",
+                "prot": f"{DB_PATHS['starbase']}/captain/tyr/faa/hmm/combined.hmm",
             },
         },
     },
@@ -68,8 +69,8 @@ def blast_db_exists(blastdb):
 
 
 def create_dbs():
-    from src.components.sql_manager import load_from_cache
-    from src.components.sql_manager import fetch_all_captains, fetch_all_ships
+    
+    from src.database.sql_manager import fetch_all_captains, fetch_all_ships
 
     # Create BLAST database for ships
     ship_fasta_path = db_list["ship"]["nucl"]
@@ -77,7 +78,7 @@ def create_dbs():
     os.makedirs(ship_fasta_dir, exist_ok=True)  # Create directory if it doesn't exist
 
     ship_sequences_list = []
-    ship_sequences = load_from_cache("all_ships")
+    ship_sequences = cache.get("all_ships")
     if ship_sequences is None:
         ship_sequences = fetch_all_ships()
 
@@ -98,7 +99,7 @@ def create_dbs():
     )  # Create directory if it doesn't exist
 
     captain_sequences_list = []
-    captain_sequences = load_from_cache("all_captains")
+    captain_sequences = cache.get("all_captains")
     if captain_sequences is None:
         captain_sequences = fetch_all_captains()
 

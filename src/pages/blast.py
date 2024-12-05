@@ -17,7 +17,7 @@ import plotly.graph_objects as go
 import logging
 
 
-from src.components.cache import cache
+from src.config.cache import cache
 from src.utils.seq_utils import ( guess_seq_type,
     check_input,
     write_temp_fasta,
@@ -45,9 +45,9 @@ from src.utils.blast_utils import (
 )
 from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
-from src.components.sql_manager import load_from_cache
-from src.components.sql_manager import fetch_meta_data
-from src.utils.blastdb import db_list
+
+from src.database.sql_manager import fetch_meta_data
+from src.database.blastdb import db_list
 
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
 
@@ -524,7 +524,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
             blast_results_df = pd.DataFrame(blast_results_dict)
 
             # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
-            initial_df = load_from_cache("meta_data")
+            initial_df = cache.get("meta_data")
 
             if initial_df is None:
                 initial_df = fetch_meta_data(curated)

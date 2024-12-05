@@ -6,14 +6,14 @@ import logging
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
-from src.components.sql_engine import sql_connected
-from src.components.sql_manager import get_database_stats
+from src.database.sql_engine import check_database_connection
+from src.database.sql_manager import get_database_stats
 
 logger = logging.getLogger(__name__)
 
 dash.register_page(__name__, title="starbase Home", name="Home", path="/")
 
-logger.info(f"sql_connected? {sql_connected}")
+is_connected = check_database_connection()
 
 title = dmc.Paper([
     dmc.Group(
@@ -87,16 +87,16 @@ def create_feature_button(label, href, icon):
             size="lg",
             radius="md",
             fullWidth=True,
-            disabled=not sql_connected,
+            disabled=not is_connected,
         ),
         href=href,
         style={"textDecoration": "none"},  # Remove underline from link
     )
 
 working_buttons = [
-    create_feature_button("Search Database", "/search", "mdi:database-search"),
     create_feature_button("BLAST Search", "/blast", "mdi:dna"),
     create_feature_button("Browse Wiki", "/wiki", "mdi:book-open-variant"),
+    create_feature_button("Submit to Starbase", "/submit", "mdi:database-plus"),
 ]
 
 not_working = [
@@ -256,7 +256,7 @@ def create_publications_section():
     ], size="xl", py="xl",flex=True)
 
 def create_stats_section():
-    stats = get_database_stats() if sql_connected else {
+    stats = get_database_stats() if is_connected else {
         "curated_starships": "—",
         "uncurated_starships": "—",
         "species_count": "—",
@@ -306,7 +306,11 @@ def create_stats_section():
                 ),
             ], p="xl", radius="md", shadow="sm", withBorder=True),
         ], 
-        cols=1,
+        cols={
+            "base": 1,
+            "sm": 2,
+            "md": 3,
+        },
         spacing="lg"
         ),
     ], size="xl", py="xl")
@@ -326,7 +330,7 @@ layout = dmc.MantineProvider([
         message="Many features will be disabled until connection is re-established.",
         c="red",
         style={"position": "fixed", "top": 20, "right": 20}
-    ) if not sql_connected else None,
+    ) if not is_connected else None,
 ], 
 theme={
     "colorScheme": "light",

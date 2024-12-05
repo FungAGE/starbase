@@ -25,7 +25,7 @@ from sqlalchemy import text
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
-from src.components.sql_engine import telemetry_session_factory, telemetry_connected
+from src.config.database import TelemetrySession
 
 # Load environment variables from .env file
 env_path = Path('.') / '.env'
@@ -79,7 +79,7 @@ class LocationInfo:
 
 def initialize_ip_locations_table():
     """Create the ip_locations table if it doesn't exist."""
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     try:
         session.execute(text(IP_LOCATIONS_TABLE_SQL))
         session.commit()
@@ -219,7 +219,7 @@ def update_ip_locations(ipstack_api_key: Optional[str] = None):
     Update locations for any new IPs in request_logs that aren't in ip_locations.
     This should be run periodically (e.g., daily) rather than on every app launch.
     """
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     geolocator = GeolocatorService()
     
     try:
@@ -291,7 +291,7 @@ def get_ip_locations():
     Get cached location data from the ip_locations table.
     This is now a fast database query instead of making API calls.
     """
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     try:
         # Only get locations that were successfully looked up
         query = """
@@ -373,14 +373,14 @@ def is_development_ip(ip_address):
 # use the telemetry_engine to log request_logs
 def log_request(ip_address, endpoint):
     """Log request details to telemetry database."""
-    if not telemetry_connected or is_development_ip(ip_address):
+    if is_development_ip(ip_address):
         return
         
     # Only log BLAST endpoints
     if endpoint != '/api/blast-submit':
         return
     
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     try:
         query = """
         INSERT INTO request_logs (ip_address, endpoint, timestamp)
@@ -403,7 +403,7 @@ def log_request(ip_address, endpoint):
 
 def fetch_telemetry_data():
     """Fetch telemetry data from the database."""
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     
     # Define valid pages as a comma-separated string of quoted values
     valid_endpoints = "'/','/download','/pgv','/submit','/blast','/wiki','/metrics','/starfish','/about'"
@@ -474,7 +474,7 @@ def fetch_telemetry_data():
 
 def get_cached_locations():
     """Get locations from the ip_locations table."""
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     try:
         # Only get successfully looked up locations
         query = """
@@ -708,7 +708,7 @@ def analyze_telemetry() -> Dict[str, Any]:
     
 def count_blast_submissions(ip_address, hours=1):
     """Count BLAST submissions from an IP address in the last N hours."""
-    session = telemetry_session_factory()
+    session = TelemetrySession()
     try:
         query = """
         SELECT COUNT(*) as count 

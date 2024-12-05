@@ -6,8 +6,9 @@ from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 
-from src.components.sql_manager import load_from_cache
-from src.components.sql_manager import fetch_paper_data
+
+from src.config.cache import cache
+from src.database.sql_manager import fetch_paper_data
 
 
 def truncate_string(s, length=40):
@@ -103,7 +104,7 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
 
 
 def make_paper_table():
-    df = load_from_cache("paper_data")
+    df = cache.get("paper_data")
     if df is None:
         df = fetch_paper_data()
     if df is not None:

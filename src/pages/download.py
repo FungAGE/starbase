@@ -6,9 +6,9 @@ from dash_iconify import DashIconify
 import pandas as pd
 
 from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback, dereplicated_switch
-from src.components.cache import cache
-from src.components.sql_manager import load_from_cache
-from src.components.sql_manager import fetch_download_data, fetch_all_ships
+from src.config.cache import cache
+
+from src.database.sql_manager import fetch_download_data, fetch_all_ships
 from src.components.tables import make_dl_table
 import logging
 
@@ -223,7 +223,7 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
         table_df = pd.DataFrame(table_data)
         
         # Get all ships data first
-        df = load_from_cache("all_ships")
+        df = cache.get("all_ships")
         if df is None:
             df = fetch_all_ships()
             
