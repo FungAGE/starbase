@@ -21,7 +21,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.components.cache import cache
-from src.components.sql_manager import load_from_cache, fetch_meta_data
+from src.components.sql_manager import fetch_meta_data
 from src.components.sql_manager import (
     fetch_meta_data,
     cache_sunburst_plot,
@@ -144,15 +144,20 @@ modal = dmc.Modal(
 
 def load_initial_data():
     """Load initial data for the page"""
-    meta_data = load_from_cache("meta_data")
-    if meta_data is None:
-        # Fallback to fetching directly if not in cache
-        meta_data = fetch_meta_data()
-        dcc.Store(id="filtered-meta-data"),
-    # Convert DataFrame to dictionary before storing
-    if isinstance(meta_data, pd.DataFrame):
-        return meta_data.to_dict('records')
-    return meta_data
+    try:
+        meta_data = cache.get("meta_data")
+        if meta_data is None:
+            logger.debug("Cache miss for meta_data, fetching from database")
+            meta_data = fetch_meta_data()
+            if meta_data is not None:
+                cache.set("meta_data", meta_data)
+        
+        if isinstance(meta_data, pd.DataFrame):
+            return meta_data.to_dict('records')
+        return meta_data
+    except Exception as e:
+        logger.error(f"Error loading initial data: {str(e)}")
+        return None
 
 layout = dmc.Container(
     fluid=True,
@@ -366,28 +371,27 @@ layout = dmc.Container(
 @cache.memoize()
 @callback(Output("meta-data", "data"), Input("url", "href"))
 def load_meta_data(url):
-    if url:
-        try:
-            logger.debug("Loading metadata from database.")
-            meta_df = load_from_cache("meta_data")
-            if meta_df is None:
-                meta_df = fetch_meta_data()
-            logger.info(f"Metadata query returned {len(meta_df)} rows.")
-
-            # Clean 'contigID' column if present
-            if "contigID" in meta_df.columns:
-                meta_df["contigID"] = meta_df["contigID"].apply(clean_contigIDs)
-                logger.debug("Cleaned contigID column in the metadata.")
-
-            return meta_df.to_dict("records")
-        except SQLAlchemyError as e:
-            logger.error(
-                "Error occurred while executing the metadata query.", exc_info=True
-            )
+    if not url:
+        raise PreventUpdate
+    
+    try:
+        meta_data = cache.get("meta_data")
+        if meta_data is None:
+            meta_data = fetch_meta_data()
+            if meta_data is not None:
+                cache.set("meta_data", meta_data)
+                
+        if meta_data is None:
+            logger.error("Failed to fetch metadata")
             return []
-
-    logger.warning("No URL provided for metadata loading.")
-    raise PreventUpdate  # Skip the update if no URL is provided
+            
+        if "contigID" in meta_data.columns:
+            meta_data["contigID"] = meta_data["contigID"].apply(clean_contigIDs)
+            
+        return meta_data.to_dict("records")
+    except Exception as e:
+        logger.error(f"Error loading meta data: {str(e)}")
+        return []
 
 
 # Callback to load paper data
@@ -397,7 +401,7 @@ def load_paper_data(url):
     if url:
         try:
             logger.debug("Loading paper data from database.")
-            paper_df = load_from_cache("paper_data")
+            paper_df = cache.get("paper_data")
             if paper_df is None:
                 paper_df = fetch_paper_data()
             logger.info(f"Paper data query returned {len(paper_df)} rows.")
@@ -564,7 +568,6 @@ def create_search_results(filtered_meta, cached_meta):
         )
 
 
-# Callback to create sidebar content
 @callback(
     [
         Output("sidebar", "children"),
@@ -576,49 +579,42 @@ def create_search_results(filtered_meta, cached_meta):
 )
 def create_sidebar(active_item, cached_meta):
     if active_item is None or cached_meta is None:
-        logger.warning("No active item or meta data provided.")
         raise PreventUpdate
     
     try:
         title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
         
-        # Load or create sunburst plot
-        sunburst_figure = load_from_cache(f"sunburst_{active_item}")
+        df = pd.DataFrame(cached_meta)
+        filtered_df = df[df["familyName"] == active_item]
+        sunburst_figure = cache_sunburst_plot(
+            family=active_item, 
+            df=filtered_df
+        )
+        
         if sunburst_figure is None:
-            df = pd.DataFrame(cached_meta)
-            filtered_df = df[df["familyName"] == active_item]
-            sunburst_figure = cache_sunburst_plot(
-                family=active_item, df=filtered_df
-            )
+            return dmc.Text("No data available", size="lg", c="dimmed"), title, active_item
         
         # Make the plot responsive
         sunburst_figure.update_layout(
             autosize=True,
-            margin=dict(l=0, r=0, t=30, b=0),  # Reduce margins
-            height=None,  # Allow height to be determined by container
+            margin=dict(l=0, r=0, t=30, b=0),
+            height=None,
         )
 
         fig = dcc.Graph(
             figure=sunburst_figure,
-            style={
-                "width": "100%",
-                "height": "100%"
-            },
+            style={"width": "100%", "height": "100%"},
             config={
                 'responsive': True,
-                'displayModeBar': False,  # Hide the mode bar for cleaner mobile view
-                'scrollZoom': False  # Disable scroll zoom on mobile
+                'displayModeBar': False,
+                'scrollZoom': False
             }
         )
 
         return fig, title, active_item
     except Exception as e:
-        logger.error(
-            f"Error occurred while creating the sidebar for {active_item}.",
-            exc_info=True,
-        )
+        logger.error(f"Error in create_sidebar: {str(e)}")
         raise
-
 
 toggle_modal = create_modal_callback(
     "wiki-table",
@@ -628,26 +624,36 @@ toggle_modal = create_modal_callback(
 )
 
 # Add this cache decorator for common filter combinations
-@lru_cache(maxsize=128)
-def get_filtered_options(taxonomy_tuple, family_tuple, navis_tuple, haplotype_tuple, data_hash):
+@cache.memoize()
+def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None):
     """Cache-friendly version of option filtering"""
-    df = pd.DataFrame(pickle.loads(data_hash))
-    
-    if taxonomy_tuple:
-        df = df[df["genus"].isin(taxonomy_tuple)]
-    if family_tuple:
-        df = df[df["familyName"].isin(family_tuple)]
-    if navis_tuple:
-        df = df[df["starship_navis"].isin(navis_tuple)]
-    if haplotype_tuple:
-        df = df[df["starship_haplotype"].isin(haplotype_tuple)]
-    
-    return {
-        "taxonomy": sorted(df["genus"].dropna().unique()),
-        "family": sorted(df["familyName"].dropna().unique()),
-        "navis": sorted(df["starship_navis"].dropna().unique()),
-        "haplotype": sorted(df["starship_haplotype"].dropna().unique())
-    }
+    try:
+        meta_data = cache.get("meta_data")
+        if meta_data is None:
+            meta_data = fetch_meta_data()
+            
+        df = pd.DataFrame(meta_data)
+        
+        if taxonomy:
+            df = df[df["genus"].isin(taxonomy)]
+        if family:
+            df = df[df["familyName"].isin(family)]
+        if navis:
+            df = df[df["starship_navis"].isin(navis)]
+        if haplotype:
+            df = df[df["starship_haplotype"].isin(haplotype)]
+        
+        return {
+            "taxonomy": sorted(df["genus"].dropna().unique()),
+            "family": sorted(df["familyName"].dropna().unique()),
+            "navis": sorted(df["starship_navis"].dropna().unique()),
+            "haplotype": sorted(df["starship_haplotype"].dropna().unique())
+        }
+    except Exception as e:
+        logger.error(f"Error in get_filtered_options: {str(e)}")
+        return {
+            "taxonomy": [], "family": [], "navis": [], "haplotype": []
+        }
 
 @callback(
     [

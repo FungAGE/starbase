@@ -1,14 +1,12 @@
 from dash import html, Output, Input, State, callback, no_update
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
 import logging
-import pandas as pd
 import traceback
 
+from src.components.cache import cache
 from src.components.sql_engine import sql_connected
-from src.components.sql_manager import load_from_cache
 from src.components.sql_manager import fetch_meta_data
 
 logger = logging.getLogger(__name__)
@@ -247,7 +245,7 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             logger.debug(f"Table accessions: {[row['accession_tag'] for row in data_to_use[:5]]}")
             
             # Debug the cache data
-            initial_df = load_from_cache("meta_data")
+            initial_df = cache.get("meta_data")
             if initial_df is not None:
                 logger.debug(f"Cache accessions: {initial_df['accession_tag'].head().tolist()}")
             else:
