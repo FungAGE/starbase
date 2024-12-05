@@ -71,8 +71,6 @@ def create_sunburst_plot(df, type, title_switch=True):
         template="plotly_white",
         font_family="Arial, sans-serif",
         autosize=True,
-        width=800,
-        height=800,
         showlegend=True,
         title={
             "text": config["title"] if title_switch else None,
@@ -82,7 +80,13 @@ def create_sunburst_plot(df, type, title_switch=True):
             "yanchor": "top",
             "font": {"size": 24}
         },
-        margin=dict(t=50, l=0, r=0, b=0),
+        margin=dict(
+            t=30,
+            l=10,
+            r=10,
+            b=10,
+            pad=4
+        ),
         transition={
             "duration": 500,
             "easing": "cubic-in-out"

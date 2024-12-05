@@ -2,7 +2,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, dash_table, callback, no_update
+from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
@@ -10,11 +10,7 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
-from dash.long_callback import DiskcacheLongCallbackManager
-from functools import lru_cache
-
 import pandas as pd
-import pickle
 import os
 import logging
 
@@ -30,7 +26,7 @@ from src.components.sql_manager import (
 from src.components.tables import make_ship_table, make_wiki_table
 from src.utils.plot_utils import make_logo
 from src.utils.seq_utils import clean_contigIDs
-from src.components.callbacks import create_accession_modal, create_modal_callback
+from src.components.callbacks import create_modal_callback
 
 dash.register_page(__name__)
 
@@ -162,14 +158,14 @@ def load_initial_data():
 layout = dmc.Container(
     fluid=True,
     children=[
+        modal,
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="meta-data", data=load_initial_data()),
         dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
-        dcc.Store(id="active-item-cache"),
         
         # Header Section
-        dmc.Space(h=20),
+        dmc.Space(h="md"),
         dmc.Paper(
             children=[
                 dmc.Title(
@@ -293,22 +289,33 @@ layout = dmc.Container(
                             withBorder=True,
                             mb="xl",
                         ),
+                        dmc.Paper(
+                            children=[
+                                dmc.Title("Taxonomic Distribution", order=3, mb="md"),
+                                dcc.Loading(
+                                    id="search-sunburst-loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="search-sunburst-plot",
+                                        style={
+                                            "width": "100%",
+                                            "height": "400px",
+                                        }
+                                    ),
+                                ),
+                            ],
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            mb="xl",
+                        ),
                     ]),
                 # Right Column - Search Results
                 dmc.GridCol(
                     span={"lg": 8, "md": 12},
-                    children=html.Div(id="search-results")
-                )
-            ],
-        ),
-        dmc.Space(h=20),
-        # Main Content Grid
-        dmc.Grid(
-            children=[
-                # Left Column - Family Selector
-                dmc.GridCol(
-                    span={"lg": 4, "md": 12},
                     children=[
+                        html.Div(id="search-results"),
+                        dmc.Space(h="md"),
                         dmc.Paper(
                             children=[
                                 dmc.Title("Starship Families", order=2, mb="md"),
@@ -326,43 +333,9 @@ layout = dmc.Container(
                             withBorder=True,
                             style={"height": "calc(100vh - 200px)", "overflowY": "auto"},
                         ),
-                    ],
-                ),
-                
-                # Right Column - Family Details
-                dmc.GridCol(
-                    span={"lg": 8, "md": 12},
-                    children=[                       
-                        # Content for selected family
-                        dmc.Paper(
-                            children=[
-                                dcc.Loading(
-                                    id="sidebar-loading",
-                                    type="circle",
-                                    children=dmc.Stack([
-                                        # Sunburst Plot
-                                        html.Div(id="sidebar-title"),
-                                        modal,
-                                        html.Div(
-                                            id="sidebar",
-                                            style={
-                                                "width": "100%",
-                                                "minHeight": "400px",
-                                                "maxHeight": "calc(100vh - 300px)",
-                                                "overflow": "auto",
-                                            },
-                                        ),
-                                    ], gap=3),
-                                ),
-                            ],
-                            p="md",
-                            radius="md",
-                            withBorder=True,
-                        ),
-                    ],
-                ),
+                    ]
+                )
             ],
-            gutter="xl",
         ),
     ],
 )
@@ -456,7 +429,7 @@ def create_accordion(cached_meta, cached_papers):
             children=accordion_items,
             id="category-accordion",
             always_open=False,
-            active_item="Prometheus",
+            active_item=[],
         )
     except Exception as e:
         logger.error("Error occurred while creating the accordion.", exc_info=True)
@@ -568,53 +541,53 @@ def create_search_results(filtered_meta, cached_meta):
         )
 
 
-@callback(
-    [
-        Output("sidebar", "children"),
-        Output("sidebar-title", "children"),
-        Output("active-item-cache", "value"),
-    ],
-    Input("category-accordion", "active_item"),
-    State("meta-data", "data"),
-)
-def create_sidebar(active_item, cached_meta):
-    if active_item is None or cached_meta is None:
-        raise PreventUpdate
+# @callback(
+#     [
+#         Output("sidebar", "children"),
+#         Output("sidebar-title", "children"),
+#         Output("active-item-cache", "value"),
+#     ],
+#     Input("category-accordion", "active_item"),
+#     State("meta-data", "data"),
+# )
+# def create_sidebar(active_item, cached_meta):
+#     if active_item is None or cached_meta is None:
+#         raise PreventUpdate
     
-    try:
-        title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
+#     try:
+#         title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
         
-        df = pd.DataFrame(cached_meta)
-        filtered_df = df[df["familyName"] == active_item]
-        sunburst_figure = cache_sunburst_plot(
-            family=active_item, 
-            df=filtered_df
-        )
+#         df = pd.DataFrame(cached_meta)
+#         filtered_df = df[df["familyName"] == active_item]
+#         sunburst_figure = cache_sunburst_plot(
+#             family=active_item, 
+#             df=filtered_df
+#         )
         
-        if sunburst_figure is None:
-            return dmc.Text("No data available", size="lg", c="dimmed"), title, active_item
+#         if sunburst_figure is None:
+#             return dmc.Text("No data available", size="lg", c="dimmed"), title, active_item
         
-        # Make the plot responsive
-        sunburst_figure.update_layout(
-            autosize=True,
-            margin=dict(l=0, r=0, t=30, b=0),
-            height=None,
-        )
+#         # Make the plot responsive
+#         sunburst_figure.update_layout(
+#             autosize=True,
+#             margin=dict(l=0, r=0, t=30, b=0),
+#             height=None,
+#         )
 
-        fig = dcc.Graph(
-            figure=sunburst_figure,
-            style={"width": "100%", "height": "100%"},
-            config={
-                'responsive': True,
-                'displayModeBar': False,
-                'scrollZoom': False
-            }
-        )
+#         fig = dcc.Graph(
+#             figure=sunburst_figure,
+#             style={"width": "100%", "height": "100%"},
+#             config={
+#                 'responsive': True,
+#                 'displayModeBar': False,
+#                 'scrollZoom': False
+#             }
+#         )
 
-        return fig, title, active_item
-    except Exception as e:
-        logger.error(f"Error in create_sidebar: {str(e)}")
-        raise
+#         return fig, title, active_item
+#     except Exception as e:
+#         logger.error(f"Error in create_sidebar: {str(e)}")
+#         raise
 
 toggle_modal = create_modal_callback(
     "wiki-table",
@@ -759,3 +732,53 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotyp
     
     # Return filtered data and keep current filter values
     return df.to_dict("records"), taxonomy or [], family or [], navis or [], haplotype or []
+
+@callback(
+    Output("search-sunburst-plot", "children"),
+    Input("filtered-meta-data", "data"),
+    State("meta-data", "data"),
+)
+def update_search_sunburst(filtered_meta, cached_meta):
+    # Use filtered data if available, otherwise use original data
+    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
+    
+    if data_to_use is None:
+        return dmc.Text("Start a search to see taxonomic distribution", size="lg", c="dimmed")
+
+    try:
+        df = pd.DataFrame(data_to_use)
+        if df.empty:
+            return dmc.Text("No results to display", size="lg", c="dimmed")
+
+        # Create sunburst plot for all results
+        sunburst_figure = cache_sunburst_plot(
+            family="Search Results",  # This will be ignored since we're not filtering by family
+            df=df
+        )
+        
+        if sunburst_figure is None:
+            return dmc.Text("No data available", size="lg", c="dimmed")
+        
+        # Make the plot responsive
+        sunburst_figure.update_layout(
+            autosize=True,
+            margin=dict(l=0, r=0, t=30, b=0),
+            height=None,
+        )
+
+        return dcc.Graph(
+            figure=sunburst_figure,
+            style={"width": "100%", "height": "100%"},
+            config={
+                'responsive': True,
+                'displayModeBar': False,
+                'scrollZoom': False
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in update_search_sunburst: {str(e)}")
+        return dmc.Alert(
+            f"An error occurred while creating the plot: {str(e)}",
+            color="red",
+            variant="filled"
+        )
