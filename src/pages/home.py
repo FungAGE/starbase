@@ -94,9 +94,9 @@ def create_feature_button(label, href, icon):
     )
 
 working_buttons = [
-    create_feature_button("Search Database", "/search", "mdi:database-search"),
     create_feature_button("BLAST Search", "/blast", "mdi:dna"),
     create_feature_button("Browse Wiki", "/wiki", "mdi:book-open-variant"),
+    create_feature_button("Submit to Starbase", "/submit", "mdi:database-plus"),
 ]
 
 not_working = [
@@ -306,7 +306,11 @@ def create_stats_section():
                 ),
             ], p="xl", radius="md", shadow="sm", withBorder=True),
         ], 
-        cols=1,
+        cols={
+            "base": 1,
+            "sm": 2,
+            "md": 3,
+        },
         spacing="lg"
         ),
     ], size="xl", py="xl")
