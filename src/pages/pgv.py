@@ -15,8 +15,6 @@ from pygenomeviz.parser import Gff
 from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
-from Bio import SeqIO
-from jinja2 import Template
 
 from src.config.cache import cache
 from src.components.tables import make_ship_table
@@ -114,6 +112,27 @@ layout = dmc.Container(
                                             ),
                                         ],
                                     ),
+                                    # Threshold Inputs
+                                    dmc.Group(
+                                        children=[
+                                            dmc.NumberInput(
+                                                label="Length Threshold (bp)",
+                                                id="length-threshold",
+                                                value=50,
+                                                min=0,
+                                                step=10,
+                                            ),
+                                            dmc.NumberInput(
+                                                label="Identity Threshold (%)",
+                                                id="identity-threshold",
+                                                value=30,
+                                                min=0,
+                                                max=100,
+                                                step=5,
+                                            ),
+                                        ],
+                                        gap="md",
+                                    ),
                                     # Table
                                     dcc.Loading(
                                         id="loading",
@@ -136,8 +155,6 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span=12,
                     children=[
-                        dmc.Paper(
-                            children=[
                                 dmc.Stack([
                                     # Message Area
                                     html.Div(
@@ -161,11 +178,6 @@ layout = dmc.Container(
                                         ),
                                     ),
                                 ], gap="md"),
-                            ],
-                            p="xl",
-                            radius="md",
-                            withBorder=True,
-                        ),
                     ],
                 ),
             ],
@@ -466,9 +478,11 @@ def load_ship_table(href):
     [
         State("pgv-table", "derived_virtual_selected_rows"),
         State("pgv-table", "derived_virtual_data"),
+        State("length-threshold", "value"),
+        State("identity-threshold", "value"),
     ],
 )
-def update_pgv(n_clicks, selected_rows, table_data):
+def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
     message = None
     if not n_clicks:
         return no_update, "Select Starships from the table and click 'Show Selected Starships'"
@@ -504,7 +518,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
                             tmp_gffs.append(tmp_gff)
 
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
+                            message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr)
                         elif len(selected_rows) == 1:
                             single_pgv(tmp_gffs[0], tmp_pgv)
                         else:
