@@ -23,8 +23,8 @@ from src.components.tables import make_ship_table
 
 from src.database.sql_manager import (
     fetch_all_ships,
-    fetch_accession_gff,
     fetch_ship_table,
+    fetch_accesion_ship,
 )
 from src.components.callbacks import create_modal_callback
 
@@ -241,114 +241,82 @@ def add_gene_feature(gene, track, idx=None):
     return track
 
 
-def inject_svg_to_html(svg_file, html_template_file, output_html_file):
-    """Inject SVG content into an HTML template."""
-
-    # Read the SVG content from file
-    with open(svg_file, "r") as svg:
-        svg_content = svg.read()
-
-    # Read the HTML template file
-    with open(html_template_file, "r") as template_file:
-        template_content = template_file.read()
-
-    # Use jinja2 or string replacement to inject the SVG into the HTML template
-    template = Template(template_content)
-    rendered_html = template.render(svg_content=svg_content)
-
-    # Save the rendered HTML to an output file
-    with open(output_html_file, "w") as output_file:
-        output_file.write(rendered_html)
-
-
-def write_tmp(df, seqid, file_type=None, temp_dir=None):
+def write_tmp(data, seqid, file_type, temp_dir):
+    """Write sequence or GFF data to temporary files.
+    
+    Args:
+        data: String for sequence data, DataFrame for GFF data
+        seqid: Accession ID for the file name
+        file_type: Either 'fa' or 'gff'
+        temp_dir: Directory to write the temporary files
+    """
     logger.debug(
-        "Entering write_tmp with seqid=%s, file_type=%s, temp_dir=%s",
-        seqid,
-        file_type,
-        temp_dir,
+        f"Entering write_tmp with seqid={seqid}, file_type={file_type}, temp_dir={temp_dir}"
     )
 
-    if temp_dir is None:
-        logger.warning("temp_dir is None; this may cause errors in file path creation.")
-
     file_path = os.path.join(temp_dir, f"{seqid}.{file_type}")
-    logger.debug("File path set to %s", file_path)
+    logger.debug(f"File path set to {file_path}")
 
     try:
-        if file_type == "gff":
-            logger.debug("file_type is 'gff'. Attempting to write dataframe to file.")
-            df.to_csv(file_path, sep="\t", header=False, index=False)
-            logger.debug("Dataframe written to %s", file_path)
-        elif file_type == "fa":
-            logger.debug(
-                "file_type is 'fa'. Checking for 'sequence' column and first entry."
-            )
-
-            if "sequence" not in df.columns:
-                logger.error("'sequence' column is missing from DataFrame.")
-                raise KeyError("'sequence' column is missing from DataFrame.")
-
-            if df.empty or df["sequence"].empty:
-                logger.error("The 'sequence' column is empty.")
-                raise ValueError("The 'sequence' column is empty.")
-
-            seq = df["sequence"].iloc[0]  # Use .iloc[0] to avoid KeyError
+        if file_type == "fa":
+            logger.debug("Writing sequence data to FASTA file")
             with open(file_path, "w") as f:
-                f.write(f">{seqid}\n{seq}\n")
-            logger.debug("Sequence data written to %s", file_path)
+                f.write(f">{seqid}\n{data}\n")
+        elif file_type == "gff":
+            logger.debug("Writing GFF data")
+            data.to_csv(file_path, sep="\t", header=False, index=False)
         else:
-            logger.error("Unsupported file_type provided: %s", file_type)
-            raise ValueError("Unsupported file_type: %s" % file_type)
+            logger.error(f"Unsupported file_type: {file_type}")
+            raise ValueError(f"Unsupported file_type: {file_type}")
 
     except Exception as e:
-        logger.exception("An error occurred while writing the file: %s", e)
+        logger.error(f"An error occurred while writing the file: {e}")
         raise
 
-    logger.debug("Exiting write_tmp with file_path=%s", file_path)
+    logger.debug(f"Successfully wrote file: {file_path}")
     return file_path
 
 
-def load_gff(accession):
+# def load_gff(accession):
 
-    df = cache.get(f"accession_gff_{accession}")
-    if df is None:
-        df = fetch_accession_gff(accession)
+#     df = cache.get(f"accession_gff_{accession}")
+#     if df is None:
+#         df = fetch_accession_gff(accession)
 
-    if df.empty:
-        logger.error(f"No GFF records found for accession: {accession}")
-    else:
-        # Identify the rows where 'end' is less than 'start'
-        mask = df["end"] < df["start"]
+#     if df.empty:
+#         logger.error(f"No GFF records found for accession: {accession}")
+#     else:
+#         # Identify the rows where 'end' is less than 'start'
+#         mask = df["end"] < df["start"]
 
-        # Swap the 'start' and 'end' values where the mask is True
-        df.loc[mask, ["start", "end"]] = df.loc[mask, ["end", "start"]].values
+#         # Swap the 'start' and 'end' values where the mask is True
+#         df.loc[mask, ["start", "end"]] = df.loc[mask, ["end", "start"]].values
 
-        # TODO: find a way to implement this
-        # # flip coordinates to favour captain order in starship
-        # df["priority"] = df["attributes"].str.contains("tyr").astype(int)
+#         # TODO: find a way to implement this
+#         # # flip coordinates to favour captain order in starship
+#         # df["priority"] = df["attributes"].str.contains("tyr").astype(int)
 
-        # df_sorted = df.sort_values(
-        #     by=["priority", "start", "end"], ascending=[False, True, True]
-        # ).drop(columns="priority")
+#         # df_sorted = df.sort_values(
+#         #     by=["priority", "start", "end"], ascending=[False, True, True]
+#         # ).drop(columns="priority")
 
-    return df
+#     return df
 
 
-def load_fa(accession):
-    df = cache.get("all_ships")
-    if df is None:
-        df = fetch_all_ships()
+# def load_fa(accession):
+#     df = cache.get("all_ships")
+#     if df is None:
+#         df = fetch_all_ships()
 
-    if isinstance(accession, str):
-        df = df[df["accession_tag"] == accession]
-    else:
-        df = df[df["accession_tag"].isin(accession)]
+#     if isinstance(accession, str):
+#         df = df[df["accession_tag"] == accession]
+#     else:
+#         df = df[df["accession_tag"].isin(accession)]
 
-    if df.empty:
-        logger.error(f"No fasta records found for accession: {accession}")
+#     if df.empty:
+#         logger.error(f"No fasta records found for accession: {accession}")
 
-    return df
+#     return df
 
 
 def single_pgv(gff_file, tmp_file):
@@ -373,13 +341,18 @@ def is_valid_sequence_file(file_path):
     return file_path.endswith(valid_extensions)
 
 
-def multi_pgv(gff_files, seqs, tmp_file):
+def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
     gff_list = list(map(Gff, gff_files))
     gv = GenomeViz(track_align_type="center", fig_track_height=0.7)
     gv.set_scale_bar()
 
+    # Store sequence sizes in a dictionary for validation
+    seq_sizes = {}
     for gff in gff_list:
-        # Check GFF SeqIDs
+        for seqid, size in gff.get_seqid2size().items():
+            seq_sizes[seqid] = size
+
+    for gff in gff_list:
         for seqid, features in gff.get_seqid2features("gene").items():
             logger.info(f"Processing seqid: {seqid}")
 
@@ -391,6 +364,15 @@ def multi_pgv(gff_files, seqs, tmp_file):
             segment = track.get_segment(seqid)
 
             for idx, gene in enumerate(features):
+                start = int(gene.location.start)
+                end = int(gene.location.end)
+                seg_size = gff.get_seqid2size()[seqid]
+
+                # Validate coordinates
+                if start < 0 or end > seg_size:
+                    logger.error(f"Invalid coordinates: start={start}, end={end}, seg_size={seg_size}")
+                    continue
+
                 add_gene_feature(gene, segment, idx)
 
         for seq_file in seqs:
@@ -403,11 +385,9 @@ def multi_pgv(gff_files, seqs, tmp_file):
             if not is_valid_sequence_file(seq_file):
                 logger.error(f"Error: {seq_file} does not have a valid extension.")
                 return
-    # BLAST
-    len_thr = 50
-    id_thr = 30
-    align_coords = Blast(seqs, seqtype="nucleotide").run()
 
+    # BLAST
+    align_coords = Blast(seqs, seqtype="nucleotide").run()
     align_coords = AlignCoord.filter(
         align_coords, length_thr=len_thr, identity_thr=id_thr
     )
@@ -424,6 +404,23 @@ def multi_pgv(gff_files, seqs, tmp_file):
 
         color, inverted_color = "blue", "orange"
         for ac in align_coords:
+            # Validate coordinates before adding link
+            query_start, query_end = ac.query_link[2], ac.query_link[3]
+            ref_start, ref_end = ac.ref_link[2], ac.ref_link[3]
+            
+            query_seqid = ac.query_link[1]
+            ref_seqid = ac.ref_link[1]
+            
+            # Skip if coordinates are out of bounds
+            if (query_start < 0 or query_end > seq_sizes[query_seqid] or 
+                ref_start < 0 or ref_end > seq_sizes[ref_seqid]):
+                logger.warning(
+                    f"Skipping alignment with invalid coordinates: "
+                    f"Query({query_start}, {query_end}) vs size {seq_sizes[query_seqid]}, "
+                    f"Ref({ref_start}, {ref_end}) vs size {seq_sizes[ref_seqid]}"
+                )
+                continue
+                
             logger.info(f"Adding link between {ac.query_link} and {ac.ref_link}")
             gv.add_link(
                 ac.query_link,
@@ -451,15 +448,17 @@ def multi_pgv(gff_files, seqs, tmp_file):
     Input("url", "href"),
 )
 def load_ship_table(href):
-    table_df = cache.get("ship_table")
-    if table_df is None:
-        table_df = fetch_ship_table()
-    if href:
-        table = make_ship_table(
-            df=table_df, columns=table_columns, id="pgv-table", select_rows=True, pg_sz=15
+    """Load and display the ship selection table"""
+    table_df = fetch_ship_table()
+    if table_df is not None:
+        return make_ship_table(
+            df=table_df,
+            columns=table_columns,
+            id="pgv-table",
+            select_rows=True,
+            pg_sz=15
         )
-        return table
-
+    return html.Div("No data available")
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
@@ -471,6 +470,9 @@ def load_ship_table(href):
 )
 def update_pgv(n_clicks, selected_rows, table_data):
     message = None
+    if not n_clicks:
+        return no_update, "Select Starships from the table and click 'Show Selected Starships'"
+
     if n_clicks > 0:
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
         if table_data and selected_rows is not None:
@@ -492,19 +494,15 @@ def update_pgv(n_clicks, selected_rows, table_data):
                         tmp_fas = []
                         for index, row in rows.iterrows():
                             accession = row["accession_tag"]
-
-                            logger.info(f"Fetching FA for accession: {accession}")
-                            fa_df = load_fa(accession)
+                            ship_data = fetch_accesion_ship(accession)
+                            fa_df = ship_data["sequence"]
                             tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
                             tmp_fas.append(str(tmp_fa))
 
-                            logger.info(f"Fetching GFF for accession: {accession}")
-                            gff_df = load_gff(accession)
-
+                            gff_df = ship_data["gff"]
                             tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
                             tmp_gffs.append(tmp_gff)
 
-                            output = html.P("Select up to four Starships to compare.")
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
                             message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv)
                         elif len(selected_rows) == 1:
@@ -521,7 +519,7 @@ def update_pgv(n_clicks, selected_rows, table_data):
                             srcDoc=pgv_content,
                             style={
                                 "width": "100%",
-                                "height": "100%",
+                                "height": "800px",
                                 "border": "none",
                             },
                         )

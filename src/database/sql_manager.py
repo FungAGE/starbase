@@ -129,56 +129,31 @@ def fetch_all_ships(curated=True):
         session.close()
     
 @cache.memoize()
-def fetch_accession_gff(accession):
-    session = StarbaseSession()
-
-    query = """
-    SELECT g.*
-    FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
-    LEFT JOIN ships s on s.accession = a.id
-    LEFT JOIN joined_ships j ON j.ship_id = a.id
-    LEFT JOIN taxonomy t ON j.taxid = t.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    WHERE g.accession = ? AND j.orphan IS NULL
-    """
-
-    try:
-        df = pd.read_sql_query(query, session.bind, params=(accession,))
-
-        if df.empty:
-            logger.warning("Fetched gff DataFrame is empty.")
-        return df
-    except Exception as e:
-        logger.error(f"Error fetching gff data: {str(e)}")
-        raise
-    finally:
-        session.close()
-
-@cache.memoize()
-def fetch_ship_table(meta_df=None):
-    """Fetch and filter ship table data based on metadata DataFrame."""
+def fetch_ship_table():
+    """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
     
     query = """
-    SELECT DISTINCT a.accession_tag, f.familyName, t.species
-    FROM gff g
-    JOIN accessions a ON g.ship_id = a.id
-    JOIN joined_ships js ON a.id = js.ship_id 
+    SELECT DISTINCT 
+        a.accession_tag,
+        f.familyName,
+        t.species
+    FROM joined_ships js
+    JOIN accessions a ON js.ship_id = a.id
     JOIN taxonomy t ON js.taxid = t.id
     JOIN family_names f ON js.ship_family_id = f.id
-    JOIN ships s ON s.accession = a.id
-    WHERE s.sequence IS NOT NULL
-    AND g.ship_id IS NOT NULL
-    AND js.orphan IS NULL
+    -- Filter for ships that have sequence data
+    JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
+    -- Filter for ships that have GFF data
+    JOIN gff g ON g.ship_id = a.id
+    WHERE js.orphan IS NULL
+    ORDER BY f.familyName ASC
     """
 
     try:
         df = pd.read_sql_query(query, session.bind)
-
         if df.empty:
             logger.warning("Fetched ship_table DataFrame is empty.")
-        df = df.sort_values(by="familyName", ascending=True)
         return df
     except Exception as e:
         logger.error(f"Error fetching ship_table data: {str(e)}")
@@ -186,6 +161,49 @@ def fetch_ship_table(meta_df=None):
     finally:
         session.close()
 
+@cache.memoize()
+def fetch_accesion_ship(accession_tag):
+    """Fetch sequence and GFF data for a specific ship."""
+    session = StarbaseSession()
+    
+    sequence_query = """
+    SELECT s.sequence
+    FROM ships s
+    JOIN accessions a ON s.accession = a.id
+    WHERE a.accession_tag = :accession_tag
+    """
+    
+    gff_query = """
+    SELECT g.*
+    FROM gff g
+    JOIN accessions a ON g.ship_id = a.id
+    WHERE a.accession_tag = :accession_tag
+    """
+    
+    try:
+        sequence = pd.read_sql_query(sequence_query, session.bind, params={"accession_tag": accession_tag})
+        gff_df = pd.read_sql_query(gff_query, session.bind, params={"accession_tag": accession_tag})
+        
+        # Get the sequence string
+        sequence_str = sequence.iloc[0]["sequence"] if not sequence.empty else None
+        
+        # Ensure GFF data is a DataFrame
+        if gff_df.empty:
+            logger.warning(f"No GFF data found for accession: {accession_tag}")
+            gff_df = None
+            
+        logger.debug(f"GFF data type: {type(gff_df)}")
+        logger.debug(f"GFF columns: {gff_df.columns if gff_df is not None else 'None'}")
+        
+        return {
+            "sequence": sequence_str,
+            "gff": gff_df
+        }
+    except Exception as e:
+        logger.error(f"Error fetching ship data for {accession_tag}: {str(e)}")
+        raise
+    finally:
+        session.close()
 
 @cache.memoize()
 def fetch_all_captains():
