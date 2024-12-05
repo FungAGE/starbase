@@ -21,7 +21,7 @@ from jinja2 import Template
 from src.components.cache import cache
 from src.components.sql_engine import starbase_engine
 from src.components.tables import make_ship_table
-from src.components.sql_manager import load_from_cache
+
 from src.components.sql_manager import (
     fetch_all_ships,
     fetch_accession_gff,
@@ -312,7 +312,7 @@ def write_tmp(df, seqid, file_type=None, temp_dir=None):
 
 def load_gff(accession):
 
-    df = load_from_cache(f"accession_gff_{accession}")
+    df = cache.get(f"accession_gff_{accession}")
     if df is None:
         df = fetch_accession_gff(accession)
 
@@ -337,7 +337,7 @@ def load_gff(accession):
 
 
 def load_fa(accession):
-    df = load_from_cache("all_ships")
+    df = cache.get("all_ships")
     if df is None:
         df = fetch_all_ships()
 
@@ -452,7 +452,7 @@ def multi_pgv(gff_files, seqs, tmp_file):
     Input("url", "href"),
 )
 def load_ship_table(href):
-    table_df = load_from_cache("ship_table")
+    table_df = cache.get("ship_table")
     if table_df is None:
         table_df = fetch_ship_table()
     if href:

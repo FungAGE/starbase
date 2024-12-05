@@ -21,7 +21,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.components.cache import cache
-from src.components.sql_manager import load_from_cache, fetch_meta_data
+from src.components.sql_manager import fetch_meta_data
 from src.components.sql_manager import (
     fetch_meta_data,
     cache_sunburst_plot,
@@ -144,7 +144,7 @@ modal = dmc.Modal(
 
 def load_initial_data():
     """Load initial data for the page"""
-    meta_data = load_from_cache("meta_data")
+    meta_data = cache.get("meta_data")
     if meta_data is None:
         # Fallback to fetching directly if not in cache
         meta_data = fetch_meta_data()
@@ -369,7 +369,7 @@ def load_meta_data(url):
     if url:
         try:
             logger.debug("Loading metadata from database.")
-            meta_df = load_from_cache("meta_data")
+            meta_df = cache.get("meta_data")
             if meta_df is None:
                 meta_df = fetch_meta_data()
             logger.info(f"Metadata query returned {len(meta_df)} rows.")
@@ -397,7 +397,7 @@ def load_paper_data(url):
     if url:
         try:
             logger.debug("Loading paper data from database.")
-            paper_df = load_from_cache("paper_data")
+            paper_df = cache.get("paper_data")
             if paper_df is None:
                 paper_df = fetch_paper_data()
             logger.info(f"Paper data query returned {len(paper_df)} rows.")
@@ -583,7 +583,7 @@ def create_sidebar(active_item, cached_meta):
         title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
         
         # Load or create sunburst plot
-        sunburst_figure = load_from_cache(f"sunburst_{active_item}")
+        sunburst_figure = cache.get(f"sunburst_{active_item}")
         if sunburst_figure is None:
             df = pd.DataFrame(cached_meta)
             filtered_df = df[df["familyName"] == active_item]

@@ -7,7 +7,7 @@ import plotly.graph_objs as go
 
 import tempfile
 
-from src.components.sql_manager import load_from_cache
+
 from src.components.sql_manager import fetch_captain_tree, fetch_sf_data
 
 default_highlight_colors = {
@@ -279,7 +279,7 @@ def superfam_highlight(
 
 
 def plot_tree(highlight_families=None):
-    tree_string = load_from_cache("captain_tree")
+    tree_string = cache.get("captain_tree")
     if tree_string is None:
         tree_string = fetch_captain_tree()
     with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
@@ -288,7 +288,7 @@ def plot_tree(highlight_families=None):
 
         tree = Phylo.read(tree_file, "newick")
 
-    metadata = load_from_cache("sf_data")
+    metadata = cache.get("sf_data")
     if metadata is None:
         metadata = fetch_sf_data()
 
