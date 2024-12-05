@@ -9,7 +9,7 @@ from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database with caching."""
     session = starbase_session_factory()
@@ -39,7 +39,7 @@ def fetch_meta_data(curated=False):
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = starbase_session_factory()
@@ -61,13 +61,13 @@ def fetch_paper_data():
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def cache_sunburst_plot(family, df):
     """Create sunburst plots for wiki page and cache the result."""
     return create_sunburst_plot(df=df, type="tax", title_switch=False)
 
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = starbase_session_factory()
@@ -101,7 +101,7 @@ def fetch_download_data(curated=True, dereplicate=False):
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_all_ships(curated=True):
     session = starbase_session_factory()
 
@@ -128,7 +128,7 @@ def fetch_all_ships(curated=True):
     finally:
         session.close()
     
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_accession_gff(accession):
     session = starbase_session_factory()
 
@@ -155,7 +155,7 @@ def fetch_accession_gff(accession):
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_ship_table(meta_df=None):
     """Fetch and filter ship table data based on metadata DataFrame."""
     session = starbase_session_factory()
@@ -187,7 +187,7 @@ def fetch_ship_table(meta_df=None):
         session.close()
 
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_all_captains():
     session = starbase_session_factory()
 
@@ -208,7 +208,7 @@ def fetch_all_captains():
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_captain_tree():
     session = starbase_session_factory()
 
@@ -226,7 +226,7 @@ def fetch_captain_tree():
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def fetch_sf_data():
     session = starbase_session_factory()
 
@@ -247,7 +247,7 @@ def fetch_sf_data():
     finally:
         session.close()
 
-@cache.memoize(timeout=300)
+@cache.memoize()
 def get_database_stats():
     """Get statistics about the Starship database."""
     session = starbase_session_factory()
@@ -317,8 +317,8 @@ def precompute_all():
         "all_ships": fetch_all_ships,
         "ship_table": fetch_ship_table,
         "all_captains": fetch_all_captains,
-        "captain_tree": fetch_captain_tree,
-        "sf_data": fetch_sf_data,
+        # "captain_tree": fetch_captain_tree,
+        # "sf_data": fetch_sf_data,
         "stats": get_database_stats,
     }
     
@@ -342,11 +342,13 @@ def precompute_all():
         
         cache_status["meta_data"] = True
         
-        # Create sunburst plots (depends on meta_data)
+        # Precompute and cache sunburst plots
         logger.info("Creating sunburst figures...")
         for family in families:
             try:
                 sunburst_figure = cache_sunburst_plot(family, meta_data)
+                cache_key = f"sunburst_plot_{family}"
+                cache.set(cache_key, sunburst_figure)
                 cache_status[f"sunburst_{family}"] = True
             except Exception as e:
                 logger.error(f"Failed to create sunburst for {family}: {str(e)}")
