@@ -6,7 +6,6 @@ import logging
 import traceback
 
 from src.config.cache import cache
-from src.database.sql_engine import sql_connected
 from src.database.sql_manager import fetch_meta_data
 
 logger = logging.getLogger(__name__)
@@ -53,7 +52,6 @@ download_ships_button = dmc.Anchor(
         size="lg",
         radius="md",
         fullWidth=True,
-        disabled=not sql_connected,
         styles={
             "root": {
                 "minHeight": "auto",

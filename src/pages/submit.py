@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 dash.register_page(__name__)
 
 
-from src.database.sql_engine import submissions_engine, submissions_connected
+from src.config.database import SubmissionsSession
 
 layout = dmc.Container(
     size="md",
@@ -221,7 +221,6 @@ layout = dmc.Container(
 
 # Function to insert a new submission into the database
 def insert_submission(
-    submissions_engine,
     seq_contents,
     seq_filename,
     seq_date,
@@ -238,7 +237,6 @@ def insert_submission(
     shipstrand,
     comment,
 ):
-
     content_type, content_string = seq_contents.split(",")
     seq_decoded = base64.b64decode(content_string).decode("utf-8")
     seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
@@ -258,7 +256,7 @@ def insert_submission(
     if not comment:
         comment = ""
 
-    with submissions_engine.connect() as connection:
+    with SubmissionsSession() as session:
         query = """
             INSERT INTO submissions (
                 seq_contents, seq_filename, seq_date, anno_contents,
@@ -266,28 +264,29 @@ def insert_submission(
                 genus, species, hostchr, shipstart, shipend,
                 shipstrand, comment
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (:seq_contents, :seq_filename, :seq_date, :anno_contents, :anno_filename, :anno_date, :uploader, :evidence, :genus, :species, :hostchr, :shipstart, :shipend, :shipstrand, :comment)
         """
-        connection.execute(
+        session.execute(
             query,
-            (
-                seq_contents,
-                seq_filename,
-                seq_date,
-                anno_contents,
-                anno_filename,
-                anno_date,
-                uploader,
-                evidence,
-                genus,
-                species,
-                hostchr,
-                shipstart,
-                shipend,
-                shipstrand,
-                comment,
-            ),
+            {
+                "seq_contents": seq_decoded,
+                "seq_filename": seq_filename,
+                "seq_date": seq_datetime_obj,
+                "anno_contents": anno_contents,
+                "anno_filename": anno_filename,
+                "anno_date": anno_datetime_obj,
+                "uploader": uploader,
+                "evidence": evidence,
+                "genus": genus,
+                "species": species,
+                "hostchr": hostchr,
+                "shipstart": shipstart,
+                "shipend": shipend,
+                "shipstrand": shipstrand,
+                "comment": comment,
+            },
         )
+        session.commit()
 
 
 @callback(
@@ -348,7 +347,6 @@ def submit_ship(
             )  # Return the error message if no file
 
         insert_submission(
-            submissions_engine,
             seq_contents,
             seq_filename,
             seq_date,

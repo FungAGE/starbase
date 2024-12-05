@@ -24,7 +24,6 @@ logger.addHandler(console_handler)
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache
-from src.database.sql_engine import sql_connected
 from src.database.sql_manager import fetch_meta_data, precompute_all
 
 _dash_renderer._set_react_version("18.2.0")
@@ -79,7 +78,7 @@ def serve_app_layout():
             dmc.NotificationProvider(position="top-center"),
             html.Div(id="notifications-container"),
             dcc.Location(id="url", refresh=False),
-            navmenu.navmenu(buttons_disabled=not sql_connected),
+            navmenu.navmenu(),
             html.Div(dash.page_container),
         ])
     )

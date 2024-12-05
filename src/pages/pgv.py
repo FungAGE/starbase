@@ -19,7 +19,6 @@ from Bio import SeqIO
 from jinja2 import Template
 
 from src.config.cache import cache
-from src.database.sql_engine import starbase_engine
 from src.components.tables import make_ship_table
 
 from src.database.sql_manager import (
@@ -27,7 +26,7 @@ from src.database.sql_manager import (
     fetch_accession_gff,
     fetch_ship_table,
 )
-from src.components.callbacks import create_accession_modal, create_modal_callback
+from src.components.callbacks import create_modal_callback
 
 
 logger = logging.getLogger(__name__)

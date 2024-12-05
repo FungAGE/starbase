@@ -4,7 +4,7 @@ from typing import Any
 import logging
 import pandas as pd
 from src.config.cache import cache
-from src.database.sql_engine import starbase_session_factory
+from src.config.database import StarbaseSession
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 @cache.memoize()
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database with caching."""
-    session = starbase_session_factory()
+    session = StarbaseSession()
     
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
@@ -42,7 +42,7 @@ def fetch_meta_data(curated=False):
 @cache.memoize()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     paper_query = """
     SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, 
@@ -70,7 +70,7 @@ def cache_sunburst_plot(family, df):
 @cache.memoize()
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     query = """
     SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
@@ -103,7 +103,7 @@ def fetch_download_data(curated=True, dereplicate=False):
 
 @cache.memoize()
 def fetch_all_ships(curated=True):
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     query = """
     SELECT s.*, a.accession_tag
@@ -116,7 +116,7 @@ def fetch_all_ships(curated=True):
     if curated:
         query += " AND j.curated_status = 'curated'"
 
-    session = starbase_session_factory()
+    session = StarbaseSession()
     try:
         df = pd.read_sql_query(query, session.bind)
         if df.empty:
@@ -130,7 +130,7 @@ def fetch_all_ships(curated=True):
     
 @cache.memoize()
 def fetch_accession_gff(accession):
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     query = """
     SELECT g.*
@@ -158,7 +158,7 @@ def fetch_accession_gff(accession):
 @cache.memoize()
 def fetch_ship_table(meta_df=None):
     """Fetch and filter ship table data based on metadata DataFrame."""
-    session = starbase_session_factory()
+    session = StarbaseSession()
     
     query = """
     SELECT DISTINCT a.accession_tag, f.familyName, t.species
@@ -189,7 +189,7 @@ def fetch_ship_table(meta_df=None):
 
 @cache.memoize()
 def fetch_all_captains():
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     query = f"""
     SELECT c.*
@@ -210,7 +210,7 @@ def fetch_all_captains():
 
 @cache.memoize()
 def fetch_captain_tree():
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     tree_query = """SELECT string FROM trees WHERE id=1"""
 
@@ -228,7 +228,7 @@ def fetch_captain_tree():
 
 @cache.memoize()
 def fetch_sf_data():
-    session = starbase_session_factory()
+    session = StarbaseSession()
 
     query = """
     SELECT sf.*
@@ -250,7 +250,7 @@ def fetch_sf_data():
 @cache.memoize()
 def get_database_stats():
     """Get statistics about the Starship database."""
-    session = starbase_session_factory()
+    session = StarbaseSession()
     try:
         # Get curated and uncurated counts
         curated_count = session.execute("""
