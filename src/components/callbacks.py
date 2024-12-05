@@ -1,14 +1,12 @@
 from dash import html, Output, Input, State, callback, no_update
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
 import logging
-import pandas as pd
 import traceback
 
+from src.components.cache import cache
 from src.components.sql_engine import sql_connected
-
 from src.components.sql_manager import fetch_meta_data
 
 logger = logging.getLogger(__name__)
