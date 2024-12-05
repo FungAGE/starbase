@@ -17,7 +17,7 @@ import plotly.graph_objects as go
 import logging
 
 
-from src.components.cache import cache
+from src.config.cache import cache
 from src.utils.seq_utils import ( guess_seq_type,
     check_input,
     write_temp_fasta,
@@ -46,8 +46,8 @@ from src.utils.blast_utils import (
 from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 
-from src.components.sql_manager import fetch_meta_data
-from src.utils.blastdb import db_list
+from src.database.sql_manager import fetch_meta_data
+from src.database.blastdb import db_list
 
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
 

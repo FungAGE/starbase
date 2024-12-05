@@ -23,9 +23,9 @@ logger.addHandler(console_handler)
 
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
-from src.components.cache import cache
-from src.components.sql_engine import sql_connected
-from src.components.sql_manager import fetch_meta_data, precompute_all
+from src.config.cache import cache
+from src.database.sql_engine import sql_connected
+from src.database.sql_manager import fetch_meta_data, precompute_all
 
 _dash_renderer._set_react_version("18.2.0")
 

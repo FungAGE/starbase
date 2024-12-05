@@ -25,7 +25,7 @@ from sqlalchemy import text
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
-from src.components.sql_engine import telemetry_session_factory, telemetry_connected
+from src.database.sql_engine import telemetry_session_factory, telemetry_connected
 
 # Load environment variables from .env file
 env_path = Path('.') / '.env'

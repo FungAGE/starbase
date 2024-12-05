@@ -16,9 +16,9 @@ import logging
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.components.cache import cache
-from src.components.sql_manager import fetch_meta_data
-from src.components.sql_manager import (
+from src.config.cache import cache
+from src.database.sql_manager import fetch_meta_data
+from src.database.sql_manager import (
     fetch_meta_data,
     cache_sunburst_plot,
     fetch_paper_data,

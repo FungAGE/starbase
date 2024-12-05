@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, relationship
 
-from src.components.sql_engine import starbase_engine, Base
+from src.database.sql_engine import starbase_engine, Base
 
 
 # set up table classes
@@ -248,7 +248,7 @@ Ships.accession = relationship(
 Gff.ship_id = relationship("Accessions", order_by=Accessions.id, back_populates="gff")
 
 # Initialize the SQLite engine
-Session = sessionmaker(bind=engine)
+Session = sessionmaker(bind=starbase_engine)
 
 
 def update_md5(engine, table, id_column, seq_column, md5_column):
@@ -294,7 +294,7 @@ def update_table(engine, table, id_column, seq_column, fasta_file):
 
 
 update_table(
-    engine,
+    starbase_engine,
     "ships",
 )
 

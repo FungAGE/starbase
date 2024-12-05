@@ -7,8 +7,8 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 
 
-from src.components.cache import cache
-from src.components.sql_manager import fetch_paper_data
+from src.config.cache import cache
+from src.database.sql_manager import fetch_paper_data
 
 
 def truncate_string(s, length=40):

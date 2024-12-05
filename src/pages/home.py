@@ -6,8 +6,8 @@ import logging
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
-from src.components.sql_engine import sql_connected
-from src.components.sql_manager import get_database_stats
+from src.database.sql_engine import sql_connected
+from src.database.sql_manager import get_database_stats
 
 logger = logging.getLogger(__name__)
 

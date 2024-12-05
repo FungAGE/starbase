@@ -3,7 +3,8 @@ import os
 import glob
 import logging
 
-from src.components.sql_engine import db_dir
+from src.config.cache import cache
+from src.database.sql_engine import db_dir
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ def blast_db_exists(blastdb):
 
 def create_dbs():
     
-    from src.components.sql_manager import fetch_all_captains, fetch_all_ships
+    from src.database.sql_manager import fetch_all_captains, fetch_all_ships
 
     # Create BLAST database for ships
     ship_fasta_path = db_list["ship"]["nucl"]

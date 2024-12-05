@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 dash.register_page(__name__)
 
 
-from src.components.sql_engine import submissions_engine, submissions_connected
+from src.database.sql_engine import submissions_engine, submissions_connected
 
 layout = dmc.Container(
     size="md",

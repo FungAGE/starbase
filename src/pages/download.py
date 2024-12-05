@@ -6,9 +6,9 @@ from dash_iconify import DashIconify
 import pandas as pd
 
 from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback, dereplicated_switch
-from src.components.cache import cache
+from src.config.cache import cache
 
-from src.components.sql_manager import fetch_download_data, fetch_all_ships
+from src.database.sql_manager import fetch_download_data, fetch_all_ships
 from src.components.tables import make_dl_table
 import logging
 

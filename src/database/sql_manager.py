@@ -3,8 +3,8 @@ import pickle
 from typing import Any
 import logging
 import pandas as pd
-from src.components.cache import cache
-from src.components.sql_engine import starbase_session_factory
+from src.config.cache import cache
+from src.database.sql_engine import starbase_session_factory
 from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)

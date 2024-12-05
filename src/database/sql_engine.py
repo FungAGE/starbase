@@ -3,6 +3,9 @@ import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
+from src.config.database import StarbaseSession, SubmissionsSession
+from contextlib import contextmanager
+from src.config.database import starbase_engine, submissions_engine, telemetry_engine
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +34,19 @@ def connect_to_database(db_path):
 
 # Connect to databases
 starbase_path = (
-    "src/data/db/starbase.sqlite"
-    if os.path.exists("src/data/db/starbase.sqlite")
+    "src/database/db/starbase.sqlite"
+    if os.path.exists("src/database/db/starbase.sqlite")
     else "db/starbase.sqlite"
 )
 submissions_path = (
-    "src/data/db/submissions.sqlite"
-    if os.path.exists("src/data/db/submissions.sqlite")
+    "src/database/db/submissions.sqlite"
+    if os.path.exists("src/database/db/submissions.sqlite")
     else "db/submissions.sqlite"
 )
 
 telemetry_path = (
-    "src/data/db/telemetry.sqlite"
-    if os.path.exists("src/data/db/telemetry.sqlite")
+    "src/database/db/telemetry.sqlite"
+    if os.path.exists("src/database/db/telemetry.sqlite")
     else "db/telemetry.sqlite"
 )
 
@@ -72,3 +75,29 @@ submissions_engine, submissions_session_factory, submissions_connected = (
 telemetry_engine, telemetry_session_factory, telemetry_connected = connect_to_database(
     telemetry_path
 )
+
+@contextmanager
+def get_starbase_session():
+    """Context manager for starbase database sessions"""
+    session = StarbaseSession()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+@contextmanager
+def get_submissions_session():
+    """Context manager for submissions database sessions"""
+    session = SubmissionsSession()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()

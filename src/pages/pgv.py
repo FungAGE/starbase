@@ -18,11 +18,11 @@ from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 from Bio import SeqIO
 from jinja2 import Template
 
-from src.components.cache import cache
-from src.components.sql_engine import starbase_engine
+from src.config.cache import cache
+from src.database.sql_engine import starbase_engine
 from src.components.tables import make_ship_table
 
-from src.components.sql_manager import (
+from src.database.sql_manager import (
     fetch_all_ships,
     fetch_accession_gff,
     fetch_ship_table,

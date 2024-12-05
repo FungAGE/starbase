@@ -5,9 +5,9 @@ from dash_iconify import DashIconify
 import logging
 import traceback
 
-from src.components.cache import cache
-from src.components.sql_engine import sql_connected
-from src.components.sql_manager import fetch_meta_data
+from src.config.cache import cache
+from src.database.sql_engine import sql_connected
+from src.database.sql_manager import fetch_meta_data
 
 logger = logging.getLogger(__name__)
 
