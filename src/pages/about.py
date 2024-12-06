@@ -50,142 +50,122 @@ card_dict = {
 
 
 def make_card(name):
-    card = dmc.GridCol(
-        # span={"xl": 4, "lg": 4, "md": 12, "sm": 12, "xs": 12},
-        span="content",
+    return dmc.Card(
         children=[
-            dmc.Card(
-                children=[
-                    dmc.CardSection(
-                        [
-                            dmc.Image(
-                                src=card_dict[name]["img"],
-                                className="img-fluid rounded-start",
-                                style={
-                                    "object-fit": "cover",
-                                    "width": "100%",
-                                    "height": "248px",
-                                },
+            dmc.CardSection(
+                dmc.Image(
+                    src=card_dict[name]["img"],
+                    fit="cover",
+                    style={
+                    "minHeight": "250px",
+                    "height": "clamp(250px, 8vw, 350px)",
+                },
+                ),
+            ),
+            dmc.CardSection(
+                dmc.Stack([
+                    dmc.Group([
+                        dmc.Text(
+                            card_dict[name]["full_name"],
+                            size="lg",
+                            fw=500,
+                        ),
+                        dmc.Anchor(
+                            dmc.ActionIcon(
+                                html.I(className="bi bi-envelope"),
+                                variant="light", 
+                                color="indigo",
+                                size="lg",
+                                radius="xl",
                             ),
-                        ],
+                            href=card_dict[name]["email"],
+                        ),
+                    ], pos="apart"),
+                    dmc.Text(
+                        card_dict[name]["role"],
+                        c="dimmed",
+                        size="md",
                     ),
-                    dmc.CardSection(
-                        [
-                            dmc.Stack(
-                                align="stretch",
-                                justify="space-around",
-                                children=[
-                                    dmc.Group(
-                                        justify="flex-start",
-                                        gap="xs",
-                                        children=[
-                                            dmc.Text(
-                                                card_dict[name]["full_name"],
-                                                size="lg",
-                                                style={"padding": "10px"},
-                                            ),
-                                            dbc.Button(
-                                                html.I(className="bi bi-envelope"),
-                                                href=card_dict[name]["email"],
-                                                color="teal",
-                                                size="lg",
-                                                className="me-2",
-                                            ),
-                                        ],
-                                    ),
-                                    dmc.Text(
-                                        card_dict[name]["role"],
-                                        c="dimmed",
-                                        size="md",
-                                        style={"padding": "10px"},
-                                    ),
-                                ],
-                            ),
-                        ],
-                        style={"height": "150px"},
-                    ),
-                ],
-                withBorder=True,
-                shadow="sm",
-                radius="md",
-                w=250,
-            )
+                ], gap="xs", p="md"),
+            ),
         ],
+        withBorder=True,
+        shadow="sm",
+        radius="md",
+        style={"width": 280},
     )
-    return card
 
 
 layout = dmc.Container(
-    fluid=True,
+    size="lg",
     children=[
-        dcc.Location(id="url", refresh=False),
-        dmc.Grid(
-            justify="center",
-            align="center",
-            style={"paddingTop": "20px"},
+        # Header Section
+        dmc.Paper(
             children=[
-                dmc.GridCol(
-                    span=10,
-                    children=[
-                        dmc.Text(
-                            [
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                ),
-                                " was developed by the ",
-                                html.A(
-                                    "FungAGE lab",
-                                    href="https://fungage.github.io/",
-                                ),
-                                " in collaboration with the Gluck-Thaler lab.",
-                            ],
-                            size="lg",
-                            className="text-center",
+                dmc.Title(["About ", html.Span("starbase", className="logo-text")], order=1, mb="md"),
+                dmc.Text(
+                    [
+                        html.Span("starbase", className="logo-text"),
+                        " was developed by the ",
+                        dmc.Anchor(
+                            "FungAGE lab",
+                            href="https://fungage.github.io/",
+                            underline=False,
+                            c="indigo",
                         ),
+                        " in collaboration with the Gluck-Thaler lab.",
                     ],
+                    size="lg",
                 ),
             ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
         ),
-        dmc.Grid(
-            justify="center",
-            align="stretch",
+        
+        # Team Section
+        dmc.Paper(
             children=[
-                make_card("aaron"),
-                make_card("adrian"),
-                make_card("emile"),
-                dmc.GridCol(
-                    span=10,
+                dmc.SimpleGrid(
+                    cols={"md":3,"sm":1},  # Default number of columns
+                    spacing="xl",
                     children=[
-                        dmc.Text(
-                            [
-                                html.P(
-                                    [
-                                        "The source code for ",
-                                        html.Span(
-                                            "starbase",
-                                            className="logo-text",
-                                        ),
-                                        " webserver will soon be available on GitHub",
-                                    ],
-                                    className="text-center",
-                                )
-                            ],
-                            size="lg",
-                        ),
-                        dmc.Center(
-                            [
-                                html.Div(
-                                    html.Img(
-                                        src="assets/images/starbase-map.png",
-                                        className="auto-resize-750",
-                                    )
-                                ),
-                            ]
-                        ),
+                        make_card("aaron"),
+                        make_card("adrian"),
+                        make_card("emile"),
                     ],
                 ),
             ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
+        ),
+        
+        # Source Code Section
+        dmc.Paper(
+            children=[
+                dmc.Stack([
+                    dmc.Text(
+                        [
+                            "The source code for ",
+                            html.Span("starbase", className="logo-text"),
+                            " webserver will soon be available on GitHub",
+                        ],
+                        size="lg",
+                    ),
+                    dmc.Image(
+                        src="assets/images/starbase-map.png",
+                        fit="contain",
+                        className="auto-resize-750",
+                    ),
+                ], gap="xl"),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
         ),
     ],
+    py="xl",
 )

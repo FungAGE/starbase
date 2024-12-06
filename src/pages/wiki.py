@@ -2,31 +2,31 @@ import warnings
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, dash_table, callback, no_update
+from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
+from dash_iconify import DashIconify
 
 import pandas as pd
-import pickle
 import os
 import logging
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.components.cache import cache
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import (
+from src.config.cache import cache
+from src.database.sql_manager import fetch_meta_data
+from src.database.sql_manager import (
     fetch_meta_data,
     cache_sunburst_plot,
     fetch_paper_data,
 )
-from src.components.tables import make_ship_table
+from src.components.tables import make_ship_table, make_wiki_table
 from src.utils.plot_utils import make_logo
-from src.utils.parsing import clean_contigIDs
-from src.components.callbacks import create_accession_modal
+from src.utils.seq_utils import clean_contigIDs
+from src.components.callbacks import create_modal_callback
 
 dash.register_page(__name__)
 
@@ -57,7 +57,7 @@ def create_accordion_item(df, papers, category):
                 lg=6,
                 sm=12,
                 children=[
-                    dmc.Center(html.H5(f"Sequence logo of upstream DRs in {category}")),
+                    dmc.Center(html.H5("Upstream DRs")),
                     dmc.Center(
                         html.Img(
                             src=uplogo_img_path,
@@ -77,10 +77,12 @@ def create_accordion_item(df, papers, category):
                 lg=6,
                 sm=12,
                 children=[
-                    html.H5(f"Sequence logo of downstream DRs in {category}"),
-                    html.Img(
-                        src=downlogo_img_path,
-                        style={"width": "100%"},
+                    dmc.Center(html.H5("Downstream DRs")),
+                    dmc.Center(
+                        html.Img(
+                            src=downlogo_img_path,
+                            style={"width": "100%"},
+                        ),
                     ),
                 ],
             )
@@ -88,29 +90,8 @@ def create_accordion_item(df, papers, category):
             downlogo_img = None
 
         accordion_content = [
-            dash_table.DataTable(
-                columns=[
-                    {"name": "Metric", "id": "metric"},
-                    {"name": "Value", "id": "value"},
-                ],
-                data=[
-                    {
-                        "metric": "Total Number of Starships in {}".format(category),
-                        "value": f"{n_ships:,.0f}",
-                    },
-                    {
-                        "metric": "Maximum Starship Size (bp)",
-                        "value": f"{max_size:,.0f}",
-                    },
-                    {
-                        "metric": "Minimum Starship Size (bp)",
-                        "value": f"{min_size:,.0f}",
-                    },
-                ],
-                style_table={"overflowX": "auto", "maxWidth": "500px"},
-                style_cell={"textAlign": "left"},
-                style_header={"fontWeight": "bold"},
-            )
+            make_wiki_table(n_ships, max_size, min_size)
+
         ]
         if type_element_reference.size > 0:
             # Get unique URLs and convert to strings
@@ -144,74 +125,216 @@ def create_accordion_item(df, papers, category):
             item_id=category,
         )
 
-
-modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle(id="wiki-modal-title")),
-        dbc.ModalBody(id="wiki-modal-content"),
-    ],
+modal = dmc.Modal(
     id="wiki-modal",
-    is_open=False,
+    opened=False,
+    centered=True,
+    overlayProps={"blur": 3},
+    size="lg",
+    children=[
+        dmc.Title(id="wiki-modal-title", order=3),
+        dmc.Space(h="md"),
+        html.Div(id="wiki-modal-content"),
+    ],
 )
+
+def load_initial_data():
+    """Load initial data for the page"""
+    try:
+        meta_data = cache.get("meta_data")
+        if meta_data is None:
+            logger.debug("Cache miss for meta_data, fetching from database")
+            meta_data = fetch_meta_data()
+            if meta_data is not None:
+                cache.set("meta_data", meta_data)
+        
+        if isinstance(meta_data, pd.DataFrame):
+            return meta_data.to_dict('records')
+        return meta_data
+    except Exception as e:
+        logger.error(f"Error loading initial data: {str(e)}")
+        return None
 
 layout = dmc.Container(
     fluid=True,
     children=[
+        modal,
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="meta-data"),
+        dcc.Store(id="meta-data", data=load_initial_data()),
+        dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
-        dcc.Store(id="active-item-cache"),
-        dmc.Grid(
-            justify="center",
-            align="begin",
-            style={"paddingTop": "20px"},
+        
+        # Header Section
+        dmc.Space(h="md"),
+        dmc.Paper(
             children=[
-                dmc.GridCol(
-                    span={"lg": 6, "sm": 12},
-                    style={
-                        "overflow": "hidden",
-                        "padding": "10px",
-                    },
-                    children=[
-                        html.H1(
-                            "Summary and characteristics for each Starship family",
-                        ),
-                        dcc.Loading(
-                            id="wiki-loading",
-                            type="circle",
-                            children=html.Div(
-                                id="accordion",
-                                children=dbc.Accordion(id="category-accordion"),
-                            ),
-                        ),
-                    ],
+                dmc.Title(
+                    "Starship Family Wiki",
+                    order=1,
+                    mb="md",
                 ),
+                dmc.Text(
+                    "Search and explore the characteristics of different Starship families",
+                    c="dimmed",
+                    size="lg",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            mb="xl",
+        ),
+        
+        dmc.Grid(
+            children=[
+                # Left Column - Search Section
                 dmc.GridCol(
-                    span={"lg": 6, "sm": 12},
-                    style={
-                        "overflow": "hidden",
-                        "padding": "10px",
-                    },
+                    span={"lg": 4, "md": 12},
                     children=[
-                        html.Div(id="sidebar-title"),
-                        dcc.Loading(
-                            id="sidebar-loading",
-                            type="circle",
+
+                        dmc.Paper(
                             children=[
-                                dmc.Center(
-                                    html.Div(
-                                        id="sidebar",
+                                dmc.Title("Search Starships", order=3, mb="md"),
+                                dmc.Grid(
+                                    children=[
+                                        # Taxonomy Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="taxonomy-search",
+                                                    label="Taxonomy",
+                                                    placeholder="Search by taxonomy...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                        # Family Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="family-search",
+                                                    label="Starship Family",
+                                                    placeholder="Search by family...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                        # Navis Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="navis-search",
+                                                    label="Navis",
+                                                    placeholder="Search by navis...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                        # Haplotype Search
+                                        dmc.GridCol(
+                                            span={"lg": 3, "md": 6, "sm": 12},
+                                            children=[
+                                                dmc.MultiSelect(
+                                                    id="haplotype-search",
+                                                    label="Haplotype",
+                                                    placeholder="Search by haplotype...",
+                                                    searchable=True,
+                                                    clearable=True,
+                                                    nothingFoundMessage="No options found",
+                                                    data=[],  # Will be populated by callback
+                                                    value=[],  # Initialize with empty list
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                    gutter="xl",
+                                ),
+                                # Search Actions
+                                dmc.Group(
+                                    align="right",
+                                    mt="md",
+                                    children=[
+                                        dmc.Button(
+                                            "Reset",
+                                            id="reset-search",
+                                            variant="outline",
+                                            leftSection=DashIconify(icon="tabler:refresh"),
+                                        ),
+                                        dmc.Button(
+                                            "Search",
+                                            id="apply-search",
+                                            variant="filled",
+                                            leftSection=DashIconify(icon="tabler:search"),
+                                        ),
+                                    ],
+                                ),
+                            ],
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            mb="xl",
+                        ),
+                        dmc.Paper(
+                            children=[
+                                dmc.Title("Taxonomic Distribution", order=3, mb="md"),
+                                dcc.Loading(
+                                    id="search-sunburst-loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="search-sunburst-plot",
                                         style={
                                             "width": "100%",
-                                            "overflowY": "auto",
-                                            "overflowX": "auto",
-                                        },
-                                    )
-                                )
+                                            "height": "400px",
+                                        }
+                                    ),
+                                ),
                             ],
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            mb="xl",
                         ),
-                    ],
-                ),
+                    ]),
+                # Right Column - Search Results
+                dmc.GridCol(
+                    span={"lg": 8, "md": 12},
+                    children=[
+                        html.Div(id="search-results"),
+                        dmc.Space(h="md"),
+                        dmc.Paper(
+                            children=[
+                                dmc.Title("Starship Families", order=2, mb="md"),
+                                dcc.Loading(
+                                    id="wiki-loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="accordion",
+                                        children=dbc.Accordion(id="category-accordion"),
+                                    ),
+                                ),
+                            ],
+                            p="md",
+                            radius="md",
+                            withBorder=True,
+                            style={"height": "calc(100vh - 200px)", "overflowY": "auto"},
+                        ),
+                    ]
+                )
             ],
         ),
     ],
@@ -221,28 +344,27 @@ layout = dmc.Container(
 @cache.memoize()
 @callback(Output("meta-data", "data"), Input("url", "href"))
 def load_meta_data(url):
-    if url:
-        try:
-            logger.debug("Loading metadata from database.")
-            meta_df = load_from_cache("meta_data")
-            if meta_df is None:
-                meta_df = fetch_meta_data()
-            logger.info(f"Metadata query returned {len(meta_df)} rows.")
-
-            # Clean 'contigID' column if present
-            if "contigID" in meta_df.columns:
-                meta_df["contigID"] = meta_df["contigID"].apply(clean_contigIDs)
-                logger.debug("Cleaned contigID column in the metadata.")
-
-            return meta_df.to_dict("records")
-        except SQLAlchemyError as e:
-            logger.error(
-                "Error occurred while executing the metadata query.", exc_info=True
-            )
+    if not url:
+        raise PreventUpdate
+    
+    try:
+        meta_data = cache.get("meta_data")
+        if meta_data is None:
+            meta_data = fetch_meta_data()
+            if meta_data is not None:
+                cache.set("meta_data", meta_data)
+                
+        if meta_data is None:
+            logger.error("Failed to fetch metadata")
             return []
-
-    logger.warning("No URL provided for metadata loading.")
-    raise PreventUpdate  # Skip the update if no URL is provided
+            
+        if "contigID" in meta_data.columns:
+            meta_data["contigID"] = meta_data["contigID"].apply(clean_contigIDs)
+            
+        return meta_data.to_dict("records")
+    except Exception as e:
+        logger.error(f"Error loading meta data: {str(e)}")
+        return []
 
 
 # Callback to load paper data
@@ -252,7 +374,7 @@ def load_paper_data(url):
     if url:
         try:
             logger.debug("Loading paper data from database.")
-            paper_df = load_from_cache("paper_data")
+            paper_df = cache.get("paper_data")
             if paper_df is None:
                 paper_df = fetch_paper_data()
             logger.info(f"Paper data query returned {len(paper_df)} rows.")
@@ -307,49 +429,49 @@ def create_accordion(cached_meta, cached_papers):
             children=accordion_items,
             id="category-accordion",
             always_open=False,
-            active_item="Prometheus",
+            active_item=[],
         )
     except Exception as e:
         logger.error("Error occurred while creating the accordion.", exc_info=True)
         raise
 
 
-# Callback to create sidebar content
 @callback(
-    [
-        Output("sidebar", "children"),
-        Output("sidebar-title", "children"),
-        Output("active-item-cache", "value"),
-    ],
-    Input("category-accordion", "active_item"),
+    Output("search-results", "children"),
+    Input("filtered-meta-data", "data"),
     State("meta-data", "data"),
 )
-def create_sidebar(active_item, cached_meta):
-    if active_item is None or cached_meta is None:
-        logger.warning("No active item or cached meta data provided.")
-        raise PreventUpdate  # Prevent the callback from running if the inputs are invalid
-
-    logger.debug(f"Creating sidebar for active item: {active_item}")
-    df = pd.DataFrame(cached_meta)
+def create_search_results(filtered_meta, cached_meta):
+    # Use filtered data if available, otherwise use original data
+    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
+    
+    if data_to_use is None:
+        return dmc.Text("Start a search to see results", size="lg", c="dimmed")
 
     try:
-        title = html.H1(f"Taxonomy and Genomes for Starships in {active_item}")
-        filtered_meta_df = df[df["familyName"] == active_item].sort_values(
-            by="accession_tag", ascending=False
-        )
-        logger.info(
-            f"Filtered metadata for {active_item} contains {len(filtered_meta_df)} rows."
-        )
-
-        sunburst_figure = load_from_cache(f"sunburst_{active_item}")
-        if sunburst_figure is None:
-            sunburst_figure = cache_sunburst_plot(
-                family=active_item, df=filtered_meta_df
+        df = pd.DataFrame(data_to_use)       
+        if df.empty:
+            return dmc.Alert(
+                "No results match your search criteria.",
+                color="blue",
+                variant="filled"
             )
-
-        fig = dcc.Graph(
-            figure=sunburst_figure, style={"width": "100%", "height": "100%"}
+        # Calculate the count for each accession_tag
+        genome_counts = df.groupby('accession_tag').size().reset_index(name='n_genomes')
+        
+        # Remove duplicates and merge with counts
+        filtered_meta_df = df.drop_duplicates(subset=['accession_tag']).merge(
+            genome_counts, 
+            on='accession_tag', 
+            how='left'
         )
+        
+        if filtered_meta_df.empty:
+            return dmc.Text(
+                "No results found",
+                size="lg",
+                c="dimmed"
+            )
 
         table_columns = [
             {
@@ -359,64 +481,304 @@ def create_sidebar(active_item, cached_meta):
                 "selectable": False,
                 "presentation": "markdown",
             },
-            # {
-            #     "name": "Species",
-            #     "id": "species",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
-            # {
-            #     "name": "Contig ID",
-            #     "id": "contigID",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
-            # {
-            #     "name": "Start Position in Genome",
-            #     "id": "elementBegin",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
-            # {
-            #     "name": "End Position in Genome",
-            #     "id": "elementEnd",
-            #     "deletable": False,
-            #     "selectable": False,
-            # },
             {
-                "name": "Element Length",
+                "name": "Starship Family",
+                "id": "familyName",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Starship Navis",
+                "id": "starship_navis",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Starship Haplotype",
+                "id": "starship_haplotype",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Number of genomes",
+                "id": "n_genomes",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Species",
+                "id": "species",
+                "deletable": False,
+                "selectable": False,
+            },
+            {
+                "name": "Element Length (bp)",
                 "id": "size",
                 "deletable": False,
                 "selectable": False,
             },
         ]
+        
         table = make_ship_table(
-            filtered_meta_df, id="wiki-table", columns=table_columns, pg_sz=15
+            filtered_meta_df, 
+            id="wiki-table", 
+            columns=table_columns, 
+            select_rows=False,
+            pg_sz=15
         )
-        logger.debug("Table for sidebar created successfully.")
+        
+        title = dmc.Title("Search Results", order=2, mb="md")
+        return dmc.Paper(children=[
+            dbc.Stack([title, table], gap=3)
+        ], p="xl", radius="md", withBorder=True)
 
-        output = dbc.Stack(children=[fig, table, modal], direction="vertical", gap=5)
-        return output, title, active_item
     except Exception as e:
-        logger.error(
-            f"Error occurred while creating the sidebar for {active_item}.",
-            exc_info=True,
+        logger.error(f"Error in create_search_results: {str(e)}", exc_info=True)
+        return dmc.Alert(
+            f"An error occurred while loading the results: {str(e)}",
+            color="red",
+            variant="filled"
         )
-        raise
 
+
+# @callback(
+#     [
+#         Output("sidebar", "children"),
+#         Output("sidebar-title", "children"),
+#         Output("active-item-cache", "value"),
+#     ],
+#     Input("category-accordion", "active_item"),
+#     State("meta-data", "data"),
+# )
+# def create_sidebar(active_item, cached_meta):
+#     if active_item is None or cached_meta is None:
+#         raise PreventUpdate
+    
+#     try:
+#         title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
+        
+#         df = pd.DataFrame(cached_meta)
+#         filtered_df = df[df["familyName"] == active_item]
+#         sunburst_figure = cache_sunburst_plot(
+#             family=active_item, 
+#             df=filtered_df
+#         )
+        
+#         if sunburst_figure is None:
+#             return dmc.Text("No data available", size="lg", c="dimmed"), title, active_item
+        
+#         # Make the plot responsive
+#         sunburst_figure.update_layout(
+#             autosize=True,
+#             margin=dict(l=0, r=0, t=30, b=0),
+#             height=None,
+#         )
+
+#         fig = dcc.Graph(
+#             figure=sunburst_figure,
+#             style={"width": "100%", "height": "100%"},
+#             config={
+#                 'responsive': True,
+#                 'displayModeBar': False,
+#                 'scrollZoom': False
+#             }
+#         )
+
+#         return fig, title, active_item
+#     except Exception as e:
+#         logger.error(f"Error in create_sidebar: {str(e)}")
+#         raise
+
+toggle_modal = create_modal_callback(
+    "wiki-table",
+    "wiki-modal",
+    "wiki-modal-content",
+    "wiki-modal-title"
+)
+
+# Add this cache decorator for common filter combinations
+@cache.memoize()
+def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None):
+    """Cache-friendly version of option filtering"""
+    try:
+        meta_data = cache.get("meta_data")
+        if meta_data is None:
+            meta_data = fetch_meta_data()
+            
+        df = pd.DataFrame(meta_data)
+        
+        if taxonomy:
+            df = df[df["genus"].isin(taxonomy)]
+        if family:
+            df = df[df["familyName"].isin(family)]
+        if navis:
+            df = df[df["starship_navis"].isin(navis)]
+        if haplotype:
+            df = df[df["starship_haplotype"].isin(haplotype)]
+        
+        return {
+            "taxonomy": sorted(df["genus"].dropna().unique()),
+            "family": sorted(df["familyName"].dropna().unique()),
+            "navis": sorted(df["starship_navis"].dropna().unique()),
+            "haplotype": sorted(df["starship_haplotype"].dropna().unique())
+        }
+    except Exception as e:
+        logger.error(f"Error in get_filtered_options: {str(e)}")
+        return {
+            "taxonomy": [], "family": [], "navis": [], "haplotype": []
+        }
 
 @callback(
-    Output("wiki-modal", "is_open"),
-    Output("wiki-modal-content", "children"),
-    Output("wiki-modal-title", "children"),
-    Input("wiki-table", "active_cell"),
-    State("wiki-modal", "is_open"),
-    State("wiki-table", "data"),
+    [
+        Output("taxonomy-search", "data"),
+        Output("family-search", "data"),
+        Output("navis-search", "data"),
+        Output("haplotype-search", "data"),
+    ],
+    [
+        Input("taxonomy-search", "value"),
+        Input("family-search", "value"),
+        Input("navis-search", "value"),
+        Input("haplotype-search", "value"),
+        Input("meta-data", "data"),
+    ]
 )
-def toggle_modal(active_cell, is_open, table_data):
-    if active_cell:
-        row = active_cell["row"]
-        row_data = table_data[row]
-        modal_content, modal_title = create_accession_modal(row_data["accession_tag"])
-        return True, modal_content, modal_title
-    return is_open, None, None
+def update_search_options(taxonomy_val, family_val, navis_val, haplotype_val, meta_data):
+    if not meta_data:
+        empty_data = []
+        return empty_data, empty_data, empty_data, empty_data
+    
+    try:
+        df = pd.DataFrame(meta_data)
+        
+        # Apply filters based on current selections
+        if taxonomy_val:
+            df = df[df["genus"].isin(taxonomy_val)]
+        if family_val:
+            df = df[df["familyName"].isin(family_val)]
+        if navis_val:
+            df = df[df["starship_navis"].isin(navis_val)]
+        if haplotype_val:
+            df = df[df["starship_haplotype"].isin(haplotype_val)]
+        
+        # Get available options based on filtered data
+        taxonomy_options = sorted(df["genus"].dropna().unique())
+        family_options = sorted(df["familyName"].dropna().unique())
+        navis_options = sorted(df["starship_navis"].dropna().unique())
+        haplotype_options = sorted(df["starship_haplotype"].dropna().unique())
+        
+        # Format options for Mantine MultiSelect
+        taxonomy_data = [{"value": x, "label": x} for x in taxonomy_options]
+        family_data = [{"value": x, "label": x} for x in family_options]
+        navis_data = [{"value": x, "label": x} for x in navis_options]
+        haplotype_data = [{"value": x, "label": x} for x in haplotype_options]
+        
+        return taxonomy_data, family_data, navis_data, haplotype_data
+    except Exception as e:
+        logger.error(f"Error in update_search_options: {str(e)}", exc_info=True)
+        empty_data = []
+        return empty_data, empty_data, empty_data, empty_data
+
+@callback(
+    [
+        Output("filtered-meta-data", "data"),
+        Output("taxonomy-search", "value"),
+        Output("family-search", "value"),
+        Output("navis-search", "value"),
+        Output("haplotype-search", "value"),
+    ],
+    [
+        Input("apply-search", "n_clicks"),
+        Input("reset-search", "n_clicks"),
+    ],
+    [
+        State("taxonomy-search", "value"),
+        State("family-search", "value"),
+        State("navis-search", "value"),
+        State("haplotype-search", "value"),
+        State("meta-data", "data"),
+    ],
+    prevent_initial_call=True
+)
+def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotype, original_data):
+    if not original_data:
+        raise PreventUpdate
+        
+    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+    
+    # If reset button clicked, clear all filters
+    if triggered_id == "reset-search":
+        return None, [], [], [], []  # Return None for filtered data to use original
+    
+    # If no search clicked, prevent update
+    if not search_clicks:
+        raise PreventUpdate
+    
+    df = pd.DataFrame(original_data)
+    
+    # Apply filters if they exist
+    if taxonomy and len(taxonomy) > 0:
+        df = df[df["genus"].isin(taxonomy)]
+    if family and len(family) > 0:
+        df = df[df["familyName"].isin(family)]
+    if navis and len(navis) > 0:
+        df = df[df["starship_navis"].isin(navis)]
+    if haplotype and len(haplotype) > 0:
+        df = df[df["starship_haplotype"].isin(haplotype)]
+    
+    # If no filters selected, return None to use original data
+    if not any([taxonomy, family, navis, haplotype]):
+        return None, [], [], [], []
+    
+    # Return filtered data and keep current filter values
+    return df.to_dict("records"), taxonomy or [], family or [], navis or [], haplotype or []
+
+@callback(
+    Output("search-sunburst-plot", "children"),
+    Input("filtered-meta-data", "data"),
+    State("meta-data", "data"),
+)
+def update_search_sunburst(filtered_meta, cached_meta):
+    # Use filtered data if available, otherwise use original data
+    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
+    
+    if data_to_use is None:
+        return dmc.Text("Start a search to see taxonomic distribution", size="lg", c="dimmed")
+
+    try:
+        df = pd.DataFrame(data_to_use)
+        if df.empty:
+            return dmc.Text("No results to display", size="lg", c="dimmed")
+
+        # Create sunburst plot for all results
+        sunburst_figure = cache_sunburst_plot(
+            family="Search Results",  # This will be ignored since we're not filtering by family
+            df=df
+        )
+        
+        if sunburst_figure is None:
+            return dmc.Text("No data available", size="lg", c="dimmed")
+        
+        # Make the plot responsive
+        sunburst_figure.update_layout(
+            autosize=True,
+            margin=dict(l=0, r=0, t=30, b=0),
+            height=None,
+        )
+
+        return dcc.Graph(
+            figure=sunburst_figure,
+            style={"width": "100%", "height": "100%"},
+            config={
+                'responsive': True,
+                'displayModeBar': False,
+                'scrollZoom': False
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in update_search_sunburst: {str(e)}")
+        return dmc.Alert(
+            f"An error occurred while creating the plot: {str(e)}",
+            color="red",
+            variant="filled"
+        )

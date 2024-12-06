@@ -1,25 +1,16 @@
 # Select base image
 FROM python:3.9
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
-LABEL org.opencontainers.image.description="starbase is a database and toolkit for exploring large transposable elements in Fungi"
+LABEL org.opencontainers.image.description="STARBASE is a database and toolkit for exploring large transposable elements in Fungi"
 
-# Create variables for user name, home directory, and placeholders 
+ARG IPSTACK_API_KEY
+ARG MAINTENANCE_TOKEN
+
+# Create variables for user name, home directory, and secrets
 ENV USER=starbase
 ENV HOME=/home/$USER
-
-# Define build arguments
-ARG DB_USER
-ARG DB_PASSWORD
-ARG DB_HOST
-ARG DB_PORT
-ARG DB_NAME
-
-# Set environment variables from build arguments
-ENV DB_USER=${DB_USER}
-ENV DB_PASSWORD=${DB_PASSWORD}
-ENV DB_HOST=${DB_HOST}
-ENV DB_PORT=${DB_PORT}
-ENV DB_NAME=${DB_NAME}
+ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
+ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
 
 # Add user to system
 RUN useradd -m -u 1000 $USER
@@ -27,21 +18,34 @@ RUN useradd -m -u 1000 $USER
 # Set working directory
 WORKDIR $HOME/
 
-# Copy only the requirements.txt first for dependency installation
-COPY requirements.txt .
-
-# Update system and install system dependencies first
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw cron && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies separately (cache this layer)
+COPY requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the code
 COPY ./ ./
 
+# Make script executable
 RUN chmod +x start-script.sh
+
+# Run precomputation after code is available
+# RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
+
+# Add the cron job
+RUN echo "0 0 * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
+
+# Give execution rights on the cron job
+RUN chmod 0644 /etc/cron.d/telemetry-cron
+
+# Apply the cron job
+RUN crontab /etc/cron.d/telemetry-cron
+
+# Create the log file
+RUN touch /var/log/cron.log && \
+    chmod 666 /var/log/cron.log
 
 # Change permissions for user
 RUN chown -R $USER:$USER $HOME
@@ -52,5 +56,8 @@ USER $USER
 # Expose the application port
 EXPOSE 8000
 
-# Start the container by initializing Tailscale and running the main app script
+# Start the container
 ENTRYPOINT ["./start-script.sh"]
+
+# Run cron and tail the log
+CMD cron && tail -f /var/log/cron.log

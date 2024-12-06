@@ -15,12 +15,15 @@ import base64
 from datetime import date
 import pandas as pd
 import plotly.graph_objects as go
+import logging
 
-from src.components.cache import cache
-from src.utils.blast_utils import (
+
+from src.config.cache import cache
+from src.utils.seq_utils import ( guess_seq_type,
     check_input,
-    guess_seq_type,
     write_temp_fasta,
+                                 )
+from src.utils.blast_utils import (
     run_blast,
     run_hmmer,
     run_diamond,
@@ -32,14 +35,25 @@ from src.utils.blast_utils import (
     blast2html,
     parse_blast_pairwise,
 )
-from src.components.blast_viewer import BlastViewer
-from src.components.callbacks import curated_switch, create_accession_modal
-from src.utils.parsing import parse_fasta, parse_fasta_from_file
-from src.components.cache_manager import load_from_cache
-from src.components.sql_queries import fetch_meta_data
-from src.utils.blastdb import db_list
 
-import logging
+from src.utils.blast_utils import (
+    run_blast,
+    run_hmmer,
+    run_diamond,
+    blast_table,
+    run_lastz,
+    select_ship_family,
+    parse_lastz_output,
+    blast_chords,
+)
+from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback
+from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
+
+from src.database.sql_manager import fetch_meta_data
+from src.database.blastdb import db_list
+
+from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
+
 
 dash.register_page(__name__)
 
@@ -55,13 +69,17 @@ def blast_family_button(family):
     )
 
 
-modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle(id="blast-modal-title")),
-        dbc.ModalBody(id="blast-modal-content"),
-    ],
+modal = dmc.Modal(
     id="blast-modal",
-    is_open=False,
+    opened=False,
+    centered=True,
+    overlayProps={"blur": 3},
+    size="lg",
+    children=[
+        dmc.Title(id="blast-modal-title", order=3),
+        dmc.Space(h="md"),
+        html.Div(id="blast-modal-content"),
+    ],
 )
 
 
@@ -74,99 +92,154 @@ layout = dmc.Container(
         dcc.Store(id="query-type-store"),
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="captain-results-store"),
+        dcc.Store(id="upload-error-store"),
+        
+        dmc.Space(h=20),
+        dmc.Paper(
+            children=[
+                dmc.Title("BLAST Search", order=1, mb="md"),
+                dmc.Text(
+                    "Search protein/nucleotide sequences for Starships and Starship-associated genes",
+                    c="dimmed",
+                    size="lg",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
+        ),
+        
         dmc.Grid(
-            justify="start",
-            align="start",
-            style={"paddingTop": "20px"},
-            gutter="xl",
             children=[
                 dmc.GridCol(
-                    span={
-                        "sm": 12,
-                        "lg": 4,
-                    },
+                    span={"sm": 12, "lg": 4},
                     children=[
-                        html.H3(
-                            "Search protein/nucleotide sequences for Starships and Starship-associated genes.",
-                            style={
-                                "textAlign": "center",
-                                "fontSize": "1.25rem",
-                            },
-                        ),
-                        dcc.Textarea(
-                            id="query-text",
-                            placeholder="Paste FASTA sequence here...",
-                            rows=5,
-                            style={
-                                "width": "100%",
-                                "fontSize": "1rem",
-                                "padding": "10px",
-                            },
-                        ),
-                        html.H3(
-                            "Or",
-                            style={
-                                "textAlign": "center",
-                                "fontSize": "1.25rem",
-                            },
-                        ),
-                        dcc.Upload(
-                            id="blast-fasta-upload",
-                            children=html.Div(
-                                "Drag and drop or click to select a FASTA file.",
-                                id="blast-fasta-sequence-upload",
-                                style={"fontSize": "1rem"},
-                            ),
-                            className="upload-box",
-                            multiple=False,
-                            accept=".fa, .fas, .fasta, .fna",
-                        ),
-                        html.Div(
-                            id="upload-error-message",
-                            style={"color": "red", "marginTop": "1rem"},
-                        ),
-                        curated_switch(
-                            text="Only search curated Starships", size="normal"
-                        ),
-                        dbc.Button(
-                            "Submit BLAST",
-                            id="submit-button",
-                            n_clicks=0,
-                            className="d-grid gap-2 col-6 mx-auto",
-                            style={"fontSize": "1rem"},
-                        ),
-                        dcc.Loading(
-                            id="family-loading",
-                            type="circle",
-                            children=html.Div(
-                                id="ship-family",
-                                style={"paddingTop": "20px"},
-                            ),
+                        dmc.Paper(
+                            children=dmc.Stack([
+                                # Input Section
+                                dmc.Stack([
+                                    dmc.Title("Input Sequence", order=3),
+                                    dmc.Textarea(
+                                        id="query-text",
+                                        placeholder="Paste FASTA sequence here...",
+                                        minRows=5,
+                                        style={"width": "100%"},
+                                    ),
+                                ], gap="xs"),
+                                
+                                # Upload Section
+                                dmc.Stack([
+                                    dmc.Center(
+                                        dmc.Text("Or", size="lg"),
+                                    ),
+                                    dmc.Paper(
+                                        children=dcc.Upload(
+                                            id="blast-fasta-upload",
+                                            children=html.Div(
+                                                id="blast-fasta-sequence-upload",
+                                                children="Drag and drop or click to select a FASTA file",
+                                                style={"textAlign": "center", "padding": "20px"}
+                                            ),
+                                            multiple=False,
+                                            accept=".fa, .fas, .fasta, .fna",
+                                            className="upload-box text-center",
+                                        ),
+                                        withBorder=False,
+                                        radius="md",
+                                        style={"cursor": "pointer"}
+                                    ),
+                                    html.Div(
+                                        id="upload-error-message",
+                                        style={"color": "red"}
+                                    ),
+                                ], gap="md"),
+                                
+                                # Options Section
+                                dmc.Stack([
+                                    dmc.Title("Search Options", order=3),
+                                    curated_switch(
+                                        text="Only search curated Starships",
+                                        size="sm"
+                                    ),
+                                    dmc.Text(
+                                        id="rate-limit-info",
+                                        size="sm",
+                                        c="dimmed",
+                                    ),
+                                    html.Div(
+                                        id="rate-limit-alert",
+                                        style={"display": "none"}
+                                    ),
+                                ], gap="xs"),
+                                
+                                # Submit Section
+                                dmc.Stack([
+                                    dmc.Button(
+                                        "Submit BLAST",
+                                        id="submit-button",
+                                        variant="gradient",
+                                        gradient={"from": "indigo", "to": "cyan"},
+                                        size="lg",
+                                        fullWidth=True,
+                                    ),
+                                    dmc.Text(
+                                        id="rate-limit-info",
+                                        size="sm",
+                                        c="dimmed",
+                                        # align="center",
+                                    ),
+                                ], gap="xs"),
+                                
+                                # Results Preview
+                                dcc.Loading(
+                                    id="family-loading",
+                                    type="circle",
+                                    children=html.Div(id="ship-family"),
+                                ),
+                            ], gap="xl"),
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            style={"height": "100%"},  # Make paper fill grid column
                         ),
                     ],
                 ),
+                
+                # Right Column - Results Panel
                 dmc.GridCol(
-                    span={
-                        "sm": 12,
-                        "lg": 8,
-                    },
+                    span={"sm": 12, "lg": 8},
                     children=[
-                        dcc.Loading(
-                            id="blast-results-loading",
-                            type="circle",
-                            className="dash-loading",
-                            children=html.Div(id="blast-results-container"),
-                        ),
-                        modal,
-                        dcc.Loading(
-                            id="subject-seq-button-loading",
-                            type="circle",
-                            children=html.Div(id="subject-seq-button"),
+                        dmc.Paper(
+                            children=dmc.Stack([
+                                dmc.Title("BLAST Results", order=3),
+                                dcc.Loading(
+                                    id="ship-blast-table-loading",
+                                    type="circle",
+                                    children=html.Div(id="ship-blast-table"),
+                                ),
+                                dcc.Loading(
+                                    id="subject-seq-button-loading",
+                                    type="circle",
+                                    children=html.Div(id="subject-seq-button"),
+                                ),
+                                dcc.Loading(
+                                    id="ship-aln-loading",
+                                    type="circle",
+                                    children=html.Div(id="ship-aln"),
+                                ),
+                            ], gap="xl"),
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            style={"height": "100%"},  # Make paper fill grid column
                         ),
                     ],
                 ),
             ],
+            gutter="xl",
         ),
+        modal,
     ],
 )
 
@@ -199,7 +272,90 @@ def update_fasta_details(seq_content, seq_filename):
             logger.error(e)
             return html.Div(["There was an error processing this file."])
 
+@callback(
+    [
+        Output("submit-button", "disabled"),
+        Output("submit-button", "children"),
+        Output("rate-limit-info", "children"),
+        Output("rate-limit-alert", "children"),
+        Output("rate-limit-alert", "style"),
+        Output("upload-error-message", "children"),
+        Output("upload-error-store", "data"),
+    ],
+    [
+        Input("submit-button", "n_clicks"),
+        Input("blast-fasta-upload", "contents")
+    ],
+    State("blast-fasta-upload", "filename"),
+    prevent_initial_call=True
+)
+def handle_submission_and_upload(n_clicks, contents, filename):
+    triggered_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
+    
+    # Default return values
+    button_disabled = False
+    button_text = "Submit BLAST"
+    limit_info = ""
+    limit_alert = None
+    alert_style = {"display": "none"}
+    error_message = ""
+    error_store = None
+    
+    # Handle file upload
+    if triggered_id == "blast-fasta-upload" and contents is not None:
+        max_size = 10 * 1024 * 1024  # 10 MB
+        content_type, content_string = contents.split(",")
+        
+        header, seq, fasta_length_error_message = parse_fasta_from_file(contents)
+        
+        decoded = base64.b64decode(content_string)
+        file_size = len(decoded)
+        
+        if fasta_length_error_message:
+            error_message = dbc.Alert(f"Error: {fasta_length_error_message}", color="danger")
+            error_store = error_message
+            button_disabled = True
+        elif file_size > max_size:
+            error_message = dbc.Alert(f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger")
+            error_store = error_message
+            button_disabled = True
+    
+    # Handle rate limit check
+    if triggered_id == "submit-button" and n_clicks:
+        try:
+            ip_address = get_client_ip()
+            limit_info_data = get_blast_limit_info(ip_address)
+            
+            if limit_info_data["remaining"] <= 0:
+                button_disabled = True
+                button_text = "Rate limit exceeded"
+                limit_info = f"Limit reached: {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour"
+                limit_alert = dbc.Alert(
+                    [
+                        html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                        f"Rate limit exceeded. You have used {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour. Please try again later.",
+                    ],
+                    color="warning",
+                    className="d-flex align-items-center",
+                )
+                alert_style = {"display": "block"}
+            else:
+                limit_info = f"Remaining: {limit_info_data['remaining']}/{limit_info_data['limit']} submissions"
+        
+        except Exception as e:
+            logger.error(f"Error checking rate limit: {str(e)}")
+    
+    return [
+        button_disabled,
+        button_text,
+        limit_info,
+        limit_alert,
+        alert_style,
+        error_message,
+        error_store
+    ]
 
+@blast_limit_decorator
 @callback(
     [
         Output("query-header-store", "data"),
