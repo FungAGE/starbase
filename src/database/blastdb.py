@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 db_list = {
-    "ship": {"nucl": f"{DB_PATHS['starbase']}/ships/fna/blastdb/ships.fa"},
+    "ship": {"nucl": "src/database/db/ships/fna/blastdb/ships.fa"},
     "gene": {
         "tyr": {
-            "nucl": f"{DB_PATHS['starbase']}/captain/tyr/fna/blastdb/captains.fna",
-            "prot": f"{DB_PATHS['starbase']}/captain/tyr/faa/blastdb/captains.faa",
+            "nucl": "src/database/db/captain/tyr/fna/blastdb/captains.fna",
+            "prot": "src/database/db/captain/tyr/faa/blastdb/captains.faa",
             "hmm": {
-                "nucl": f"{DB_PATHS['starbase']}/captain/tyr/fna/hmm/combined.hmm",
-                "prot": f"{DB_PATHS['starbase']}/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": "src/database/db/captain/tyr/fna/hmm/combined.hmm",
+                "prot": "src/database/db/captain/tyr/faa/hmm/combined.hmm",
             },
         },
     },

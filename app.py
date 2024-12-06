@@ -9,7 +9,7 @@ from flask import Flask, request
 from flask_limiter import Limiter
 import pandas as pd
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.DEBUG)
 warnings.filterwarnings("ignore")
 
 logger = logging.getLogger(__name__)

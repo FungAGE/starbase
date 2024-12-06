@@ -1,3 +1,4 @@
+from dash import Dash
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -15,6 +16,10 @@ from datetime import date
 import pandas as pd
 import plotly.graph_objects as go
 import logging
+from flask import jsonify, request
+import subprocess
+import os
+import json
 
 
 from src.config.cache import cache
@@ -208,28 +213,21 @@ layout = dmc.Container(
                     span={"sm": 12, "lg": 8},
                     children=[
                         dmc.Paper(
-                            children=dmc.Stack([
-                                dmc.Title("BLAST Results", order=3),
-                                dcc.Loading(
-                                    id="ship-blast-table-loading",
-                                    type="circle",
-                                    children=html.Div(id="ship-blast-table"),
-                                ),
-                                dcc.Loading(
-                                    id="subject-seq-button-loading",
-                                    type="circle",
-                                    children=html.Div(id="subject-seq-button"),
-                                ),
-                                dcc.Loading(
-                                    id="ship-aln-loading",
-                                    type="circle",
-                                    children=html.Div(id="ship-aln"),
-                                ),
-                            ], gap="xl"),
+                            children=[
+                                # Family identification alert
+                                html.Div(id="ship-family"),
+                                dmc.Space(h=20),
+                                # BLAST visualization
+                                html.Div(id="blast-visualization"),
+                                # Hidden elements for blasterjs
+                                html.Div(id="blast-multiple-alignments"),
+                                html.Div(id="blast-alignments-table"),
+                                html.Div(id="blast-single-alignment"),
+                                dcc.Upload(id="blastinput", style={"display": "none"}),
+                            ],
                             p="xl",
                             radius="md",
                             withBorder=True,
-                            style={"height": "100%"},  # Make paper fill grid column
                         ),
                     ],
                 ),
@@ -377,10 +375,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-        logger.info(
-            f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
-        )
-
+        
         if input_type in ("none", "both"):
             logger.info("Invalid input type; returning None.")
             return None, None, None
@@ -399,112 +394,116 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
     [
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
-        Output("subject-seq-button", "children"),
-    ],
+    ],  # Removed Output("subject-seq-button", "children")
     [
-        Input("query-header-store", "data"),
-        Input("query-seq-store", "data"),
-        Input("query-type-store", "data"),
+        Input("submit-button", "n_clicks"),
+        State("query-text", "value"),
+        State("blast-fasta-upload", "contents"),
     ],
+    prevent_initial_call=True
 )
-def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
+def process_blast_search(n_clicks, query_text_input, query_file_contents):
+    if not n_clicks:
+        return dash.no_update, dash.no_update
+        
     try:
-        if not query_header or not query_seq:
-            logger.error("Missing query header or sequence.")
-            return None, None, None
-
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
-
-        # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
-
-        try:
-            blast_results = run_blast(
-                db_list=db_list,
-                query_type=query_type,
-                query_fasta=tmp_query_fasta,
-                tmp_blast=tmp_blast,
-                input_eval=0.01,
-                threads=2,
-            )
-            logger.info(f"BLAST results: {blast_results.head()}")
-            if blast_results is None:
-                raise ValueError("BLAST returned no results!")
-        except Exception as e:
-            logger.error(f"BLAST error: {str(e)}")
-            raise
-
-        blast_results_dict = blast_results.to_dict("records")
-
-        # Run HMMER
-        logger.info(f"Running HMMER")
-
-        subject_seq_button = None
-        # subject_seq = None
-
-        try:
-            if search_type == "diamond":
-                results_dict = run_diamond(
-                    db_list=db_list,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-            if search_type == "hmmsearch":
-                results_dict = run_hmmer(
-                    db_list=db_list,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-
-            if results_dict is None or len(results_dict) == 0:
-                logger.error("Diamond/HMMER returned no results!")
-                raise
-        except Exception as e:
-            logger.error(f"Diamond/HMMER error: {str(e)}")
-            raise
-
-        return blast_results_dict, results_dict, subject_seq_button
-
+        input_type, query_header, query_seq = check_input(
+            query_text_input, query_file_contents
+        )
+        
+        if input_type in ("none", "both"):
+            return dash.no_update, dash.no_update
+            
+        blast_results = run_blast_search(
+            sequence=query_seq,
+            db_path=db_list['ship']['nucl']
+        )
+        
+        return blast_results, None
+        
     except Exception as e:
-        logger.error(f"Error in fetch_captain: {str(e)}")
-        return None, None, None
+        logger.error(f"Error in process_blast_search: {str(e)}")
+        return dash.no_update, dash.no_update
 
 
 @callback(
-    Output("subject-seq-dl-package", "data"),
-    [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
+    Output("blast-visualization", "children"),
+    Input("blast-results-store", "data"),
+    prevent_initial_call=True
 )
-def subject_seq_download(n_clicks, filename):
+def update_blast_visualization(blast_results):
+    if not blast_results:
+        return dash.no_update
+        
     try:
-        if n_clicks:
-            logger.info(f"Download initiated for file: {filename}")
-            return dcc.send_file(filename)
-        else:
-            return dash.no_update
+        # Convert the XML string into an array of lines and escape special characters
+        blast_lines = blast_results.split('\n')
+        escaped_lines = [line.replace('"', '\\"').replace("'", "\\'") for line in blast_lines]
+        lines_js = ',\n'.join(f'"{line}"' for line in escaped_lines)
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+            <script src="/assets/js/blaster.min.js"></script>
+            <script src="/assets/js/html2canvas.js"></script>
+            <style>
+                /* Prevent text selection on clicks */
+                * {{
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                }}
+            </style>
+        </head>
+        <body>
+            <div id="blast-multiple-alignments"></div>
+            <div id="blast-alignments-table"></div>
+            <div id="blast-single-alignment"></div>
+            
+            <script>
+                // Prevent default click behavior
+                document.addEventListener('click', function(e) {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                }}, true);
+                
+                var alignments = [
+                    {lines_js}
+                ].join('\\n');
+                
+                var blasterjs = require("biojs-vis-blasterjs");
+                var instance = new blasterjs({{
+                    string: alignments,
+                    multipleAlignments: "blast-multiple-alignments",
+                    alignmentsTable: "blast-alignments-table",
+                    singleAlignment: "blast-single-alignment",
+                }});
+            </script>
+        </body>
+        </html>
+        """
+        
+        return html.Div([
+            html.Iframe(
+                srcDoc=html_content,
+                style={
+                    "width": "100%",
+                    "height": "800px",
+                    "border": "none",
+                    "overflow": "auto"
+                },
+            )
+        ])
     except Exception as e:
-        logger.error(f"Error in subject_seq_download: {str(e)}")
+        logger.error(f"Error in update_blast_visualization: {str(e)}")
         return dash.no_update
 
-
-no_captain_alert = dbc.Alert(
-    "No captain sequence found (e-value threshold 0.01).",
-    color="warning",
-)
-
-
 @callback(
-    [
-        Output("ship-family", "children"),
-        Output("ship-blast-table", "children"),
-    ],
+    Output("ship-family", "children"),
     [
         Input("blast-results-store", "data"),
         Input("captain-results-store", "data"),
@@ -512,334 +511,52 @@ no_captain_alert = dbc.Alert(
     ],
     State("submit-button", "n_clicks"),
 )
-def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
-    if blast_results_dict is None and captain_results_dict is None:
+def update_ui(blast_results_xml, captain_results_dict, curated, n_clicks):
+    if blast_results_xml is None and captain_results_dict is None:
         raise PreventUpdate
     if n_clicks:
         logger.info(f"Updating UI with n_clicks={n_clicks}")
         try:
-            ship_family = no_update
-            ship_table = no_update
-
-            blast_results_df = pd.DataFrame(blast_results_dict)
-
-            # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
-            initial_df = cache.get("meta_data")
-
-            if initial_df is None:
-                initial_df = fetch_meta_data(curated)
-
-            initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
-
-            if blast_results_dict:
-                logger.info("Rendering BLAST table")
-                df_for_table = pd.merge(
-                    initial_df,
-                    blast_results_df,
-                    left_on="accession_tag",
-                    right_on="sseqid",
-                    how="right",
+            from Bio.Blast import NCBIXML
+            from io import StringIO
+            
+            # Parse XML BLAST results
+            blast_records = NCBIXML.parse(StringIO(blast_results_xml))
+            record = next(blast_records)  # Get first BLAST record
+            
+            if record.alignments:  # If we have any hits
+                best_hit = record.alignments[0]  # Get first (best) alignment
+                best_hsp = best_hit.hsps[0]      # Get first (best) HSP
+                
+                return dmc.Alert(
+                    title="BLAST Results",
+                    children=[
+                        f"Best hit: {best_hit.hit_def}",
+                        dmc.Space(h=5),
+                        dmc.Text(
+                            f"Alignment length = {best_hsp.align_length}, "
+                            f"Identity = {(best_hsp.identities / best_hsp.align_length) * 100:.1f}%, "
+                            f"E-value = {best_hsp.expect}",
+                            size="sm",
+                            c="dimmed"
+                        ),
+                    ],
+                    color="yellow",
+                    variant="light",
+                    withCloseButton=False,
                 )
-                # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
-                df_for_table = df_for_table.drop_duplicates(
-                    subset=["accession_tag", "pident", "length"]
-                )
-                df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
-                df_for_table.fillna("", inplace=True)
 
-                if len(df_for_table) > 0:
-                    ship_table = blast_table(df_for_table)
-                else:
-                    ship_table = dbc.Alert(
-                        "No BLAST results found.",
-                        color="danger",
-                    )
-
-                min_evalue_rows = df_for_table.loc[
-                    df_for_table.groupby("qseqid")["evalue"].idxmin()
-                ]
-                if min_evalue_rows.empty:
-                    logger.warning(
-                        "min_evalue_rows is empty after grouping by qseqid and selecting min evalue."
-                    )
-                else:
-                    print(min_evalue_rows["pident"])
-                    # logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
-
-                if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
-                    if min_evalue_rows["pident"].iloc[0] > 95:
-                        family_name = min_evalue_rows["familyName"].iloc[0]
-                        aln_len = min_evalue_rows["length"].iloc[0]
-                        ev = min_evalue_rows["evalue"].iloc[0]
-                        ship_family = dmc.Alert(
-                            title="Starship Family Found",
-                            children=[
-                                f"Your sequence is likely in Starship family: {family_name}",
-                                dmc.Space(h=5),
-                                dmc.Text(
-                                    f"Alignment length = {aln_len}, E-value = {ev}",
-                                    size="sm",
-                                    c="dimmed"
-                                ),
-                            ],
-                            color="yellow",
-                            variant="light",
-                            withCloseButton=False,
-                        )
-
-                    else:
-                        if captain_results_dict:
-                            logger.info("Processing Diamond/HMMER results")
-                            captain_results_df = pd.DataFrame(captain_results_dict)
-                            # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
-                            #     clean_shipID
-                            # )
-                            if len(captain_results_df) > 0:
-                                try:
-                                    superfamily, family_aln_length, family_evalue = (
-                                        select_ship_family(captain_results_df)
-                                    )
-                                    if superfamily:
-                                        family = initial_df[
-                                            initial_df["familyName"] == superfamily
-                                        ]["familyName"].unique()[0]
-                                        if family:
-                                            ship_family = dmc.Alert(
-                                                title="Starship Family Found",
-                                                children=[
-                                                    f"Your sequence is likely in Starship family: {family}",
-                                                    dmc.Space(h=5),
-                                                    dmc.Text(
-                                                        f"Alignment length = {family_aln_length}, E-value = {family_evalue}",
-                                                        size="sm",
-                                                        c="dimmed"
-                                                    ),
-                                                ],
-                                                color="yellow",
-                                                variant="light",
-                                                withCloseButton=False,
-                                            )
-                                        else:
-                                            ship_family = dmc.Alert(
-                                                title="Starship Family Not Determined",
-                                                children=[
-                                                    "Starship family could not be determined.",
-                                                    dmc.Space(h=5),
-                                                    dmc.Text(
-                                                        "Please try a different query or increase the e-value threshold.",
-                                                        size="sm",
-                                                        c="dimmed"
-                                                    ),
-                                                ],
-                                                color="red",
-                                                variant="light",
-                                                withCloseButton=False,
-                                            )
-
-                                except Exception as e:
-                                    logger.error(
-                                        f"Error selecting ship family: {str(e)}"
-                                    )
-                                    ship_family = html.Div(f"Error: {str(e)}")
-                            else:
-                                ship_family = no_captain_alert
-                        else:
-                            ship_family = no_captain_alert
-                else:
-                    ship_family = dbc.Alert(
-                        "No matching rows found for minimum evalue selection.",
-                        color="danger",
-                    )
-            return ship_family, ship_table
+            return dmc.Alert(
+                title="No Hits Found",
+                children="No significant BLAST hits were found for your sequence.",
+                color="yellow",
+                variant="light",
+                withCloseButton=False,
+            )
 
         except Exception as e:
             logger.error(f"Error in update_ui: {str(e)}")
-            return no_update, no_update
-
-
-@cache.memoize()
-@callback(
-    Output("ship-aln", "children"),
-    [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
-        Input("curated-input", "value"),
-    ],
-    State("query-type-store", "data"),
-)
-def blast_alignments(ship_blast_results, selected_row, curated, query_type):
-    try:
-        logger.info(
-            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
-        )
-
-        if not selected_row or len(selected_row) == 0:
-            return [None]
-
-        if not ship_blast_results or len(ship_blast_results) == 0:
-            logger.error(
-                "No BLAST results available because ship_blast_results is empty or None."
-            )
-            raise
-
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
-
-        row_idx = selected_row[0]
-
-        try:
-            row = ship_blast_results_df.iloc[row_idx]
-            qseq = str(row["qseq"])
-            qseqid = str(row["qseqid"])
-            sseq = str(row["sseq"])
-            sseqid = str(row["sseqid"])
-
-        except IndexError:
-            logger.error(f"Error: Row index {row_idx} out of bounds.")
-            raise
-        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-
-        try:
-            with open(tmp_fasta.name, "w") as f:
-                f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-        except Exception as file_error:
-            logger.error(f"Error writing to FASTA file: {file_error}")
-            raise
-
-        try:
-            with open(tmp_fasta.name, "r") as file:
-                data = file.read()
-        except Exception as read_error:
-            logger.error(f"Error reading FASTA file: {read_error}")
-            raise
-
-        color = "nucleotide" if query_type == "nucl" else "clustal2"
-
-        aln = dashbio.AlignmentChart(
-            id="alignment-viewer",
-            data=data,
-            height=200,
-            tilewidth=30,
-            colorscale=color,
-            showconsensus=False,
-            showconservation=False,
-            showgap=False,
-            showid=False,
-            ticksteps=5,
-            tickstart=0,
-        )
-
-        return [aln]
-
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise
-
-
-@callback(
-    Output("blast-dl", "data"),
-    [Input("blast-dl-button", "n_clicks")],
-    [State("ship-blast-table", "data"), State("ship-blast-table", "columns")],
-)
-def download_tsv(n_clicks, rows, columns):
-    if n_clicks == 0:
-        return None
-
-    if not rows or not columns:
-        logger.error("Error: No data available for download.")
-        return None
-
-    try:
-        df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
-
-        tsv_string = df.to_csv(sep="\t", index=False)
-        tsv_bytes = io.BytesIO(tsv_string.encode())
-        b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
-
-        today = date.today().strftime("%Y-%m-%d")
-
-        return dict(
-            content=f"data:text/tab-separated-values;base64,{b64}",
-            filename=f"starbase_blast_{today}.tsv",
-        )
-
-    except Exception as e:
-        logger.error(f"Error while preparing TSV download: {e}")
-        return None
-
-
-@callback(
-    Output("lastz-plot", "figure"),
-    [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
-    ],
-)
-def create_alignment_plot(ship_blast_results, selected_row):
-    """
-    Creates a Plotly scatter plot from the alignment DataFrame and saves it as a PNG.
-    """
-    tmp_fasta_clean = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-    lastz_output = tempfile.NamedTemporaryFile(suffix=".tsv", delete=True)
-
-    try:
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
-        if ship_blast_results_df.empty:
-            logger.error("Error: No blast results available for plotting.")
-            return None
-    except Exception as e:
-        logger.error(f"Error converting blast results to DataFrame: {e}")
-        return None
-
-    if selected_row is None or not selected_row:
-        logger.error("No row selected for alignment.")
-        return None
-
-    try:
-        row = ship_blast_results_df.iloc[selected_row]
-        qseq = re.sub("-", "", row["qseq"])
-        qseqid = row["qseqid"]
-        sseq = re.sub("-", "", row["sseq"])
-        sseqid = row["sseqid"]
-
-        logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
-
-        with open(tmp_fasta_clean.name, "w") as f:
-            f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-
-        logger.info("Running LASTZ...")
-        run_lastz(tmp_fasta_clean.name, lastz_output.name)
-
-        lastz_df = parse_lastz_output(lastz_output.name)
-
-        if lastz_df.empty:
-            logger.error("Error: No alignment data from LASTZ.")
-            return None
-
-        x_values = []
-        y_values = []
-
-        for _, lastz_row in lastz_df.iterrows():
-            x_values.extend([lastz_row["qstart"], lastz_row["qend"]])
-            y_values.extend([lastz_row["sstart"], lastz_row["send"]])
-
-        fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode="lines"))
-
-        fig.update_layout(
-            title="LASTZ Alignment",
-            xaxis_title=f"Query: {qseqid}",
-            yaxis_title=f"Subject: {sseqid}",
-        )
-
-        return fig
-
-    except IndexError as e:
-        logger.error(f"Error: Selected row index is out of bounds. Details: {e}")
-        return None
-
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return None
-
+            return no_update
 
 toggle_modal = create_modal_callback(
     "blast-table",
@@ -847,3 +564,78 @@ toggle_modal = create_modal_callback(
     "blast-modal-content",
     "blast-modal-title"
 )
+
+def run_blast_search(sequence, db_path):
+    # Create temporary file for query sequence
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+        temp_file.write(sequence)
+        query_file = temp_file.name
+
+    try:
+        # Modified BLAST command to output XML format
+        blast_cmd = f"blastn -query {query_file} -db {db_path} -outfmt 5"
+        
+        process = subprocess.Popen(
+            blast_cmd.split(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        stdout, stderr = process.communicate()
+        
+        if process.returncode == 0:
+            # Return raw XML output
+            return stdout.decode('utf-8')
+        else:
+            raise Exception(f"BLAST error: {stderr.decode('utf-8')}")
+            
+    finally:
+        # Clean up temporary file
+        os.unlink(query_file)
+
+def init_blast_routes(server):
+    """Initialize Flask routes for BLAST API"""
+    
+    @server.route('/blast-api', methods=['POST'])
+    @blast_limit_decorator
+    def blast_api():
+        sequence = request.form.get('sequence', '').strip()
+        if not sequence:
+            return jsonify({'error': 'No sequence provided'})
+            
+        try:
+            # Create temporary file for the sequence
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+                temp_file.write(sequence)
+                query_file = temp_file.name
+
+            try:
+                # Use the ships database path from your db_list
+                blast_db = db_list['ship']['nucl']
+                
+                # Modified BLAST command to output XML format
+                blast_cmd = f"blastn -query {query_file} -db {blast_db} -outfmt 5"
+                
+                process = subprocess.Popen(
+                    blast_cmd.split(),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                
+                stdout, stderr = process.communicate()
+                
+                if process.returncode == 0:
+                    return stdout.decode('utf-8')  # Return raw XML
+                else:
+                    raise Exception(f"BLAST error: {stderr.decode('utf-8')}")
+                    
+            finally:
+                # Clean up temporary file
+                os.unlink(query_file)
+                
+        except Exception as e:
+            logger.error(f"BLAST API error: {str(e)}")
+            return jsonify({'error': str(e)})
+
+app = dash.get_app()
+init_blast_routes(app.server)

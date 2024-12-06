@@ -757,3 +757,271 @@ def run_diamond(
     diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
 
     return diamond_results.to_dict("records")
+
+
+# def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
+#     try:
+#         if not query_header or not query_seq:
+#             return dash.no_update, dash.no_update, dash.no_update
+
+#         # Write sequence to temporary FASTA file
+#         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+#         logger.info(f"Temp FASTA written: {tmp_query_fasta}")
+
+#         # Run BLAST
+#         tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
+
+#         try:
+#             blast_results = run_blast(
+#                 db_list=db_list,
+#                 query_type=query_type,
+#                 query_fasta=tmp_query_fasta,
+#                 tmp_blast=tmp_blast,
+#                 input_eval=0.01,
+#                 threads=2,
+#             )
+#             logger.info(f"BLAST results: {blast_results.head()}")
+#             if blast_results is None:
+#                 raise ValueError("BLAST returned no results!")
+#         except Exception as e:
+#             logger.error(f"BLAST error: {str(e)}")
+#             raise
+
+#         blast_results_dict = blast_results.to_dict("records")
+
+#         # Run HMMER
+#         logger.info(f"Running HMMER")
+
+#         subject_seq_button = None
+#         # subject_seq = None
+
+#         try:
+#             if search_type == "diamond":
+#                 results_dict = run_diamond(
+#                     db_list=db_list,
+#                     query_type=query_type,
+#                     input_genes="tyr",
+#                     input_eval=0.01,
+#                     query_fasta=tmp_query_fasta,
+#                     threads=2,
+#                 )
+#             if search_type == "hmmsearch":
+#                 results_dict = run_hmmer(
+#                     db_list=db_list,
+#                     query_type=query_type,
+#                     input_genes="tyr",
+#                     input_eval=0.01,
+#                     query_fasta=tmp_query_fasta,
+#                     threads=2,
+#                 )
+
+#             if results_dict is None or len(results_dict) == 0:
+#                 logger.error("Diamond/HMMER returned no results!")
+#                 raise
+#         except Exception as e:
+#             logger.error(f"Diamond/HMMER error: {str(e)}")
+#             raise
+
+# @cache.memoize()
+# @callback(
+#     Output("ship-aln", "children"),
+#     [
+#         Input("ship-blast-table", "derived_virtual_data"),
+#         Input("ship-blast-table", "derived_virtual_selected_rows"),
+#         Input("curated-input", "value"),
+#     ],
+#     State("query-type-store", "data"),
+# )
+# def blast_alignments(ship_blast_results, selected_row, curated, query_type):
+#     try:
+#         logger.info(
+#             f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
+#         )
+
+#         if not selected_row or len(selected_row) == 0:
+#             return [None]
+
+#         if not ship_blast_results or len(ship_blast_results) == 0:
+#             logger.error(
+#                 "No BLAST results available because ship_blast_results is empty or None."
+#             )
+#             raise
+
+#         ship_blast_results_df = pd.DataFrame(ship_blast_results)
+
+#         row_idx = selected_row[0]
+
+#         try:
+#             row = ship_blast_results_df.iloc[row_idx]
+#             qseq = str(row["qseq"])
+#             qseqid = str(row["qseqid"])
+#             sseq = str(row["sseq"])
+#             sseqid = str(row["sseqid"])
+
+#         except IndexError:
+#             logger.error(f"Error: Row index {row_idx} out of bounds.")
+#             raise
+#         tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
+
+#         try:
+#             with open(tmp_fasta.name, "w") as f:
+#                 f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
+#         except Exception as file_error:
+#             logger.error(f"Error writing to FASTA file: {file_error}")
+#             raise
+
+#         try:
+#             with open(tmp_fasta.name, "r") as file:
+#                 data = file.read()
+#         except Exception as read_error:
+#             logger.error(f"Error reading FASTA file: {read_error}")
+#             raise
+
+#         color = "nucleotide" if query_type == "nucl" else "clustal2"
+
+#         aln = dashbio.AlignmentChart(
+#             id="alignment-viewer",
+#             data=data,
+#             height=200,
+#             tilewidth=30,
+#             colorscale=color,
+#             showconsensus=False,
+#             showconservation=False,
+#             showgap=False,
+#             showid=False,
+#             ticksteps=5,
+#             tickstart=0,
+#         )
+
+#         return [aln]
+
+#     except Exception as e:
+#         logger.error(f"Error: {str(e)}")
+#         raise
+
+
+# @callback(
+#     Output("blast-dl", "data"),
+#     [Input("blast-dl-button", "n_clicks")],
+#     [State("ship-blast-table", "data"), State("ship-blast-table", "columns")],
+# )
+# def download_tsv(n_clicks, rows, columns):
+#     if n_clicks == 0:
+#         return None
+
+#     if not rows or not columns:
+#         logger.error("Error: No data available for download.")
+#         return None
+
+#     try:
+#         df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
+
+#         tsv_string = df.to_csv(sep="\t", index=False)
+#         tsv_bytes = io.BytesIO(tsv_string.encode())
+#         b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
+
+#         today = date.today().strftime("%Y-%m-%d")
+
+#         return dict(
+#             content=f"data:text/tab-separated-values;base64,{b64}",
+#             filename=f"starbase_blast_{today}.tsv",
+#         )
+
+#     except Exception as e:
+#         logger.error(f"Error while preparing TSV download: {e}")
+#         return None
+
+
+# @callback(
+#     Output("lastz-plot", "figure"),
+#     [
+#         Input("ship-blast-table", "derived_virtual_data"),
+#         Input("ship-blast-table", "derived_virtual_selected_rows"),
+#     ],
+# )
+# def create_alignment_plot(ship_blast_results, selected_row):
+#     """
+#     Creates a Plotly scatter plot from the alignment DataFrame and saves it as a PNG.
+#     """
+#     tmp_fasta_clean = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
+#     lastz_output = tempfile.NamedTemporaryFile(suffix=".tsv", delete=True)
+
+#     try:
+#         ship_blast_results_df = pd.DataFrame(ship_blast_results)
+#         if ship_blast_results_df.empty:
+#             logger.error("Error: No blast results available for plotting.")
+#             return None
+#     except Exception as e:
+#         logger.error(f"Error converting blast results to DataFrame: {e}")
+#         return None
+
+#     if selected_row is None or not selected_row:
+#         logger.error("No row selected for alignment.")
+#         return None
+
+#     try:
+#         row = ship_blast_results_df.iloc[selected_row]
+#         qseq = re.sub("-", "", row["qseq"])
+#         qseqid = row["qseqid"]
+#         sseq = re.sub("-", "", row["sseq"])
+#         sseqid = row["sseqid"]
+
+#         logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
+
+#         with open(tmp_fasta_clean.name, "w") as f:
+#             f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
+
+#         logger.info("Running LASTZ...")
+#         run_lastz(tmp_fasta_clean.name, lastz_output.name)
+
+#         lastz_df = parse_lastz_output(lastz_output.name)
+
+#         if lastz_df.empty:
+#             logger.error("Error: No alignment data from LASTZ.")
+#             return None
+
+#         x_values = []
+#         y_values = []
+
+#         for _, lastz_row in lastz_df.iterrows():
+#             x_values.extend([lastz_row["qstart"], lastz_row["qend"]])
+#             y_values.extend([lastz_row["sstart"], lastz_row["send"]])
+
+#         fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode="lines"))
+
+#         fig.update_layout(
+#             title="LASTZ Alignment",
+#             xaxis_title=f"Query: {qseqid}",
+#             yaxis_title=f"Subject: {sseqid}",
+#         )
+
+#         return fig
+
+#     except IndexError as e:
+#         logger.error(f"Error: Selected row index is out of bounds. Details: {e}")
+#         return None
+
+#     except Exception as e:
+#         logger.error(f"Unexpected error: {e}")
+#         return None
+
+# @callback(
+#     Output("subject-seq-dl-package", "data"),
+#     [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
+# )
+# def subject_seq_download(n_clicks, filename):
+#     try:
+#         if n_clicks:
+#             logger.info(f"Download initiated for file: {filename}")
+#             return dcc.send_file(filename)
+#         else:
+#             return dash.no_update
+#     except Exception as e:
+#         logger.error(f"Error in subject_seq_download: {str(e)}")
+#         return dash.no_update
+
+
+# no_captain_alert = dbc.Alert(
+#     "No captain sequence found (e-value threshold 0.01).",
+#     color="warning",
+# )
