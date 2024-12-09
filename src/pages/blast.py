@@ -217,8 +217,12 @@ layout = dmc.Container(
                                 # Family identification alert
                                 html.Div(id="ship-family"),
                                 dmc.Space(h=20),
-                                # BLAST visualization
-                                html.Div(id="blast-visualization"),
+                                # BLAST visualization with loading indicator
+                                dcc.Loading(
+                                    id="blast-loading",
+                                    type="circle",
+                                    children=html.Div(id="blast-visualization"),
+                                ),
                                 # Hidden elements for blasterjs
                                 html.Div(id="blast-multiple-alignments"),
                                 html.Div(id="blast-alignments-table"),
@@ -446,12 +450,12 @@ def update_blast_visualization(blast_results):
         <html>
         <head>
             <meta charset="utf-8">
+            <base target="_parent">
             <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
             <script src="/assets/js/blaster.min.js"></script>
             <script src="/assets/js/html2canvas.js"></script>
             <style>
-                /* Prevent text selection on clicks */
-                * {{
+                .no-select {{
                     -webkit-user-select: none;
                     -moz-user-select: none;
                     -ms-user-select: none;
@@ -465,12 +469,6 @@ def update_blast_visualization(blast_results):
             <div id="blast-single-alignment"></div>
             
             <script>
-                // Prevent default click behavior
-                document.addEventListener('click', function(e) {{
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}, true);
-                
                 var alignments = [
                     {lines_js}
                 ].join('\\n');
@@ -481,6 +479,22 @@ def update_blast_visualization(blast_results):
                     multipleAlignments: "blast-multiple-alignments",
                     alignmentsTable: "blast-alignments-table",
                     singleAlignment: "blast-single-alignment",
+                }});
+                
+                // Override default click behavior for table alignments
+                document.addEventListener('DOMContentLoaded', function() {{
+                    document.querySelectorAll('#blast-alignments-table button').forEach(function(button) {{
+                        button.onclick = function(e) {{
+                            e.preventDefault();
+                            var targetId = this.id;
+                            window.parent.location.hash = targetId;
+                            return false;
+                        }};
+                    }});
+                }});
+                
+                document.querySelectorAll('.blast-label, .blast-header').forEach(function(el) {{
+                    el.classList.add('no-select');
                 }});
             </script>
         </body>
@@ -573,7 +587,7 @@ def run_blast_search(sequence, db_path):
 
     try:
         # Modified BLAST command to output XML format
-        blast_cmd = f"blastn -query {query_file} -db {db_path} -outfmt 5"
+        blast_cmd = f"blastn -query {query_file} -db {db_path} -outfmt 5 -max_target_seqs 10"
         
         process = subprocess.Popen(
             blast_cmd.split(),
@@ -614,7 +628,7 @@ def init_blast_routes(server):
                 blast_db = db_list['ship']['nucl']
                 
                 # Modified BLAST command to output XML format
-                blast_cmd = f"blastn -query {query_file} -db {blast_db} -outfmt 5"
+                blast_cmd = f"blastn -query {query_file} -db {blast_db} -outfmt 5 -max_target_seqs 10"
                 
                 process = subprocess.Popen(
                     blast_cmd.split(),
