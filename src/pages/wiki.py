@@ -185,6 +185,7 @@ layout = dmc.Container(
                                     c="dimmed",
                                     size="lg",
                                 ),
+                                dmc.Space(h="md"),
                                 dmc.Grid(
                                     children=[
                                         # Taxonomy Search
@@ -515,11 +516,11 @@ def create_search_results(filtered_meta, cached_meta):
             radius="md",
             withBorder=True,
             style={
-                "minHeight": "calc(100vh - 120px)",  # Minimum height
-                "height": "auto",                    # Allow expansion
-                "maxHeight": "none",                 # Remove any height restrictions
-                "overflowY": "visible",              # Allow content to push container height
-                "marginBottom": "2rem"               # Add some bottom spacing
+                "minHeight": "calc(100vh - 120px)",
+                "height": "auto",
+                "maxHeight": "none",
+                "overflowY": "visible",
+                "marginBottom": "2rem"
             }
         )
 
