@@ -34,8 +34,8 @@ RUN chmod +x start-script.sh
 # Run precomputation after code is available
 # RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
 
-# Add the cron job
-RUN echo "0 0 * * * python -m src.utils.telemetry" > /etc/cron.d/telemetry-cron
+# Add the cron job for hourly telemetry updates
+RUN echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> /var/log/cron.log 2>&1" > /etc/cron.d/telemetry-cron
 
 # Give execution rights on the cron job
 RUN chmod 0644 /etc/cron.d/telemetry-cron
@@ -43,7 +43,7 @@ RUN chmod 0644 /etc/cron.d/telemetry-cron
 # Apply the cron job
 RUN crontab /etc/cron.d/telemetry-cron
 
-# Create the log file
+# Create the log file with appropriate permissions
 RUN touch /var/log/cron.log && \
     chmod 666 /var/log/cron.log
 
@@ -58,6 +58,3 @@ EXPOSE 8000
 
 # Start the container
 ENTRYPOINT ["./start-script.sh"]
-
-# Run cron and tail the log
-CMD cron && tail -f /var/log/cron.log
