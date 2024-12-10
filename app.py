@@ -24,7 +24,8 @@ logger.addHandler(console_handler)
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache
-from src.database.sql_manager import precompute_all, TelemetrySession
+from src.database.sql_manager import precompute_all
+from src.config.database import TelemetrySession, SubmissionsSession
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -140,6 +141,21 @@ def telemetry_health():
         }, 503
     finally:
         session.close()
+
+def check_submissions_db():
+    """Verify submissions database is accessible and properly configured"""
+    try:
+        session = SubmissionsSession()
+        # Try to create a test submission
+        test_query = """
+        SELECT COUNT(*) FROM submissions
+        """
+        result = session.execute(text(test_query)).scalar()
+        logger.info(f"Submissions database check passed. Current submissions: {result}")
+        return True
+    except Exception as e:
+        logger.error(f"Submissions database check failed: {str(e)}")
+        return False
 
 app.layout = serve_app_layout
 initialize_app()
