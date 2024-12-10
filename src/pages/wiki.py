@@ -165,26 +165,7 @@ layout = dmc.Container(
         dcc.Store(id="paper-data"),
         
         # Header Section
-        dmc.Space(h="md"),
-        dmc.Paper(
-            children=[
-                dmc.Title(
-                    "Starship Family Wiki",
-                    order=1,
-                    mb="md",
-                ),
-                dmc.Text(
-                    "Search and explore the characteristics of different Starship families",
-                    c="dimmed",
-                    size="lg",
-                ),
-            ],
-            p="xl",
-            radius="md",
-            withBorder=True,
-            mb="xl",
-        ),
-        
+        dmc.Space(h="md"),        
         dmc.Grid(
             children=[
                 # Left Column - Search Section
@@ -194,7 +175,17 @@ layout = dmc.Container(
 
                         dmc.Paper(
                             children=[
-                                dmc.Title("Search Starships", order=3, mb="md"),
+                                dmc.Title(
+                                    "Starship Wiki",
+                                    order=1,
+                                    mb="md",
+                                ),
+                                dmc.Text(
+                                    "Search and explore the characteristics of different Starship families",
+                                    c="dimmed",
+                                    size="lg",
+                                ),
+                                dmc.Space(h="md"),
                                 dmc.Grid(
                                     children=[
                                         # Taxonomy Search
@@ -291,7 +282,7 @@ layout = dmc.Container(
                         ),
                         dmc.Paper(
                             children=[
-                                dmc.Title("Taxonomic Distribution", order=3, mb="md"),
+                                dmc.Title("Taxonomic Distribution", order=2, mb="md"),
                                 dcc.Loading(
                                     id="search-sunburst-loading",
                                     type="circle",
@@ -309,12 +300,6 @@ layout = dmc.Container(
                             withBorder=True,
                             mb="xl",
                         ),
-                    ]),
-                # Right Column - Search Results
-                dmc.GridCol(
-                    span={"lg": 8, "md": 12},
-                    children=[
-                        html.Div(id="search-results"),
                         dmc.Space(h="md"),
                         dmc.Paper(
                             children=[
@@ -333,6 +318,13 @@ layout = dmc.Container(
                             withBorder=True,
                             style={"height": "calc(100vh - 200px)", "overflowY": "auto"},
                         ),
+
+                    ]),
+                # Right Column - Search Results
+                dmc.GridCol(
+                    span={"lg": 8, "md": 12},
+                    children=[
+                        html.Div(id="search-results"),
                     ]
                 )
             ],
@@ -488,18 +480,6 @@ def create_search_results(filtered_meta, cached_meta):
                 "selectable": False,
             },
             {
-                "name": "Starship Navis",
-                "id": "starship_navis",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
-                "name": "Starship Haplotype",
-                "id": "starship_haplotype",
-                "deletable": False,
-                "selectable": False,
-            },
-            {
                 "name": "Number of genomes",
                 "id": "n_genomes",
                 "deletable": False,
@@ -524,13 +504,25 @@ def create_search_results(filtered_meta, cached_meta):
             id="wiki-table", 
             columns=table_columns, 
             select_rows=False,
-            pg_sz=15
+            pg_sz=25
         )
         
         title = dmc.Title("Search Results", order=2, mb="md")
-        return dmc.Paper(children=[
-            dbc.Stack([title, table], gap=3)
-        ], p="xl", radius="md", withBorder=True)
+        return dmc.Paper(
+            children=[
+                dbc.Stack([title, table], gap=3)
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            style={
+                "minHeight": "calc(100vh - 120px)",
+                "height": "auto",
+                "maxHeight": "none",
+                "overflowY": "visible",
+                "marginBottom": "2rem"
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error in create_search_results: {str(e)}", exc_info=True)

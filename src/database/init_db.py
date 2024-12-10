@@ -1,4 +1,4 @@
-from src.config.database import Base, starbase_engine, submissions_engine
+from src.config.database import Base, starbase_engine, submissions_engine, telemetry_engine
 from src.database.models.schema import *
 
 def init_databases():
@@ -8,6 +8,9 @@ def init_databases():
     
     # Create submissions tables
     Base.metadata.create_all(submissions_engine)
+
+    # Create telemetry tables
+    Base.metadata.create_all(telemetry_engine)
 
 if __name__ == "__main__":
     init_databases() 

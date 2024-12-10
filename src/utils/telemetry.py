@@ -374,10 +374,12 @@ def is_development_ip(ip_address):
 def log_request(ip_address, endpoint):
     """Log request details to telemetry database."""
     if is_development_ip(ip_address):
+        logger.debug(f"Skipping telemetry for development IP: {ip_address}")
         return
         
-    # Only log BLAST endpoints
-    if endpoint != '/api/blast-submit':
+    # Only log valid endpoints
+    if endpoint not in page_mapping:
+        logger.debug(f"Skipping telemetry for non-mapped endpoint: {endpoint}")
         return
     
     session = TelemetrySession()
@@ -387,7 +389,7 @@ def log_request(ip_address, endpoint):
         VALUES (:ip, :endpoint, :timestamp)
         """
         session.execute(
-            query,
+            text(query),
             {
                 "ip": ip_address,
                 "endpoint": endpoint, 
@@ -395,6 +397,7 @@ def log_request(ip_address, endpoint):
             }
         )
         session.commit()
+        logger.debug(f"Logged request from {ip_address} to {endpoint}")
     except Exception as e:
         session.rollback()
         logger.error(f"Error logging request: {str(e)}")
@@ -782,3 +785,20 @@ def blast_limit_decorator(f):
             raise
     
     return wrapped
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        
+        if command == "update_ip_locations":
+            logger.info("Running IP location updates...")
+            maintain_ip_locations(IPSTACK_API_KEY)
+            logger.info("IP location updates completed")
+        else:
+            logger.error(f"Unknown command: {command}")
+            sys.exit(1)
+    else:
+        logger.error("No command specified")
+        sys.exit(1)

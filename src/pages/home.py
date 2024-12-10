@@ -147,6 +147,13 @@ starship_card = dmc.Paper([
                                                     "font-style": "italic",
                                                 },
                                             ),
+                                            " Read more about Starships ",
+                                            dmc.Anchor(
+                                                "here",
+                                                href="https://en.wikipedia.org/wiki/Starship_(genetics)",
+                                                style={"textDecoration": "none"},
+                                            ),
+                                            ".",
                                         ],
                                     ),
             ], size="lg", c="dimmed"),

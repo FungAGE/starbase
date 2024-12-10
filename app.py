@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask, request
 from flask_limiter import Limiter
-import pandas as pd
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.ERROR)
 warnings.filterwarnings("ignore")
@@ -24,7 +24,8 @@ logger.addHandler(console_handler)
 from src.components import navmenu
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache
-from src.database.sql_manager import fetch_meta_data, precompute_all
+from src.database.sql_manager import precompute_all
+from src.config.database import TelemetrySession, SubmissionsSession
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -99,9 +100,62 @@ def check_blast_limit():
     return {"allowed": True}
 
 @app.server.before_request
-def before_request_func():
-    if not is_development_ip(get_client_ip()):
-        log_request(get_client_ip(), request.path)
+def log_request_info():
+    """Log every request to the telemetry database"""
+    try:
+        # Skip static files and API endpoints
+        if request.path.startswith('/static/') or request.path.startswith('/_dash-'):
+            return
+            
+        client_ip = get_client_ip()
+        endpoint = request.path
+        
+        # Log the request
+        log_request(client_ip, endpoint)
+        
+    except Exception as e:
+        logger.error(f"Error in request logging middleware: {str(e)}")
+
+@server.route('/health/telemetry')
+def telemetry_health():
+    """Check telemetry system health"""
+    try:
+        session = TelemetrySession()
+        
+        # Check if we can write to the database
+        test_ip = "127.0.0.1"
+        test_endpoint = "/"
+        log_request(test_ip, test_endpoint)
+        
+        # Check if we can read from the database
+        result = session.execute(text("SELECT COUNT(*) FROM request_logs")).scalar()
+        
+        return {
+            "status": "healthy",
+            "record_count": result
+        }, 200
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }, 503
+    finally:
+        session.close()
+
+def check_submissions_db():
+    """Verify submissions database is accessible and properly configured"""
+    try:
+        session = SubmissionsSession()
+        # Try to create a test submission
+        test_query = """
+        SELECT COUNT(*) FROM submissions
+        """
+        result = session.execute(text(test_query)).scalar()
+        logger.info(f"Submissions database check passed. Current submissions: {result}")
+        return True
+    except Exception as e:
+        logger.error(f"Submissions database check failed: {str(e)}")
+        return False
 
 app.layout = serve_app_layout
 initialize_app()
