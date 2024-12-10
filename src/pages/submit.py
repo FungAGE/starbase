@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 dash.register_page(__name__)
 
 
-from src.config.database import SubmissionsSession
+from src.database.sql_engine import get_submissions_session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 layout = dmc.Container(
     size="md",
@@ -237,56 +239,68 @@ def insert_submission(
     shipstrand,
     comment,
 ):
-    content_type, content_string = seq_contents.split(",")
-    seq_decoded = base64.b64decode(content_string).decode("utf-8")
-    seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    anno_contents = ""
-    anno_datetime_obj = ""
-
-    if anno_contents:
-        content_type, content_string = anno_contents.split(",")
-        anno_contents = base64.b64decode(content_string).decode("utf-8")
-        anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
+    try:
+        content_type, content_string = seq_contents.split(",")
+        seq_decoded = base64.b64decode(content_string).decode("utf-8")
+        seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
 
-    if not comment:
-        comment = ""
+        anno_contents = ""
+        anno_datetime_obj = ""
 
-    with SubmissionsSession() as session:
-        query = """
-            INSERT INTO submissions (
-                seq_contents, seq_filename, seq_date, anno_contents,
-                anno_filename, anno_date, uploader, evidence,
-                genus, species, hostchr, shipstart, shipend,
-                shipstrand, comment
+        if anno_contents:
+            content_type, content_string = anno_contents.split(",")
+            anno_contents = base64.b64decode(content_string).decode("utf-8")
+            anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
+                "%Y-%m-%d %H:%M:%S"
             )
-            VALUES (:seq_contents, :seq_filename, :seq_date, :anno_contents, :anno_filename, :anno_date, :uploader, :evidence, :genus, :species, :hostchr, :shipstart, :shipend, :shipstrand, :comment)
-        """
-        session.execute(
-            query,
-            {
-                "seq_contents": seq_decoded,
-                "seq_filename": seq_filename,
-                "seq_date": seq_datetime_obj,
-                "anno_contents": anno_contents,
-                "anno_filename": anno_filename,
-                "anno_date": anno_datetime_obj,
-                "uploader": uploader,
-                "evidence": evidence,
-                "genus": genus,
-                "species": species,
-                "hostchr": hostchr,
-                "shipstart": shipstart,
-                "shipend": shipend,
-                "shipstrand": shipstrand,
-                "comment": comment,
-            },
-        )
-        session.commit()
+
+        with get_submissions_session() as session:
+            query = """
+                INSERT INTO submissions (
+                    seq_contents, seq_filename, seq_date, anno_contents,
+                    anno_filename, anno_date, uploader, evidence,
+                    genus, species, hostchr, shipstart, shipend,
+                    shipstrand, comment
+                )
+                VALUES (
+                    :seq_contents, :seq_filename, :seq_date, :anno_contents, 
+                    :anno_filename, :anno_date, :uploader, :evidence, 
+                    :genus, :species, :hostchr, :shipstart, :shipend, 
+                    :shipstrand, :comment
+                )
+            """
+            session.execute(
+                text(query),
+                {
+                    "seq_contents": seq_decoded,
+                    "seq_filename": seq_filename,
+                    "seq_date": seq_datetime_obj,
+                    "anno_contents": anno_contents,
+                    "anno_filename": anno_filename,
+                    "anno_date": anno_datetime_obj,
+                    "uploader": uploader,
+                    "evidence": evidence,
+                    "genus": genus,
+                    "species": species,
+                    "hostchr": hostchr,
+                    "shipstart": shipstart,
+                    "shipend": shipend,
+                    "shipstrand": shipstrand,
+                    "comment": comment,
+                },
+            )
+            session.commit()
+            logger.info(f"Successfully inserted submission for {seq_filename}")
+            return True
+            
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during submission: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error processing submission: {str(e)}")
+        raise
 
 
 @callback(
