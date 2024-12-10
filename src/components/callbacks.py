@@ -153,41 +153,69 @@ def create_accession_modal(accession):
                     ]
                 ),
                 html.Hr(),
-                # TODO: update genome accessions field
-                html.Div(
-                    [
-                        html.Strong("Assembly Accession(s): "),
-                        html.Span(""),
-                    ]
-                ),
-                html.Div(
-                    [
-                        html.Strong("Genome Source: "),
-                        html.Span(modal_data["genomeSource"].iloc[0]),
-                    ]
-                ),
-                html.Div(
-                    [
-                        html.Strong("Citation: "),
-                        html.Span(modal_data["citation"].iloc[0]),
-                    ]
-                ),
-                html.Div(
-                    [html.Strong("contigID: "), html.Span(modal_data["contigID"].iloc[0])]
-                ),
-                html.Div(
-                    [
-                        html.Strong("elementBegin: "),
-                        html.Span(modal_data["elementBegin"].iloc[0]),
-                    ]
-                ),
-                html.Div(
-                    [
-                        html.Strong("elementEnd: "),
-                        html.Span(modal_data["elementEnd"].iloc[0]),
-                    ]
-                ),
-                html.Div([html.Strong("size: "), html.Span(modal_data["size"].iloc[0])]),
+                html.Div([
+                    html.Strong("Genome Details:"),
+                    dmc.Table(
+                        striped=True,
+                        highlightOnHover=True,
+                        children=[
+                            html.Thead(
+                                html.Tr([
+                                    html.Th("Field"),
+                                    *[html.Th(f"{modal_data['assembly_accession'].iloc[i] if 'assembly_accession' in modal_data else f'Genome {i+1}'}")
+                                      for i in range(len(modal_data))]
+                                ])
+                            ),
+                            html.Tbody([
+                                html.Tr([
+                                    html.Td("Genome Source"),
+                                    *[html.Td(modal_data["genomeSource"].iloc[i])
+                                      for i in range(len(modal_data))]
+                                ]),
+                                html.Tr([
+                                    html.Td("Citation"),
+                                    *[html.Td(modal_data["citation"].iloc[i])
+                                      for i in range(len(modal_data))]
+                                ]),
+                                html.Tr([
+                                    html.Td("ContigID"),
+                                    *[html.Td(modal_data["contigID"].iloc[i])
+                                      for i in range(len(modal_data))]
+                                ]),
+                                html.Tr([
+                                    html.Td("Element Begin"),
+                                    *[html.Td(modal_data["elementBegin"].iloc[i])
+                                      for i in range(len(modal_data))]
+                                ]),
+                                html.Tr([
+                                    html.Td("Element End"),
+                                    *[html.Td(modal_data["elementEnd"].iloc[i])
+                                      for i in range(len(modal_data))]
+                                ]),
+                                html.Tr([
+                                    html.Td("Size"),
+                                    *[html.Td(modal_data["size"].iloc[i])
+                                      for i in range(len(modal_data))]
+                                ]),
+                            ])
+                        ]
+                    ) if len(modal_data) > 1 else html.Div([
+                        html.Div([html.Strong("Assembly Accession: "), 
+                                html.Span(modal_data["assembly_accession"].iloc[0] if "assembly_accession" in modal_data else "")]),
+                        html.Div([html.Strong("Genome Source: "), 
+                                html.Span(modal_data["genomeSource"].iloc[0])]),
+                        html.Div([html.Strong("Citation: "), 
+                                html.Span(modal_data["citation"].iloc[0])]),
+                        html.Div([html.Strong("ContigID: "), 
+                                html.Span(modal_data["contigID"].iloc[0])]),
+                        html.Div([html.Strong("Element Begin: "), 
+                                html.Span(modal_data["elementBegin"].iloc[0])]),
+                        html.Div([html.Strong("Element End: "), 
+                                html.Span(modal_data["elementEnd"].iloc[0])]),
+                        html.Div([html.Strong("Size: "), 
+                                html.Span(modal_data["size"].iloc[0])]),
+                    ])
+                ]),
                 html.Hr(),
                 html.Div([html.Strong("order: "), html.Span(modal_data["order"].iloc[0])]),
                 html.Div(
