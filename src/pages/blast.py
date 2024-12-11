@@ -167,13 +167,14 @@ layout = dmc.Container(
                                 
                                 # Submit Section
                                 dmc.Stack([
-                                    dmc.Button(
-                                        "Submit BLAST",
-                                        id="submit-button",
-                                        variant="gradient",
-                                        gradient={"from": "indigo", "to": "cyan"},
-                                        size="lg",
-                                        fullWidth=True,
+                                    dmc.Center(
+                                        dmc.Button(
+                                            "Submit BLAST",
+                                            id="submit-button",
+                                            variant="gradient",
+                                            gradient={"from": "indigo", "to": "cyan"},
+                                            size="lg",
+                                        ),
                                     ),
                                     dmc.Text(
                                         id="rate-limit-info",
