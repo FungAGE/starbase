@@ -161,8 +161,7 @@ cython_debug/
 
 tmp/
 
-database_folder
-database_folder/**
 .dockerignore
-src/data/db
 .vscode/settings.json
+src/database/db/**
+.cache/** */
