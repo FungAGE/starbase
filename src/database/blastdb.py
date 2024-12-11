@@ -8,16 +8,18 @@ from src.config.database import DB_PATHS
 
 logger = logging.getLogger(__name__)
 
+DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "db")
 
+os.makedirs(DB_DIR, exist_ok=True)
 db_list = {
-    "ship": {"nucl": f"{DB_PATHS['starbase']}/ships/fna/blastdb/ships.fa"},
+    "ship": {"nucl": f"{DB_DIR}/ships/fna/blastdb/ships.fa"},
     "gene": {
         "tyr": {
-            "nucl": f"{DB_PATHS['starbase']}/captain/tyr/fna/blastdb/captains.fna",
-            "prot": f"{DB_PATHS['starbase']}/captain/tyr/faa/blastdb/captains.faa",
+            "nucl": f"{DB_DIR}/captain/tyr/fna/blastdb/captains.fna",
+            "prot": f"{DB_DIR}/captain/tyr/faa/blastdb/captains.faa",
             "hmm": {
-                "nucl": f"{DB_PATHS['starbase']}/captain/tyr/fna/hmm/combined.hmm",
-                "prot": f"{DB_PATHS['starbase']}/captain/tyr/faa/hmm/combined.hmm",
+                "nucl": f"{DB_DIR}/captain/tyr/fna/hmm/combined.hmm",
+                "prot": f"{DB_DIR}/captain/tyr/faa/hmm/combined.hmm",
             },
         },
     },
@@ -60,7 +62,6 @@ def blast_db_exists(blastdb):
     db_directory = os.path.dirname(blastdb)
     extensions = ["*.ndb", "*.nhr", "*.nin", "*.not", "*.nsq", "*.ntf", "*.nto"]
 
-    # Check for the existence of files with the specified extensions
     for ext in extensions:
         if glob.glob(os.path.join(db_directory, ext)):
             return True
@@ -72,10 +73,9 @@ def create_dbs():
     
     from src.database.sql_manager import fetch_all_captains, fetch_all_ships
 
-    # Create BLAST database for ships
-    ship_fasta_path = db_list["ship"]["nucl"]
+    ship_fasta_path = db_list["ship"]
     ship_fasta_dir = os.path.dirname(ship_fasta_path)
-    os.makedirs(ship_fasta_dir, exist_ok=True)  # Create directory if it doesn't exist
+    os.makedirs(ship_fasta_dir, exist_ok=True)
 
     ship_sequences_list = []
     ship_sequences = cache.get("all_ships")
@@ -87,16 +87,14 @@ def create_dbs():
         sequence = row["sequence"]
         ship_sequences_list.append((name, sequence))
 
-    # Fix the parameter passed to write_fasta
     write_fasta(ship_sequences_list, ship_fasta_path)
     create_blast_database(ship_fasta_path, "nucl")
 
-    # Create BLAST database for captains
     captain_fasta_path = db_list["gene"]["tyr"]["prot"]
     captain_fasta_dir = os.path.dirname(captain_fasta_path)
     os.makedirs(
         captain_fasta_dir, exist_ok=True
-    )  # Create directory if it doesn't exist
+    )
 
     captain_sequences_list = []
     captain_sequences = cache.get("all_captains")

@@ -9,12 +9,6 @@ import subprocess
 import json
 import pandas as pd
 
-from Bio.Blast.Applications import (
-    NcbiblastnCommandline,
-    NcbitblastnCommandline,
-    NcbiblastpCommandline,
-    NcbiblastxCommandline,
-)
 from Bio import SearchIO
 
 from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
@@ -214,87 +208,80 @@ def stitch_blast(tabfile, output_name):
     return df
 
 
-def run_blast(
-    db_list=None,
-    query_type=None,
-    query_fasta=None,
-    tmp_blast=None,
-    input_eval=None,
-    threads=None,
-    stitch=True,
-):
+def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
     try:
-        db_type = "nucl"
-
-        blastdb = db_list["ship"][db_type]
-        if db_type == "nucl":
-            blast_program = (
-                NcbiblastnCommandline
-                if query_type == "nucl"
-                else NcbitblastnCommandline
-            )
+        logger.debug(f"db_list contents: {db_list}")
+        
+        if not isinstance(db_list, dict):
+            logger.error(f"db_list must be a dictionary, got {type(db_list)}")
+            raise ValueError("Invalid database configuration")
+            
+        ship_config = db_list.get('ship')
+        if ship_config is None:
+            logger.error("'ship' key not found in db_list")
+            raise ValueError("Database path for 'ship' not configured")
+            
+        db_path = ship_config.get(query_type)
+        if db_path is None:
+            logger.error(f"No database path found for query type: {query_type}")
+            raise ValueError(f"Database path for {query_type} not configured")
+            
+        logger.debug(f"Using database path: {db_path}")
+        
+        if not blast_db_exists(db_path):
+            logger.info("BLAST database not found. Creating new database...")
+            create_dbs()
+            
+            if not blast_db_exists(db_path):
+                logger.error("Failed to create BLAST database")
+                raise ValueError("Failed to create BLAST database")
+            
+        if not isinstance(db_path, (str, bytes, os.PathLike)):
+            logger.error(f"db_path must be a path-like object, got {type(db_path)}")
+            raise ValueError("Invalid database path type")
+            
+        if query_type == "nucl":
+            blast_cmd = [
+                "blastn",
+                "-query", str(query_fasta),
+                "-db", str(db_path),
+                "-out", str(tmp_blast),
+                "-evalue", str(input_eval),
+                "-num_threads", str(threads),
+                "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+            ]
         else:
-            blast_program = (
-                NcbiblastpCommandline if query_type == "prot" else NcbiblastxCommandline
-            )
+            blast_cmd = [
+                "blastp",
+                "-query", str(query_fasta),
+                "-db", str(db_path),
+                "-out", str(tmp_blast),
+                "-evalue", str(input_eval),
+                "-num_threads", str(threads),
+                "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+            ]
 
-        # Ensure the database exists
-        if not blast_db_exists(blastdb):
-            logger.warning(f"BLAST database {blastdb} does not exist. Creating it.")
-            create_dbs()  # Create the database if it doesn't exist
-
-        logger.info(
-            f"Running BLAST with query: {query_fasta}, query_type={query_type}, Database: {blastdb}"
+        logger.debug(f"Running BLAST command: {' '.join(blast_cmd)}")
+        subprocess.run(blast_cmd, check=True)
+        
+        blast_results = pd.read_csv(
+            tmp_blast,
+            sep="\t",
+            names=[
+                "qseqid", "sseqid", "pident", "length", "mismatch",
+                "gapopen", "qstart", "qend", "sstart", "send",
+                "evalue", "bitscore", "qseq", "sseq"
+            ]
         )
+        
+        return blast_results
 
-        # Construct the command
-        blast_cline = blast_program(
-            query=query_fasta,
-            db=blastdb,
-            evalue=input_eval,
-            out=tmp_blast,
-            outfmt="6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq",
-            num_threads=threads,
-        )
-
-        # Execute the command
-        stdout, stderr = blast_cline()
-        logger.debug(f"BLAST stdout: {stdout}, stderr: {stderr}")
-
-        # Stitch BLAST results
-        if stitch:
-            tmp_stitch = tempfile.NamedTemporaryFile(
-                suffix=".stitch", delete=False
-            ).name
-            logger.info(f"Running BLAST stitching on {tmp_blast}: {tmp_stitch}")
-            df = stitch_blast(tmp_blast, tmp_stitch)
-        else:
-            df = pd.read_csv(
-                tmp_blast,
-                sep="\t",
-                names=[
-                    "qseqid",
-                    "sseqid",
-                    "pident",
-                    "length",
-                    "mismatch",
-                    "gapopen",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                    "evalue",
-                    "bitscore",
-                    "qseq",
-                    "sseq",
-                ],
-            )
-
-        return df
+    except subprocess.CalledProcessError as e:
+        logger.error(f"BLAST command failed: {e}")
+        return None
     except Exception as e:
         logger.error(f"Error during BLAST search: {e}")
         return None
-
 
 def hmmsearch(
     db_list=None,
