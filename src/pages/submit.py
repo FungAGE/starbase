@@ -18,6 +18,7 @@ dash.register_page(__name__)
 from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
+from src.components.callbacks import create_file_upload
 
 layout = dmc.Container(
     size="md",
@@ -57,16 +58,11 @@ layout = dmc.Container(
                         dmc.Paper(
                             children=[
                                 dmc.Text(["Starship Sequence ", html.Span("*", style={"color": "red"})], fw=500, mb="sm"),
-                                dcc.Upload(
-                                    id="submit-fasta-upload",
-                                    children=html.Div(
-                                        id="submit-fasta-sequence-upload",
-                                        style={"textAlign": "center", "padding": "20px"}
-                                    ),
-                                    className="upload-box",
-                                    multiple=False,
-                                    accept=".fa, .fas, .fasta, .fna",
-                                    max_size=10000000,
+                                create_file_upload(
+                                    upload_id="submit-fasta-upload",
+                                    output_id="submit-fasta-sequence-upload",
+                                    accept_types=[".fa", ".fas", ".fasta", ".fna"],
+                                    placeholder_text="Select a FASTA file to upload"
                                 ),
                                 dcc.Loading(
                                     id="loading-1",
@@ -83,16 +79,11 @@ layout = dmc.Container(
                         dmc.Paper(
                             children=[
                                 dmc.Text("Gene Annotations (GFF3)", fw=500, mb="sm"),
-                                dcc.Upload(
-                                    id="submit-upload-gff",
-                                    children=html.Div(
-                                        id="submit-output-gff-upload",
-                                        style={"textAlign": "center", "padding": "20px"}
-                                    ),
-                                    className="upload-box",
-                                    accept=".gff, .gff3, .tsv",
-                                    multiple=False,
-                                    max_size=10000000,
+                                create_file_upload(
+                                    upload_id="submit-upload-gff",
+                                    output_id="submit-output-gff-upload", 
+                                    accept_types=[".gff", ".gff3", ".tsv"],
+                                    placeholder_text="Select a GFF file to upload"
                                 ),
                                 dcc.Loading(
                                     id="loading-2",

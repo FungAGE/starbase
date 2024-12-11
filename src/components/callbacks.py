@@ -1,6 +1,8 @@
 from dash import html, Output, Input, State, callback, no_update
+import dash_core_components as dcc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
+from typing import List  
 
 import logging
 import traceback
@@ -301,3 +303,44 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             ])
             return True, error_content, "Error", None
 
+
+def create_file_upload(
+    upload_id: str,
+    output_id: str,
+    accept_types: List[str],
+    placeholder_text: str = "Drag and drop or click to select a file",
+    icon: str = "mdi:file-upload",
+    **kwargs
+) -> dmc.Stack:
+    return dmc.Stack([
+        dmc.Center(
+            DashIconify(
+                icon=icon,
+                width=40,
+                height=40,
+                color="#228be6"
+            )
+        ),
+        dcc.Upload(
+            id=upload_id,
+            children=dmc.Stack([
+                html.Div(
+                    id=output_id,
+                    children=placeholder_text,
+                ),
+                dmc.Text(
+                    f"Accepted formats: {', '.join(accept_types)}",
+                    size="sm",
+                    c="dimmed"
+                ),
+            ], align="center", gap="xs"),
+            className="upload-box",
+            **kwargs
+        ),
+        dmc.Progress(
+            id=f"{upload_id}-progress",
+            value=0,
+            animated=True,
+            style={"display": "none"}
+        ),
+    ], gap="md")

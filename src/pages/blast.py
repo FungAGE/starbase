@@ -43,7 +43,7 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback
+from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 
 from src.database.sql_manager import fetch_meta_data
@@ -131,16 +131,11 @@ layout = dmc.Container(
                                         dmc.Text("Or", size="lg"),
                                     ),
                                     dmc.Paper(
-                                        children=dcc.Upload(
-                                            id="blast-fasta-upload",
-                                            children=html.Div(
-                                                id="blast-fasta-sequence-upload",
-                                                children="Drag and drop or click to select a FASTA file",
-                                                style={"textAlign": "center", "padding": "20px"}
-                                            ),
-                                            multiple=False,
-                                            accept=".fa, .fas, .fasta, .fna",
-                                            className="upload-box text-center",
+                                        children=create_file_upload(
+                                            upload_id="blast-fasta-upload",
+                                            output_id="blast-fasta-sequence-upload",
+                                            accept_types=[".fa", ".fas", ".fasta", ".fna"],
+                                            placeholder_text="Drag and drop or click to select a FASTA file"
                                         ),
                                         withBorder=False,
                                         radius="md",
