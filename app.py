@@ -64,7 +64,8 @@ app = Dash(
 limiter = Limiter(
     get_client_ip,
     app=server,
-    default_limits=["60 per day", "20 per hour"],
+    storage_uri="memory://",
+    default_limits=[]
 )
 
 def initialize_app():
