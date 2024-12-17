@@ -219,7 +219,14 @@ layout = dmc.Container(
                                 dcc.Loading(
                                     id="ship-aln-loading",
                                     type="circle",
-                                    children=html.Div(id="ship-aln"),
+                                    children=html.Div(
+                                        id="ship-aln",
+                                        style={
+                                            'minHeight': '200px',
+                                            'width': '100%',
+                                            'marginTop': '20px'
+                                        }
+                                    ),
                                 ),
                             ], gap="xl"),
                             p="xl",
@@ -616,8 +623,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                     "min_evalue_rows is empty after grouping by qseqid and selecting min evalue."
                 )
             else:
-                print(min_evalue_rows["pident"])
-                # logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
+                logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
 
             if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
                 if min_evalue_rows["pident"].iloc[0] > 95:
@@ -627,7 +633,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                     ship_family = dmc.Alert(
                         title="Starship Family Found",
                         children=[
-                            f"Your sequence is likely in Starship family: {family_name}",
+                            f"Based on HMMER, your sequence is likely in Starship family: {family_name}",
                             dmc.Space(h=5),
                             dmc.Text(
                                 f"Alignment length = {aln_len}, E-value = {ev}",
@@ -738,19 +744,23 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
     [
         Input("ship-blast-table", "derived_virtual_data"),
         Input("ship-blast-table", "derived_virtual_selected_rows"),
+        Input("ship-blast-table", "selected_rows"),
         Input("curated-input", "value"),
     ],
     State("query-type-store", "data"),
 )
-def blast_alignments(ship_blast_results, selected_row, curated, query_type):
+def blast_alignments(ship_blast_results, derived_selected_rows, selected_rows, curated, query_type):
+    # Use whichever selection is available
+    active_selection = derived_selected_rows if derived_selected_rows else selected_rows
+    
     try:
+        if not active_selection or len(active_selection) == 0:
+            return None
+
         logger.info(
-            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
+            f"blast_alignments called with selection: {active_selection}, query_type: {query_type}"
         )
-
-        if not selected_row or len(selected_row) == 0:
-            return [None]
-
+        
         if not ship_blast_results or len(ship_blast_results) == 0:
             logger.error(
                 "No BLAST results available because ship_blast_results is empty or None."
@@ -759,7 +769,7 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
 
         ship_blast_results_df = pd.DataFrame(ship_blast_results)
 
-        row_idx = selected_row[0]
+        row_idx = active_selection[0]
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
@@ -801,9 +811,11 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
             showid=False,
             ticksteps=5,
             tickstart=0,
+            style={'width': '100%'}
+
         )
 
-        return [aln]
+        return aln
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")

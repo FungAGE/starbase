@@ -255,18 +255,18 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         Output(modal_id, "opened"),
         Output(content_id, "children"),
         Output(title_id, "children"),
-        Output(table_id, "active_cell"),
         [Input(table_id, "active_cell")],
         [
             State(modal_id, "opened"),
             State(table_id, "data"),
-            State(table_id, "derived_virtual_data")
+            State(table_id, "derived_virtual_data"),
+            State(table_id, "derived_virtual_selected_rows"),
         ],
     )
-    def toggle_modal(active_cell, is_open, table_data, filtered_data):
+    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows):        
         try:
             if not active_cell:
-                return False, no_update, no_update, no_update
+                return False, no_update, no_update
                 
             # Debug the table data
             data_to_use = filtered_data if filtered_data is not None else table_data

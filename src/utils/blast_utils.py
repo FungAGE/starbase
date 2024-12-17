@@ -1,9 +1,8 @@
-import dash_bootstrap_components as dbc
-from dash import dash_table, dcc, html
+import dash_mantine_components as dmc
+from dash import dcc, html
 import dash_bio as dashbio
 
 import os
-import re
 import tempfile
 import subprocess
 import json
@@ -566,63 +565,56 @@ def blast_chords(blast_output):
         return html.Div(["No results found for the BLAST search."])
 
 
-# TODO: link in ship classification information for subjects here
 def blast_table(ship_blast_results):
     df_columns = [
         {
             "name": "Accession",
             "id": "accession_tag",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "type": "text",
         },
         {
             "name": "Starship Family",
             "id": "familyName",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "type": "text",
         },
         {
             "name": "Percent Identity",
             "id": "pident",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "type": "numeric",
         },
         {
             "name": "Hit Length",
             "id": "length",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "type": "numeric",
         },
         {
             "name": "E-value",
             "id": "evalue",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "type": "numeric",
         },
         {
             "name": "Bitscore",
             "id": "bitscore",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "type": "numeric",
         },
     ]
 
+    # Remove the link formatting - just use the raw accession tags
+    # ship_blast_results['accession_tag'] = ship_blast_results['accession_tag'].apply(
+    #     lambda x: f'[{x}](/blast-table/{x})'
+    # )
+
     tbl = html.Div(
         [
-            make_ship_blast_table(ship_blast_results,"ship-blast-table",df_columns),
-            dbc.Button(
+            make_ship_blast_table(ship_blast_results,"blast-table",df_columns),
+            dmc.Button(
                 "Download BLAST results",
                 id="blast-dl-button",
-                n_clicks=0,
-                style={"textAlign": "center", "fontSize": "1rem"},
-                className="d-grid gap-2 col-3 mx-auto mt-3",
+                variant="gradient",
+                gradient={"from": "indigo", "to": "cyan"},
+                size="lg",
             ),
+
             dcc.Download(id="blast-dl"),
         ]
     )

@@ -97,3 +97,8 @@
 .text-center {
     text-align: center;
 }
+.dash-bio-alignmentchart {
+    width: 100% !important;
+    min-height: 200px;
+    overflow: auto;
+}
