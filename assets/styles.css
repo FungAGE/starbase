@@ -21,19 +21,23 @@
 }
 
 .upload-box {
-  width: 100%;
-  min-height: 60px;
-  height: auto;
-  line-height: 1.5;
-  border-width: 1px;
-  border-style: dashed;
-  border-radius: 5px;
-  text-align: center;
-  margin: 10px 0;
-  padding: 1rem;
-  box-sizing: border-box;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
 }
 
+.upload-box:hover {
+    border-color: #228be6;
+    background-color: rgba(34, 139, 230, 0.05);
+}
+
+.upload-box.drag-active {
+    border-color: #228be6;
+    background-color: rgba(34, 139, 230, 0.1);
+}
 /* Loading indicator */
 .dash-loading {
   display: flex;
@@ -68,4 +72,33 @@
     .responsive-group .mantine-Title-root {
         text-align: center !important;
     }
+}
+
+.text-success {
+    color: #28a745;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+
+.mb-3 {
+    margin-bottom: 1rem;
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.text-center {
+    text-align: center;
+}
+.dash-bio-alignmentchart {
+    width: 100% !important;
+    min-height: 200px;
+    overflow: auto;
 }

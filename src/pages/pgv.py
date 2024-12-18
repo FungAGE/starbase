@@ -68,7 +68,7 @@ modal = dmc.Modal(
 )
 
 layout = dmc.Container(
-    size="xl",  # Wider container for visualization
+    fluid=True,  # Changed from size="xl" to fluid=True for better responsiveness
     children=[
         dcc.Location(id="url", refresh=False),
         
@@ -88,96 +88,100 @@ layout = dmc.Container(
             mb="xl",
         ),
         
-        # Main Content
+        # Main Content Grid
         dmc.Grid(
             children=[
-                # Table Section
+                # Left Column - Table Section
                 dmc.GridCol(
-                    span=12,
+                    span={"base": 12, "md": 6},  # Full width on mobile, half on medium+ screens
                     children=[
                         dmc.Paper(
-                            children=[
-                                dmc.Stack([
-                                    # Table Title
-                                    dmc.Group(
-                                        pos="apart",
-                                        children=[
-                                            dmc.Title("Select Starships", order=2),
-                                            dmc.Button(
-                                                "Show Selected Starships",
-                                                id="update-button",
-                                                variant="gradient",
-                                                gradient={"from": "indigo", "to": "cyan"},
-                                                leftSection=html.I(className="bi bi-eye"),
-                                            ),
-                                        ],
-                                    ),
-                                    # Threshold Inputs
-                                    dmc.Group(
-                                        children=[
-                                            dmc.NumberInput(
-                                                label="Length Threshold (bp)",
-                                                id="length-threshold",
-                                                value=50,
-                                                min=0,
-                                                step=10,
-                                            ),
-                                            dmc.NumberInput(
-                                                label="Identity Threshold (%)",
-                                                id="identity-threshold",
-                                                value=30,
-                                                min=0,
-                                                max=100,
-                                                step=5,
-                                            ),
-                                        ],
-                                        gap="md",
-                                    ),
-                                    # Table
-                                    dcc.Loading(
-                                        id="loading",
-                                        type="circle",
-                                        children=html.Div(
-                                            id="pgv-table",
+                            children=dmc.Stack([
+                                # Table Title
+                                dmc.Group(
+                                    pos="apart",
+                                    children=[
+                                        dmc.Title("Select Starships", order=2),
+                                        dmc.Button(
+                                            "Show Selected Starships",
+                                            id="update-button",
+                                            variant="gradient",
+                                            gradient={"from": "indigo", "to": "cyan"},
+                                            leftSection=html.I(className="bi bi-eye"),
                                         ),
+                                    ],
+                                ),
+                                # Threshold Inputs
+                                dmc.Group(
+                                    children=[
+                                        dmc.NumberInput(
+                                            label="Length Threshold (bp)",
+                                            id="length-threshold",
+                                            value=50,
+                                            min=0,
+                                            step=10,
+                                        ),
+                                        dmc.NumberInput(
+                                            label="Identity Threshold (%)",
+                                            id="identity-threshold",
+                                            value=30,
+                                            min=0,
+                                            max=100,
+                                            step=5,
+                                        ),
+                                    ],
+                                    gap="md",
+                                ),
+                                # Table
+                                dcc.Loading(
+                                    id="loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="pgv-table",
                                     ),
-                                ], gap="md"),
-                            ],
+                                ),
+                            ], gap="md"),
                             p="xl",
                             radius="md",
                             withBorder=True,
-                            mb="xl",
+                            h="100%",  # Make paper fill the height
                         ),
                     ],
                 ),
                 
-                # Visualization Section
+                # Right Column - Visualization Section
                 dmc.GridCol(
-                    span=12,
+                    span={"base": 12, "md": 6},  # Full width on mobile, half on medium+ screens
                     children=[
-                                dmc.Stack([
-                                    # Message Area
-                                    html.Div(
-                                        id="pgv-message",
-                                        style={"textAlign": "center"},
+                        dmc.Paper(
+                            children=dmc.Stack([
+                                # Message Area
+                                html.Div(
+                                    id="pgv-message",
+                                    style={"textAlign": "center"},
+                                ),
+                                # Visualization Area
+                                dcc.Loading(
+                                    id="loading-1",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="pgv-figure",
+                                        style={
+                                            "height": "800px",
+                                            "width": "100%",
+                                            "overflow": "auto",
+                                            "backgroundColor": "#f8f9fa",
+                                            "border": "1px solid #dee2e6",
+                                            "borderRadius": "4px",
+                                        },
                                     ),
-                                    # Visualization Area
-                                    dcc.Loading(
-                                        id="loading-1",
-                                        type="circle",
-                                        children=html.Div(
-                                            id="pgv-figure",
-                                            style={
-                                                "height": "800px",
-                                                "width": "100%",
-                                                "overflow": "auto",
-                                                "backgroundColor": "#f8f9fa",
-                                                "border": "1px solid #dee2e6",
-                                                "borderRadius": "4px",
-                                            },
-                                        ),
-                                    ),
-                                ], gap="md"),
+                                ),
+                            ], gap="md"),
+                            p="xl",
+                            radius="md",
+                            withBorder=True,
+                            h="100%",  # Make paper fill the height
+                        ),
                     ],
                 ),
             ],
@@ -468,7 +472,7 @@ def load_ship_table(href):
             columns=table_columns,
             id="pgv-table",
             select_rows=True,
-            pg_sz=15
+            pg_sz=10
         )
     return html.Div("No data available")
 

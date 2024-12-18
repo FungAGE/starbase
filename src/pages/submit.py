@@ -18,6 +18,7 @@ dash.register_page(__name__)
 from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
+from src.components.callbacks import create_file_upload
 
 layout = dmc.Container(
     size="md",
@@ -57,16 +58,11 @@ layout = dmc.Container(
                         dmc.Paper(
                             children=[
                                 dmc.Text(["Starship Sequence ", html.Span("*", style={"color": "red"})], fw=500, mb="sm"),
-                                dcc.Upload(
-                                    id="submit-fasta-upload",
-                                    children=html.Div(
-                                        id="submit-fasta-sequence-upload",
-                                        style={"textAlign": "center", "padding": "20px"}
-                                    ),
-                                    className="upload-box",
-                                    multiple=False,
-                                    accept=".fa, .fas, .fasta, .fna",
-                                    max_size=10000000,
+                                create_file_upload(
+                                    upload_id="submit-fasta-upload",
+                                    output_id="submit-fasta-sequence-upload",
+                                    accept_types=[".fa", ".fas", ".fasta", ".fna"],
+                                    placeholder_text="Select a FASTA file to upload"
                                 ),
                                 dcc.Loading(
                                     id="loading-1",
@@ -83,16 +79,11 @@ layout = dmc.Container(
                         dmc.Paper(
                             children=[
                                 dmc.Text("Gene Annotations (GFF3)", fw=500, mb="sm"),
-                                dcc.Upload(
-                                    id="submit-upload-gff",
-                                    children=html.Div(
-                                        id="submit-output-gff-upload",
-                                        style={"textAlign": "center", "padding": "20px"}
-                                    ),
-                                    className="upload-box",
-                                    accept=".gff, .gff3, .tsv",
-                                    multiple=False,
-                                    max_size=10000000,
+                                create_file_upload(
+                                    upload_id="submit-upload-gff",
+                                    output_id="submit-output-gff-upload", 
+                                    accept_types=[".gff", ".gff3", ".tsv"],
+                                    placeholder_text="Select a GFF file to upload"
                                 ),
                                 dcc.Loading(
                                     id="loading-2",
@@ -196,6 +187,7 @@ layout = dmc.Container(
                             size="lg",
                             variant="gradient",
                             gradient={"from": "indigo", "to": "cyan"},
+                            loading=False,
                         ),
                     ),
                 ], gap="xl"),
@@ -207,12 +199,30 @@ layout = dmc.Container(
         
         # Modal
         dbc.Modal([
-            dbc.ModalHeader(dbc.ModalTitle("New Submission")),
-            dbc.ModalBody(html.Div(id="output-data-upload")),
-            dbc.ModalFooter(
-                dbc.Button("Close", id="close", className="ms-auto", n_clicks=0)
+            dbc.ModalHeader(
+                dbc.ModalTitle("Submission Success", className="text-success"),
+                close_button=True
             ),
-        ], id="submit-modal", is_open=False),
+            dbc.ModalBody([
+                html.Div([
+                    html.I(className="fas fa-check-circle text-success fa-3x mb-3"),
+                    html.Div(id="output-data-upload", className="mt-3"),
+                    dmc.Text(
+                        "Your Starship has been successfully added to the database.",
+                        className="text-muted mt-2"
+                    ),
+                ], className="text-center")
+            ]),
+            dbc.ModalFooter(
+                dbc.Button(
+                    "Close",
+                    id="close",
+                    className="ms-auto",
+                    color="primary",
+                    n_clicks=0
+                )
+            ),
+        ], id="submit-modal", is_open=False, centered=True),
     ],
     style={
         "margin": "0 auto",
@@ -304,7 +314,11 @@ def insert_submission(
 
 
 @callback(
-    [Output("submit-modal", "is_open"), Output("output-data-upload", "children")],
+    [
+        Output("submit-modal", "is_open"),
+        Output("output-data-upload", "children"),
+        Output("submit-ship", "loading")
+    ],
     [
         Input("submit-fasta-upload", "contents"),
         Input("submit-fasta-upload", "filename"),
@@ -346,10 +360,12 @@ def submit_ship(
     close_modal,
     is_open,
 ):
-    modal = is_open  # Keep the modal state as it is unless toggled
-    message = """"""
+    modal = is_open
+    message = ""
+    loading = False
 
     if n_clicks and n_clicks > 0:
+        loading = True
         if strand_radio == 1:
             shipstrand = "+"
         else:
@@ -358,6 +374,7 @@ def submit_ship(
             return (
                 modal,
                 "No fasta file uploaded",
+                loading
             )  # Return the error message if no file
 
         insert_submission(
@@ -379,9 +396,23 @@ def submit_ship(
         )
 
         modal = not is_open if not close_modal else False
-        message = html.H5(f"Successfully submitted '{seq_filename}' to starbase")
+        message = html.Div([
+            html.H4(
+                f"Successfully submitted!",
+                className="mb-3"
+            ),
+            dmc.Text(
+                f"Filename: {seq_filename}",
+                className="text-muted"
+            ),
+            dmc.Text(
+                f"Uploaded by: {uploader}",
+                className="text-muted"
+            ),
+        ])
+        loading = False
 
-    return modal, message
+    return modal, message, loading
 
 
 @callback(

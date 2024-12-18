@@ -31,6 +31,7 @@ from src.utils.blast_utils import (
     select_ship_family,
     parse_lastz_output,
     blast_chords,
+    make_captain_alert
 )
 
 from src.utils.blast_utils import (
@@ -43,7 +44,7 @@ from src.utils.blast_utils import (
     parse_lastz_output,
     blast_chords,
 )
-from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback
+from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 
 from src.database.sql_manager import fetch_meta_data
@@ -131,16 +132,11 @@ layout = dmc.Container(
                                         dmc.Text("Or", size="lg"),
                                     ),
                                     dmc.Paper(
-                                        children=dcc.Upload(
-                                            id="blast-fasta-upload",
-                                            children=html.Div(
-                                                id="blast-fasta-sequence-upload",
-                                                children="Drag and drop or click to select a FASTA file",
-                                                style={"textAlign": "center", "padding": "20px"}
-                                            ),
-                                            multiple=False,
-                                            accept=".fa, .fas, .fasta, .fna",
-                                            className="upload-box text-center",
+                                        children=create_file_upload(
+                                            upload_id="blast-fasta-upload",
+                                            output_id="blast-fasta-sequence-upload",
+                                            accept_types=[".fa", ".fas", ".fasta", ".fna"],
+                                            placeholder_text="Drag and drop or click to select a FASTA file"
                                         ),
                                         withBorder=False,
                                         radius="md",
@@ -172,13 +168,14 @@ layout = dmc.Container(
                                 
                                 # Submit Section
                                 dmc.Stack([
-                                    dmc.Button(
-                                        "Submit BLAST",
-                                        id="submit-button",
-                                        variant="gradient",
-                                        gradient={"from": "indigo", "to": "cyan"},
-                                        size="lg",
-                                        fullWidth=True,
+                                    dmc.Center(
+                                        dmc.Button(
+                                            "Submit BLAST",
+                                            id="submit-button",
+                                            variant="gradient",
+                                            gradient={"from": "indigo", "to": "cyan"},
+                                            size="lg",
+                                        ),
                                     ),
                                     dmc.Text(
                                         id="rate-limit-info",
@@ -186,14 +183,7 @@ layout = dmc.Container(
                                         c="dimmed",
                                         # align="center",
                                     ),
-                                ], gap="xs"),
-                                
-                                # Results Preview
-                                dcc.Loading(
-                                    id="family-loading",
-                                    type="circle",
-                                    children=html.Div(id="ship-family"),
-                                ),
+                                ], gap="xs"),                                
                             ], gap="xl"),
                             p="xl",
                             radius="md",
@@ -211,9 +201,14 @@ layout = dmc.Container(
                             children=dmc.Stack([
                                 dmc.Title("BLAST Results", order=3),
                                 dcc.Loading(
-                                    id="ship-blast-table-loading",
+                                    id="family-loading",
                                     type="circle",
-                                    children=html.Div(id="ship-blast-table"),
+                                    children=html.Div(id="ship-family"),
+                                ),
+                                dcc.Loading(
+                                    id="blast-table-loading",
+                                    type="circle",
+                                    children=html.Div(id="blast-table"),
                                 ),
                                 dcc.Loading(
                                     id="subject-seq-button-loading",
@@ -223,7 +218,14 @@ layout = dmc.Container(
                                 dcc.Loading(
                                     id="ship-aln-loading",
                                     type="circle",
-                                    children=html.Div(id="ship-aln"),
+                                    children=html.Div(
+                                        id="ship-aln",
+                                        style={
+                                            'minHeight': '200px',
+                                            'width': '100%',
+                                            'marginTop': '20px'
+                                        }
+                                    ),
                                 ),
                             ], gap="xl"),
                             p="xl",
@@ -503,7 +505,7 @@ no_captain_alert = dbc.Alert(
 @callback(
     [
         Output("ship-family", "children"),
-        Output("ship-blast-table", "children"),
+        Output("blast-table", "children"),
     ],
     [
         Input("blast-results-store", "data"),
@@ -513,169 +515,222 @@ no_captain_alert = dbc.Alert(
     State("submit-button", "n_clicks"),
 )
 def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
-    if blast_results_dict is None and captain_results_dict is None:
+    if not n_clicks:
         raise PreventUpdate
-    if n_clicks:
-        logger.info(f"Updating UI with n_clicks={n_clicks}")
-        try:
-            ship_family = no_update
-            ship_table = no_update
 
-            blast_results_df = pd.DataFrame(blast_results_dict)
+    if blast_results_dict is None and captain_results_dict is None:
+        return [
+            dmc.Alert(
+                title="Search Error",
+                children=[
+                    "No results were returned from the BLAST search.",
+                    dmc.Space(h=5),
+                    dmc.Text(
+                        "This could be due to:",
+                        size="sm",
+                        mb=5,
+                    ),
+                    dmc.List(
+                        [
+                            "Invalid sequence format",
+                            "No significant matches found",
+                            "Server-side processing error",
+                        ],
+                        size="sm",
+                    ),
+                ],
+                color="red",
+                variant="light",
+                withCloseButton=False,
+            ),
+            None
+        ]
 
-            # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
-            initial_df = cache.get("meta_data")
+    logger.info(f"Updating UI with n_clicks={n_clicks}")
+    try:
+        ship_family = no_update
+        ship_table = no_update
 
-            if initial_df is None:
-                initial_df = fetch_meta_data(curated)
+        blast_results_df = pd.DataFrame(blast_results_dict)
 
-            initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
+        # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
+        initial_df = cache.get("meta_data")
 
-            if blast_results_dict:
-                logger.info("Rendering BLAST table")
-                df_for_table = pd.merge(
-                    initial_df,
-                    blast_results_df,
-                    left_on="accession_tag",
-                    right_on="sseqid",
-                    how="right",
-                )
-                # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
-                df_for_table = df_for_table.drop_duplicates(
-                    subset=["accession_tag", "pident", "length"]
-                )
-                df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
-                df_for_table.fillna("", inplace=True)
+        if initial_df is None:
+            initial_df = fetch_meta_data(curated)
 
-                if len(df_for_table) > 0:
-                    ship_table = blast_table(df_for_table)
-                else:
-                    ship_table = dbc.Alert(
-                        "No BLAST results found.",
-                        color="danger",
-                    )
+        initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
 
-                min_evalue_rows = df_for_table.loc[
-                    df_for_table.groupby("qseqid")["evalue"].idxmin()
+        if blast_results_dict:
+            logger.info("Rendering BLAST table")
+            df_for_table = pd.merge(
+                initial_df,
+                blast_results_df,
+                left_on="accession_tag",
+                right_on="sseqid",
+                how="right",
+            )
+            
+            if len(df_for_table) == 0:
+                return [
+                    dmc.Alert(
+                        title="No Matches Found",
+                        children=[
+                            "Your sequence did not match any Starships in our database.",
+                            dmc.Space(h=5),
+                            dmc.Text(
+                                "Suggestions:",
+                                size="sm",
+                                mb=5,
+                            ),
+                            dmc.List(
+                                [
+                                    "Check if your sequence is in the correct format",
+                                    "Try searching with a different region of your sequence",
+                                    "Consider using a less stringent E-value threshold",
+                                ],
+                                size="sm",
+                            ),
+                        ],
+                        color="yellow",
+                        variant="light",
+                        withCloseButton=False,
+                    ),
+                    None
                 ]
-                if min_evalue_rows.empty:
-                    logger.warning(
-                        "min_evalue_rows is empty after grouping by qseqid and selecting min evalue."
-                    )
+
+            # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
+            df_for_table = df_for_table.drop_duplicates(
+                subset=["accession_tag", "pident", "length"]
+            )
+            df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
+            df_for_table.fillna("", inplace=True)
+
+            if len(df_for_table) > 0:
+                ship_table = blast_table(df_for_table)
+            else:
+                ship_table = dbc.Alert(
+                    "No BLAST results found.",
+                    color="danger",
+                )
+
+            min_evalue_rows = df_for_table.loc[
+                df_for_table.groupby("qseqid")["evalue"].idxmin()
+            ]
+            if min_evalue_rows.empty:
+                logger.warning(
+                    "min_evalue_rows is empty after grouping by qseqid and selecting min evalue."
+                )
+            else:
+                logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
+
+            if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
+                if min_evalue_rows["pident"].iloc[0] > 95:
+                    family_name = min_evalue_rows["familyName"].iloc[0]
+                    aln_len = min_evalue_rows["length"].iloc[0]
+                    ev = min_evalue_rows["evalue"].iloc[0]
+                    ship_family = make_captain_alert(family_name, aln_len, ev)
                 else:
-                    print(min_evalue_rows["pident"])
-                    # logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
+                    if captain_results_dict:
+                        logger.info("Processing Diamond/HMMER results")
+                        captain_results_df = pd.DataFrame(captain_results_dict)
+                        # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
+                        #     clean_shipID
+                        # )
+                        if len(captain_results_df) > 0:
+                            try:
+                                superfamily, family_aln_length, family_evalue = (
+                                    select_ship_family(captain_results_df)
+                                )
+                                if superfamily:
+                                    family = initial_df[
+                                        initial_df["familyName"] == superfamily
+                                    ]["familyName"].unique()[0]
+                                    if family:
+                                        ship_family = make_captain_alert(family, family_aln_length, family_evalue)
+                                    else:
+                                        ship_family = dmc.Alert(
+                                            title="Starship Family Not Determined",
+                                            children=[
+                                                "Starship family could not be determined.",
+                                                dmc.Space(h=5),
+                                                dmc.Text(
+                                                    "Please try a different query or increase the e-value threshold.",
+                                                    size="sm",
+                                                    c="dimmed"
+                                                ),
+                                            ],
+                                            color="red",
+                                            variant="light",
+                                            withCloseButton=False,
+                                        )
 
-                if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
-                    if min_evalue_rows["pident"].iloc[0] > 95:
-                        family_name = min_evalue_rows["familyName"].iloc[0]
-                        aln_len = min_evalue_rows["length"].iloc[0]
-                        ev = min_evalue_rows["evalue"].iloc[0]
-                        ship_family = dmc.Alert(
-                            title="Starship Family Found",
-                            children=[
-                                f"Your sequence is likely in Starship family: {family_name}",
-                                dmc.Space(h=5),
-                                dmc.Text(
-                                    f"Alignment length = {aln_len}, E-value = {ev}",
-                                    size="sm",
-                                    c="dimmed"
-                                ),
-                            ],
-                            color="yellow",
-                            variant="light",
-                            withCloseButton=False,
-                        )
-
-                    else:
-                        if captain_results_dict:
-                            logger.info("Processing Diamond/HMMER results")
-                            captain_results_df = pd.DataFrame(captain_results_dict)
-                            # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
-                            #     clean_shipID
-                            # )
-                            if len(captain_results_df) > 0:
-                                try:
-                                    superfamily, family_aln_length, family_evalue = (
-                                        select_ship_family(captain_results_df)
-                                    )
-                                    if superfamily:
-                                        family = initial_df[
-                                            initial_df["familyName"] == superfamily
-                                        ]["familyName"].unique()[0]
-                                        if family:
-                                            ship_family = dmc.Alert(
-                                                title="Starship Family Found",
-                                                children=[
-                                                    f"Your sequence is likely in Starship family: {family}",
-                                                    dmc.Space(h=5),
-                                                    dmc.Text(
-                                                        f"Alignment length = {family_aln_length}, E-value = {family_evalue}",
-                                                        size="sm",
-                                                        c="dimmed"
-                                                    ),
-                                                ],
-                                                color="yellow",
-                                                variant="light",
-                                                withCloseButton=False,
-                                            )
-                                        else:
-                                            ship_family = dmc.Alert(
-                                                title="Starship Family Not Determined",
-                                                children=[
-                                                    "Starship family could not be determined.",
-                                                    dmc.Space(h=5),
-                                                    dmc.Text(
-                                                        "Please try a different query or increase the e-value threshold.",
-                                                        size="sm",
-                                                        c="dimmed"
-                                                    ),
-                                                ],
-                                                color="red",
-                                                variant="light",
-                                                withCloseButton=False,
-                                            )
-
-                                except Exception as e:
-                                    logger.error(
-                                        f"Error selecting ship family: {str(e)}"
-                                    )
-                                    ship_family = html.Div(f"Error: {str(e)}")
-                            else:
-                                ship_family = no_captain_alert
+                            except Exception as e:
+                                logger.error(
+                                    f"Error selecting ship family: {str(e)}"
+                                )
+                                ship_family = html.Div(f"Error: {str(e)}")
                         else:
                             ship_family = no_captain_alert
-                else:
-                    ship_family = dbc.Alert(
-                        "No matching rows found for minimum evalue selection.",
-                        color="danger",
-                    )
-            return ship_family, ship_table
+                    else:
+                        ship_family = no_captain_alert
+            else:
+                ship_family = dbc.Alert(
+                    "No matching rows found for minimum evalue selection.",
+                    color="danger",
+                )
+        return ship_family, ship_table
 
-        except Exception as e:
-            logger.error(f"Error in update_ui: {str(e)}")
-            return no_update, no_update
+    except Exception as e:
+        logger.error(f"Error in update_ui: {str(e)}")
+        return [
+            dmc.Alert(
+                title="Processing Error",
+                children=[
+                    "An error occurred while processing your search.",
+                    dmc.Space(h=5),
+                    dmc.Text(
+                        f"Error details: {str(e)}",
+                        size="sm",
+                        c="dimmed",
+                    ),
+                    dmc.Space(h=5),
+                    dmc.Text(
+                        "Please try again or contact support if the problem persists.",
+                        size="sm",
+                    ),
+                ],
+                color="red",
+                variant="light",
+                withCloseButton=False,
+            ),
+            None
+        ]
 
 
 @cache.memoize()
 @callback(
     Output("ship-aln", "children"),
     [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
+        Input("blast-table", "derived_virtual_data"),
+        Input("blast-table", "derived_virtual_selected_rows"),
+        Input("blast-table", "selected_rows"),
         Input("curated-input", "value"),
     ],
     State("query-type-store", "data"),
 )
-def blast_alignments(ship_blast_results, selected_row, curated, query_type):
+def blast_alignments(ship_blast_results, derived_selected_rows, selected_rows, curated, query_type):
+    # Use whichever selection is available
+    active_selection = derived_selected_rows if derived_selected_rows else selected_rows
+    
     try:
+        if not active_selection or len(active_selection) == 0:
+            return None
+
         logger.info(
-            f"blast_alignments called selected_row: {selected_row}, query_type: {query_type}"
+            f"blast_alignments called with selection: {active_selection}, query_type: {query_type}"
         )
-
-        if not selected_row or len(selected_row) == 0:
-            return [None]
-
+        
         if not ship_blast_results or len(ship_blast_results) == 0:
             logger.error(
                 "No BLAST results available because ship_blast_results is empty or None."
@@ -684,7 +739,7 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
 
         ship_blast_results_df = pd.DataFrame(ship_blast_results)
 
-        row_idx = selected_row[0]
+        row_idx = active_selection[0]
 
         try:
             row = ship_blast_results_df.iloc[row_idx]
@@ -728,29 +783,88 @@ def blast_alignments(ship_blast_results, selected_row, curated, query_type):
             tickstart=0,
         )
 
-        return [aln]
+        # Add download button below alignment
+        download_section = html.Div([
+            aln,
+            dmc.Space(h="md"),
+            dmc.Button(
+                "Download Alignment FASTA",
+                id="download-alignment-button",
+                leftSection=[html.I(className="bi bi-download")],
+                variant="gradient",
+                gradient={"from": "indigo", "to": "cyan"},
+                size="lg",
+            ),
+            dcc.Download(id="download-alignment-fasta")
+        ])
+
+        return download_section
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise
 
+@callback(
+    Output("download-alignment-fasta", "data"),
+    Input("download-alignment-button", "n_clicks"),
+    [
+        State("blast-table", "derived_virtual_data"),
+        State("blast-table", "derived_virtual_selected_rows"),
+        State("blast-table", "selected_rows"),
+    ],
+    prevent_initial_call=True
+)
+def download_alignment_fasta(n_clicks, ship_blast_results, derived_selected_rows, selected_rows):
+    if not n_clicks:
+        return None
+        
+    active_selection = derived_selected_rows if derived_selected_rows else selected_rows
+    
+    if not active_selection or len(active_selection) == 0:
+        return None
+        
+    try:
+        ship_blast_results_df = pd.DataFrame(ship_blast_results)
+        row = ship_blast_results_df.iloc[active_selection[0]]
+        
+        qseq = str(row["qseq"]).replace("\n", "")
+        qseqid = str(row["qseqid"])
+        sseq = str(row["sseq"]).replace("\n", "")
+        sseqid = str(row["sseqid"])
+        
+        fasta_content = f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n"
+        
+        return dict(
+            content=fasta_content,
+            filename=f"alignment_{qseqid}_{sseqid}.fasta",
+            type="text/plain"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error preparing alignment download: {str(e)}")
+        return None
 
 @callback(
     Output("blast-dl", "data"),
     [Input("blast-dl-button", "n_clicks")],
-    [State("ship-blast-table", "data"), State("ship-blast-table", "columns")],
+    [State("blast-table", "derived_virtual_data")],
+    prevent_initial_call=True
 )
-def download_tsv(n_clicks, rows, columns):
-    if n_clicks == 0:
+def download_tsv(n_clicks, table_data):
+    if not n_clicks:
         return None
-
-    if not rows or not columns:
+        
+    if not table_data:
         logger.error("Error: No data available for download.")
         return None
 
     try:
-        df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
-
+        df = pd.DataFrame(table_data)
+        
+        # Format the data for download
+        download_columns = ['accession_tag', 'familyName', 'pident', 'length', 'evalue', 'bitscore']
+        df = df[download_columns]
+        
         tsv_string = df.to_csv(sep="\t", index=False)
         tsv_bytes = io.BytesIO(tsv_string.encode())
         b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
@@ -763,15 +877,14 @@ def download_tsv(n_clicks, rows, columns):
         )
 
     except Exception as e:
-        logger.error(f"Error while preparing TSV download: {e}")
+        logger.error(f"Error preparing download: {str(e)}")
         return None
-
 
 @callback(
     Output("lastz-plot", "figure"),
     [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
+        Input("blast-table", "derived_virtual_data"),
+        Input("blast-table", "derived_virtual_selected_rows"),
     ],
 )
 def create_alignment_plot(ship_blast_results, selected_row):

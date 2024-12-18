@@ -237,23 +237,25 @@ def make_paper_table():
         ))
         return paper_table
 
-def make_ship_blast_table(ship_blast_results, id,df_columns):
+def make_ship_blast_table(ship_blast_results, id, df_columns):
     return html.Div(dash_table.DataTable(
         columns=df_columns,
         data=ship_blast_results.to_dict("records"),
         id=id,
         editable=False,
+        markdown_options=None,
         sort_action="native",
         sort_by=[{"column_id": "evalue", "direction": "asc"}],
         sort_mode="single",
         row_selectable="single",
         selected_rows=[0],
         row_deletable=False,
-        selected_columns=[],
         page_action="native",
         page_current=0,
         page_size=10,
-        export_format="tsv",
+        derived_virtual_selected_rows=[0],
+        derived_virtual_indices=[],
+        derived_virtual_data=ship_blast_results.to_dict("records"),
         style_table={
             "overflowX": "auto",
             "overflowY": "auto",

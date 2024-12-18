@@ -1,6 +1,8 @@
 from dash import html, Output, Input, State, callback, no_update
+import dash_core_components as dcc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
+from typing import List  
 
 import logging
 import traceback
@@ -253,18 +255,18 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         Output(modal_id, "opened"),
         Output(content_id, "children"),
         Output(title_id, "children"),
-        Output(table_id, "active_cell"),
         [Input(table_id, "active_cell")],
         [
             State(modal_id, "opened"),
             State(table_id, "data"),
-            State(table_id, "derived_virtual_data")
+            State(table_id, "derived_virtual_data"),
+            State(table_id, "derived_virtual_selected_rows"),
         ],
     )
-    def toggle_modal(active_cell, is_open, table_data, filtered_data):
+    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows):        
         try:
             if not active_cell:
-                return False, no_update, no_update, no_update
+                return False, no_update, no_update
                 
             # Debug the table data
             data_to_use = filtered_data if filtered_data is not None else table_data
@@ -289,7 +291,7 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             logger.debug(f"Available accessions in cache: {initial_df['accession_tag'].unique()[:5]}")
             
             modal_content, modal_title = create_accession_modal(accession)
-            return True, modal_content, modal_title, None
+            return True, modal_content, modal_title
             
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
@@ -299,5 +301,46 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 html.P("Error loading modal content"),
                 html.P(f"Details: {str(e)}"),
             ])
-            return True, error_content, "Error", None
+            return True, error_content, "Error"
 
+
+def create_file_upload(
+    upload_id: str,
+    output_id: str,
+    accept_types: List[str],
+    placeholder_text: str = "Drag and drop or click to select a file",
+    icon: str = "mdi:file-upload",
+    **kwargs
+) -> dmc.Stack:
+    return dmc.Stack([
+        dmc.Center(
+            DashIconify(
+                icon=icon,
+                width=40,
+                height=40,
+                color="#228be6"
+            )
+        ),
+        dcc.Upload(
+            id=upload_id,
+            children=dmc.Stack([
+                html.Div(
+                    id=output_id,
+                    children=placeholder_text,
+                ),
+                dmc.Text(
+                    f"Accepted formats: {', '.join(accept_types)}",
+                    size="sm",
+                    c="dimmed"
+                ),
+            ], align="center", gap="xs"),
+            className="upload-box",
+            **kwargs
+        ),
+        dmc.Progress(
+            id=f"{upload_id}-progress",
+            value=0,
+            animated=True,
+            style={"display": "none"}
+        ),
+    ], gap="md")
