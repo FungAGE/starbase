@@ -1,7 +1,7 @@
 from flask_caching import Cache
 import os
 
-cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
+cache_dir = os.path.join(os.environ.get('HOME', '/tmp'), '.cache')
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
 
