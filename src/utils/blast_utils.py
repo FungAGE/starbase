@@ -1,6 +1,7 @@
 import dash_mantine_components as dmc
 from dash import dcc, html
 import dash_bio as dashbio
+import dash_table
 
 import os
 import tempfile
@@ -607,6 +608,7 @@ def blast_table(ship_blast_results):
     tbl = html.Div(
         [
             make_ship_blast_table(ship_blast_results,"blast-table",df_columns),
+            dcc.Download(id="blast-dl"),
             dmc.Button(
                 "Download BLAST results",
                 id="blast-dl-button",
@@ -614,8 +616,6 @@ def blast_table(ship_blast_results):
                 gradient={"from": "indigo", "to": "cyan"},
                 size="lg",
             ),
-
-            dcc.Download(id="blast-dl"),
         ]
     )
     return tbl
@@ -736,3 +736,20 @@ def run_diamond(
     diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
 
     return diamond_results.to_dict("records")
+
+def make_captain_alert(family, aln_length, evalue):
+    return dmc.Alert(
+        title="HMMER Search Results",
+        children=[
+            f"Your sequence is likely in Starship family: {family}",
+            dmc.Space(h=5),
+            dmc.Text(
+                f"HMMER Search: Alignment length = {aln_length}, E-value = {evalue}",
+                size="sm",
+                c="dimmed"
+            ),
+        ],
+        color="yellow",
+        variant="light",
+        withCloseButton=False,
+    )

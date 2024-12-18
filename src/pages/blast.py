@@ -31,6 +31,7 @@ from src.utils.blast_utils import (
     select_ship_family,
     parse_lastz_output,
     blast_chords,
+    make_captain_alert
 )
 
 from src.utils.blast_utils import (
@@ -182,14 +183,7 @@ layout = dmc.Container(
                                         c="dimmed",
                                         # align="center",
                                     ),
-                                ], gap="xs"),
-                                
-                                # Results Preview
-                                dcc.Loading(
-                                    id="family-loading",
-                                    type="circle",
-                                    children=html.Div(id="ship-family"),
-                                ),
+                                ], gap="xs"),                                
                             ], gap="xl"),
                             p="xl",
                             radius="md",
@@ -207,9 +201,14 @@ layout = dmc.Container(
                             children=dmc.Stack([
                                 dmc.Title("BLAST Results", order=3),
                                 dcc.Loading(
-                                    id="ship-blast-table-loading",
+                                    id="family-loading",
                                     type="circle",
-                                    children=html.Div(id="ship-blast-table"),
+                                    children=html.Div(id="ship-family"),
+                                ),
+                                dcc.Loading(
+                                    id="blast-table-loading",
+                                    type="circle",
+                                    children=html.Div(id="blast-table"),
                                 ),
                                 dcc.Loading(
                                     id="subject-seq-button-loading",
@@ -506,7 +505,7 @@ no_captain_alert = dbc.Alert(
 @callback(
     [
         Output("ship-family", "children"),
-        Output("ship-blast-table", "children"),
+        Output("blast-table", "children"),
     ],
     [
         Input("blast-results-store", "data"),
@@ -630,22 +629,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                     family_name = min_evalue_rows["familyName"].iloc[0]
                     aln_len = min_evalue_rows["length"].iloc[0]
                     ev = min_evalue_rows["evalue"].iloc[0]
-                    ship_family = dmc.Alert(
-                        title="Starship Family Found",
-                        children=[
-                            f"Based on HMMER, your sequence is likely in Starship family: {family_name}",
-                            dmc.Space(h=5),
-                            dmc.Text(
-                                f"Alignment length = {aln_len}, E-value = {ev}",
-                                size="sm",
-                                c="dimmed"
-                            ),
-                        ],
-                        color="yellow",
-                        variant="light",
-                        withCloseButton=False,
-                    )
-
+                    ship_family = make_captain_alert(family_name, aln_len, ev)
                 else:
                     if captain_results_dict:
                         logger.info("Processing Diamond/HMMER results")
@@ -663,21 +647,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                         initial_df["familyName"] == superfamily
                                     ]["familyName"].unique()[0]
                                     if family:
-                                        ship_family = dmc.Alert(
-                                            title="Starship Family Found",
-                                            children=[
-                                                f"Your sequence is likely in Starship family: {family}",
-                                                dmc.Space(h=5),
-                                                dmc.Text(
-                                                    f"Alignment length = {family_aln_length}, E-value = {family_evalue}",
-                                                    size="sm",
-                                                    c="dimmed"
-                                                ),
-                                            ],
-                                            color="yellow",
-                                            variant="light",
-                                            withCloseButton=False,
-                                        )
+                                        ship_family = make_captain_alert(family, family_aln_length, family_evalue)
                                     else:
                                         ship_family = dmc.Alert(
                                             title="Starship Family Not Determined",
@@ -742,9 +712,9 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
 @callback(
     Output("ship-aln", "children"),
     [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
-        Input("ship-blast-table", "selected_rows"),
+        Input("blast-table", "derived_virtual_data"),
+        Input("blast-table", "derived_virtual_selected_rows"),
+        Input("blast-table", "selected_rows"),
         Input("curated-input", "value"),
     ],
     State("query-type-store", "data"),
@@ -811,33 +781,90 @@ def blast_alignments(ship_blast_results, derived_selected_rows, selected_rows, c
             showid=False,
             ticksteps=5,
             tickstart=0,
-            style={'width': '100%'}
-
         )
 
-        return aln
+        # Add download button below alignment
+        download_section = html.Div([
+            aln,
+            dmc.Space(h="md"),
+            dmc.Button(
+                "Download Alignment FASTA",
+                id="download-alignment-button",
+                leftSection=[html.I(className="bi bi-download")],
+                variant="gradient",
+                gradient={"from": "indigo", "to": "cyan"},
+                size="lg",
+            ),
+            dcc.Download(id="download-alignment-fasta")
+        ])
+
+        return download_section
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise
 
+@callback(
+    Output("download-alignment-fasta", "data"),
+    Input("download-alignment-button", "n_clicks"),
+    [
+        State("blast-table", "derived_virtual_data"),
+        State("blast-table", "derived_virtual_selected_rows"),
+        State("blast-table", "selected_rows"),
+    ],
+    prevent_initial_call=True
+)
+def download_alignment_fasta(n_clicks, ship_blast_results, derived_selected_rows, selected_rows):
+    if not n_clicks:
+        return None
+        
+    active_selection = derived_selected_rows if derived_selected_rows else selected_rows
+    
+    if not active_selection or len(active_selection) == 0:
+        return None
+        
+    try:
+        ship_blast_results_df = pd.DataFrame(ship_blast_results)
+        row = ship_blast_results_df.iloc[active_selection[0]]
+        
+        qseq = str(row["qseq"]).replace("\n", "")
+        qseqid = str(row["qseqid"])
+        sseq = str(row["sseq"]).replace("\n", "")
+        sseqid = str(row["sseqid"])
+        
+        fasta_content = f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n"
+        
+        return dict(
+            content=fasta_content,
+            filename=f"alignment_{qseqid}_{sseqid}.fasta",
+            type="text/plain"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error preparing alignment download: {str(e)}")
+        return None
 
 @callback(
     Output("blast-dl", "data"),
     [Input("blast-dl-button", "n_clicks")],
-    [State("ship-blast-table", "data"), State("ship-blast-table", "columns")],
+    [State("blast-table", "derived_virtual_data")],
+    prevent_initial_call=True
 )
-def download_tsv(n_clicks, rows, columns):
-    if n_clicks == 0:
+def download_tsv(n_clicks, table_data):
+    if not n_clicks:
         return None
-
-    if not rows or not columns:
+        
+    if not table_data:
         logger.error("Error: No data available for download.")
         return None
 
     try:
-        df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
-
+        df = pd.DataFrame(table_data)
+        
+        # Format the data for download
+        download_columns = ['accession_tag', 'familyName', 'pident', 'length', 'evalue', 'bitscore']
+        df = df[download_columns]
+        
         tsv_string = df.to_csv(sep="\t", index=False)
         tsv_bytes = io.BytesIO(tsv_string.encode())
         b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
@@ -850,15 +877,14 @@ def download_tsv(n_clicks, rows, columns):
         )
 
     except Exception as e:
-        logger.error(f"Error while preparing TSV download: {e}")
+        logger.error(f"Error preparing download: {str(e)}")
         return None
-
 
 @callback(
     Output("lastz-plot", "figure"),
     [
-        Input("ship-blast-table", "derived_virtual_data"),
-        Input("ship-blast-table", "derived_virtual_selected_rows"),
+        Input("blast-table", "derived_virtual_data"),
+        Input("blast-table", "derived_virtual_selected_rows"),
     ],
 )
 def create_alignment_plot(ship_blast_results, selected_row):

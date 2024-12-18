@@ -291,7 +291,7 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             logger.debug(f"Available accessions in cache: {initial_df['accession_tag'].unique()[:5]}")
             
             modal_content, modal_title = create_accession_modal(accession)
-            return True, modal_content, modal_title, None
+            return True, modal_content, modal_title
             
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
@@ -301,7 +301,7 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 html.P("Error loading modal content"),
                 html.P(f"Details: {str(e)}"),
             ])
-            return True, error_content, "Error", None
+            return True, error_content, "Error"
 
 
 def create_file_upload(
