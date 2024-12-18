@@ -8,6 +8,7 @@ from dash import Dash, html, dcc, _dash_renderer
 from flask import Flask, request
 from flask_limiter import Limiter
 from sqlalchemy import text
+import os
 
 logging.basicConfig(level=logging.ERROR)
 warnings.filterwarnings("ignore")
@@ -49,6 +50,8 @@ server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
 server.config['CACHE_TYPE'] = 'SimpleCache'
 server.config['CACHE_DEFAULT_TIMEOUT'] = 300
 cache.init_app(server)
+
+IPSTACK_API_KEY = os.environ.get('IPSTACK_API_KEY') or os.getenv('IPSTACK_API_KEY')
 
 app = Dash(
     __name__,
@@ -142,6 +145,17 @@ def telemetry_health():
         }, 503
     finally:
         session.close()
+
+@server.route('/api/refresh-telemetry', methods=['POST'])
+def refresh_telemetry():
+    """Endpoint to refresh telemetry data"""
+    try:
+        maintain_ip_locations(IPSTACK_API_KEY)
+        cache.delete('telemetry_data')
+        return {"status": "success"}, 200
+    except Exception as e:
+        logger.error(f"Error refreshing telemetry: {str(e)}")
+        return {"status": "error", "message": str(e)}, 500
 
 def check_submissions_db():
     """Verify submissions database is accessible and properly configured"""

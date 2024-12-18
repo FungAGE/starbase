@@ -34,8 +34,9 @@ RUN chmod +x start-script.sh
 # Run precomputation after code is available
 # RUN python3 -c "from src.components.sql_manager import precompute_all; precompute_all()"
 
-# Add the cron job for hourly telemetry updates
-RUN echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> /var/log/cron.log 2>&1" > /etc/cron.d/telemetry-cron
+# Update cron job to refresh both IP locations and telemetry data
+RUN echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> /var/log/cron.log 2>&1" > /etc/cron.d/telemetry-cron && \
+    echo "*/15 * * * * cd $HOME && curl -X POST http://localhost:8000/api/refresh-telemetry >> /var/log/cron.log 2>&1" >> /etc/cron.d/telemetry-cron
 
 # Give execution rights on the cron job
 RUN chmod 0644 /etc/cron.d/telemetry-cron
