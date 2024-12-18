@@ -14,8 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-      delete-packages: write
+      packages: write, delete
 
     steps:
       - name: Checkout repository
