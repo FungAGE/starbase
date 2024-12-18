@@ -7,9 +7,9 @@ Base = declarative_base()
 
 # Database configuration
 DB_PATHS = {
-    'starbase': os.getenv('STARBASE_PATH', 'src/database/db/starbase.sqlite'),
-    'submissions': os.getenv('SUBMISSIONS_PATH', 'src/database/db/submissions.sqlite'),
-    'telemetry': os.getenv('TELEMETRY_PATH', 'src/database/db/telemetry.sqlite')
+    'starbase': os.getenv('STARBASE_PATH', os.path.join(os.environ.get('STARBASE_DB_DIR', 'src/database/db'), 'starbase.sqlite')),
+    'submissions': os.getenv('SUBMISSIONS_PATH', os.path.join(os.environ.get('STARBASE_DB_DIR', 'src/database/db'), 'submissions.sqlite')),
+    'telemetry': os.getenv('TELEMETRY_PATH', os.path.join(os.environ.get('STARBASE_DB_DIR', 'src/database/db'), 'telemetry.sqlite'))
 }
 
 def create_db_engine(db_path):

@@ -11,6 +11,7 @@ ENV USER=starbase
 ENV HOME=/home/$USER
 ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
 ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
+ENV STARBASE_DB_DIR=/$HOME/src/database/db
 
 # Install supercronic (a cron for containers)
 ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.24/supercronic-linux-amd64 \

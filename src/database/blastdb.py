@@ -8,9 +8,24 @@ from src.config.database import DB_PATHS
 
 logger = logging.getLogger(__name__)
 
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "db")
-
+DB_DIR = os.environ.get(
+    'STARBASE_DB_DIR',  # First check if env var is set
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "db")  # Default fallback
+)
 os.makedirs(DB_DIR, exist_ok=True)
+
+# Create all required subdirectories
+required_dirs = [
+    os.path.join(DB_DIR, "ships", "fna", "blastdb"),
+    os.path.join(DB_DIR, "captain", "tyr", "fna", "blastdb"),
+    os.path.join(DB_DIR, "captain", "tyr", "faa", "blastdb"),
+    os.path.join(DB_DIR, "captain", "tyr", "fna", "hmm"),
+    os.path.join(DB_DIR, "captain", "tyr", "faa", "hmm"),
+]
+
+for directory in required_dirs:
+    os.makedirs(directory, exist_ok=True)
+
 db_list = {
     "ship": {"nucl": f"{DB_DIR}/ships/fna/blastdb/ships.fa"},
     "gene": {
