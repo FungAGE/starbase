@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      delete-packages: write
+
 
     steps:
       - name: Checkout repository
@@ -57,7 +57,7 @@ jobs:
       - name: Remove old packages
         uses: actions/delete-package-versions@v5
         with:
-          package-name: ${{ env.IMAGE_NAME }}
+          package-name: ${{ github.event.repository.name }}
           package-type: 'container'
           token: ${{ secrets.GITHUB_TOKEN }}
           min-versions-to-keep: 10
