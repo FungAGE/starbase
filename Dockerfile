@@ -38,7 +38,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create cron directories and set up logging (combined directory creation and cron setup)
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron && \
+RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/.cache && \
     touch /var/log/cron/cron.log && \
     # Create crontab file for supercronic
     echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
