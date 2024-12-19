@@ -10,6 +10,7 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 from Bio import SeqIO
 from dash import html
+import dash_mantine_components as dmc
 
 warnings.filterwarnings("ignore")
 
@@ -232,17 +233,14 @@ def parse_fasta_from_text(text, format="fasta"):
         return None, None
 
 
-def parse_fasta_from_file(file_contents):
-    """
-    Parses a FASTA sequence from a file's contents (base64 encoded).
-    Ensures a valid FASTA header is present and only one sequence is present.
-    Returns the header and sequence if successful, otherwise (None, None).
-    """
+def parse_fasta_from_file(contents):
+    header = None  # Initialize header
+    seq = None    # Initialize seq
     try:
-        if not file_contents:
+        if not contents:
             raise ValueError("No file contents provided.")
 
-        split_contents = file_contents.split(",")
+        split_contents = contents.split(",")
         file_type = split_contents[0].strip()
         sequence = "".join(split_contents[1:])
 
@@ -262,11 +260,20 @@ def parse_fasta_from_file(file_contents):
         return header, seq, None
 
     except ValueError as ve:
-        logger.error(f"Value error: {ve}")
-        return header, seq, str(ve)
+        return None, None, dmc.Alert(
+            title="Invalid FASTA File",
+            color="red",
+            children=[
+                "Please ensure your FASTA file contains only one sequence. ",
+                "Multiple sequences were detected in the uploaded file."
+            ],
+        )
     except Exception as e:
-        logger.error(f"Error parsing file: {e}")
-        return header, seq, str(e)
+        return None, None, dmc.Alert(
+            title="Error Processing File",
+            color="red",
+            children=f"An error occurred while processing the file: {str(e)}"
+        )
 
 
 def parse_gff(contents, filename):
