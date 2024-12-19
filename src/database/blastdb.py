@@ -8,9 +8,12 @@ from src.config.database import DB_PATHS
 
 logger = logging.getLogger(__name__)
 
+# Get the project root directory (where the app runs from)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
 DB_DIR = os.environ.get(
     'STARBASE_DB_DIR',  # First check if env var is set
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "db")  # Default fallback
+    os.path.join(PROJECT_ROOT, "src", "database", "db")  # Default fallback
 )
 os.makedirs(DB_DIR, exist_ok=True)
 
