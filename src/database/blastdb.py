@@ -4,7 +4,6 @@ import glob
 import logging
 
 from src.config.cache import cache
-from src.config.database import DB_PATHS
 
 logger = logging.getLogger(__name__)
 
