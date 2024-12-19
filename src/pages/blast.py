@@ -305,13 +305,14 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         max_size = 10 * 1024 * 1024  # 10 MB
         content_type, content_string = contents.split(",")
         
-        header, seq, fasta_length_error_message = parse_fasta_from_file(contents)
+        # Use our updated parse_fasta_from_file function
+        header, seq, fasta_error = parse_fasta_from_file(contents)
         
         decoded = base64.b64decode(content_string)
         file_size = len(decoded)
         
-        if fasta_length_error_message:
-            error_message = dbc.Alert(f"Error: {fasta_length_error_message}", color="danger")
+        if fasta_error:
+            error_message = fasta_error  # This will now be a dmc.Alert component
             error_store = error_message
             button_disabled = True
         elif file_size > max_size:
