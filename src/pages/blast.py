@@ -48,7 +48,7 @@ from src.components.callbacks import curated_switch, create_modal_callback, crea
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 
 from src.database.sql_manager import fetch_meta_data
-from src.database.blastdb import db_list
+from src.config.settings import BLAST_DB_PATHS
 
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
 
@@ -425,7 +425,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
 
         try:
             blast_results = run_blast(
-                db_list=db_list,
+                db_list=BLAST_DB_PATHS,
                 query_type=query_type,
                 query_fasta=tmp_query_fasta,
                 tmp_blast=tmp_blast,
@@ -450,7 +450,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
         try:
             if search_type == "diamond":
                 results_dict = run_diamond(
-                    db_list=db_list,
+                    db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
                     input_eval=0.01,
@@ -459,7 +459,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                 )
             if search_type == "hmmsearch":
                 results_dict = run_hmmer(
-                    db_list=db_list,
+                    db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
                     input_eval=0.01,
