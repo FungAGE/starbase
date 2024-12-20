@@ -197,42 +197,36 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"sm": 12, "lg": 8},
                     children=[
-                        dmc.Paper(
-                            children=dmc.Stack([
-                                dmc.Title("BLAST Results", order=3),
-                                dcc.Loading(
-                                    id="family-loading",
-                                    type="circle",
-                                    children=html.Div(id="ship-family"),
+                        dmc.Stack([
+                            # dmc.Title("BLAST Results", order=3),
+                            dcc.Loading(
+                            id="family-loading",
+                                type="circle",
+                                children=html.Div(id="ship-family"),
+                            ),
+                            dcc.Loading(
+                                id="blast-table-loading",
+                                type="circle",
+                                children=html.Div(id="blast-table"),
+                            ),
+                            dcc.Loading(
+                                id="subject-seq-button-loading",
+                                type="circle",
+                                children=html.Div(id="subject-seq-button"),
+                            ),
+                            dcc.Loading(
+                                id="ship-aln-loading",
+                                type="circle",
+                                children=html.Div(
+                                    id="ship-aln",
+                                    style={
+                                        'minHeight': '200px',
+                                        'width': '100%',
+                                        'marginTop': '20px'
+                                    }
                                 ),
-                                dcc.Loading(
-                                    id="blast-table-loading",
-                                    type="circle",
-                                    children=html.Div(id="blast-table"),
-                                ),
-                                dcc.Loading(
-                                    id="subject-seq-button-loading",
-                                    type="circle",
-                                    children=html.Div(id="subject-seq-button"),
-                                ),
-                                dcc.Loading(
-                                    id="ship-aln-loading",
-                                    type="circle",
-                                    children=html.Div(
-                                        id="ship-aln",
-                                        style={
-                                            'minHeight': '200px',
-                                            'width': '100%',
-                                            'marginTop': '20px'
-                                        }
-                                    ),
-                                ),
-                            ], gap="xl"),
-                            p="xl",
-                            radius="md",
-                            withBorder=True,
-                            style={"height": "100%"},  # Make paper fill grid column
-                        ),
+                            ),
+                        ], gap="xl"),
                     ],
                 ),
             ],
@@ -626,11 +620,11 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                 logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
 
             if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
-                if min_evalue_rows["pident"].iloc[0] > 95:
+                if min_evalue_rows["pident"].iloc[0] > 50:
                     family_name = min_evalue_rows["familyName"].iloc[0]
                     aln_len = min_evalue_rows["length"].iloc[0]
                     ev = min_evalue_rows["evalue"].iloc[0]
-                    ship_family = make_captain_alert(family_name, aln_len, ev)
+                    ship_family = make_captain_alert(family_name, aln_len, ev,search_type="blast")
                 else:
                     if captain_results_dict:
                         logger.info("Processing Diamond/HMMER results")
@@ -648,7 +642,7 @@ def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
                                         initial_df["familyName"] == superfamily
                                     ]["familyName"].unique()[0]
                                     if family:
-                                        ship_family = make_captain_alert(family, family_aln_length, family_evalue)
+                                        ship_family = make_captain_alert(family, family_aln_length, family_evalue, search_type="hmmsearch")
                                     else:
                                         ship_family = dmc.Alert(
                                             title="Starship Family Not Determined",

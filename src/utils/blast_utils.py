@@ -737,19 +737,38 @@ def run_diamond(
 
     return diamond_results.to_dict("records")
 
-def make_captain_alert(family, aln_length, evalue):
-    return dmc.Alert(
-        title="HMMER Search Results",
-        children=[
+def make_captain_alert(family, aln_length, evalue, search_type="blast"):
+    if search_type == "blast":
+        return dmc.Alert(
+            title="Family Classification via BLAST Search",
+            children=[
             f"Your sequence is likely in Starship family: {family}",
             dmc.Space(h=5),
             dmc.Text(
-                f"HMMER Search: Alignment length = {aln_length}, E-value = {evalue}",
+                f"BLAST Search: Alignment length = {aln_length}, E-value = {evalue}",
                 size="sm",
                 c="dimmed"
             ),
         ],
-        color="yellow",
+        color="blue",
         variant="light",
         withCloseButton=False,
     )
+    elif search_type == "hmmsearch":
+        return dmc.Alert(
+            title="Family Classification via HMMER Search",
+            children=[
+                f"Your sequence is likely in Starship family: {family}",
+                dmc.Space(h=5),
+                dmc.Text(
+                    f"HMMER Search: Alignment length = {aln_length}, E-value = {evalue}",
+                    size="sm",
+                    c="dimmed"
+                ),
+            ],
+            color="blue",
+            variant="light",
+            withCloseButton=False,
+        )
+    else:
+        return None
