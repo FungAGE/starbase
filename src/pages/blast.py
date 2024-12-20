@@ -16,6 +16,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import logging
 
+from dash import get_app
 
 from src.config.cache import cache
 from src.utils.seq_utils import ( guess_seq_type,
@@ -31,7 +32,10 @@ from src.utils.blast_utils import (
     select_ship_family,
     parse_lastz_output,
     blast_chords,
-    make_captain_alert
+    make_captain_alert,
+    process_captain_results,
+    create_no_matches_alert,
+    create_error_alert,
 )
 
 from src.utils.blast_utils import (
@@ -91,6 +95,8 @@ layout = dmc.Container(
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="captain-results-store"),
         dcc.Store(id="upload-error-store"),
+        dcc.Store(id="processed-metadata-store"),
+        dcc.Store(id="processed-blast-store"),
         
         dmc.Space(h=20),
         dmc.Paper(
@@ -197,36 +203,27 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"sm": 12, "lg": 8},
                     children=[
-                        dmc.Stack([
-                            # dmc.Title("BLAST Results", order=3),
-                            dcc.Loading(
-                            id="family-loading",
-                                type="circle",
-                                children=html.Div(id="ship-family"),
-                            ),
-                            dcc.Loading(
-                                id="blast-table-loading",
-                                type="circle",
-                                children=html.Div(id="blast-table"),
-                            ),
-                            dcc.Loading(
-                                id="subject-seq-button-loading",
-                                type="circle",
-                                children=html.Div(id="subject-seq-button"),
-                            ),
-                            dcc.Loading(
-                                id="ship-aln-loading",
-                                type="circle",
-                                children=html.Div(
-                                    id="ship-aln",
-                                    style={
-                                        'minHeight': '200px',
-                                        'width': '100%',
-                                        'marginTop': '20px'
-                                    }
+                        dcc.Loading(
+                            children=[
+                                dmc.Stack(
+                                    children=[
+                                        html.Div(id="ship-family"),
+                                        html.Div(id="blast-table"),
+                                        html.Div(id="subject-seq-button"),
+                                        html.Div(
+                                            id="ship-aln",
+                                            style={
+                                                'minHeight': '200px',
+                                                'width': '100%',
+                                                'marginTop': '20px'
+                                            }
+                                        ),
+                                    ],
                                 ),
-                            ),
-                        ], gap="xl"),
+                            ],
+                            type="default",
+                            color="#0066cc",
+                        ),
                     ],
                 ),
             ],
@@ -491,217 +488,94 @@ def subject_seq_download(n_clicks, filename):
         return dash.no_update
 
 
-no_captain_alert = dbc.Alert(
-    "No captain sequence found (e-value threshold 0.01).",
-    color="warning",
-)
-
-
+# 1. Metadata Processing Callback
+@cache.memoize(timeout=86400)
 @callback(
-    [
-        Output("ship-family", "children"),
-        Output("blast-table", "children"),
-    ],
-    [
-        Input("blast-results-store", "data"),
-        Input("captain-results-store", "data"),
-        Input("curated-input", "value"),
-    ],
-    State("submit-button", "n_clicks"),
+    Output("processed-metadata-store", "data"),
+    Input("curated-input", "value"),
 )
-def update_ui(blast_results_dict, captain_results_dict, curated, n_clicks):
-    if not n_clicks:
-        raise PreventUpdate
-
-    if blast_results_dict is None and captain_results_dict is None:
-        return [
-            dmc.Alert(
-                title="Search Error",
-                children=[
-                    "No results were returned from the BLAST search.",
-                    dmc.Space(h=5),
-                    dmc.Text(
-                        "This could be due to:",
-                        size="sm",
-                        mb=5,
-                    ),
-                    dmc.List(
-                        [
-                            "Invalid sequence format",
-                            "No significant matches found",
-                            "Server-side processing error",
-                        ],
-                        size="sm",
-                    ),
-                ],
-                color="red",
-                variant="light",
-                withCloseButton=False,
-            ),
-            None
-        ]
-
-    logger.info(f"Updating UI with n_clicks={n_clicks}")
+def process_metadata(curated):
     try:
-        ship_family = no_update
-        ship_table = no_update
-
-        blast_results_df = pd.DataFrame(blast_results_dict)
-
-        # TODO: caching the curated dataset makes no sense. filter the full dataset based on curated flag after loading from cache.
         initial_df = cache.get("meta_data")
-
         if initial_df is None:
             initial_df = fetch_meta_data(curated)
-
-        initial_df = initial_df[["accession_tag", "familyName"]].drop_duplicates()
-
-        if blast_results_dict:
-            logger.info("Rendering BLAST table")
-            df_for_table = pd.merge(
-                initial_df,
-                blast_results_df,
-                left_on="accession_tag",
-                right_on="sseqid",
-                how="right",
-            )
-            
-            if len(df_for_table) == 0:
-                return [
-                    dmc.Alert(
-                        title="No Matches Found",
-                        children=[
-                            "Your sequence did not match any Starships in our database.",
-                            dmc.Space(h=5),
-                            dmc.Text(
-                                "Suggestions:",
-                                size="sm",
-                                mb=5,
-                            ),
-                            dmc.List(
-                                [
-                                    "Check if your sequence is in the correct format",
-                                    "Try searching with a different region of your sequence",
-                                    "Consider using a less stringent E-value threshold",
-                                ],
-                                size="sm",
-                            ),
-                        ],
-                        color="yellow",
-                        variant="light",
-                        withCloseButton=False,
-                    ),
-                    None
-                ]
-
-            # we want to remove true duplicates, while keeping other hits which may be at a different location in the same ship
-            df_for_table = df_for_table.drop_duplicates(
-                subset=["accession_tag", "pident", "length"]
-            )
-            df_for_table = df_for_table[df_for_table["accession_tag"].notna()]
-            df_for_table.fillna("", inplace=True)
-
-            if len(df_for_table) > 0:
-                ship_table = blast_table(df_for_table)
-            else:
-                ship_table = dbc.Alert(
-                    "No BLAST results found.",
-                    color="danger",
-                )
-
-            min_evalue_rows = df_for_table.loc[
-                df_for_table.groupby("qseqid")["evalue"].idxmin()
-            ]
-            if min_evalue_rows.empty:
-                logger.warning(
-                    "min_evalue_rows is empty after grouping by qseqid and selecting min evalue."
-                )
-            else:
-                logger.info(f"min_evalue_rows contents: {min_evalue_rows}")
-
-            if not min_evalue_rows.empty and "pident" in min_evalue_rows.columns:
-                if min_evalue_rows["pident"].iloc[0] > 50:
-                    family_name = min_evalue_rows["familyName"].iloc[0]
-                    aln_len = min_evalue_rows["length"].iloc[0]
-                    ev = min_evalue_rows["evalue"].iloc[0]
-                    ship_family = make_captain_alert(family_name, aln_len, ev,search_type="blast")
-                else:
-                    if captain_results_dict:
-                        logger.info("Processing Diamond/HMMER results")
-                        captain_results_df = pd.DataFrame(captain_results_dict)
-                        # captain_results_df["sseqid"] = captain_results_df["sseqid"].apply(
-                        #     clean_shipID
-                        # )
-                        if len(captain_results_df) > 0:
-                            try:
-                                superfamily, family_aln_length, family_evalue = (
-                                    select_ship_family(captain_results_df)
-                                )
-                                if superfamily:
-                                    family = initial_df[
-                                        initial_df["familyName"] == superfamily
-                                    ]["familyName"].unique()[0]
-                                    if family:
-                                        ship_family = make_captain_alert(family, family_aln_length, family_evalue, search_type="hmmsearch")
-                                    else:
-                                        ship_family = dmc.Alert(
-                                            title="Starship Family Not Determined",
-                                            children=[
-                                                "Starship family could not be determined.",
-                                                dmc.Space(h=5),
-                                                dmc.Text(
-                                                    "Please try a different query or increase the e-value threshold.",
-                                                    size="sm",
-                                                    c="dimmed"
-                                                ),
-                                            ],
-                                            color="red",
-                                            variant="light",
-                                            withCloseButton=False,
-                                        )
-
-                            except Exception as e:
-                                logger.error(
-                                    f"Error selecting ship family: {str(e)}"
-                                )
-                                ship_family = html.Div(f"Error: {str(e)}")
-                        else:
-                            ship_family = no_captain_alert
-                    else:
-                        ship_family = no_captain_alert
-            else:
-                ship_family = dbc.Alert(
-                    "No matching rows found for minimum evalue selection.",
-                    color="danger",
-                )
-        return ship_family, ship_table
-
+        
+        return initial_df[["accession_tag", "familyName"]].drop_duplicates().to_dict('records')
     except Exception as e:
-        logger.error(f"Error in update_ui: {str(e)}")
-        return [
-            dmc.Alert(
-                title="Processing Error",
-                children=[
-                    "An error occurred while processing your search.",
-                    dmc.Space(h=5),
-                    dmc.Text(
-                        f"Error details: {str(e)}",
-                        size="sm",
-                        c="dimmed",
-                    ),
-                    dmc.Space(h=5),
-                    dmc.Text(
-                        "Please try again or contact support if the problem persists.",
-                        size="sm",
-                    ),
-                ],
-                color="red",
-                variant="light",
-                withCloseButton=False,
-            ),
-            None
-        ]
+        logger.error(f"Error processing metadata: {str(e)}")
+        return None
 
+# 2. BLAST Results Processing Callback
+@callback(
+    Output("processed-blast-store", "data"),
+    [Input("blast-results-store", "data"), Input("processed-metadata-store", "data")],
+)
+def process_blast_results(blast_results_dict, metadata_dict):
+    if not blast_results_dict or not metadata_dict:
+        return None
+        
+    try:
+        blast_df = pd.DataFrame(blast_results_dict)
+        meta_df = pd.DataFrame(metadata_dict)
+        
+        df_for_table = (pd.merge(
+            meta_df[["accession_tag", "familyName"]],
+            blast_df,
+            left_on="accession_tag",
+            right_on="sseqid",
+            how="right",
+            suffixes=('', '_blast')
+        )
+        .drop_duplicates(subset=["accession_tag", "pident", "length"])
+        .dropna(subset=["accession_tag"])
+        .fillna("")
+        .sort_values("evalue"))
+        
+        return df_for_table.to_dict('records') if not df_for_table.empty else None
+        
+    except Exception as e:
+        logger.error(f"Error processing BLAST results: {str(e)}")
+        return None
+
+# 3. UI Update Callback
+@callback(
+    [Output("ship-family", "children"), Output("blast-table", "children")],
+    [Input("processed-blast-store", "data"), Input("captain-results-store", "data")],
+    State("submit-button", "n_clicks"),
+    prevent_initial_call=True
+)
+def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
+    if not n_clicks:
+        return None, None
+        
+    if not processed_blast_results:
+        return create_no_matches_alert(), None
+        
+    try:
+        blast_df = pd.DataFrame(processed_blast_results)
+        
+        # Get best match efficiently
+        best_match = blast_df.nsmallest(1, 'evalue').iloc[0]
+        
+        # Determine family alert first
+        ship_family = (
+            make_captain_alert(
+                best_match["familyName"], 
+                best_match["length"], 
+                best_match["evalue"], 
+                search_type="blast"
+            ) if best_match["pident"] > 50
+            else process_captain_results(captain_results_dict)
+        )
+        
+        # Create table with pre-sorted data
+        ship_table = blast_table(blast_df)
+        
+        return ship_family, ship_table
+        
+    except Exception as e:
+        logger.error(f"Error updating UI: {str(e)}")
+        return create_error_alert(str(e)), None
 
 @cache.memoize()
 @callback(
