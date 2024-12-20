@@ -772,3 +772,71 @@ def make_captain_alert(family, aln_length, evalue, search_type="blast"):
         )
     else:
         return None
+
+def process_captain_results(captain_results_dict):
+    no_captain_alert = dmc.Alert(
+        "No captain sequence found (e-value threshold 0.01).",
+        color="warning",
+    )
+
+    if not captain_results_dict:
+        return no_captain_alert
+        
+    try:
+        captain_results_df = pd.DataFrame(captain_results_dict)
+        if len(captain_results_df) > 0:
+            superfamily, family_aln_length, family_evalue = select_ship_family(captain_results_df)
+            if superfamily:
+                return make_captain_alert(superfamily, family_aln_length, family_evalue, search_type="hmmsearch")
+                
+        return no_captain_alert
+    except Exception as e:
+        logger.error(f"Error processing captain results: {str(e)}")
+        return dmc.Alert(
+            title="Error",
+            children="Failed to process captain results",
+            color="red",
+            variant="light",
+        )
+    
+def create_no_matches_alert():
+    return dmc.Alert(
+        title="No Matches Found",
+        children=[
+            dmc.Text("Your sequence did not match any Starships in our database."),
+            dmc.Space(h=10),
+            dmc.Text("Suggestions:", size="sm", weight=500),
+            dmc.Space(h=5),
+            dmc.List(
+                [
+                    dmc.ListItem(
+                        "Check if your sequence is in the correct format",
+                        size="sm"
+                    ),
+                    dmc.ListItem(
+                        "Try searching with a different region of your sequence",
+                        size="sm"
+                    ),
+                    dmc.ListItem(
+                        "Consider using a less stringent E-value threshold",
+                        size="sm"
+                    ),
+                ],
+                withPadding=True,
+                spacing="xs",
+                size="sm",
+                type="ordered"
+            ),
+        ],
+        color="yellow",
+        variant="light",
+        withCloseButton=False,
+    )
+
+def create_error_alert(error_msg):
+    return dmc.Alert(
+        title="Error",
+        children=f"An error occurred while processing results: {error_msg}",
+        color="red",
+        variant="light",
+    )
