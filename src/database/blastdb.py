@@ -4,43 +4,9 @@ import glob
 import logging
 
 from src.config.cache import cache
+from src.config.settings import BLAST_DB_PATHS
 
 logger = logging.getLogger(__name__)
-
-# Get the project root directory (where the app runs from)
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-
-DB_DIR = os.environ.get(
-    'STARBASE_DB_DIR',  # First check if env var is set
-    os.path.join(PROJECT_ROOT, "src", "database", "db")  # Default fallback
-)
-os.makedirs(DB_DIR, exist_ok=True)
-
-# Create all required subdirectories
-required_dirs = [
-    os.path.join(DB_DIR, "ships", "fna", "blastdb"),
-    os.path.join(DB_DIR, "captain", "tyr", "fna", "blastdb"),
-    os.path.join(DB_DIR, "captain", "tyr", "faa", "blastdb"),
-    os.path.join(DB_DIR, "captain", "tyr", "fna", "hmm"),
-    os.path.join(DB_DIR, "captain", "tyr", "faa", "hmm"),
-]
-
-for directory in required_dirs:
-    os.makedirs(directory, exist_ok=True)
-
-db_list = {
-    "ship": {"nucl": f"{DB_DIR}/ships/fna/blastdb/ships.fa"},
-    "gene": {
-        "tyr": {
-            "nucl": f"{DB_DIR}/captain/tyr/fna/blastdb/captains.fna",
-            "prot": f"{DB_DIR}/captain/tyr/faa/blastdb/captains.faa",
-            "hmm": {
-                "nucl": f"{DB_DIR}/captain/tyr/fna/hmm/combined.hmm",
-                "prot": f"{DB_DIR}/captain/tyr/faa/hmm/combined.hmm",
-            },
-        },
-    },
-}
 
 
 def write_fasta(sequences, fasta_path):
@@ -90,7 +56,7 @@ def create_dbs():
     
     from src.database.sql_manager import fetch_all_captains, fetch_all_ships
 
-    ship_fasta_path = db_list["ship"]
+    ship_fasta_path = BLAST_DB_PATHS["ship"]
     ship_fasta_dir = os.path.dirname(ship_fasta_path)
     os.makedirs(ship_fasta_dir, exist_ok=True)
 
@@ -107,7 +73,7 @@ def create_dbs():
     write_fasta(ship_sequences_list, ship_fasta_path)
     create_blast_database(ship_fasta_path, "nucl")
 
-    captain_fasta_path = db_list["gene"]["tyr"]["prot"]
+    captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]
     captain_fasta_dir = os.path.dirname(captain_fasta_path)
     os.makedirs(
         captain_fasta_dir, exist_ok=True
