@@ -515,21 +515,49 @@ def process_blast_results(blast_results_dict, metadata_dict):
         return None
         
     try:
+        # Add size limit check
+        results_size = len(str(blast_results_dict))
+        if results_size > 5 * 1024 * 1024:  # 5MB limit
+            logger.warning(f"BLAST results too large: {results_size} bytes")
+            return None
+
         blast_df = pd.DataFrame(blast_results_dict)
         meta_df = pd.DataFrame(metadata_dict)
         
-        df_for_table = (pd.merge(
-            meta_df[["accession_tag", "familyName"]],
-            blast_df,
-            left_on="accession_tag",
-            right_on="sseqid",
-            how="right",
-            suffixes=('', '_blast')
-        )
-        .drop_duplicates(subset=["accession_tag", "pident", "length"])
-        .dropna(subset=["accession_tag"])
-        .fillna("")
-        .sort_values("evalue"))
+        # Process in chunks if dataset is large
+        chunk_size = 1000
+        if len(blast_df) > chunk_size:
+            chunks = []
+            for i in range(0, len(blast_df), chunk_size):
+                chunk = blast_df.iloc[i:i + chunk_size]
+                processed_chunk = pd.merge(
+                    meta_df[["accession_tag", "familyName"]],
+                    chunk,
+                    left_on="accession_tag",
+                    right_on="sseqid",
+                    how="right",
+                    suffixes=('', '_blast')
+                )
+                chunks.append(processed_chunk)
+            df_for_table = pd.concat(chunks)
+        else:
+            df_for_table = pd.merge(
+                meta_df[["accession_tag", "familyName"]],
+                blast_df,
+                left_on="accession_tag",
+                right_on="sseqid",
+                how="right",
+                suffixes=('', '_blast')
+            )
+        
+        df_for_table = (df_for_table
+            .drop_duplicates(subset=["accession_tag", "pident", "length"])
+            .dropna(subset=["accession_tag"])
+            .fillna("")
+            .sort_values("evalue"))
+        
+        # Limit number of results
+        df_for_table = df_for_table.head(1000)  # Only return top 1000 matches
         
         return df_for_table.to_dict('records') if not df_for_table.empty else None
         
@@ -596,48 +624,35 @@ def blast_alignments(ship_blast_results, derived_selected_rows, selected_rows, c
         if not active_selection or len(active_selection) == 0:
             return None
 
-        logger.info(
-            f"blast_alignments called with selection: {active_selection}, query_type: {query_type}"
-        )
+        logger.info(f"Creating alignment for selected row: {active_selection[0]}")
         
         if not ship_blast_results or len(ship_blast_results) == 0:
-            logger.error(
-                "No BLAST results available because ship_blast_results is empty or None."
-            )
-            raise
+            logger.error("No BLAST results available")
+            return None
 
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
+        # Get just the selected row
+        row_idx = active_selection[0]  # Take first selected row
+        row = ship_blast_results[row_idx]
 
-        row_idx = active_selection[0]
+        # Extract sequence data for just this row
+        qseq = str(row["qseq"])
+        qseqid = str(row["qseqid"])
+        sseq = str(row["sseq"])
+        sseqid = str(row["sseqid"])
 
-        try:
-            row = ship_blast_results_df.iloc[row_idx]
-            qseq = str(row["qseq"])
-            qseqid = str(row["qseqid"])
-            sseq = str(row["sseq"])
-            sseqid = str(row["sseqid"])
-
-        except IndexError:
-            logger.error(f"Error: Row index {row_idx} out of bounds.")
-            raise
-        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-
-        try:
-            with open(tmp_fasta.name, "w") as f:
-                f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-        except Exception as file_error:
-            logger.error(f"Error writing to FASTA file: {file_error}")
-            raise
-
-        try:
+        # Create temporary FASTA file for the selected sequences
+        with tempfile.NamedTemporaryFile(suffix=".fa", mode='w', delete=True) as tmp_fasta:
+            tmp_fasta.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
+            tmp_fasta.flush()
+            
+            # Read the FASTA content
             with open(tmp_fasta.name, "r") as file:
                 data = file.read()
-        except Exception as read_error:
-            logger.error(f"Error reading FASTA file: {read_error}")
-            raise
 
+        # Set color scheme based on sequence type
         color = "nucleotide" if query_type == "nucl" else "clustal2"
 
+        # Create alignment chart for just this row
         aln = dashbio.AlignmentChart(
             id="alignment-viewer",
             data=data,
@@ -670,8 +685,8 @@ def blast_alignments(ship_blast_results, derived_selected_rows, selected_rows, c
         return download_section
 
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise
+        logger.error(f"Error creating alignment visualization: {str(e)}")
+        return html.Div(f"Error creating alignment visualization: {str(e)}")
 
 @callback(
     Output("download-alignment-fasta", "data"),
@@ -693,8 +708,7 @@ def download_alignment_fasta(n_clicks, ship_blast_results, derived_selected_rows
         return None
         
     try:
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
-        row = ship_blast_results_df.iloc[active_selection[0]]
+        row = ship_blast_results[active_selection[0]]
         
         qseq = str(row["qseq"]).replace("\n", "")
         qseqid = str(row["qseqid"])
