@@ -45,8 +45,7 @@ external_scripts = [
 ]
 
 server = Flask(__name__)
-server.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
-
+server.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB limit
 server.config['CACHE_TYPE'] = 'SimpleCache'
 server.config['CACHE_DEFAULT_TIMEOUT'] = 300
 cache.init_app(server)

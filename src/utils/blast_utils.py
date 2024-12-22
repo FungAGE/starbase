@@ -210,6 +210,11 @@ def stitch_blast(tabfile, output_name):
 
 def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
     try:
+        # Add input size check
+        max_input_size = 10 * 1024 * 1024  # 10MB
+        if os.path.getsize(query_fasta) > max_input_size:
+            logger.error(f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes")
+            return None
         logger.debug(f"db_list contents: {db_list}")
         
         if not isinstance(db_list, dict):
@@ -240,29 +245,18 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             logger.error(f"db_path must be a path-like object, got {type(db_path)}")
             raise ValueError("Invalid database path type")
             
-        if query_type == "nucl":
-            blast_cmd = [
-                "blastn",
-                "-query", str(query_fasta),
-                "-db", str(db_path),
-                "-out", str(tmp_blast),
-                "-evalue", str(input_eval),
-                "-num_threads", str(threads),
-                "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
-            ]
-        else:
-            blast_cmd = [
-                "blastp",
-                "-query", str(query_fasta),
-                "-db", str(db_path),
-                "-out", str(tmp_blast),
-                "-evalue", str(input_eval),
-                "-num_threads", str(threads),
-                "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
-            ]
-
-        logger.debug(f"Running BLAST command: {' '.join(blast_cmd)}")
-        subprocess.run(blast_cmd, check=True)
+        blast_cmd = [
+            "blastn" if query_type == "nucl" else "blastp",
+            "-query", str(query_fasta),
+            "-db", str(db_path),
+            "-out", str(tmp_blast),
+            "-evalue", str(input_eval),
+            "-num_threads", str(threads),
+            "-max_target_seqs", "1000",  # Limit number of results
+            "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+        ]
+        
+        subprocess.run(blast_cmd, check=True, timeout=300)  # Add 5-minute timeout
         
         blast_results = pd.read_csv(
             tmp_blast,
@@ -276,8 +270,8 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
         
         return blast_results
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"BLAST command failed: {e}")
+    except subprocess.TimeoutExpired:
+        logger.error("BLAST search timed out after 5 minutes")
         return None
     except Exception as e:
         logger.error(f"Error during BLAST search: {e}")

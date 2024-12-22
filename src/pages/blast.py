@@ -515,21 +515,49 @@ def process_blast_results(blast_results_dict, metadata_dict):
         return None
         
     try:
+        # Add size limit check
+        results_size = len(str(blast_results_dict))
+        if results_size > 5 * 1024 * 1024:  # 5MB limit
+            logger.warning(f"BLAST results too large: {results_size} bytes")
+            return None
+
         blast_df = pd.DataFrame(blast_results_dict)
         meta_df = pd.DataFrame(metadata_dict)
         
-        df_for_table = (pd.merge(
-            meta_df[["accession_tag", "familyName"]],
-            blast_df,
-            left_on="accession_tag",
-            right_on="sseqid",
-            how="right",
-            suffixes=('', '_blast')
-        )
-        .drop_duplicates(subset=["accession_tag", "pident", "length"])
-        .dropna(subset=["accession_tag"])
-        .fillna("")
-        .sort_values("evalue"))
+        # Process in chunks if dataset is large
+        chunk_size = 1000
+        if len(blast_df) > chunk_size:
+            chunks = []
+            for i in range(0, len(blast_df), chunk_size):
+                chunk = blast_df.iloc[i:i + chunk_size]
+                processed_chunk = pd.merge(
+                    meta_df[["accession_tag", "familyName"]],
+                    chunk,
+                    left_on="accession_tag",
+                    right_on="sseqid",
+                    how="right",
+                    suffixes=('', '_blast')
+                )
+                chunks.append(processed_chunk)
+            df_for_table = pd.concat(chunks)
+        else:
+            df_for_table = pd.merge(
+                meta_df[["accession_tag", "familyName"]],
+                blast_df,
+                left_on="accession_tag",
+                right_on="sseqid",
+                how="right",
+                suffixes=('', '_blast')
+            )
+        
+        df_for_table = (df_for_table
+            .drop_duplicates(subset=["accession_tag", "pident", "length"])
+            .dropna(subset=["accession_tag"])
+            .fillna("")
+            .sort_values("evalue"))
+        
+        # Limit number of results
+        df_for_table = df_for_table.head(1000)  # Only return top 1000 matches
         
         return df_for_table.to_dict('records') if not df_for_table.empty else None
         
