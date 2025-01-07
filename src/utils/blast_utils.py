@@ -252,7 +252,8 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             "-out", str(tmp_blast),
             "-evalue", str(input_eval),
             "-num_threads", str(threads),
-            "-max_target_seqs", "1000",  # Limit number of results
+            "-max_target_seqs", "100",
+            "-max_hsps", "1",
             "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
         ]
         
@@ -289,6 +290,16 @@ def hmmsearch(
     hmmer_db = db_list["gene"][input_genes]["hmm"][query_type]
     if not os.path.exists(hmmer_db) or os.path.getsize(hmmer_db) == 0:
         raise ValueError(f"HMMER database {hmmer_db} not found or is empty.")
+
+    # Calculate optimal thread count based on system resources
+    if threads is None:
+        # Use 1 thread by default to avoid resource contention
+        # since multiple workers/threads might run HMMER simultaneously
+        threads = 1
+    else:
+        # Cap threads to avoid oversubscription
+        # Maximum 4 threads per HMMER process to leave resources for other concurrent requests
+        threads = min(int(threads), 4)
 
     hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
     logger.info(f"Running HMMER search: {hmmer_cmd}")
@@ -561,58 +572,78 @@ def blast_chords(blast_output):
 
 
 def blast_table(ship_blast_results):
-    df_columns = [
-        {
-            "name": "Accession",
-            "id": "accession_tag",
-            "type": "text",
-        },
-        {
-            "name": "Starship Family",
-            "id": "familyName",
-            "type": "text",
-        },
-        {
-            "name": "Percent Identity",
-            "id": "pident",
-            "type": "numeric",
-        },
-        {
-            "name": "Hit Length",
-            "id": "length",
-            "type": "numeric",
-        },
-        {
-            "name": "E-value",
-            "id": "evalue",
-            "type": "numeric",
-        },
-        {
-            "name": "Bitscore",
-            "id": "bitscore",
-            "type": "numeric",
-        },
-    ]
+    try:
+        # Validate input
+        if not isinstance(ship_blast_results, pd.DataFrame):
+            logger.error("Invalid input type for blast_table")
+            return html.Div("Error: Invalid data format")
+            
+        if ship_blast_results.empty:
+            logger.warning("Empty DataFrame passed to blast_table")
+            return html.Div("No results to display")
+            
+        # Ensure required columns exist
+        required_cols = ["accession_tag", "familyName", "pident", "length", "evalue", "bitscore"]
+        missing_cols = [col for col in required_cols if col not in ship_blast_results.columns]
+        if missing_cols:
+            logger.error(f"Missing required columns: {missing_cols}")
+            return html.Div(f"Error: Missing columns: {', '.join(missing_cols)}")
 
-    # Remove the link formatting - just use the raw accession tags
-    # ship_blast_results['accession_tag'] = ship_blast_results['accession_tag'].apply(
-    #     lambda x: f'[{x}](/blast-table/{x})'
-    # )
-
-    tbl = html.Div(
-        [
-            make_ship_blast_table(ship_blast_results,"blast-table",df_columns),
-            dcc.Download(id="blast-dl"),
-            dmc.Button(
-                "Download BLAST results",
-                id="blast-dl-button",
-                variant="gradient",
-                gradient={"from": "indigo", "to": "cyan"},
-                size="lg",
-            ),
+        df_columns = [
+            {
+                "name": "Accession",
+                "id": "accession_tag",
+                "type": "text",
+            },
+            {
+                "name": "Starship Family",
+                "id": "familyName",
+                "type": "text",
+            },
+            {
+                "name": "Percent Identity",
+                "id": "pident",
+                "type": "numeric",
+            },
+            {
+                "name": "Hit Length",
+                "id": "length",
+                "type": "numeric",
+            },
+            {
+                "name": "E-value",
+                "id": "evalue",
+                "type": "numeric",
+            },
+            {
+                "name": "Bitscore",
+                "id": "bitscore",
+                "type": "numeric",
+            },
         ]
-    )
-    return tbl
+
+        # Remove the link formatting - just use the raw accession tags
+        # ship_blast_results['accession_tag'] = ship_blast_results['accession_tag'].apply(
+        #     lambda x: f'[{x}](/blast-table/{x})'
+        # )
+
+        tbl = html.Div(
+            [
+                make_ship_blast_table(ship_blast_results,"blast-table",df_columns),
+                dcc.Download(id="blast-dl"),
+                dmc.Button(
+                    "Download BLAST results",
+                    id="blast-dl-button",
+                    variant="gradient",
+                    gradient={"from": "indigo", "to": "cyan"},
+                    size="lg",
+                ),
+            ]
+        )
+        return tbl
+    except Exception as e:
+        logger.error(f"Error in blast_table: {e}")
+        return html.Div(f"Error creating table: {str(e)}")
 
 
 def select_ship_family(hmmer_results):
@@ -633,7 +664,12 @@ def select_ship_family(hmmer_results):
             best_match = best_matches.iloc[0]
             superfamily = best_match["hit_IDs"]
             aln_length = best_match["aln_length"]
-            evalue = "{:.2e}".format(best_match["evalue"])
+            try:
+                evalue_num = float(best_match["evalue"])
+                evalue = "{:.2e}".format(evalue_num)
+            except (ValueError, TypeError, KeyError) as e:
+                logger.error(f"Error formatting e-value: {e}")
+                evalue = str(best_match.get("evalue", "N/A"))
 
             return superfamily, aln_length, evalue
 
@@ -732,40 +768,66 @@ def run_diamond(
     return diamond_results.to_dict("records")
 
 def make_captain_alert(family, aln_length, evalue, search_type="blast"):
-    if search_type == "blast":
-        return dmc.Alert(
-            title="Family Classification via BLAST Search",
-            children=[
-            f"Your sequence is likely in Starship family: {family}",
-            dmc.Space(h=5),
-            dmc.Text(
-                f"BLAST Search: Alignment length = {aln_length}, E-value = {evalue}",
-                size="sm",
-                c="dimmed"
-            ),
-        ],
-        color="blue",
-        variant="light",
-        withCloseButton=False,
-    )
-    elif search_type == "hmmsearch":
-        return dmc.Alert(
-            title="Family Classification via HMMER Search",
-            children=[
-                f"Your sequence is likely in Starship family: {family}",
-                dmc.Space(h=5),
-                dmc.Text(
-                    f"HMMER Search: Alignment length = {aln_length}, E-value = {evalue}",
-                    size="sm",
-                    c="dimmed"
-                ),
-            ],
-            color="blue",
-            variant="light",
-            withCloseButton=False,
-        )
-    else:
-        return None
+    try:
+        # Validate inputs
+        if not family or not isinstance(family, str):
+            logger.error(f"Invalid family parameter: {family}")
+            return create_error_alert("Invalid family name")
+            
+        if not aln_length:
+            logger.error(f"Invalid alignment length: {aln_length}")
+            return create_error_alert("Invalid alignment length")
+            
+        try:
+            evalue_num = float(evalue)
+            if evalue_num == 0.0:
+                formatted_evalue = "0.00e+00"
+            else:
+                formatted_evalue = "{:.2e}".format(evalue_num)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Error formatting e-value {evalue}: {e}")
+            return create_error_alert("Invalid e-value format")
+            
+        if search_type not in ["blast", "hmmsearch"]:
+            logger.error(f"Invalid search type: {search_type}")
+            return create_error_alert("Invalid search type")
+
+        if search_type == "blast":
+            return dmc.Alert(
+                title="Family Classification via BLAST Search",
+                children=[
+                    f"Your sequence is likely in Starship family: {family}",
+                    dmc.Space(h=5),
+                    dmc.Text(
+                        f"BLAST Search: Alignment length = {aln_length}, E-value = {formatted_evalue}",
+                        size="sm",
+                        c="dimmed"
+                    ),
+                ],
+                color="blue",
+                variant="light",
+                withCloseButton=False,
+            )
+        else:  # hmmsearch
+            return dmc.Alert(
+                title="Family Classification via HMMER Search",
+                children=[
+                    f"Your sequence is likely in Starship family: {family}",
+                    dmc.Space(h=5),
+                    dmc.Text(
+                        f"HMMER Search: Alignment length = {aln_length}, E-value = {formatted_evalue}",
+                        size="sm",
+                        c="dimmed"
+                    ),
+                ],
+                color="blue",
+                variant="light",
+                withCloseButton=False,
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in make_captain_alert: {e}")
+        return create_error_alert(str(e))
 
 def process_captain_results(captain_results_dict):
     no_captain_alert = dmc.Alert(
