@@ -207,72 +207,168 @@ def parse_fasta_from_text(text, format="fasta"):
     """
     Parses a FASTA sequence from a text string.
     Ensures a valid FASTA header is present.
-    Returns the header and sequence if successful, otherwise (None, None).
+    Returns the header and sequence if successful, otherwise (None, None, Alert).
     """
     try:
-        if not text:
-            logger.error("Input text is empty.")
-            raise
+        if not text or not isinstance(text, str):
+            logger.error("Input text is empty or invalid type")
+            return None, None, dmc.Alert(
+                title="Invalid Input",
+                color="yellow",
+                children="Please enter a valid FASTA sequence.",
+            )
+
+        # Ensure proper FASTA format with header
         text = ensure_fasta_header(text)
-        queries = SeqIO.parse(StringIO(text), format)
-        query = next(queries, None)  # Use `None` to avoid StopIteration
-
-        if query is None:
-            logger.error("No sequence found in the provided text.")
-            raise
-
-        header, seq = str(query.id), str(query.seq)
-        logger.info(f"Parsed sequence: {header}")
-        return header, seq
-
-    except ValueError as ve:
-        logger.error(f"Value error: {ve}")
-        return None, None
-    except Exception as e:
-        logger.error(f"Error parsing text: {e}")
-        return None, None
-
-
-def parse_fasta_from_file(contents):
-    header = None  # Initialize header
-    seq = None    # Initialize seq
-    try:
-        if not contents:
-            raise ValueError("No file contents provided.")
-
-        split_contents = contents.split(",")
-        file_type = split_contents[0].strip()
-        sequence = "".join(split_contents[1:])
-
-        decoded_sequence = base64.b64decode(sequence).decode("utf-8")
-
-        fasta_io = StringIO(decoded_sequence)
-        sequences = list(SeqIO.parse(fasta_io, "fasta"))
+        
+        try:
+            fasta_io = StringIO(text)
+            sequences = list(SeqIO.parse(fasta_io, format))
+        except Exception as e:
+            logger.error(f"FASTA parse error: {e}")
+            return None, None, dmc.Alert(
+                title="FASTA Parse Error",
+                color="red",
+                children="Could not parse the input as FASTA format. Please check the sequence format.",
+            )
 
         if len(sequences) == 0:
-            raise ValueError("No valid FASTA sequence found.")
+            logger.warning("No sequences found in input")
+            return None, None, dmc.Alert(
+                title="Empty Sequence",
+                color="yellow",
+                children="No valid sequence was found in the input.",
+            )
         elif len(sequences) > 1:
-            raise ValueError("More than one sequence found in the FASTA file.")
+            logger.warning("Multiple sequences found")
+            return None, None, dmc.Alert(
+                title="Multiple Sequences",
+                color="yellow",
+                children=[
+                    "Multiple sequences detected in the input. ",
+                    "Please enter only one sequence.",
+                ],
+            )
 
         query = sequences[0]
         header, seq = str(query.id), str(query.seq)
-        logger.info(f"Parsed sequence: {header}")
+        
+        if not seq:
+            logger.error("Empty sequence after parsing")
+            return None, None, dmc.Alert(
+                title="Empty Sequence",
+                color="yellow",
+                children="The sequence appears to be empty.",
+            )
+
+        logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
         return header, seq, None
 
     except ValueError as ve:
+        logger.error(f"Value error in parse_fasta_from_text: {ve}")
         return None, None, dmc.Alert(
-            title="Invalid FASTA File",
+            title="Invalid Format",
             color="red",
-            children=[
-                "Please ensure your FASTA file contains only one sequence. ",
-                "Multiple sequences were detected in the uploaded file."
-            ],
+            children="The input sequence appears to be incorrectly formatted.",
         )
     except Exception as e:
+        logger.error(f"Unexpected error in parse_fasta_from_text: {str(e)}")
+        return None, None, dmc.Alert(
+            title="Error Processing Sequence",
+            color="red",
+            children=[
+                "An unexpected error occurred while processing the sequence. ",
+                "Please check the format and try again.",
+            ],
+        )
+
+
+def parse_fasta_from_file(contents):
+    header = None
+    seq = None
+    try:
+        if not contents:
+            logger.warning("No file contents provided")
+            return None, None, dmc.Alert(
+                title="No File Contents",
+                color="yellow",
+                children="Please select a valid FASTA file.",
+            )
+
+        # Validate content format
+        if "," not in contents:
+            logger.error("Invalid content format")
+            return None, None, dmc.Alert(
+                title="Invalid File Format",
+                color="red",
+                children="The file content appears to be corrupted. Please try uploading again.",
+            )
+
+        split_contents = contents.split(",")
+        if len(split_contents) < 2:
+            logger.error("Invalid content split")
+            return None, None, dmc.Alert(
+                title="Invalid File Format",
+                color="red",
+                children="The file content is not in the expected format.",
+            )
+
+        file_type = split_contents[0].strip()
+        sequence = "".join(split_contents[1:])
+
+        try:
+            decoded_sequence = base64.b64decode(sequence).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Base64 decode error: {e}")
+            return None, None, dmc.Alert(
+                title="Decoding Error",
+                color="red",
+                children="Could not decode the file contents. Please ensure you're uploading a valid FASTA file.",
+            )
+
+        fasta_io = StringIO(decoded_sequence)
+        try:
+            sequences = list(SeqIO.parse(fasta_io, "fasta"))
+        except Exception as e:
+            logger.error(f"FASTA parse error: {e}")
+            return None, None, dmc.Alert(
+                title="FASTA Parse Error",
+                color="red",
+                children="Could not parse the file as FASTA format. Please check the file format.",
+            )
+
+        if len(sequences) == 0:
+            logger.warning("No sequences found in file")
+            return None, None, dmc.Alert(
+                title="Empty FASTA File",
+                color="yellow",
+                children="No sequences were found in the uploaded file.",
+            )
+        elif len(sequences) > 1:
+            logger.warning("Multiple sequences found")
+            return None, None, dmc.Alert(
+                title="Multiple Sequences",
+                color="yellow",
+                children=[
+                    "Multiple sequences detected in the file. ",
+                    "Please upload a file with only one sequence.",
+                ],
+            )
+
+        query = sequences[0]
+        header, seq = str(query.id), str(query.seq)
+        logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
+        return header, seq, None
+
+    except Exception as e:
+        logger.error(f"Unexpected error in parse_fasta_from_file: {str(e)}")
         return None, None, dmc.Alert(
             title="Error Processing File",
             color="red",
-            children=f"An error occurred while processing the file: {str(e)}"
+            children=[
+                "An unexpected error occurred while processing the file. ",
+                "Please try refreshing the page and uploading again.",
+            ],
         )
 
 
