@@ -576,33 +576,48 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
     if not n_clicks:
         return None, None
         
-    if not processed_blast_results:
-        return create_no_matches_alert(), None
-        
     try:
-        blast_df = pd.DataFrame(processed_blast_results)
+        if not processed_blast_results:
+            return create_no_matches_alert(), None
+            
+        try:
+            blast_df = pd.DataFrame(processed_blast_results)
+            if blast_df.empty:
+                return create_no_matches_alert(), None
+        except Exception as e:
+            logger.error(f"Error converting BLAST results to DataFrame: {e}")
+            return create_error_alert(str(e)), None
         
-        # Get best match efficiently
-        best_match = blast_df.nsmallest(1, 'evalue').iloc[0]
+        try:
+            best_match = blast_df.nsmallest(1, 'evalue').iloc[0]
+        except Exception as e:
+            logger.error(f"Error getting best match: {e}")
+            return create_error_alert("Could not determine best match"), None
         
-        # Determine family alert first
-        ship_family = (
-            make_captain_alert(
-                best_match["familyName"], 
-                best_match["length"], 
-                best_match["evalue"], 
-                search_type="blast"
-            ) if best_match["pident"] > 50
-            else process_captain_results(captain_results_dict)
-        )
-        
-        # Create table with pre-sorted data
-        ship_table = blast_table(blast_df)
+        try:
+            ship_family = (
+                make_captain_alert(
+                    best_match["familyName"], 
+                    best_match["length"], 
+                    best_match["evalue"], 
+                    search_type="blast"
+                ) if best_match["pident"] > 50
+                else process_captain_results(captain_results_dict)
+            )
+        except Exception as e:
+            logger.error(f"Error creating family alert: {e}")
+            return create_error_alert("Could not create family alert"), None
+            
+        try:
+            ship_table = blast_table(blast_df)
+        except Exception as e:
+            logger.error(f"Error creating BLAST table: {e}")
+            return ship_family, create_error_alert("Could not create results table")
         
         return ship_family, ship_table
         
     except Exception as e:
-        logger.error(f"Error updating UI: {str(e)}")
+        logger.error(f"Error in update_ui_elements: {e}")
         return create_error_alert(str(e)), None
 
 @cache.memoize()
