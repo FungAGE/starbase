@@ -102,3 +102,34 @@
     min-height: 200px;
     overflow: auto;
 }
+
+/* Hide toggle button on desktop */
+.mobile-only {
+    display: none;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    .mobile-only {
+        display: block;
+    }
+    
+    .desktop-table {
+        display: none;
+    }
+    
+    .mobile-cards {
+        display: block !important;
+    }
+}
+
+/* Desktop styles */
+@media (min-width: 769px) {
+    .mobile-cards {
+        display: none !important;
+    }
+    
+    .desktop-table {
+        display: block;
+    }
+}

@@ -1,5 +1,4 @@
-from dash import html, Output, Input, State, callback, no_update
-import dash_core_components as dcc
+from dash import html, Output, Input, State, callback, no_update, dcc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from typing import List  
@@ -344,3 +343,40 @@ def create_file_upload(
             style={"display": "none"}
         ),
     ], gap="md")
+
+def create_feedback_button():
+    return dmc.Affix(
+        dmc.Anchor(
+            dmc.Button(
+                children=[
+                    dmc.Group([
+                        DashIconify(icon="octicon:mark-github-16", width=20),
+                        dmc.Stack([
+                            "Found an issue?",
+                            dmc.Text(
+                                "Report it on GitHub",
+                                size="xs",
+                                c="gray.3"
+                            )
+                        ], gap=2)
+                    ], gap=8, style={"minWidth": "180px"})
+                ],
+                variant="filled",
+                color="gray",
+                radius="md",
+                size="lg",
+                style={
+                    "padding": "16px 24px",
+                    "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.1)",
+                    "cursor": "pointer",
+                    "width": "100%",
+                    "height": "auto",
+                }
+            ),
+            href="https://github.com/FungAGE/starbase/issues",
+            target="_blank",
+            style={"textDecoration": "none", "display": "block"}
+        ),
+        position={"bottom": 30, "right": 30},
+        zIndex=1000,
+    )
