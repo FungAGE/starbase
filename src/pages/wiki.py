@@ -465,37 +465,27 @@ def create_search_results(filtered_meta, cached_meta):
                 c="dimmed"
             )
 
+        # Updated column definitions for AG Grid
         table_columns = [
             {
-                "name": "Accession",
-                "id": "accession_tag",
-                "deletable": False,
-                "selectable": False,
-                "presentation": "markdown",
+                "field": "accession_tag",
+                "headerName": "Accession",
             },
             {
-                "name": "Starship Family",
-                "id": "familyName",
-                "deletable": False,
-                "selectable": False,
+                "field": "familyName",
+                "headerName": "Starship Family",
             },
             {
-                "name": "Number of genomes",
-                "id": "n_genomes",
-                "deletable": False,
-                "selectable": False,
+                "field": "n_genomes",
+                "headerName": "Number of genomes",
             },
             {
-                "name": "Species",
-                "id": "species",
-                "deletable": False,
-                "selectable": False,
+                "field": "species",
+                "headerName": "Species",
             },
             {
-                "name": "Element Length (bp)",
-                "id": "size",
-                "deletable": False,
-                "selectable": False,
+                "field": "size",
+                "headerName": "Element Length (bp)",
             },
         ]
         
