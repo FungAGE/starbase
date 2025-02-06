@@ -260,34 +260,24 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             State(table_id, "data"),
             State(table_id, "derived_virtual_data"),
             State(table_id, "derived_virtual_selected_rows"),
+            State(table_id, "page_current"),
+            State(table_id, "page_size"),
         ],
     )
-    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows):        
+    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows, page_current, page_size):        
         try:
             if not active_cell:
                 return False, no_update, no_update
                 
-            # Debug the table data
             data_to_use = filtered_data if filtered_data is not None else table_data
-            logger.debug(f"Table accessions: {[row['accession_tag'] for row in data_to_use[:5]]}")
             
-            # Debug the cache data
-            initial_df = cache.get("meta_data")
-            if initial_df is not None:
-                logger.debug(f"Cache accessions: {initial_df['accession_tag'].head().tolist()}")
-            else:
-                logger.debug("No data in meta_data cache")
-                initial_df = fetch_meta_data()
-                logger.debug(f"Freshly fetched accessions: {initial_df['accession_tag'].head().tolist()}")
-            
-            # Get the row data
-            data_to_use = filtered_data if filtered_data is not None else table_data
-            row_data = data_to_use[active_cell["row"]]
+            # Calculate the correct row index based on current page
+            actual_row_index = (page_current or 0) * page_size + active_cell["row"]
+            row_data = data_to_use[actual_row_index]
             
             # Clean and standardize the accession tag
             accession = str(row_data["accession_tag"]).strip("[]").split("/")[-1].strip()
             logger.debug(f"Looking for accession in cache: {accession}")
-            logger.debug(f"Available accessions in cache: {initial_df['accession_tag'].unique()[:5]}")
             
             modal_content, modal_title = create_accession_modal(accession)
             return True, modal_content, modal_title
@@ -295,7 +285,6 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
             logger.error(traceback.format_exc())
-            # Return a more user-friendly error modal instead of raising
             error_content = html.Div([
                 html.P("Error loading modal content"),
                 html.P(f"Details: {str(e)}"),
