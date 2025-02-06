@@ -22,7 +22,7 @@ from src.components.tables import make_ship_table
 from src.database.sql_manager import (
     fetch_all_ships,
     fetch_ship_table,
-    fetch_accesion_ship,
+    fetch_accession_ship,
 )
 from src.components.callbacks import create_modal_callback
 
@@ -510,7 +510,7 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
                         tmp_fas = []
                         for row in rows:
                             accession = row["accession_tag"]
-                            ship_data = fetch_accesion_ship(accession)
+                            ship_data = fetch_accession_ship(accession)
                             fa_df = ship_data["sequence"]
                             tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
                             tmp_fas.append(str(tmp_fa))
