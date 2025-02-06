@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-
+import dash_ag_grid as dag
 
 from src.config.cache import cache
 from src.database.sql_manager import fetch_paper_data
@@ -23,87 +23,84 @@ def url_to_link(url, label):
 
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
+    print("Data shape:", df.shape)
+    print("Columns:", df.columns.tolist())
+    print("First row:", df.iloc[0].to_dict() if not df.empty else "Empty")
+    print("Column definitions:", columns)
+    
     if pg_sz is None:
         pg_sz = 10
-
-    if columns:
-        table_columns = columns
-    else:
-        table_columns = [
+        
+    defaultColDef = {
+        "resizable": True,
+        "sortable": True,
+        "filter": True,
+        "minWidth": 100,
+        "flex": 1
+    }
+    
+    # If no columns provided, create them from DataFrame columns
+    if columns is None:
+        grid_columns = []
+        if select_rows:
+            grid_columns.append({
+                "headerCheckboxSelection": True,
+                "checkboxSelection": True,
+                "width": 50,
+                "pinned": "left",
+                "lockPosition": True,
+                "suppressMenu": True,
+                "headerName": "",
+                "flex": 0
+            })
+        grid_columns.extend([
             {
-                "name": i,
-                "id": i,
-                "deletable": False,
-                "selectable": select_rows,
+                "field": col,  # Use column name directly from DataFrame
+                "headerName": col.replace("_", " ").title(),  # Create readable header
+                "flex": 1
             }
-            for i in df.columns
-        ]
-
-    if df is not None:
-        table_df = df.to_dict("records")
+            for col in df.columns
+        ])
     else:
-        table_df = []
-    table = html.Div(dash_table.DataTable(
+        # Ensure columns are in AG Grid format
+        grid_columns = []
+        if select_rows:
+            grid_columns.append({
+                "headerCheckboxSelection": True,
+                "checkboxSelection": True,
+                "width": 50,
+                "pinned": "left",
+                "lockPosition": True,
+                "suppressMenu": True,
+                "headerName": "",
+                "flex": 0
+            })
+        grid_columns.extend([
+            {
+                "field": col.get("field"),  # Use the field directly
+                "headerName": col.get("headerName"),
+                "flex": 1
+            }
+            for col in columns
+        ])
+    
+    print("Final grid columns:", grid_columns)
+    print("Row data sample:", df.head(1).to_dict("records") if not df.empty else "Empty")
+    
+    grid = dag.AgGrid(
         id=id,
-        columns=table_columns,
-        data=df.to_dict("records"),
-        filter_action="native",
-        sort_action="native",
-        sort_mode="multi",
-        row_selectable=select_rows,
-        page_action="native",
-        page_current=0,
-        page_size=20,
-        cell_selectable=True,  # Added to enable cell clicking
-        style_table={
-            "overflowX": "auto",
-            "overflowY": "auto",
-            "maxHeight": "60vh",
+        columnDefs=grid_columns,
+        rowData=df.to_dict("records") if df is not None else [],
+        defaultColDef=defaultColDef,
+        dashGridOptions={
+            "pagination": True,
+            "paginationPageSize": pg_sz,
+            "rowSelection": "multiple" if select_rows else None,
         },
-        style_data={
-            "height": "auto",
-            "lineHeight": "20px",
-            "padding": "10px",
-        },
-        style_cell={
-            "fontFamily": "Arial, sans-serif",
-            "textAlign": "left",
-            "minWidth": "100px",
-            "maxWidth": "300px",
-            "overflow": "hidden",
-            "textOverflow": "ellipsis",
-        },
-        style_header={
-            "backgroundColor": "#f8f9fa",
-            "fontWeight": "bold",
-            "borderBottom": "2px solid #dee2e6",
-            "textAlign": "left",
-            "padding": "12px",
-        },
-        style_filter={
-            "backgroundColor": "#f8f9fa",
-            "padding": "8px",
-        },
-        style_data_conditional=[
-            {
-                "if": {"row_index": "odd"},
-                "backgroundColor": "#f8f9fa",
-            },
-            {
-                "if": {"state": "selected"},
-                "backgroundColor": "#e3f2fd",
-                "border": "1px solid #2196f3",
-            },
-            {
-                "if": {"column_id": "accession_tag"},
-                "color": "blue",
-                "textDecoration": "underline",
-                "cursor": "pointer",
-            }
-        ],
-    ))
-    return table
-
+        className="ag-theme-alpine",
+        style={"height": "60vh", "width": "100%"}
+    )
+    return html.Div(grid)
 
 def make_paper_table():
     df = cache.get("paper_data")

@@ -35,22 +35,16 @@ ColorCycler.set_cmap("tab10")
 
 table_columns = [
     {
-        "name": "Accession",
-        "id": "accession_tag",
-        "deletable": False,
-        "selectable": True,
+        "field": "accession_tag",
+        "headerName": "Accession",
     },
     {
-        "name": "Starship Family",
-        "id": "familyName",
-        "deletable": False,
-        "selectable": True,
+        "field": "familyName",
+        "headerName": "Starship Family",
     },
     {
-        "name": "Species",
-        "id": "species",
-        "deletable": False,
-        "selectable": True,
+        "field": "species",
+        "headerName": "Species",
     },
 ]
 
@@ -462,26 +456,36 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 @callback(
     Output("pgv-table", "children"),
     Input("url", "href"),
+    prevent_initial_call=False  # Allow initial call
 )
 def load_ship_table(href):
     """Load and display the ship selection table"""
+    print("Loading ship table...")
+    print("URL href:", href)
+    
     table_df = fetch_ship_table()
-    if table_df is not None:
-        return make_ship_table(
+    print("Fetched table data:", "None" if table_df is None else f"DataFrame with shape {table_df.shape}")
+    
+    if table_df is not None and not table_df.empty:
+        table = make_ship_table(
             df=table_df,
             columns=table_columns,
             id="pgv-table",
             select_rows=True,
             pg_sz=10
         )
+        print("Table created successfully")
+        return table
+    
+    print("No data available or empty DataFrame")
     return html.Div("No data available")
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
     Input("update-button", "n_clicks"),
     [
-        State("pgv-table", "derived_virtual_selected_rows"),
-        State("pgv-table", "derived_virtual_data"),
+        State("pgv-table", "selectedRows"),
+        State("pgv-table", "rowData"),
         State("length-threshold", "value"),
         State("identity-threshold", "value"),
     ],
@@ -495,22 +499,16 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
         if table_data and selected_rows is not None:
             try:
-                table_df = pd.DataFrame(table_data)
-                logger.info(f"Columns in table_df: {table_df.columns.tolist()}")
-                logger.info(f"Selected rows: {selected_rows}")
-
-                if isinstance(selected_rows, list) and all(
-                    isinstance(idx, int) for idx in selected_rows
-                ):
+                if isinstance(selected_rows, list) and len(selected_rows) > 0:
                     try:
-                        rows = table_df.iloc[selected_rows]
+                        rows = selected_rows
                     except IndexError as e:
                         return html.Div("Index out of bounds")
 
                     with tempfile.TemporaryDirectory() as temp_dir:
                         tmp_gffs = []
                         tmp_fas = []
-                        for index, row in rows.iterrows():
+                        for row in rows:
                             accession = row["accession_tag"]
                             ship_data = fetch_accesion_ship(accession)
                             fa_df = ship_data["sequence"]
@@ -526,7 +524,8 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
                         elif len(selected_rows) == 1:
                             single_pgv(tmp_gffs[0], tmp_pgv)
                         else:
-                            output = html.P("No valid selection.")
+                            output = html.P("Please select between 1 and 4 Starships.")
+                            return output, None
                         try:
                             with open(tmp_pgv, "r") as file:
                                 pgv_content = file.read()
@@ -542,7 +541,7 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
                             },
                         )
                 else:
-                    output = html.H4("Invalid row selection.")
+                    output = html.H4("Please select at least one Starship.")
             except Exception as e:
                 logger.error(f"Exception: {e}")
                 output = html.H4(
