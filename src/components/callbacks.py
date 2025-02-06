@@ -329,15 +329,16 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             State(table_id, "data"),
             State(table_id, "derived_virtual_data"),
             State(table_id, "derived_virtual_selected_rows"),
+            State(table_id, "page_current"),
+            State(table_id, "page_size"),
         ],
     )
-    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows):        
+    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows, page_current, page_size):        
         try:
             if not active_cell:
                 return False, no_update, no_update
                 
             data_to_use = filtered_data if filtered_data is not None else table_data
-            logger.debug(f"Table accessions: {[row['accession_tag'] for row in data_to_use[:5]]}")
             
             initial_df = cache.get("meta_data")
             if initial_df is not None:
@@ -349,10 +350,12 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             
             data_to_use = filtered_data if filtered_data is not None else table_data
             row_data = data_to_use[active_cell["row"]]
+            # Calculate the correct row index based on current page
+            actual_row_index = (page_current or 0) * page_size + active_cell["row"]
+            row_data = data_to_use[actual_row_index]
             
             accession = str(row_data["accession_tag"]).strip("[]").split("/")[-1].strip()
             logger.debug(f"Looking for accession in cache: {accession}")
-            logger.debug(f"Available accessions in cache: {initial_df['accession_tag'].unique()[:5]}")
             
             modal_content, modal_title = create_accession_modal(accession)
             return True, modal_content, modal_title
