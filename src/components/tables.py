@@ -5,6 +5,8 @@ warnings.filterwarnings("ignore")
 from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
+import dash_mantine_components as dmc
+from dash_iconify import DashIconify
 
 
 from src.config.cache import cache
@@ -110,15 +112,13 @@ def make_paper_table():
     if df is not None:
         df_summary = (
             df.groupby("Title")
-            .agg(
-                {
-                    "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
-                    "Author": "first",
-                    "PublicationYear": "first",
-                    "DOI": "first",
-                    "Url": "first",
-                }
-            )
+            .agg({
+                "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
+                "Author": "first",
+                "PublicationYear": "first",
+                "DOI": "first",
+                "Url": "first",
+            })
             .reset_index()
         )
 
@@ -144,7 +144,6 @@ def make_paper_table():
                 "deletable": False,
                 "selectable": False,
                 "presentation": "markdown",
-                "hideable": True,  # Allow column to be hidden
             },
             {
                 "name": "Authors",
@@ -152,7 +151,6 @@ def make_paper_table():
                 "deletable": False,
                 "selectable": False,
                 "presentation": "markdown",
-                "hideable": True,  # Allow column to be hidden
             },
             {
                 "name": "DOI",
@@ -163,79 +161,126 @@ def make_paper_table():
             },
         ]
 
-        paper_table = html.Div(dash_table.DataTable(
-            data=sub_df.to_dict("records"),
-            sort_action="none",
-            columns=sub_df_columns,
-            id="papers-table",
-            markdown_options={"html": True},
-            style_table={
-                "overflowX": "auto",
-                "overflowY": "auto",
-                "maxHeight": "60vh",
-                "minWidth": "300px",  # Ensure minimum width on mobile
-            },
-            style_data={
-                "height": "auto",
-                "lineHeight": "20px",
-                "padding": "10px",
-                "whiteSpace": "normal",  # Allow text wrapping
-                "overflow": "hidden",
-                "textOverflow": "ellipsis",
-            },
-            style_cell={
-                "fontFamily": "Arial, sans-serif",
-                "textAlign": "left",
-                "minWidth": "100px",
-                "maxWidth": {  # Responsive column widths
-                    "Title": "300px",
-                    "PublicationYear": "100px",
-                    "Author": "200px",
-                    "DOI": "150px",
-                },
-                "width": {  # Default widths for different columns
-                    "Title": "300px",
-                    "PublicationYear": "100px",
-                    "Author": "200px",
-                    "DOI": "150px",
-                },
-                "overflow": "hidden",
-                "textOverflow": "ellipsis",
-            },
-            style_cell_conditional=[  # Hide certain columns on small screens
-                {
-                    "if": {"column_id": "Author"},
-                    "@media screen and (max-width: 768px)": {"display": "none"},
-                },
-                {
-                    "if": {"column_id": "PublicationYear"},
-                    "@media screen and (max-width: 480px)": {"display": "none"},
-                },
+        # Create card view for mobile
+        cards = dmc.Stack(
+            children=[
+                dmc.Paper(
+                    children=[
+                        dmc.Title(row["Title"], order=4, mb="sm"),
+                        dmc.Text(f"Authors: {row['Author']}", size="sm", mb="xs"),
+                        dmc.Text(f"Year: {row['PublicationYear']}", size="sm", mb="xs"),
+                        dmc.Group([
+                            dmc.Anchor("DOI", href=row["DOI"].split("](")[1][:-1], size="sm"),
+                            dmc.Anchor("Full Text", href=row["Url"].split("](")[1][:-1], size="sm"),
+                        ]),
+                    ],
+                    p="md",
+                    radius="md",
+                    withBorder=True,
+                )
+                for _, row in sub_df.iterrows()
             ],
-            style_header={
-                "backgroundColor": "#f8f9fa",
-                "fontWeight": "bold",
-                "borderBottom": "2px solid #dee2e6",
-                "textAlign": "left",
-                "padding": "12px",
-            },
-            style_filter={
-                "backgroundColor": "#f8f9fa",
-                "padding": "8px",
-            },
-            style_data_conditional=[
-                {
-                    "if": {"row_index": "odd"},
+            gap="md",
+            style={"display": "none"},
+            className="mobile-cards"
+        )
+
+        # Create table view (your existing table code)
+        table = html.Div(
+            dash_table.DataTable(
+                data=sub_df.to_dict("records"),
+                columns=sub_df_columns,
+                id="papers-table",
+                markdown_options={"html": True},
+                style_table={
+                    "overflowX": "auto",
+                    "overflowY": "auto",
+                    "maxHeight": "60vh",
+                    "minWidth": "300px",  # Ensure minimum width on mobile
+                },
+                style_data={
+                    "height": "auto",
+                    "lineHeight": "20px",
+                    "padding": "10px",
+                    "whiteSpace": "normal",  # Allow text wrapping
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                },
+                style_cell={
+                    "fontFamily": "Arial, sans-serif",
+                    "textAlign": "left",
+                    "minWidth": "100px",
+                    "maxWidth": {  # Responsive column widths
+                        "Title": "300px",
+                        "PublicationYear": "100px",
+                        "Author": "200px",
+                        "DOI": "150px",
+                    },
+                    "width": {  # Default widths for different columns
+                        "Title": "300px",
+                        "PublicationYear": "100px",
+                        "Author": "200px",
+                        "DOI": "150px",
+                    },
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                },
+                style_cell_conditional=[  # Hide certain columns on small screens
+                    {
+                        "if": {"column_id": "Author"},
+                        "@media screen and (max-width: 768px)": {"display": "none"},
+                    },
+                    {
+                        "if": {"column_id": "PublicationYear"},
+                        "@media screen and (max-width: 480px)": {"display": "none"},
+                    },
+                ],
+                style_header={
                     "backgroundColor": "#f8f9fa",
+                    "fontWeight": "bold",
+                    "borderBottom": "2px solid #dee2e6",
+                    "textAlign": "left",
+                    "padding": "12px",
                 },
-                {
-                    "if": {"state": "selected"},
-                    "backgroundColor": "#e3f2fd",
-                    "border": "1px solid #2196f3",
+                style_filter={
+                    "backgroundColor": "#f8f9fa",
+                    "padding": "8px",
                 },
-            ],
-        ))
-        return paper_table
+                style_data_conditional=[
+                    {
+                        "if": {"row_index": "odd"},
+                        "backgroundColor": "#f8f9fa",
+                    },
+                    {
+                        "if": {"state": "selected"},
+                        "backgroundColor": "#e3f2fd",
+                        "border": "1px solid #2196f3",
+                    },
+                ],
+            ),
+            className="desktop-table"
+        )
+
+        # Add CSS to handle view switching
+        return html.Div([
+            # View toggle button
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "Toggle View",
+                        id="toggle-paper-view",
+                        variant="outline",
+                        size="sm",
+                        leftSection=DashIconify(icon="tabler:layout-list"),
+                        className="mobile-only"
+                    )
+                ],
+                pos="right",
+            mb="md"
+            ),
+            cards,
+            table
+        ])
 
 def make_ship_blast_table(ship_blast_results, id, df_columns):
     return html.Div(dash_table.DataTable(

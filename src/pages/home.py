@@ -1,8 +1,11 @@
 import dash
 import dash_mantine_components as dmc
-from dash import dcc, html
+from dash import dcc, html, callback
 from dash_iconify import DashIconify
 import logging
+
+from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 
 from src.components.tables import make_paper_table
 from src.components.callbacks import download_ships_card
@@ -347,3 +350,23 @@ theme={
         "Title": {"defaultProps": {"color": "indigo"}},
     }
 })
+
+@callback(
+    [Output("toggle-paper-view", "leftSection"),
+     Output("desktop-table", "style"),
+     Output("mobile-cards", "style")],
+    Input("toggle-paper-view", "n_clicks"),
+    State("toggle-paper-view", "leftSection"),
+    prevent_initial_call=True
+)
+def toggle_paper_view(n_clicks, current_icon):
+    if n_clicks is None:
+        raise PreventUpdate
+        
+    is_table = current_icon["icon"] == "tabler:layout-list"
+    
+    return (
+        DashIconify(icon="tabler:layout-cards" if is_table else "tabler:layout-list"),
+        {"display": "none" if is_table else "block"},
+        {"display": "block" if is_table else "none"}
+    )

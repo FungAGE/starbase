@@ -23,6 +23,7 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 from src.components import navmenu
+from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache
 from src.database.sql_manager import precompute_all
@@ -84,6 +85,7 @@ def serve_app_layout():
             dcc.Location(id="url", refresh=False),
             navmenu.navmenu(),
             html.Div(dash.page_container),
+            create_feedback_button(),
         ])
     )
 
