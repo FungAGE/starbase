@@ -1,8 +1,9 @@
 import warnings
+import json
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, callback
+from dash import dcc, html, callback, clientside_callback, ClientsideFunction
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
