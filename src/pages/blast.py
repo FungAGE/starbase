@@ -400,13 +400,13 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-seq-store", "data"),
         Input("query-type-store", "data"),
     ],
+    prevent_initial_call=True
 )
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
+    if not all([query_header, query_seq, query_type]):
+        return None, None, None
+        
     try:
-        if not query_header or not query_seq:
-            logger.error("Missing query header or sequence.")
-            return None, None, None
-
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
         logger.info(f"Temp FASTA written: {tmp_query_fasta}")
@@ -573,7 +573,7 @@ def process_blast_results(blast_results_dict, metadata_dict):
     prevent_initial_call=True
 )
 def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
-    if not n_clicks:
+    if not n_clicks or processed_blast_results is None:
         return None, None
         
     try:

@@ -861,7 +861,7 @@ def create_no_matches_alert():
         children=[
             dmc.Text("Your sequence did not match any Starships in our database."),
             dmc.Space(h=10),
-            dmc.Text("Suggestions:", size="sm", weight=500),
+            dmc.Text("Suggestions:", size="sm", fw=500),
             dmc.Space(h=5),
             dmc.List(
                 [

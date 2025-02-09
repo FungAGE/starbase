@@ -2,12 +2,13 @@ bcbio_gff==0.7.0
 beautifulsoup4==4.11.1
 biopython==1.83
 dash==2.16.1
-dash_bio==1.0.2
-dash_bootstrap_components==1.5.0
+dash-table==5.0.0
 dash_core_components==2.0.0
 dash_html_components==2.0.0
-dash_iconify==0.1.2
+dash_bootstrap_components==1.5.0
 dash_mantine_components==0.14.4
+dash_iconify==0.1.2
+dash_bio==1.0.2
 Flask==2.2.5
 Flask_Caching==2.3.0
 Flask_Limiter==3.8.0

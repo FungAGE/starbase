@@ -111,139 +111,208 @@ def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
 
 def create_accession_modal(accession):    
     try:
-        # Always fetch fresh meta_data
         initial_df = fetch_meta_data()
         
-        # Clean the accession format in both the input and the dataframe
         accession = str(accession).strip("[]").split("/")[-1].strip()
         initial_df["accession_tag"] = initial_df["accession_tag"].astype(str).apply(
             lambda x: x.strip("[]").split("/")[-1].strip()
         )
         
-        # Find the matching row(s)
         modal_data = initial_df[initial_df["accession_tag"] == accession]
         
         if modal_data.empty:
-            return html.Div([
-                html.P(f"No data found for accession: {accession}"),
-                html.P("Cache status:"),
-                html.Ul([
-                    html.Li(f"Total records in cache: {len(initial_df)}"),
-                    html.Li(f"Sample accessions: {', '.join(initial_df['accession_tag'].head().tolist())}"),
-                    html.Li(f"Searched for: {accession}")
-                ])
+            return dmc.Stack([
+                dmc.Alert(
+                    title="No Data Found",
+                    color="red",
+                    children=[
+                        f"No data found for accession: {accession}",
+                        dmc.Space(h=10),
+                        "Cache Status:",
+                        dmc.List([
+                            dmc.ListItem(f"Total records in cache: {len(initial_df)}"),
+                            dmc.ListItem(f"Sample accessions: {', '.join(initial_df['accession_tag'].head().tolist())}"),
+                            dmc.ListItem(f"Searched for: {accession}")
+                        ])
+                    ]
+                )
             ]), f"Accession: {accession}"
-        
-        # Create modal content using the first row of matched data
-        modal_title = html.H2(f"Ship Accession: {accession}")
-        modal_content = html.Div([
-            html.Div([
-                html.Strong("starshipID: "),
-                html.Span(modal_data["starshipID"].iloc[0]),
-            ]),
-                html.Div(
-                    [
-                        html.Strong("curated_status: "),
-                        html.Span(modal_data["curated_status"].iloc[0]),
+
+        # Basic ship information section
+        ship_info = dmc.Paper(
+            p="md",
+            withBorder=True,
+            children=[
+                dmc.Title(f"Ship Details", order=4, mb=10),
+                dmc.SimpleGrid(
+                    cols={
+                        "base": 1,
+                        "sm": 2
+                    },
+                    spacing="lg",
+                    children=[
+                        dmc.Group([
+                            dmc.Text("starshipID:", fw=700),
+                            dmc.Text(modal_data["starshipID"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Curation Status:", fw=700),
+                            dmc.Badge(
+                                modal_data["curated_status"].iloc[0],
+                                color="green" if modal_data["curated_status"].iloc[0] == "curated" else "yellow"
+                            )
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Starship Family:", fw=700),
+                            dmc.Text(modal_data["familyName"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Genomes Present:", fw=700),
+                            dmc.Badge(str(len(modal_data)), color="blue")
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Starship Navis:", fw=700),
+                            dmc.Text(modal_data["starship_navis"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Starship Haplotype:", fw=700),
+                            dmc.Text(modal_data["starship_haplotype"].iloc[0])
+                        ])
                     ]
-                ),
-                html.Div(
-                    [
-                        html.Strong("Number of genomes with ship present:"),
-                        html.Span(len(modal_data)),
-                    ]
-                ),
-                html.Hr(),
-                html.Div([
-                    html.Strong("Genome Details:"),
-                    dmc.Table(
-                        striped=True,
-                        highlightOnHover=True,
-                        children=[
-                            html.Thead(
-                                html.Tr([
-                                    html.Th("Field"),
-                                    *[html.Th(f"{modal_data['assembly_accession'].iloc[i] if 'assembly_accession' in modal_data else f'Genome {i+1}'}")
-                                      for i in range(len(modal_data))]
-                                ])
-                            ),
-                            html.Tbody([
-                                html.Tr([
-                                    html.Td("Genome Source"),
-                                    *[html.Td(modal_data["genomeSource"].iloc[i])
-                                      for i in range(len(modal_data))]
-                                ]),
-                                html.Tr([
-                                    html.Td("Citation"),
-                                    *[html.Td(modal_data["citation"].iloc[i])
-                                      for i in range(len(modal_data))]
-                                ]),
-                                html.Tr([
-                                    html.Td("ContigID"),
-                                    *[html.Td(modal_data["contigID"].iloc[i])
-                                      for i in range(len(modal_data))]
-                                ]),
-                                html.Tr([
-                                    html.Td("Element Begin"),
-                                    *[html.Td(modal_data["elementBegin"].iloc[i])
-                                      for i in range(len(modal_data))]
-                                ]),
-                                html.Tr([
-                                    html.Td("Element End"),
-                                    *[html.Td(modal_data["elementEnd"].iloc[i])
-                                      for i in range(len(modal_data))]
-                                ]),
-                                html.Tr([
-                                    html.Td("Size"),
-                                    *[html.Td(modal_data["size"].iloc[i])
-                                      for i in range(len(modal_data))]
-                                ]),
-                            ])
-                        ]
-                    ) if len(modal_data) > 1 else html.Div([
-                        html.Div([html.Strong("Assembly Accession: "), 
-                                html.Span(modal_data["assembly_accession"].iloc[0] if "assembly_accession" in modal_data else "")]),
-                        html.Div([html.Strong("Genome Source: "), 
-                                html.Span(modal_data["genomeSource"].iloc[0])]),
-                        html.Div([html.Strong("Citation: "), 
-                                html.Span(modal_data["citation"].iloc[0])]),
-                        html.Div([html.Strong("ContigID: "), 
-                                html.Span(modal_data["contigID"].iloc[0])]),
-                        html.Div([html.Strong("Element Begin: "), 
-                                html.Span(modal_data["elementBegin"].iloc[0])]),
-                        html.Div([html.Strong("Element End: "), 
-                                html.Span(modal_data["elementEnd"].iloc[0])]),
-                        html.Div([html.Strong("Size: "), 
-                                html.Span(modal_data["size"].iloc[0])]),
-                    ])
-                ]),
-                html.Hr(),
-                html.Div([html.Strong("order: "), html.Span(modal_data["order"].iloc[0])]),
-                html.Div(
-                    [html.Strong("family: "), html.Span(modal_data["family"].iloc[0])]
-                ),
-                html.Div(
-                    [html.Strong("species: "), html.Span(modal_data["species"].iloc[0])]
-                ),
-                html.Div(
-                    [html.Strong("strain: "), html.Span(modal_data["strain"].iloc[0])]
-                ),
-                html.Div(
-                    [
-                        html.Strong("NCBI Taxonomy ID: "),
-                        html.A(
-                            (
-                                int(modal_data["taxID"].iloc[0])
-                                if isinstance(modal_data["taxID"].iloc[0], (float, int))
-                                else modal_data["taxID"].iloc[0]
-                            ),
-                            href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={int(modal_data['taxID'].iloc[0]) if isinstance(modal_data['taxID'].iloc[0], (float, int)) else modal_data['taxID'].iloc[0]}",
-                        ),
-                    ]
-                ),
+                )
             ]
         )
+
+        # Taxonomy section
+        taxonomy_info = dmc.Paper(
+            p="md",
+            withBorder=True,
+            children=[
+                dmc.Title("Taxonomy", order=4, mb=10),
+                dmc.SimpleGrid(
+                    cols={
+                        "base": 1,
+                        "sm": 2
+                    },
+                    spacing="lg",
+                    children=[
+                        dmc.Group([
+                            dmc.Text("Order:", fw=700),
+                            dmc.Text(modal_data["order"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Family:", fw=700),
+                            dmc.Text(modal_data["family"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Species:", fw=700),
+                            dmc.Text(modal_data["species"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Strain:", fw=700),
+                            dmc.Text(modal_data["strain"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("NCBI Taxonomy ID:", fw=700),
+                            dmc.Anchor(
+                                str(int(modal_data["taxID"].iloc[0]) if isinstance(modal_data["taxID"].iloc[0], (float, int)) else modal_data["taxID"].iloc[0]),
+                                href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={int(modal_data['taxID'].iloc[0]) if isinstance(modal_data['taxID'].iloc[0], (float, int)) else modal_data['taxID'].iloc[0]}",
+                                target="_blank"
+                            )
+                        ])
+                    ]
+                )
+            ]
+        )
+
+        # Genome details section
+        genome_details = dmc.Paper(
+            p="md",
+            withBorder=True,
+            children=[
+                dmc.Title("Genome Details", order=4, mb=10),
+                dmc.ScrollArea(
+                    children=[
+                        dmc.Table(
+                            striped=True,
+                            highlightOnHover=True,
+                            withColumnBorders=True,
+                            children=[
+                                html.Thead(
+                                    html.Tr([
+                                        html.Th("Field", style={"backgroundColor": "#f8f9fa"}),
+                                        *[html.Th(
+                                            f"{modal_data['assembly_accession'].iloc[i] if 'assembly_accession' in modal_data else f'Genome {i+1}'}",
+                                            style={"backgroundColor": "#f8f9fa"}
+                                        ) for i in range(len(modal_data))]
+                                    ])
+                                ),
+                                html.Tbody([
+                                    html.Tr([
+                                        html.Td("Genome Source"),
+                                        *[html.Td(modal_data["genomeSource"].iloc[i])
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                    html.Tr([
+                                        html.Td("ContigID"),
+                                        *[html.Td(modal_data["contigID"].iloc[i])
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                    html.Tr([
+                                        html.Td("Element Position"),
+                                        *[html.Td(f"{modal_data['elementBegin'].iloc[i]} - {modal_data['elementEnd'].iloc[i]}")
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                    html.Tr([
+                                        html.Td("Size"),
+                                        *[html.Td(f"{modal_data['size'].iloc[i]:,} bp")
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                ])
+                            ]
+                        )
+                    ]
+                ) if len(modal_data) > 1 else dmc.SimpleGrid(
+                    cols={
+                        "base": 1,
+                        "sm": 2
+                    },
+                    spacing="lg",
+                    children=[
+                        dmc.Group([
+                            dmc.Text("Assembly Accession:", fw=700),
+                            dmc.Text(modal_data["assembly_accession"].iloc[0] if "assembly_accession" in modal_data else "")
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Genome Source:", fw=700),
+                            dmc.Text(modal_data["genomeSource"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("ContigID:", fw=700),
+                            dmc.Text(modal_data["contigID"].iloc[0])
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Element Position:", fw=700),
+                            dmc.Text(f"{modal_data['elementBegin'].iloc[0]} - {modal_data['elementEnd'].iloc[0]}")
+                        ]),
+                        dmc.Group([
+                            dmc.Text("Size:", fw=700),
+                            dmc.Text(f"{modal_data['size'].iloc[0]:,} bp")
+                        ])
+                    ]
+                )
+            ]
+        )
+
+        modal_content = dmc.Stack([
+            ship_info,
+            taxonomy_info,
+            genome_details
+        ], gap="md")
+
+        modal_title = dmc.Title(f"Ship Accession: {accession}", order=2)
         return modal_content, modal_title
+
     except Exception as e:
         logger.error(f"Error in create_accession_modal: {str(e)}")
         logger.error(traceback.format_exc())
@@ -260,18 +329,17 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             State(table_id, "data"),
             State(table_id, "derived_virtual_data"),
             State(table_id, "derived_virtual_selected_rows"),
+            State(table_id, "page_current"),
+            State(table_id, "page_size"),
         ],
     )
-    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows):        
+    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows, page_current, page_size):        
         try:
             if not active_cell:
                 return False, no_update, no_update
                 
-            # Debug the table data
             data_to_use = filtered_data if filtered_data is not None else table_data
-            logger.debug(f"Table accessions: {[row['accession_tag'] for row in data_to_use[:5]]}")
             
-            # Debug the cache data
             initial_df = cache.get("meta_data")
             if initial_df is not None:
                 logger.debug(f"Cache accessions: {initial_df['accession_tag'].head().tolist()}")
@@ -280,14 +348,14 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 initial_df = fetch_meta_data()
                 logger.debug(f"Freshly fetched accessions: {initial_df['accession_tag'].head().tolist()}")
             
-            # Get the row data
             data_to_use = filtered_data if filtered_data is not None else table_data
             row_data = data_to_use[active_cell["row"]]
+            # Calculate the correct row index based on current page
+            actual_row_index = (page_current or 0) * page_size + active_cell["row"]
+            row_data = data_to_use[actual_row_index]
             
-            # Clean and standardize the accession tag
             accession = str(row_data["accession_tag"]).strip("[]").split("/")[-1].strip()
             logger.debug(f"Looking for accession in cache: {accession}")
-            logger.debug(f"Available accessions in cache: {initial_df['accession_tag'].unique()[:5]}")
             
             modal_content, modal_title = create_accession_modal(accession)
             return True, modal_content, modal_title
@@ -295,7 +363,6 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
             logger.error(traceback.format_exc())
-            # Return a more user-friendly error modal instead of raising
             error_content = html.Div([
                 html.P("Error loading modal content"),
                 html.P(f"Details: {str(e)}"),
