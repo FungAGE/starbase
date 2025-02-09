@@ -5,7 +5,7 @@ import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, _dash_renderer
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from sqlalchemy import text
 import os
@@ -25,9 +25,10 @@ logger.addHandler(console_handler)
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
-from src.config.cache import cache
-from src.database.sql_manager import precompute_all
+from src.config.cache import cache, initialize_cache
+from src.database.sql_manager import precompute_all, precompute_tasks
 from src.config.database import TelemetrySession, SubmissionsSession
+from src.database.init_db import init_databases
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -74,6 +75,14 @@ limiter = Limiter(
 def initialize_app():
     """Initialize all app components."""
     with server.app_context():
+        # init_databases()
+        
+        cache_status = initialize_cache()
+        
+        logger.info("Cache initialization complete")
+        logger.info(f"Cache status: {cache_status}")
+        
+        # Precompute additional data
         precompute_all()
     maintain_ip_locations()
 
@@ -121,18 +130,16 @@ def log_request_info():
     except Exception as e:
         logger.error(f"Error in request logging middleware: {str(e)}")
 
-@server.route('/health/telemetry')
+@app.server.route('/health/telemetry')
 def telemetry_health():
     """Check telemetry system health"""
     try:
         session = TelemetrySession()
         
-        # Check if we can write to the database
         test_ip = "127.0.0.1"
         test_endpoint = "/"
         log_request(test_ip, test_endpoint)
         
-        # Check if we can read from the database
         result = session.execute(text("SELECT COUNT(*) FROM request_logs")).scalar()
         
         return {
@@ -147,7 +154,7 @@ def telemetry_health():
     finally:
         session.close()
 
-@server.route('/api/refresh-telemetry', methods=['POST'])
+@app.server.route('/api/refresh-telemetry', methods=['POST'])
 def refresh_telemetry():
     """Endpoint to refresh telemetry data"""
     try:
@@ -162,7 +169,6 @@ def check_submissions_db():
     """Verify submissions database is accessible and properly configured"""
     try:
         session = SubmissionsSession()
-        # Try to create a test submission
         test_query = """
         SELECT COUNT(*) FROM submissions
         """
@@ -172,6 +178,59 @@ def check_submissions_db():
     except Exception as e:
         logger.error(f"Submissions database check failed: {str(e)}")
         return False
+
+@app.server.route('/api/cache/status')
+def cache_status():
+    """Check if key data is cached and refresh if needed"""
+    try:
+        status = {}
+        for key in precompute_tasks.keys():
+            data = cache.get(key)
+            if data is None:
+                status[key] = "missing"
+                # Try to refresh missing data
+                try:
+                    data = precompute_tasks[key]()
+                    if data is not None:
+                        cache.set(key, data)
+                        status[key] = "refreshed"
+                except Exception as e:
+                    logger.error(f"Failed to refresh {key}: {str(e)}")
+            else:
+                status[key] = "cached"
+                
+        return jsonify({
+            "status": "success",
+            "cache": status
+        }), 200
+    except Exception as e:
+        logger.error(f"Cache status check failed: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.server.route('/api/cache/refresh', methods=['POST'])
+@limiter.limit("1 per minute")
+def refresh_cache():
+    """Force refresh of all cached data"""
+    try:
+        cache.clear()
+        
+        results = initialize_cache()
+        
+        precompute_all()
+        
+        return jsonify({
+            "status": "success",
+            "results": results
+        }), 200
+    except Exception as e:
+        logger.error(f"Cache refresh failed: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 app.layout = serve_app_layout
 initialize_app()

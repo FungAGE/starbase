@@ -3,6 +3,7 @@ import pickle
 from typing import Any
 import logging
 import pandas as pd
+from flask_caching import Cache
 from src.config.cache import cache
 from src.config.database import StarbaseSession
 from src.utils.plot_utils import create_sunburst_plot
@@ -320,79 +321,42 @@ families = [
     "Family-11",
 ]
 
+precompute_tasks = {
+    "meta_data": lambda: fetch_meta_data(curated=True),
+    "paper_data": fetch_paper_data,
+    "ship_table": fetch_ship_table,
+    "all_ships": fetch_all_ships,
+    "database_stats": get_database_stats,
+    "download_data_curated_true_derep_false": lambda: fetch_download_data(curated=True, dereplicate=False),
+    "download_data_curated_true_derep_true": lambda: fetch_download_data(curated=True, dereplicate=True),
+    "download_data_curated_false_derep_false": lambda: fetch_download_data(curated=False, dereplicate=False),
+    "download_data_curated_false_derep_true": lambda: fetch_download_data(curated=False, dereplicate=True),
+}
 
 def precompute_all():
     """Precompute and cache all necessary data and figures."""
+    from src.config.cache import cache
+    
     cache_status = {}
-
-    precompute_tasks = {
-        "meta_data": lambda: fetch_meta_data(curated=True),
-        "paper_data": fetch_paper_data,
-        "download_data_curated_true_derep_false": lambda: fetch_download_data(curated=True, dereplicate=False),
-        "download_data_curated_true_derep_true": lambda: fetch_download_data(curated=True, dereplicate=True),
-        "download_data_curated_false_derep_false": lambda: fetch_download_data(curated=False, dereplicate=False),
-        "download_data_curated_false_derep_true": lambda: fetch_download_data(curated=False, dereplicate=True),
-        "all_ships": fetch_all_ships,
-        "ship_table": fetch_ship_table,
-        "all_captains": fetch_all_captains,
-        # "captain_tree": fetch_captain_tree,
-        # "sf_data": fetch_sf_data,
-        "stats": get_database_stats,
-    }
     
     try:
-        # Handle meta_data first as other operations depend on it
-        meta_data = precompute_tasks["meta_data"]()
-        df = pd.DataFrame(meta_data)
-        
-        # Cache both in memory and file
-        cache.set("meta_data", meta_data)
-        
-        # Cache search options
-        search_options = {
-            "taxonomy_options": sorted(df["genus"].dropna().unique()),
-            "family_options": sorted(df["familyName"].dropna().unique()),
-            "navis_options": sorted(df["starship_navis"].dropna().unique()),
-            "haplotype_options": sorted(df["starship_haplotype"].dropna().unique())
-        }
-        for key, value in search_options.items():
-            cache.set(key, value)
-        
-        cache_status["meta_data"] = True
-        
-        # Precompute and cache sunburst plots
-        logger.info("Creating sunburst figures...")
-        for family in families:
-            try:
-                sunburst_figure = cache_sunburst_plot(family, meta_data)
-                cache_key = f"sunburst_plot_{family}"
-                cache.set(cache_key, sunburst_figure)
-                cache_status[f"sunburst_{family}"] = True
-            except Exception as e:
-                logger.error(f"Failed to create sunburst for {family}: {str(e)}")
-                cache_status[f"sunburst_{family}"] = False
-        
-        # Execute remaining precompute tasks
         for key, func in precompute_tasks.items():
-            if key != "meta_data":  # Skip meta_data as it's already done
-                try:
-                    logger.info(f"Precomputing {key}...")
-                    result = func()
-                    if result is not None:
-                        # Save both to memory cache and file cache
-                        cache.set(key, result)
-                        cache_status[key] = True
-                        logger.info(f"Successfully cached {key}")
-                    else:
-                        cache_status[key] = False
-                        logger.error(f"Failed to precompute {key}: returned None")
-                except Exception as e:
-                    logger.error(f"Failed to precompute {key}: {str(e)}")
+            try:
+                logger.info(f"Precomputing {key}...")
+                result = func()
+                if result is not None:
+                    cache.set(key, result)
+                    cache_status[key] = True
+                    logger.info(f"Successfully cached {key}")
+                else:
                     cache_status[key] = False
+                    logger.error(f"Failed to precompute {key}: returned None")
+            except Exception as e:
+                logger.error(f"Failed to precompute {key}: {str(e)}")
+                cache_status[key] = False
                     
     except Exception as e:
         logger.error(f"Critical error during precomputation: {str(e)}")
-        cache_status["meta_data"] = False
     
     # Log final status
     success_rate = sum(1 for v in cache_status.values() if v) / len(cache_status)
