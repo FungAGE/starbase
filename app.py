@@ -79,8 +79,8 @@ def initialize_app():
         
         cache_status = initialize_cache()
         
-        logger.info("Cache initialization complete")
-        logger.info(f"Cache status: {cache_status}")
+        # logger.info("Cache initialization complete")
+        # logger.info(f"Cache status: {cache_status}")
         
         # Precompute additional data
         precompute_all()
