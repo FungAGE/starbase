@@ -126,7 +126,7 @@ def create_accession_modal(accession):
         if modal_data.empty:
             return html.Div([
                 html.P(f"No data found for accession: {accession}"),
-                html.P("Cache status:"),
+                html.P("Cache status: "),
                 html.Ul([
                     html.Li(f"Total records in cache: {len(initial_df)}"),
                     html.Li(f"Sample accessions: {', '.join(initial_df['accession_tag'].head().tolist())}"),
@@ -149,13 +149,31 @@ def create_accession_modal(accession):
                 ),
                 html.Div(
                     [
-                        html.Strong("Number of genomes with ship present:"),
+                        html.Strong("Number of genomes with ship present: "),
                         html.Span(len(modal_data)),
+                    ]
+                ),
+                html.Div(
+                    [
+                        html.Strong("Starship Family: "),
+                        html.Span(modal_data["familyName"].iloc[0]),
+                    ]
+                ),
+                html.Div(
+                    [
+                        html.Strong("Starship Navis: "),
+                        html.Span(modal_data["starship_navis"].iloc[0]),
+                    ]
+                ),
+                html.Div(
+                    [
+                        html.Strong("Starship Haplotype: "),
+                        html.Span(modal_data["starship_haplotype"].iloc[0]),
                     ]
                 ),
                 html.Hr(),
                 html.Div([
-                    html.Strong("Genome Details:"),
+                    html.Strong("Genome Details: "),
                     dmc.Table(
                         striped=True,
                         highlightOnHover=True,
