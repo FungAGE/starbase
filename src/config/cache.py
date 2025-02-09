@@ -1,8 +1,7 @@
 from flask_caching import Cache
 import os
-from src.database.sql_manager import fetch_meta_data, fetch_paper_data, fetch_ship_table, fetch_all_ships, get_database_stats
-import logging
 from src.config.settings import DATA_DIR
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -12,15 +11,18 @@ os.makedirs(cache_dir, exist_ok=True)
 cache = Cache(config={
     'CACHE_TYPE': 'filesystem',
     'CACHE_DIR': cache_dir,
-    'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hours
-    'CACHE_THRESHOLD': 1000,
-    'CACHE_OPTIONS': {
-        'mode': 0o777
-    }
+    'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hour cache
+    'CACHE_THRESHOLD': 1000
 })
 
 def initialize_cache():
     """Initialize and warm up the cache with frequently accessed data"""
+    from src.database.sql_manager import (
+        fetch_meta_data, fetch_paper_data, 
+        fetch_ship_table, fetch_all_ships,
+        get_database_stats
+    )
+    
     cache_keys = {
         "meta_data": fetch_meta_data,
         "paper_data": fetch_paper_data,

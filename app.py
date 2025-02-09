@@ -184,21 +184,18 @@ def cache_status():
     """Check if key data is cached and refresh if needed"""
     try:
         status = {}
-        keys_to_check = ["meta_data", "paper_data", "ship_table", "all_ships"]
-        
-        for key in keys_to_check:
+        for key in precompute_tasks.keys():
             data = cache.get(key)
             if data is None:
                 status[key] = "missing"
                 # Try to refresh missing data
-                if key in precompute_tasks:
-                    try:
-                        data = precompute_tasks[key]()
-                        if data is not None:
-                            cache.set(key, data)
-                            status[key] = "refreshed"
-                    except Exception as e:
-                        logger.error(f"Failed to refresh {key}: {str(e)}")
+                try:
+                    data = precompute_tasks[key]()
+                    if data is not None:
+                        cache.set(key, data)
+                        status[key] = "refreshed"
+                except Exception as e:
+                    logger.error(f"Failed to refresh {key}: {str(e)}")
             else:
                 status[key] = "cached"
                 
