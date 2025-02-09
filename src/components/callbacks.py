@@ -145,7 +145,10 @@ def create_accession_modal(accession):
             children=[
                 dmc.Title(f"Ship Details", order=4, mb=10),
                 dmc.SimpleGrid(
-                    cols=2,
+                    cols={
+                        "base": 1,
+                        "sm": 2
+                    },
                     spacing="lg",
                     children=[
                         dmc.Group([
@@ -187,7 +190,10 @@ def create_accession_modal(accession):
             children=[
                 dmc.Title("Taxonomy", order=4, mb=10),
                 dmc.SimpleGrid(
-                    cols=2,
+                    cols={
+                        "base": 1,
+                        "sm": 2
+                    },
                     spacing="lg",
                     children=[
                         dmc.Group([
@@ -225,45 +231,52 @@ def create_accession_modal(accession):
             withBorder=True,
             children=[
                 dmc.Title("Genome Details", order=4, mb=10),
-                dmc.Table(
-                    striped=True,
-                    highlightOnHover=True,
-                    withColumnBorders=True,
+                dmc.ScrollArea(
                     children=[
-                        html.Thead(
-                            html.Tr([
-                                html.Th("Field", style={"backgroundColor": "#f8f9fa"}),
-                                *[html.Th(
-                                    f"{modal_data['assembly_accession'].iloc[i] if 'assembly_accession' in modal_data else f'Genome {i+1}'}",
-                                    style={"backgroundColor": "#f8f9fa"}
-                                ) for i in range(len(modal_data))]
-                            ])
-                        ),
-                        html.Tbody([
-                            html.Tr([
-                                html.Td("Genome Source"),
-                                *[html.Td(modal_data["genomeSource"].iloc[i])
-                                  for i in range(len(modal_data))]
-                            ]),
-                            html.Tr([
-                                html.Td("ContigID"),
-                                *[html.Td(modal_data["contigID"].iloc[i])
-                                  for i in range(len(modal_data))]
-                            ]),
-                            html.Tr([
-                                html.Td("Element Position"),
-                                *[html.Td(f"{modal_data['elementBegin'].iloc[i]} - {modal_data['elementEnd'].iloc[i]}")
-                                  for i in range(len(modal_data))]
-                            ]),
-                            html.Tr([
-                                html.Td("Size"),
-                                *[html.Td(f"{modal_data['size'].iloc[i]:,} bp")
-                                  for i in range(len(modal_data))]
-                            ]),
-                        ])
+                        dmc.Table(
+                            striped=True,
+                            highlightOnHover=True,
+                            withColumnBorders=True,
+                            children=[
+                                html.Thead(
+                                    html.Tr([
+                                        html.Th("Field", style={"backgroundColor": "#f8f9fa"}),
+                                        *[html.Th(
+                                            f"{modal_data['assembly_accession'].iloc[i] if 'assembly_accession' in modal_data else f'Genome {i+1}'}",
+                                            style={"backgroundColor": "#f8f9fa"}
+                                        ) for i in range(len(modal_data))]
+                                    ])
+                                ),
+                                html.Tbody([
+                                    html.Tr([
+                                        html.Td("Genome Source"),
+                                        *[html.Td(modal_data["genomeSource"].iloc[i])
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                    html.Tr([
+                                        html.Td("ContigID"),
+                                        *[html.Td(modal_data["contigID"].iloc[i])
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                    html.Tr([
+                                        html.Td("Element Position"),
+                                        *[html.Td(f"{modal_data['elementBegin'].iloc[i]} - {modal_data['elementEnd'].iloc[i]}")
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                    html.Tr([
+                                        html.Td("Size"),
+                                        *[html.Td(f"{modal_data['size'].iloc[i]:,} bp")
+                                          for i in range(len(modal_data))]
+                                    ]),
+                                ])
+                            ]
+                        )
                     ]
                 ) if len(modal_data) > 1 else dmc.SimpleGrid(
-                    cols=2,
+                    cols={
+                        "base": 1,
+                        "sm": 2
+                    },
                     spacing="lg",
                     children=[
                         dmc.Group([
@@ -323,11 +336,9 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             if not active_cell:
                 return False, no_update, no_update
                 
-            # Debug the table data
             data_to_use = filtered_data if filtered_data is not None else table_data
             logger.debug(f"Table accessions: {[row['accession_tag'] for row in data_to_use[:5]]}")
             
-            # Debug the cache data
             initial_df = cache.get("meta_data")
             if initial_df is not None:
                 logger.debug(f"Cache accessions: {initial_df['accession_tag'].head().tolist()}")
@@ -336,11 +347,9 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 initial_df = fetch_meta_data()
                 logger.debug(f"Freshly fetched accessions: {initial_df['accession_tag'].head().tolist()}")
             
-            # Get the row data
             data_to_use = filtered_data if filtered_data is not None else table_data
             row_data = data_to_use[active_cell["row"]]
             
-            # Clean and standardize the accession tag
             accession = str(row_data["accession_tag"]).strip("[]").split("/")[-1].strip()
             logger.debug(f"Looking for accession in cache: {accession}")
             logger.debug(f"Available accessions in cache: {initial_df['accession_tag'].unique()[:5]}")
@@ -351,7 +360,6 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
             logger.error(traceback.format_exc())
-            # Return a more user-friendly error modal instead of raising
             error_content = html.Div([
                 html.P("Error loading modal content"),
                 html.P(f"Details: {str(e)}"),
