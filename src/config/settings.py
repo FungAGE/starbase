@@ -16,6 +16,7 @@ DATA_DIR = next((path for path in potential_db_dirs if path is not None), potent
 # Create required directories
 REQUIRED_DIRS = [
     os.path.join(DATA_DIR),
+    os.path.join(DATA_DIR, "cache"),
     os.path.join(DATA_DIR, "ships", "fna", "blastdb"),
     os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb"),
     os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),

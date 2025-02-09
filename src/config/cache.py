@@ -2,16 +2,16 @@ from flask_caching import Cache
 import os
 from src.database.sql_manager import fetch_meta_data, fetch_paper_data, fetch_ship_table, fetch_all_ships, get_database_stats
 import logging
+from src.config.settings import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-cache_dir = os.path.join(os.environ.get('HOME', '/tmp'), '.cache')
-if not os.path.exists(cache_dir):
-    os.makedirs(cache_dir)
+cache_dir = os.path.join(DATA_DIR, "cache")
+os.makedirs(cache_dir, exist_ok=True)
 
 cache = Cache(config={
     'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': '/tmp/starbase_cache',
+    'CACHE_DIR': cache_dir,
     'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hours
     'CACHE_THRESHOLD': 1000,
     'CACHE_OPTIONS': {

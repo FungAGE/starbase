@@ -26,7 +26,7 @@ from src.components import navmenu
 from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache, initialize_cache
-from src.database.sql_manager import precompute_all
+from src.database.sql_manager import precompute_all, precompute_tasks
 from src.config.database import TelemetrySession, SubmissionsSession
 from src.database.init_db import init_databases
 
@@ -190,21 +190,50 @@ def cache_status():
             data = cache.get(key)
             if data is None:
                 status[key] = "missing"
+                # Try to refresh missing data
+                if key in precompute_tasks:
+                    try:
+                        data = precompute_tasks[key]()
+                        if data is not None:
+                            cache.set(key, data)
+                            status[key] = "refreshed"
+                    except Exception as e:
+                        logger.error(f"Failed to refresh {key}: {str(e)}")
             else:
                 status[key] = "cached"
                 
-        return jsonify(status)
+        return jsonify({
+            "status": "success",
+            "cache": status
+        }), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Cache status check failed: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 @app.server.route('/api/cache/refresh', methods=['POST'])
+@limiter.limit("1 per minute")
 def refresh_cache():
     """Force refresh of all cached data"""
     try:
+        cache.clear()
+        
         results = initialize_cache()
-        return jsonify(results)
+        
+        precompute_all()
+        
+        return jsonify({
+            "status": "success",
+            "results": results
+        }), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Cache refresh failed: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 app.layout = serve_app_layout
 initialize_app()
