@@ -13,7 +13,7 @@ from Bio import SearchIO
 
 from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
 from src.database.blastdb import blast_db_exists, create_dbs
-from src.components.tables import make_ship_blast_table
+from src.components.tables import create_ag_grid
 
 import logging
 
@@ -572,8 +572,16 @@ def blast_chords(blast_output):
 
 
 def blast_table(ship_blast_results):
+    """Creates an AG Grid table for displaying BLAST results.
+    
+    Args:
+        ship_blast_results (pd.DataFrame): DataFrame containing BLAST results
+        
+    Returns:
+        dash.html.Div: Container with table and download button
+    """
     try:
-        # Validate input
+        # Validation checks...
         if not isinstance(ship_blast_results, pd.DataFrame):
             logger.error("Invalid input type for blast_table")
             return html.Div("Error: Invalid data format")
@@ -582,69 +590,87 @@ def blast_table(ship_blast_results):
             logger.warning("Empty DataFrame passed to blast_table")
             return html.Div("No results to display")
             
-        # Ensure required columns exist
+        # Column checks...
         required_cols = ["accession_tag", "familyName", "pident", "length", "evalue", "bitscore"]
         missing_cols = [col for col in required_cols if col not in ship_blast_results.columns]
         if missing_cols:
             logger.error(f"Missing required columns: {missing_cols}")
             return html.Div(f"Error: Missing columns: {', '.join(missing_cols)}")
 
-        df_columns = [
+        columns = [
             {
-                "name": "Accession",
-                "id": "accession_tag",
-                "type": "text",
+                "field": "accession_tag",
+                "headerName": "Accession",
+                "flex": 1,
+                "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                "tooltipField": "accession_tag"
             },
             {
-                "name": "Starship Family",
-                "id": "familyName",
-                "type": "text",
+                "field": "familyName",
+                "headerName": "Starship Family",
+                "flex": 1,
+                "tooltipField": "familyName"
             },
             {
-                "name": "Percent Identity",
-                "id": "pident",
-                "type": "numeric",
+                "field": "pident",
+                "headerName": "Percent Identity",
+                "flex": 1,
+                "valueFormatter": "value.toFixed(2)",
+                "type": "numericColumn"
             },
             {
-                "name": "Hit Length",
-                "id": "length",
-                "type": "numeric",
+                "field": "length",
+                "headerName": "Hit Length",
+                "flex": 1,
+                "type": "numericColumn"
             },
             {
-                "name": "E-value",
-                "id": "evalue",
-                "type": "numeric",
+                "field": "evalue",
+                "headerName": "E-value",
+                "flex": 1,
+                "valueFormatter": "value.toExponential(2)",
+                "type": "numericColumn"
             },
             {
-                "name": "Bitscore",
-                "id": "bitscore",
-                "type": "numeric",
-            },
+                "field": "bitscore",
+                "headerName": "Bitscore",
+                "flex": 1,
+                "valueFormatter": "value.toFixed(2)",
+                "type": "numericColumn"
+            }
         ]
 
-        # Remove the link formatting - just use the raw accession tags
-        # ship_blast_results['accession_tag'] = ship_blast_results['accession_tag'].apply(
-        #     lambda x: f'[{x}](/blast-table/{x})'
-        # )
-
-        tbl = html.Div(
-            [
-                make_ship_blast_table(ship_blast_results,"blast-table",df_columns),
-                dcc.Download(id="blast-dl"),
+        return html.Div([
+            # Table container with fixed height
+            html.Div(
+                create_ag_grid(
+                    df=ship_blast_results,
+                    id="blast-table",
+                    columns=columns,
+                    select_rows=True,
+                    pg_sz=15
+                ),
+                style={"height": "600px"}
+            ),
+            
+            # Download section
+            dmc.Space(h="md"),
+            dmc.Center(
                 dmc.Button(
-                    "Download BLAST results",
+                    "Download BLAST Results",
                     id="blast-dl-button",
                     variant="gradient",
                     gradient={"from": "indigo", "to": "cyan"},
                     size="lg",
-                ),
-            ]
-        )
-        return tbl
+                    leftSection=[html.I(className="bi bi-download")]
+                )
+            ),
+            dcc.Download(id="blast-dl")
+        ])
+        
     except Exception as e:
         logger.error(f"Error in blast_table: {e}")
         return html.Div(f"Error creating table: {str(e)}")
-
 
 def select_ship_family(hmmer_results):
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")

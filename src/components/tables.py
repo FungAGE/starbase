@@ -231,29 +231,6 @@ def make_paper_table():
         style={"width": "100%"}
     )
 
-def make_ship_blast_table(ship_blast_results, id, df_columns):
-    """Table for displaying BLAST results."""
-    if ship_blast_results is None:
-        ship_blast_results = []
-        
-    columns = [
-        {
-            "field": col["id"],
-            "headerName": col["name"],
-            "flex": 1,
-            "cellStyle": {"cursor": "pointer", "color": "#1976d2"} 
-                if col["id"] == "accession_tag" else None
-        }
-        for col in df_columns
-    ]
-    
-    return create_ag_grid(
-        df=ship_blast_results, 
-        id=id, 
-        columns=columns, 
-        select_rows=True
-    )
-
 def make_dl_table(df, id, table_columns):
     """Table for displaying download data."""
     if df is None or (isinstance(df, list) and len(df) == 0):
