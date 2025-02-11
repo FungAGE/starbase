@@ -18,10 +18,6 @@ def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
 
-def url_to_link(url, label):
-    return f"[{label}]({url})"
-
-
 def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
     """
     Generic AG Grid constructor for tables.
@@ -111,9 +107,12 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             "domLayout": 'autoHeight',
             "tooltipShowDelay": 0,
             "tooltipHideDelay": 1000,
+            "enableCellTextSelection": True,
+            "ensureDomOrder": True,
         },
         className="ag-theme-alpine",
-        style={"width": "100%"}
+        style={"width": "100%"},
+        dangerously_allow_code=True
     )
     return html.Div([
         html.Div(id=f"{id}-click-data", style={"display": "none"}),
@@ -177,6 +176,11 @@ def make_paper_table():
             .reset_index()
         )
         df = df_summary.sort_values(by="PublicationYear", ascending=False)
+        
+        df['DOI'] = df['DOI'].apply(
+            lambda x: f'[{x}](https://doi.org/{x})'
+            if pd.notnull(x) else ''
+        )
 
     columns = [
         {
@@ -200,9 +204,8 @@ def make_paper_table():
         {
             "field": "DOI", 
             "headerName": "DOI", 
-            "flex": 1, 
-            "cellRenderer": "markdown",
-            "tooltipField": "DOI",
+            "flex": 1,
+            "cellRenderer": "markdown"
         },
     ]
     
