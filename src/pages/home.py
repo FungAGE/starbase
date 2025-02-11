@@ -22,7 +22,7 @@ title = dmc.Paper([
     dmc.Group(
         [
             dmc.Image(
-                src="/assets/logos/emblem.png",
+                src="/assets/logos/emblem.svg",
                 fit="contain",
                 radius="md",
                 style={
