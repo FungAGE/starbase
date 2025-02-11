@@ -251,33 +251,22 @@ def create_accession_modal(accession):
         raise
 
 def create_modal_callback(table_id, modal_id, content_id, title_id, column_check=None):
-    # First, add the clientside callback to handle cell clicks
-    clientside_callback(
-        ClientsideFunction(
-            namespace='clientside',
-            function_name='handleCellClick'
-        ),
-        Output(f"{table_id}-click-data", "children"),
-        Input(table_id, "cellClicked"),
-        prevent_initial_call=True
-    )
-
     @callback(
         Output(modal_id, "opened"),
         Output(content_id, "children"),
         Output(title_id, "children"),
-        Input(f"{table_id}-click-data", "children"),
+        Input(table_id, "cellClicked"),
         prevent_initial_call=True
     )
-    def toggle_modal(click_data):
+    def toggle_modal(cell_clicked):
         try:
-            if not click_data:
+            if not cell_clicked:
                 return False, no_update, no_update
             
-            data = json.loads(click_data)
-            if data["column"] == "accession_tag":
+            # Check if the clicked cell is in the accession_tag column
+            if cell_clicked["colId"] == "accession_tag":
                 # Clean and standardize the accession tag
-                accession = str(data["accession"]).strip("[]").split("/")[-1].strip()
+                accession = str(cell_clicked["value"]).strip("[]").split("/")[-1].strip()
                 logger.debug(f"Looking for accession in cache: {accession}")
                 
                 modal_content, modal_title = create_accession_modal(accession)

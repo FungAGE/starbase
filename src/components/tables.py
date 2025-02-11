@@ -150,7 +150,10 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             
             # Add special styling for accession_tag
             if col["field"] == "accession_tag":
-                col_def["cellStyle"] = {"cursor": "pointer", "color": "#1976d2"}
+                col_def.update({
+                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                    "cellClass": "clickable-cell"
+                })
                 
             grid_columns.append(col_def)
     else:
