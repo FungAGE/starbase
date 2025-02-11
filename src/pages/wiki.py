@@ -471,23 +471,33 @@ def create_search_results(filtered_meta, cached_meta):
             {
                 "field": "accession_tag",
                 "headerName": "Accession",
+                "flex": 1,
+                "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
             },
             {
                 "field": "familyName",
                 "headerName": "Starship Family",
+                "flex": 1
             },
             {
                 "field": "n_genomes",
-                "headerName": "Number of genomes",
+                "headerName": "Number of Genomes",
+                "flex": 1,
+                "type": "numericColumn",
+                "valueFormatter": "value.toLocaleString()"
             },
             {
                 "field": "species",
                 "headerName": "Species",
+                "flex": 1
             },
             {
                 "field": "size",
                 "headerName": "Element Length (bp)",
-            },
+                "flex": 1,
+                "type": "numericColumn",
+                "valueFormatter": "value.toLocaleString()"
+            }
         ]
         
         table = make_ship_table(
