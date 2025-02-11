@@ -132,8 +132,11 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
+    # Handle empty/null data
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        df = pd.DataFrame(columns=[col.get("field") for col in (columns or [])])
+    
     if columns is not None:
-        # Add clickable styling for accession_tag columns
         grid_columns = [
             {
                 "field": col.get("field"),
@@ -160,7 +163,9 @@ def make_paper_table():
     df = cache.get("paper_data")
     if df is None:
         df = fetch_paper_data()
-    if df is not None:
+    if df is None:
+        df = pd.DataFrame(columns=["Title", "PublicationYear", "Author", "DOI"])
+    elif not df.empty:
         df_summary = (
             df.groupby("Title")
             .agg({
@@ -172,21 +177,26 @@ def make_paper_table():
             })
             .reset_index()
         )
+        df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
-        columns = [
-            {"field": "Title", "headerName": "Title", "flex": 2},
-            {"field": "PublicationYear", "headerName": "Publication Year", "flex": 1},
-            {"field": "Author", "headerName": "Authors", "flex": 1.5},
-            {"field": "DOI", "headerName": "DOI", "flex": 1, "cellRenderer": "markdown"},
-        ]
+    columns = [
+        {"field": "Title", "headerName": "Title", "flex": 2},
+        {"field": "PublicationYear", "headerName": "Publication Year", "flex": 1},
+        {"field": "Author", "headerName": "Authors", "flex": 1.5},
+        {"field": "DOI", "headerName": "DOI", "flex": 1, "cellRenderer": "markdown"},
+    ]
         
-        return create_ag_grid(df_summary.sort_values(by="PublicationYear", ascending=False), 
-                            "papers-table", 
-                            columns=columns)
-    return html.Div("No data available")
+    return html.Div(
+        create_ag_grid(df, "papers-table", columns=columns),
+        style={"width": "100%"}
+    )
 
 def make_ship_blast_table(ship_blast_results, id, df_columns):
     """Table for displaying BLAST results."""
+    # Handle empty/null data
+    if ship_blast_results is None:
+        ship_blast_results = []
+        
     columns = [
         {
             "field": col["id"],
@@ -198,10 +208,12 @@ def make_ship_blast_table(ship_blast_results, id, df_columns):
         for col in df_columns
     ]
     
-    return create_ag_grid(ship_blast_results, 
-                         id, 
-                         columns=columns, 
-                         select_rows=True)
+    return create_ag_grid(
+        df=ship_blast_results, 
+        id=id, 
+        columns=columns, 
+        select_rows=True
+    )
 
 def make_dl_table(df, id, table_columns):
     """Table for displaying download data."""
@@ -228,27 +240,28 @@ def make_wiki_table(n_ships, max_size, min_size):
     
     data = [
         {
-            "metric": "Total Number of Starships",
-            "value": f"{n_ships:,.0f}",
+            "Metric": "Total Number of Starships",
+            "Value": f"{n_ships:,.0f}",
         },
         {
-            "metric": "Maximum Size (bp)",
-            "value": f"{max_size:,.0f}",
+            "Metric": "Maximum Size (bp)",
+            "Value": f"{max_size:,.0f}",
         },
         {
-            "metric": "Minimum Size (bp)",
-            "value": f"{min_size:,.0f}",
+            "Metric": "Minimum Size (bp)",
+            "Value": f"{min_size:,.0f}",
         },
     ]
 
-    return html.Div(
-        dash_table.DataTable(
-            data=data,
-            columns=[
-                {"name": col, "id": col} for col in ["metric", "value"]
-            ],
-            style_table={"overflowX": "auto", "maxWidth": "500px"},
-            style_cell={"textAlign": "left"},
-            style_header={"fontWeight": "bold"},
-        )
+    columns = [
+        {"field": "Metric", "headerName": "Metric", "flex": 2},
+        {"field": "Value", "headerName": "Value", "flex": 1},
+    ]
+
+    return create_ag_grid(
+        df=data,
+        id="wiki-summary-table",
+        columns=columns,
+        select_rows=False,
+        pg_sz=10
     )
