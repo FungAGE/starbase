@@ -18,7 +18,6 @@ def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
 
-# Function to convert URL string to HTML link
 def url_to_link(url, label):
     return f"[{label}]({url})"
 
@@ -34,7 +33,6 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
-    # Convert input data to proper format and handle empty/null cases
     if df is None:
         row_data = []
     elif isinstance(df, pd.DataFrame):
@@ -44,7 +42,6 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
     else:
         row_data = []
         
-    # Ensure we have valid columns even with empty data
     if columns is None and not row_data:
         grid_columns = []
     else:
@@ -53,10 +50,12 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             "sortable": True,
             "filter": True,
             "minWidth": 100,
-            "flex": 1
+            "flex": 1,
+            "tooltipField": "value",
+            "tooltipComponent": "defaultTooltip",
+            "suppressMovable": True,
         }
         
-        # If no columns provided, create them from data
         if columns is None:
             grid_columns = []
             if select_rows:
@@ -71,7 +70,6 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                     "flex": 0
                 })
                 
-            # Get column names from DataFrame or first dict in list
             if isinstance(df, pd.DataFrame):
                 col_names = df.columns
             elif row_data and isinstance(row_data[0], dict):
@@ -111,6 +109,8 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             "paginationPageSize": pg_sz,
             "rowSelection": "multiple" if select_rows else None,
             "domLayout": 'autoHeight',
+            "tooltipShowDelay": 0,
+            "tooltipHideDelay": 1000,
         },
         className="ag-theme-alpine",
         style={"width": "100%"}
@@ -132,7 +132,6 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
-    # Handle empty/null data
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         df = pd.DataFrame(columns=[col.get("field") for col in (columns or [])])
     
@@ -180,20 +179,49 @@ def make_paper_table():
         df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
     columns = [
-        {"field": "Title", "headerName": "Title", "flex": 2},
-        {"field": "PublicationYear", "headerName": "Publication Year", "flex": 1},
-        {"field": "Author", "headerName": "Authors", "flex": 1.5},
-        {"field": "DOI", "headerName": "DOI", "flex": 1, "cellRenderer": "markdown"},
+        {
+            "field": "Title", 
+            "headerName": "Title", 
+            "flex": 2,
+            "tooltipField": "Title",
+            "autoHeight": True,
+        },
+        {
+            "field": "PublicationYear", 
+            "headerName": "Publication Year", 
+            "flex": 1,
+        },
+        {
+            "field": "Author", 
+            "headerName": "Authors", 
+            "flex": 1.5,
+            "tooltipField": "Author",
+        },
+        {
+            "field": "DOI", 
+            "headerName": "DOI", 
+            "flex": 1, 
+            "cellRenderer": "markdown",
+            "tooltipField": "DOI",
+        },
     ]
+    
+    if isinstance(df, pd.DataFrame):
+        row_data = df.fillna('').to_dict("records")
+    else:
+        row_data = []
         
     return html.Div(
-        create_ag_grid(df, "papers-table", columns=columns),
+        create_ag_grid(
+            df=row_data,
+            id="papers-table", 
+            columns=columns
+        ),
         style={"width": "100%"}
     )
 
 def make_ship_blast_table(ship_blast_results, id, df_columns):
     """Table for displaying BLAST results."""
-    # Handle empty/null data
     if ship_blast_results is None:
         ship_blast_results = []
         
@@ -217,7 +245,6 @@ def make_ship_blast_table(ship_blast_results, id, df_columns):
 
 def make_dl_table(df, id, table_columns):
     """Table for displaying download data."""
-    # Ensure we have valid data to work with
     if df is None or (isinstance(df, list) and len(df) == 0):
         df = pd.DataFrame(columns=[col["id"] for col in table_columns])
     
