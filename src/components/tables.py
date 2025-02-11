@@ -34,66 +34,72 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
-    # Convert input data to proper format
-    if isinstance(df, pd.DataFrame):
-        row_data = df.to_dict("records")
+    # Convert input data to proper format and handle empty/null cases
+    if df is None:
+        row_data = []
+    elif isinstance(df, pd.DataFrame):
+        row_data = df.fillna('').to_dict("records")
     elif isinstance(df, list):
         row_data = df
     else:
         row_data = []
         
-    defaultColDef = {
-        "resizable": True,
-        "sortable": True,
-        "filter": True,
-        "minWidth": 100,
-        "flex": 1
-    }
-    
-    # If no columns provided, create them from data
-    if columns is None:
+    # Ensure we have valid columns even with empty data
+    if columns is None and not row_data:
         grid_columns = []
-        if select_rows:
-            grid_columns.append({
-                "headerCheckboxSelection": True,
-                "checkboxSelection": True,
-                "width": 50,
-                "pinned": "left",
-                "lockPosition": True,
-                "suppressMenu": True,
-                "headerName": "",
-                "flex": 0
-            })
-            
-        # Get column names from DataFrame or first dict in list
-        if isinstance(df, pd.DataFrame):
-            col_names = df.columns
-        elif row_data and isinstance(row_data[0], dict):
-            col_names = row_data[0].keys()
-        else:
-            col_names = []
-            
-        grid_columns.extend([
-            {
-                "field": col,
-                "headerName": col.replace("_", " ").title(),
-                "flex": 1
-            }
-            for col in col_names
-        ])
     else:
-        grid_columns = columns
-        if select_rows:
-            grid_columns.insert(0, {
-                "headerCheckboxSelection": True,
-                "checkboxSelection": True,
-                "width": 50,
-                "pinned": "left",
-                "lockPosition": True,
-                "suppressMenu": True,
-                "headerName": "",
-                "flex": 0
-            })
+        defaultColDef = {
+            "resizable": True,
+            "sortable": True,
+            "filter": True,
+            "minWidth": 100,
+            "flex": 1
+        }
+        
+        # If no columns provided, create them from data
+        if columns is None:
+            grid_columns = []
+            if select_rows:
+                grid_columns.append({
+                    "headerCheckboxSelection": True,
+                    "checkboxSelection": True,
+                    "width": 50,
+                    "pinned": "left",
+                    "lockPosition": True,
+                    "suppressMenu": True,
+                    "headerName": "",
+                    "flex": 0
+                })
+                
+            # Get column names from DataFrame or first dict in list
+            if isinstance(df, pd.DataFrame):
+                col_names = df.columns
+            elif row_data and isinstance(row_data[0], dict):
+                col_names = row_data[0].keys()
+            else:
+                col_names = []
+                
+            grid_columns.extend([
+                {
+                    "field": col,
+                    "headerName": col.replace("_", " ").title(),
+                    "flex": 1
+                }
+                for col in col_names
+            ])
+        else:
+            grid_columns = columns
+            if select_rows:
+                grid_columns.insert(0, {
+                    "headerCheckboxSelection": True,
+                    "checkboxSelection": True,
+                    "width": 50,
+                    "pinned": "left",
+                    "lockPosition": True,
+                    "suppressMenu": True,
+                    "headerName": "",
+                    "flex": 0
+                })
     
     grid = dag.AgGrid(
         id=id,
@@ -104,9 +110,10 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             "pagination": True,
             "paginationPageSize": pg_sz,
             "rowSelection": "multiple" if select_rows else None,
+            "domLayout": 'autoHeight',
         },
         className="ag-theme-alpine",
-        style={"height": "60vh", "width": "100%"}
+        style={"width": "100%"}
     )
     return html.Div([
         html.Div(id=f"{id}-click-data", style={"display": "none"}),
@@ -198,6 +205,10 @@ def make_ship_blast_table(ship_blast_results, id, df_columns):
 
 def make_dl_table(df, id, table_columns):
     """Table for displaying download data."""
+    # Ensure we have valid data to work with
+    if df is None or (isinstance(df, list) and len(df) == 0):
+        df = pd.DataFrame(columns=[col["id"] for col in table_columns])
+    
     columns = [
         {
             "field": col["id"],
