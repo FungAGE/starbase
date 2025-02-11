@@ -1,8 +1,9 @@
 import warnings
+import json
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, callback
+from dash import dcc, html, callback, clientside_callback, ClientsideFunction
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
@@ -465,38 +466,38 @@ def create_search_results(filtered_meta, cached_meta):
                 c="dimmed"
             )
 
+        # Updated column definitions for AG Grid
         table_columns = [
             {
-                "name": "Accession",
-                "id": "accession_tag",
-                "deletable": False,
-                "selectable": False,
-                "presentation": "markdown",
+                "field": "accession_tag",
+                "headerName": "Accession",
+                "flex": 1,
+                "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
             },
             {
-                "name": "Starship Family",
-                "id": "familyName",
-                "deletable": False,
-                "selectable": False,
+                "field": "familyName",
+                "headerName": "Starship Family",
+                "flex": 1
             },
             {
-                "name": "Number of genomes",
-                "id": "n_genomes",
-                "deletable": False,
-                "selectable": False,
+                "field": "n_genomes",
+                "headerName": "Number of Genomes",
+                "flex": 1,
+                "type": "numericColumn",
+                "valueFormatter": "value.toLocaleString()"
             },
             {
-                "name": "Species",
-                "id": "species",
-                "deletable": False,
-                "selectable": False,
+                "field": "species",
+                "headerName": "Species",
+                "flex": 1
             },
             {
-                "name": "Element Length (bp)",
-                "id": "size",
-                "deletable": False,
-                "selectable": False,
-            },
+                "field": "size",
+                "headerName": "Element Length (bp)",
+                "flex": 1,
+                "type": "numericColumn",
+                "valueFormatter": "value.toLocaleString()"
+            }
         ]
         
         table = make_ship_table(

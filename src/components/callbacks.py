@@ -1,10 +1,11 @@
-from dash import html, Output, Input, State, callback, no_update, dcc
+from dash import html, Output, Input, State, callback, no_update, dcc, clientside_callback, ClientsideFunction
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from typing import List  
 
 import logging
 import traceback
+import json
 
 from src.config.cache import cache
 from src.database.sql_manager import fetch_meta_data
@@ -323,42 +324,24 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         Output(modal_id, "opened"),
         Output(content_id, "children"),
         Output(title_id, "children"),
-        [Input(table_id, "active_cell")],
-        [
-            State(modal_id, "opened"),
-            State(table_id, "data"),
-            State(table_id, "derived_virtual_data"),
-            State(table_id, "derived_virtual_selected_rows"),
-            State(table_id, "page_current"),
-            State(table_id, "page_size"),
-        ],
+        Input(table_id, "cellClicked"),
+        prevent_initial_call=True
     )
-    def toggle_modal(active_cell, is_open, table_data, filtered_data, selected_rows, page_current, page_size):        
+    def toggle_modal(cell_clicked):
         try:
-            if not active_cell:
+            if not cell_clicked:
                 return False, no_update, no_update
+            
+            # Check if the clicked cell is in the accession_tag column
+            if cell_clicked["colId"] == "accession_tag":
+                # Clean and standardize the accession tag
+                accession = str(cell_clicked["value"]).strip("[]").split("/")[-1].strip()
+                logger.debug(f"Looking for accession in cache: {accession}")
                 
-            data_to_use = filtered_data if filtered_data is not None else table_data
+                modal_content, modal_title = create_accession_modal(accession)
+                return True, modal_content, modal_title
             
-            initial_df = cache.get("meta_data")
-            if initial_df is not None:
-                logger.debug(f"Cache accessions: {initial_df['accession_tag'].head().tolist()}")
-            else:
-                logger.debug("No data in meta_data cache")
-                initial_df = fetch_meta_data()
-                logger.debug(f"Freshly fetched accessions: {initial_df['accession_tag'].head().tolist()}")
-            
-            data_to_use = filtered_data if filtered_data is not None else table_data
-            row_data = data_to_use[active_cell["row"]]
-            # Calculate the correct row index based on current page
-            actual_row_index = (page_current or 0) * page_size + active_cell["row"]
-            row_data = data_to_use[actual_row_index]
-            
-            accession = str(row_data["accession_tag"]).strip("[]").split("/")[-1].strip()
-            logger.debug(f"Looking for accession in cache: {accession}")
-            
-            modal_content, modal_title = create_accession_modal(accession)
-            return True, modal_content, modal_title
+            return False, no_update, no_update
             
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")

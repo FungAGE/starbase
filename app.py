@@ -38,6 +38,8 @@ external_stylesheets = [
     dbc.themes.BOOTSTRAP,
     "/assets/styles.css",
     "https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
+    "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-grid.css",
+    "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-theme-alpine.css",
 ]
 
 external_scripts = [

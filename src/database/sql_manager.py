@@ -163,7 +163,7 @@ def fetch_ship_table():
         session.close()
 
 @cache.memoize()
-def fetch_accesion_ship(accession_tag):
+def fetch_accession_ship(accession_tag):
     """Fetch sequence and GFF data for a specific ship."""
     session = StarbaseSession()
     

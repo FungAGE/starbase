@@ -161,7 +161,8 @@ layout = dmc.Container(
 
 
 @callback(
-    Output("dl-table", "data"),
+    [Output("dl-table", "rowData"),
+     Output("table-stats", "children")],
     [Input("url", "href"),
      Input("curated-input", "checked"),
      Input("dereplicated-input", "checked")]
@@ -170,17 +171,22 @@ def update_dl_table(url, curated=True, dereplicate=False):
     logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
     try:
         df = fetch_download_data(curated=curated, dereplicate=dereplicate)
-        if df is None:
-            logger.warning("fetch_download_data returned None")
-            return []
+        if df is None or df.empty:
+            logger.warning("fetch_download_data returned None or empty DataFrame")
+            return [], "No records found"
             
         logger.info(f"Retrieved {len(df)} records (curated={curated}, dereplicated={dereplicate}).")
-        df.fillna("", inplace=True)
+        df = df.fillna("")  # Explicitly fill NA values
         
-        return df.to_dict("records")
+        # Convert to records and ensure all values are strings
+        records = [{k: str(v) if pd.notnull(v) else "" for k, v in record.items()} 
+                  for record in df.to_dict("records")]
+        
+        return records, f"Showing {len(records)} records"
+        
     except Exception as e:
         logger.error(f"Failed to execute query in make_dl_table. Details: {e}")
-        return []
+        return [], "Error loading data"
 
 @callback(
     [Output("dl-package", "data"),
