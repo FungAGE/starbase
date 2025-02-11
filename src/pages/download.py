@@ -23,6 +23,7 @@ table_columns = [
         "deletable": False,
         "selectable": False,
         "presentation": "markdown",
+        "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
     },
     {
         "name": "Starship Family",

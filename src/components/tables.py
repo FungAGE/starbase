@@ -50,6 +50,9 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             "tooltipField": "value",
             "tooltipComponent": "defaultTooltip",
             "suppressMovable": True,
+            **({
+                "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
+            } if "field" in columns[0] and columns[0]["field"] == "accession_tag" else {})
         }
         
         if columns is None:
@@ -77,7 +80,9 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                 {
                     "field": col,
                     "headerName": col.replace("_", " ").title(),
-                    "flex": 1
+                    "flex": 1,
+                    **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
+                       if col == "accession_tag" else {})
                 }
                 for col in col_names
             ])
@@ -243,7 +248,9 @@ def make_dl_table(df, id, table_columns):
         {
             "field": col["id"],
             "headerName": col["name"],
-            "flex": 1
+            "flex": 1,
+            **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
+               if col["id"] == "accession_tag" else {}),
         }
         for col in table_columns
     ]
