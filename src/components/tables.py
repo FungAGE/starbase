@@ -131,20 +131,28 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
+    # Handle empty or None DataFrame
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        df = pd.DataFrame(columns=[col.get("field") for col in (columns or [])])
+        if columns:
+            df = pd.DataFrame(columns=[col["field"] for col in columns])
+        else:
+            df = pd.DataFrame()
     
-    if columns is not None:
-        grid_columns = [
-            {
-                "field": col.get("field"),
-                "headerName": col.get("headerName"),
-                "flex": col.get("flex", 1),
-                "cellStyle": {"cursor": "pointer", "color": "#1976d2"} 
-                    if col.get("field") == "accession_tag" else None
+    # Create column definitions
+    if columns:
+        grid_columns = []
+        for col in columns:
+            col_def = {
+                "field": col["field"],
+                "headerName": col["name"] if "name" in col else col["field"].replace("_", " ").title(),
+                "flex": 1
             }
-            for col in columns
-        ]
+            
+            # Add special styling for accession_tag
+            if col["field"] == "accession_tag":
+                col_def["cellStyle"] = {"cursor": "pointer", "color": "#1976d2"}
+                
+            grid_columns.append(col_def)
     else:
         grid_columns = None
         
