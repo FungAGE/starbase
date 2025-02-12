@@ -23,6 +23,7 @@ table_columns = [
         "deletable": False,
         "selectable": False,
         "presentation": "markdown",
+        "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
     },
     {
         "name": "Starship Family",
@@ -161,7 +162,8 @@ layout = dmc.Container(
 
 
 @callback(
-    Output("dl-table", "data"),
+    [Output("dl-table", "rowData"),
+     Output("table-stats", "children")],
     [Input("url", "href"),
      Input("curated-input", "checked"),
      Input("dereplicated-input", "checked")]
@@ -170,25 +172,30 @@ def update_dl_table(url, curated=True, dereplicate=False):
     logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
     try:
         df = fetch_download_data(curated=curated, dereplicate=dereplicate)
-        if df is None:
-            logger.warning("fetch_download_data returned None")
-            return []
+        if df is None or df.empty:
+            logger.warning("fetch_download_data returned None or empty DataFrame")
+            return [], "No records found"
             
         logger.info(f"Retrieved {len(df)} records (curated={curated}, dereplicated={dereplicate}).")
-        df.fillna("", inplace=True)
+        df = df.fillna("")  # Explicitly fill NA values
         
-        return df.to_dict("records")
+        # Convert to records and ensure all values are strings
+        records = [{k: str(v) if pd.notnull(v) else "" for k, v in record.items()} 
+                  for record in df.to_dict("records")]
+        
+        return records, f"Showing {len(records)} records"
+        
     except Exception as e:
         logger.error(f"Failed to execute query in make_dl_table. Details: {e}")
-        return []
+        return [], "Error loading data"
 
 @callback(
     [Output("dl-package", "data"),
      Output("notifications-container", "children")],
     [Input("download-all-btn", "n_clicks"),
      Input("download-selected-btn", "n_clicks"),
-     Input("dl-table", "data"),
-     Input("dl-table", "derived_virtual_selected_rows")],
+     Input("dl-table", "rowData"),
+     Input("dl-table", "selectedRows")],
     prevent_initial_call=True,
 )
 def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
@@ -252,9 +259,8 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                     )
                 )
 
-            # Get selected accessions
-            selected_df = table_df.iloc[selected_rows]
-            accessions = selected_df["accession_tag"].to_list()
+            # Get selected accessions directly from selected_rows
+            accessions = [row["accession_tag"] for row in selected_rows]
             logger.info(f"Using selected table data: {accessions}")
             
             # Filter all ships by selected accessions
@@ -323,16 +329,23 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
 
 @callback(
     Output("download-selected-btn", "disabled"),
-    [Input("dl-table", "derived_virtual_selected_rows")]
+    [Input("dl-table", "selectedRows")]
 )
 def update_download_selected_button(selected_rows):
     # Disable the button if no rows are selected
     return not selected_rows or len(selected_rows) == 0
 
-toggle_modal = create_modal_callback(
-    "dl-table",
-    "accession-modal",
-    "modal-content",
-    "modal-title",
-    column_check="accession_tag"
+@callback(
+    [Output("accession-modal", "opened"),
+     Output("modal-content", "children"),
+     Output("modal-title", "children")],
+    [Input("dl-table", "cellClicked")],
+    [State("dl-table", "rowData")],
+    prevent_initial_call=True
 )
+def toggle_modal(cell_clicked, row_data):
+    if not cell_clicked or cell_clicked["colId"] != "accession_tag":
+        raise dash.exceptions.PreventUpdate
+        
+    accession = cell_clicked["value"]
+    return create_accession_modal(accession)

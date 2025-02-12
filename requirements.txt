@@ -2,6 +2,7 @@ bcbio_gff==0.7.0
 beautifulsoup4==4.11.1
 biopython==1.83
 dash==2.16.1
+dash-ag-grid==2.0.0a3
 dash-table==5.0.0
 dash_core_components==2.0.0
 dash_html_components==2.0.0

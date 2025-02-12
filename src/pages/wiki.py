@@ -1,8 +1,9 @@
 import warnings
+import json
 
 warnings.filterwarnings("ignore")
 import dash
-from dash import dcc, html, callback
+from dash import dcc, html, callback, clientside_callback, ClientsideFunction
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 import dash_core_components as dcc
@@ -166,120 +167,126 @@ layout = dmc.Container(
         
         # Header Section
         dmc.Space(h="md"),        
-        dmc.Grid(
+        dmc.Paper(
             children=[
-                # Left Column - Search Section
-                dmc.GridCol(
-                    span={"lg": 4, "md": 12},
+                dmc.Title(
+                    "Starship Wiki",
+                    order=1,
+                    mb="md",
+                ),
+                dmc.Text(
+                    "Search and explore the characteristics of different Starship families",
+                    c="dimmed",
+                    size="lg",
+                ),
+                dmc.Space(h="md"),
+                dmc.Grid(
                     children=[
-
-                        dmc.Paper(
+                        # Taxonomy Search
+                        dmc.GridCol(
+                            span={"lg": 3, "md": 6, "sm": 12},
                             children=[
-                                dmc.Title(
-                                    "Starship Wiki",
-                                    order=1,
-                                    mb="md",
-                                ),
-                                dmc.Text(
-                                    "Search and explore the characteristics of different Starship families",
-                                    c="dimmed",
-                                    size="lg",
-                                ),
-                                dmc.Space(h="md"),
-                                dmc.Grid(
-                                    children=[
-                                        # Taxonomy Search
-                                        dmc.GridCol(
-                                            span={"lg": 3, "md": 6, "sm": 12},
-                                            children=[
-                                                dmc.MultiSelect(
-                                                    id="taxonomy-search",
-                                                    label="Taxonomy",
-                                                    placeholder="Search by taxonomy...",
-                                                    searchable=True,
-                                                    clearable=True,
-                                                    nothingFoundMessage="No options found",
-                                                    data=[],  # Will be populated by callback
-                                                    value=[],  # Initialize with empty list
-                                                ),
-                                            ],
-                                        ),
-                                        # Family Search
-                                        dmc.GridCol(
-                                            span={"lg": 3, "md": 6, "sm": 12},
-                                            children=[
-                                                dmc.MultiSelect(
-                                                    id="family-search",
-                                                    label="Starship Family",
-                                                    placeholder="Search by family...",
-                                                    searchable=True,
-                                                    clearable=True,
-                                                    nothingFoundMessage="No options found",
-                                                    data=[],  # Will be populated by callback
-                                                    value=[],  # Initialize with empty list
-                                                ),
-                                            ],
-                                        ),
-                                        # Navis Search
-                                        dmc.GridCol(
-                                            span={"lg": 3, "md": 6, "sm": 12},
-                                            children=[
-                                                dmc.MultiSelect(
-                                                    id="navis-search",
-                                                    label="Navis",
-                                                    placeholder="Search by navis...",
-                                                    searchable=True,
-                                                    clearable=True,
-                                                    nothingFoundMessage="No options found",
-                                                    data=[],  # Will be populated by callback
-                                                    value=[],  # Initialize with empty list
-                                                ),
-                                            ],
-                                        ),
-                                        # Haplotype Search
-                                        dmc.GridCol(
-                                            span={"lg": 3, "md": 6, "sm": 12},
-                                            children=[
-                                                dmc.MultiSelect(
-                                                    id="haplotype-search",
-                                                    label="Haplotype",
-                                                    placeholder="Search by haplotype...",
-                                                    searchable=True,
-                                                    clearable=True,
-                                                    nothingFoundMessage="No options found",
-                                                    data=[],  # Will be populated by callback
-                                                    value=[],  # Initialize with empty list
-                                                ),
-                                            ],
-                                        ),
-                                    ],
-                                    gutter="xl",
-                                ),
-                                # Search Actions
-                                dmc.Group(
-                                    align="right",
-                                    mt="md",
-                                    children=[
-                                        dmc.Button(
-                                            "Reset",
-                                            id="reset-search",
-                                            variant="outline",
-                                            leftSection=DashIconify(icon="tabler:refresh"),
-                                        ),
-                                        dmc.Button(
-                                            "Search",
-                                            id="apply-search",
-                                            variant="filled",
-                                            leftSection=DashIconify(icon="tabler:search"),
-                                        ),
-                                    ],
+                                dmc.MultiSelect(
+                                    id="taxonomy-search",
+                                    label="Taxonomy",
+                                    placeholder="Search by taxonomy...",
+                                    searchable=True,
+                                    clearable=True,
+                                    nothingFoundMessage="No options found",
+                                    data=[],  # Will be populated by callback
+                                    value=[],  # Initialize with empty list
                                 ),
                             ],
-                            p="xl",
-                            radius="md",
-                            withBorder=True,
-                            mb="xl",
                         ),
+                        # Family Search
+                        dmc.GridCol(
+                            span={"lg": 3, "md": 6, "sm": 12},
+                            children=[
+                                dmc.MultiSelect(
+                                    id="family-search",
+                                    label="Starship Family",
+                                    placeholder="Search by family...",
+                                    searchable=True,
+                                    clearable=True,
+                                    nothingFoundMessage="No options found",
+                                    data=[],  # Will be populated by callback
+                                    value=[],  # Initialize with empty list
+                                ),
+                            ],
+                        ),
+                        # Navis Search
+                        dmc.GridCol(
+                            span={"lg": 3, "md": 6, "sm": 12},
+                            children=[
+                                dmc.MultiSelect(
+                                    id="navis-search",
+                                    label="Navis",
+                                    placeholder="Search by navis...",
+                                    searchable=True,
+                                    clearable=True,
+                                    nothingFoundMessage="No options found",
+                                    data=[],  # Will be populated by callback
+                                    value=[],  # Initialize with empty list
+                                ),
+                            ],
+                        ),
+                        # Haplotype Search
+                        dmc.GridCol(
+                            span={"lg": 3, "md": 6, "sm": 12},
+                            children=[
+                                dmc.MultiSelect(
+                                    id="haplotype-search",
+                                    label="Haplotype",
+                                    placeholder="Search by haplotype...",
+                                    searchable=True,
+                                    clearable=True,
+                                    nothingFoundMessage="No options found",
+                                    data=[],  # Will be populated by callback
+                                    value=[],  # Initialize with empty list
+                                ),
+                            ],
+                        ),
+                    ],
+                    gutter="xl",
+                ),
+                # Search Actions
+                dmc.Group(
+                    align="right",
+                    mt="md",
+                    children=[
+                        dmc.Button(
+                            "Reset",
+                            id="reset-search",
+                            variant="outline",
+                            leftSection=DashIconify(icon="tabler:refresh"),
+                        ),
+                        dmc.Button(
+                            "Search",
+                            id="apply-search",
+                            variant="filled",
+                            leftSection=DashIconify(icon="tabler:search"),
+                        ),
+                    ],
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            mb="xl",
+        ),
+        dmc.Grid(
+            children=[
+                # Left Column - Search Results
+                dmc.GridCol(
+                    span={"lg": 6, "md": 12},
+                    children=[
+                        html.Div(id="search-results"),
+                    ]
+                ),
+                # Right Column - Search Section
+                dmc.GridCol(
+                    span={"lg": 6, "md": 12},
+                    children=[
                         dmc.Paper(
                             children=[
                                 dmc.Title("Taxonomic Distribution", order=2, mb="md"),
@@ -300,7 +307,7 @@ layout = dmc.Container(
                             withBorder=True,
                             mb="xl",
                         ),
-                        dmc.Space(h="md"),
+                        dmc.Space(h="sm"),
                         dmc.Paper(
                             children=[
                                 dmc.Title("Starship Families", order=2, mb="md"),
@@ -316,17 +323,15 @@ layout = dmc.Container(
                             p="md",
                             radius="md",
                             withBorder=True,
-                            style={"height": "calc(100vh - 200px)", "overflowY": "auto"},
+                            style={
+                                "minHeight": "200px",  # Minimum height when collapsed
+                                "maxHeight": "calc(100vh - 200px)",  # Maximum height
+                                "height": "auto",  # Allow height to adjust to content
+                                "overflowY": "auto"
+                            },
                         ),
 
-                    ]),
-                # Right Column - Search Results
-                dmc.GridCol(
-                    span={"lg": 8, "md": 12},
-                    children=[
-                        html.Div(id="search-results"),
-                    ]
-                )
+                ]),
             ],
         ),
     ],
@@ -465,38 +470,38 @@ def create_search_results(filtered_meta, cached_meta):
                 c="dimmed"
             )
 
+        # Updated column definitions for AG Grid
         table_columns = [
             {
-                "name": "Accession",
-                "id": "accession_tag",
-                "deletable": False,
-                "selectable": False,
-                "presentation": "markdown",
+                "field": "accession_tag",
+                "headerName": "Accession",
+                "flex": 1,
+                "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
             },
             {
-                "name": "Starship Family",
-                "id": "familyName",
-                "deletable": False,
-                "selectable": False,
+                "field": "familyName",
+                "headerName": "Starship Family",
+                "flex": 1
             },
             {
-                "name": "Number of genomes",
-                "id": "n_genomes",
-                "deletable": False,
-                "selectable": False,
+                "field": "n_genomes",
+                "headerName": "Number of Genomes",
+                "flex": 1,
+                "type": "numericColumn",
+                "valueFormatter": "value.toLocaleString()"
             },
             {
-                "name": "Species",
-                "id": "species",
-                "deletable": False,
-                "selectable": False,
+                "field": "species",
+                "headerName": "Species",
+                "flex": 1
             },
             {
-                "name": "Element Length (bp)",
-                "id": "size",
-                "deletable": False,
-                "selectable": False,
-            },
+                "field": "size",
+                "headerName": "Element Length (bp)",
+                "flex": 1,
+                "type": "numericColumn",
+                "valueFormatter": "value.toLocaleString()"
+            }
         ]
         
         table = make_ship_table(

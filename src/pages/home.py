@@ -22,7 +22,7 @@ title = dmc.Paper([
     dmc.Group(
         [
             dmc.Image(
-                src="/assets/logos/emblem.png",
+                src="/assets/logos/emblem.svg",
                 fit="contain",
                 radius="md",
                 style={
@@ -261,9 +261,12 @@ def create_publications_section():
     return dmc.Container([
         dmc.Paper([
             dmc.Title("Manuscripts Characterizing Starships", order=2, mb="xl"),
-            dmc.Center(make_paper_table()),
+            html.Div(
+                make_paper_table(),
+                style={"width": "100%"}
+            ),
         ], shadow="sm", p="xl", radius="md", withBorder=True, mb="xl"),
-    ], size="xl", py="xl",flex=True)
+    ], size="xl", py="xl", flex=True)
 
 def create_stats_section():
     stats = get_database_stats() if is_connected else {
