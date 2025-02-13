@@ -10,7 +10,6 @@ from src.utils.plot_utils import create_sunburst_plot
 
 logger = logging.getLogger(__name__)
 
-@cache.memoize()
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database with caching."""
     session = StarbaseSession()
@@ -39,7 +38,6 @@ def fetch_meta_data(curated=False):
     finally:
         session.close()
 
-@cache.memoize()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = StarbaseSession()
@@ -61,13 +59,10 @@ def fetch_paper_data():
     finally:
         session.close()
 
-@cache.memoize()
 def cache_sunburst_plot(family, df):
     """Create sunburst plots for wiki page and cache the result."""
     return create_sunburst_plot(df=df, type="tax", title_switch=False)
 
-
-@cache.memoize()
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
@@ -100,7 +95,6 @@ def fetch_download_data(curated=True, dereplicate=False):
     finally:
         session.close()
 
-@cache.memoize()
 def fetch_all_ships(curated=True):
     session = StarbaseSession()
 
@@ -127,7 +121,7 @@ def fetch_all_ships(curated=True):
     finally:
         session.close()
     
-@cache.memoize()
+
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
@@ -164,7 +158,6 @@ def fetch_ship_table(curated=False):
     finally:
         session.close()
 
-@cache.memoize()
 def fetch_accession_ship(accession_tag):
     """Fetch sequence and GFF data for a specific ship."""
     session = StarbaseSession()
@@ -208,7 +201,6 @@ def fetch_accession_ship(accession_tag):
     finally:
         session.close()
 
-@cache.memoize()
 def fetch_all_captains():
     session = StarbaseSession()
 
@@ -229,7 +221,6 @@ def fetch_all_captains():
     finally:
         session.close()
 
-@cache.memoize()
 def fetch_captain_tree():
     session = StarbaseSession()
 
@@ -247,7 +238,6 @@ def fetch_captain_tree():
     finally:
         session.close()
 
-@cache.memoize()
 def fetch_sf_data():
     session = StarbaseSession()
 
@@ -268,7 +258,6 @@ def fetch_sf_data():
     finally:
         session.close()
 
-@cache.memoize()
 def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
