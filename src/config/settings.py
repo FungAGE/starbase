@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

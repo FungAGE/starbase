@@ -1,10 +1,6 @@
-import os
-import pickle
 from typing import Any
 import logging
 import pandas as pd
-from flask_caching import Cache
-from src.config.cache import cache
 from src.config.database import StarbaseSession
 from src.utils.plot_utils import create_sunburst_plot
 
