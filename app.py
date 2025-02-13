@@ -26,8 +26,7 @@ from src.components import navmenu
 from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache, initialize_cache
-from src.database.sql_manager import precompute_all
-from src.config.precompute import precompute_tasks
+from src.config.precompute import precompute_tasks,precompute_all
 from src.config.database import TelemetrySession, SubmissionsSession
 from src.database.init_db import init_databases
 
