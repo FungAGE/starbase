@@ -303,39 +303,10 @@ def get_database_stats():
     finally:
         session.close()
 
-#########################
-# Precompute cache
-#########################
-
-families = [
-    "Phoenix",
-    "Hephaestus",
-    "Tardis",
-    "Serenity",
-    "Prometheus",
-    "Enterprise",
-    "Galactica",
-    "Moya",
-    "Arwing",
-    "Voyager",
-    "Family-11",
-]
-
-precompute_tasks = {
-    "meta_data": lambda: fetch_meta_data(curated=True),
-    "paper_data": fetch_paper_data,
-    "ship_table": fetch_ship_table,
-    "all_ships": fetch_all_ships,
-    "database_stats": get_database_stats,
-    "download_data_curated_true_derep_false": lambda: fetch_download_data(curated=True, dereplicate=False),
-    "download_data_curated_true_derep_true": lambda: fetch_download_data(curated=True, dereplicate=True),
-    "download_data_curated_false_derep_false": lambda: fetch_download_data(curated=False, dereplicate=False),
-    "download_data_curated_false_derep_true": lambda: fetch_download_data(curated=False, dereplicate=True),
-}
-
 def precompute_all():
     """Precompute and cache all necessary data and figures."""
     from src.config.cache import cache
+    from src.config.precompute import precompute_tasks
     
     cache_status = {}
     
