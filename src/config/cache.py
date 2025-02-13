@@ -17,22 +17,11 @@ cache = Cache(config={
 
 def initialize_cache():
     """Initialize and warm up the cache with frequently accessed data"""
-    from src.database.sql_manager import (
-        fetch_meta_data, fetch_paper_data, 
-        fetch_ship_table, fetch_all_ships,
-        get_database_stats
-    )
-    
-    cache_keys = {
-        "meta_data": fetch_meta_data,
-        "paper_data": fetch_paper_data,
-        "ship_table": fetch_ship_table,
-        "all_ships": fetch_all_ships,
-        "database_stats": get_database_stats
-    }
+    # Import here to avoid circular dependency
+    from src.config.precompute import precompute_tasks
     
     results = {}
-    for key, fetch_func in cache_keys.items():
+    for key, fetch_func in precompute_tasks.items():
         try:
             data = cache.get(key)
             if data is None:
