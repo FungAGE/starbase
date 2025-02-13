@@ -128,7 +128,7 @@ def fetch_all_ships(curated=True):
         session.close()
     
 @cache.memoize()
-def fetch_ship_table():
+def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
     
@@ -146,8 +146,12 @@ def fetch_ship_table():
     -- Filter for ships that have GFF data
     LEFT JOIN gff g ON g.ship_id = a.id
     WHERE js.orphan IS NULL
-    ORDER BY f.familyName ASC
     """
+    
+    if curated:
+        query += " AND js.curated_status = 'curated'"
+
+    query += " ORDER BY f.familyName ASC"
 
     try:
         df = pd.read_sql_query(query, session.bind)
