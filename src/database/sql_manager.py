@@ -21,11 +21,10 @@ def fetch_meta_data(curated=False):
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.genus, t.species, 
            g.version, g.genomeSource, g.citation, a.accession_tag, g.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
-    JOIN genomes g ON j.genome_id = g.id
-    JOIN accessions a ON j.ship_id = a.id
-    WHERE j.orphan IS NULL
+    LEFT JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN genomes g ON j.genome_id = g.id
+    LEFT JOIN accessions a ON j.ship_id = a.id
     """
 
     if curated:
@@ -76,11 +75,10 @@ def fetch_download_data(curated=True, dereplicate=False):
     query = """
     SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
     FROM joined_ships j
-    JOIN taxonomy t ON j.taxid = t.id
-    JOIN family_names f ON j.ship_family_id = f.id
-    JOIN genomes g ON j.genome_id = g.id
-    JOIN accessions a ON j.ship_id = a.id
-    WHERE j.orphan IS NULL
+    LEFT JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN genomes g ON j.genome_id = g.id
+    LEFT JOIN accessions a ON j.ship_id = a.id
     """
     
     if curated:
@@ -109,8 +107,8 @@ def fetch_all_ships(curated=True):
     query = """
     SELECT s.*, a.accession_tag
     FROM ships s
-    JOIN accessions a ON s.accession = a.id
-    JOIN joined_ships j ON j.ship_id = a.id
+    LEFT JOIN accessions a ON s.accession = a.id
+    LEFT JOIN joined_ships j ON j.ship_id = a.id
     WHERE 1=1
     """
     
@@ -140,13 +138,13 @@ def fetch_ship_table():
         f.familyName,
         t.species
     FROM joined_ships js
-    JOIN accessions a ON js.ship_id = a.id
-    JOIN taxonomy t ON js.taxid = t.id
-    JOIN family_names f ON js.ship_family_id = f.id
+    LEFT JOIN accessions a ON js.ship_id = a.id
+    LEFT JOIN taxonomy t ON js.taxid = t.id
+    LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
-    JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
+    LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
     -- Filter for ships that have GFF data
-    JOIN gff g ON g.ship_id = a.id
+    LEFT JOIN gff g ON g.ship_id = a.id
     WHERE js.orphan IS NULL
     ORDER BY f.familyName ASC
     """
@@ -170,14 +168,14 @@ def fetch_accession_ship(accession_tag):
     sequence_query = """
     SELECT s.sequence
     FROM ships s
-    JOIN accessions a ON s.accession = a.id
+    LEFT JOIN accessions a ON s.accession = a.id
     WHERE a.accession_tag = :accession_tag
     """
     
     gff_query = """
     SELECT g.*
     FROM gff g
-    JOIN accessions a ON g.ship_id = a.id
+    LEFT JOIN accessions a ON g.ship_id = a.id
     WHERE a.accession_tag = :accession_tag
     """
     
@@ -275,14 +273,14 @@ def get_database_stats():
         curated_count = session.execute("""
             SELECT COUNT(*) 
             FROM accessions a
-            JOIN joined_ships j ON j.ship_id = a.id
+            LEFT JOIN joined_ships j ON j.ship_id = a.id
             WHERE j.curated_status = 'curated'
         """).scalar() or 0
         
         uncurated_count = session.execute("""
             SELECT COUNT(*) 
             FROM accessions a
-            JOIN joined_ships j ON j.ship_id = a.id
+            LEFT JOIN joined_ships j ON j.ship_id = a.id
             WHERE j.curated_status != 'curated' OR j.curated_status IS NULL
         """).scalar() or 0
         
