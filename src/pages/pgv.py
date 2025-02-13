@@ -463,7 +463,7 @@ def load_ship_table(href):
     print("Loading ship table...")
     print("URL href:", href)
     
-    table_df = fetch_ship_table()
+    table_df = fetch_ship_table(curated=True)
     print("Fetched table data:", "None" if table_df is None else f"DataFrame with shape {table_df.shape}")
     
     if table_df is not None and not table_df.empty:
