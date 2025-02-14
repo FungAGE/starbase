@@ -25,9 +25,7 @@ logger.addHandler(console_handler)
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
-from src.config.cache import cache, initialize_cache
-from src.config.constants import precompute_tasks
-from src.config.precompute import precompute_all
+from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.config.database import TelemetrySession, SubmissionsSession
 from src.database.init_db import init_databases
 
@@ -80,13 +78,9 @@ def initialize_app():
     with server.app_context():
         # init_databases()
         
-        cache_status = initialize_cache()
-        
-        # logger.info("Cache initialization complete")
-        # logger.info(f"Cache status: {cache_status}")
-        
-        # Precompute additional data
-        precompute_all()
+        cache.init_app(server)
+        cleanup_old_cache()
+                
     maintain_ip_locations()
 
 def serve_app_layout():
@@ -184,27 +178,13 @@ def check_submissions_db():
 
 @app.server.route('/api/cache/status')
 def cache_status():
-    """Check if key data is cached and refresh if needed"""
+    """Check cache status"""
     try:
-        status = {}
-        for key in precompute_tasks.keys():
-            data = cache.get(key)
-            if data is None:
-                status[key] = "missing"
-                # Try to refresh missing data
-                try:
-                    data = precompute_tasks[key]()
-                    if data is not None:
-                        cache.set(key, data)
-                        status[key] = "refreshed"
-                except Exception as e:
-                    logger.error(f"Failed to refresh {key}: {str(e)}")
-            else:
-                status[key] = "cached"
-                
+        # Just return basic cache info
         return jsonify({
             "status": "success",
-            "cache": status
+            "cache_dir": cache_dir,
+            "cache_type": cache.config['CACHE_TYPE']
         }), 200
     except Exception as e:
         logger.error(f"Cache status check failed: {str(e)}")
@@ -219,17 +199,31 @@ def refresh_cache():
     """Force refresh of all cached data"""
     try:
         cache.clear()
-        
-        results = initialize_cache()
-        
-        precompute_all()
+        cleanup_old_cache()
         
         return jsonify({
             "status": "success",
-            "results": results
+            "message": "Cache cleared and old files cleaned up"
         }), 200
     except Exception as e:
         logger.error(f"Cache refresh failed: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.server.route('/api/cache/cleanup', methods=['POST'])
+@limiter.limit("1 per minute")
+def force_cache_cleanup():
+    """Force cleanup of old cache files"""
+    try:
+        cleanup_old_cache()
+        return jsonify({
+            "status": "success",
+            "message": "Cache cleanup completed"
+        }), 200
+    except Exception as e:
+        logger.error(f"Cache cleanup failed: {str(e)}")
         return jsonify({
             "status": "error",
             "error": str(e)
