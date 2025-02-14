@@ -14,25 +14,3 @@ cache = Cache(config={
     'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hour cache
     'CACHE_THRESHOLD': 1000
 })
-
-def initialize_cache():
-    """Initialize and warm up the cache with frequently accessed data"""
-    # Import here to avoid circular dependency
-    from src.config.precompute import precompute_tasks
-    
-    results = {}
-    for key, fetch_func in precompute_tasks.items():
-        try:
-            data = cache.get(key)
-            if data is None:
-                data = fetch_func()
-                if data is not None:
-                    cache.set(key, data, timeout=86400)  # 24 hour cache
-                    results[key] = True
-                else:
-                    results[key] = False
-        except Exception as e:
-            logger.error(f"Failed to cache {key}: {str(e)}")
-            results[key] = False
-    
-    return results
