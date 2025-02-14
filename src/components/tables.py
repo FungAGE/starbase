@@ -44,6 +44,13 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                 style={"padding": "20px"}
             )
 
+        df = df.copy()
+        
+        # Replace empty or NA familyName with "Unclassified"
+        if 'familyName' in df.columns:
+            df['familyName'] = df['familyName'].fillna('Unclassified')
+            df.loc[df['familyName'].str.strip() == '', 'familyName'] = 'Unclassified'
+        
         # Convert DataFrame to row data format
         row_data = df.to_dict('records')
         
