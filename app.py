@@ -25,7 +25,7 @@ logger.addHandler(console_handler)
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
-from src.config.cache import cache, cache_dir
+from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.config.database import TelemetrySession, SubmissionsSession
 from src.database.init_db import init_databases
 
@@ -79,6 +79,7 @@ def initialize_app():
         # init_databases()
         
         cache.init_app(server)
+        cleanup_old_cache()
                 
     maintain_ip_locations()
 
@@ -195,15 +196,34 @@ def cache_status():
 @app.server.route('/api/cache/refresh', methods=['POST'])
 @limiter.limit("1 per minute")
 def refresh_cache():
-    """Clear the cache"""
+    """Force refresh of all cached data"""
     try:
         cache.clear()
+        cleanup_old_cache()
+        
         return jsonify({
             "status": "success",
-            "message": "Cache cleared successfully"
+            "message": "Cache cleared and old files cleaned up"
         }), 200
     except Exception as e:
         logger.error(f"Cache refresh failed: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.server.route('/api/cache/cleanup', methods=['POST'])
+@limiter.limit("1 per minute")
+def force_cache_cleanup():
+    """Force cleanup of old cache files"""
+    try:
+        cleanup_old_cache()
+        return jsonify({
+            "status": "success",
+            "message": "Cache cleanup completed"
+        }), 200
+    except Exception as e:
+        logger.error(f"Cache cleanup failed: {str(e)}")
         return jsonify({
             "status": "error",
             "error": str(e)
