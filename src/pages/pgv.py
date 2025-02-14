@@ -16,14 +16,6 @@ from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 
-from src.config.cache import cache
-from src.components.tables import make_ship_table
-
-from src.database.sql_manager import (
-    fetch_all_ships,
-    fetch_ship_table,
-    fetch_accession_ship,
-)
 from src.components.callbacks import create_modal_callback
 
 
@@ -460,6 +452,8 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 )
 def load_ship_table(href):
     """Load and display the ship selection table"""
+    from src.database.sql_manager import fetch_ship_table
+    from src.components.tables import make_ship_table
     print("Loading ship table...")
     print("URL href:", href)
     
@@ -491,6 +485,7 @@ def load_ship_table(href):
     ],
 )
 def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
+    from src.database.sql_manager import fetch_accession_ship
     message = None
     if not n_clicks:
         return no_update, "Select Starships from the table and click 'Show Selected Starships'"
