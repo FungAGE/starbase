@@ -1,6 +1,7 @@
 import warnings
-
 warnings.filterwarnings("ignore")
+
+import logging
 
 from dash import dash_table, html
 import dash_bootstrap_components as dbc
@@ -13,117 +14,83 @@ import dash_core_components as dcc
 from src.config.cache import cache
 from src.database.sql_manager import fetch_paper_data
 
-
+logger = logging.getLogger(__name__)
 def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
 
 def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
     """
-    Generic AG Grid constructor for tables.
+    Creates an AG Grid component with error handling and consistent styling.
     
     Args:
-        df (pd.DataFrame or list): Data to display
-        id (str): Unique identifier for the table
+        df (pd.DataFrame): Data to display
+        id (str): Unique identifier for the grid
         columns (list): Column definitions
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
-    if df is None:
-        row_data = []
-    elif isinstance(df, pd.DataFrame):
-        row_data = df.fillna('').to_dict("records")
-    elif isinstance(df, list):
-        row_data = df
-    else:
-        row_data = []
+    try:
+        # Handle empty or None DataFrame
+        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+            logger.warning(f"No data available for grid {id}")
+            return html.Div(
+                dmc.Alert(
+                    title="No Data",
+                    children="No data available to display",
+                    color="yellow",
+                    variant="filled"
+                ),
+                style={"padding": "20px"}
+            )
+
+        # Convert DataFrame to row data format
+        row_data = df.to_dict('records')
         
-    if columns is None and not row_data:
-        grid_columns = []
-    else:
+        # Set up default column definitions
         defaultColDef = {
             "resizable": True,
             "sortable": True,
             "filter": True,
             "minWidth": 100,
-            "flex": 1,
-            "tooltipField": "value",
-            "tooltipComponent": "defaultTooltip",
-            "suppressMovable": True,
-            **({
-                "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
-            } if "field" in columns[0] and columns[0]["field"] == "accession_tag" else {})
         }
         
-        if columns is None:
-            grid_columns = []
-            if select_rows:
-                grid_columns.append({
-                    "headerCheckboxSelection": True,
-                    "checkboxSelection": True,
-                    "width": 50,
-                    "pinned": "left",
-                    "lockPosition": True,
-                    "suppressMenu": True,
-                    "headerName": "",
-                    "flex": 0
-                })
-                
-            if isinstance(df, pd.DataFrame):
-                col_names = df.columns
-            elif row_data and isinstance(row_data[0], dict):
-                col_names = row_data[0].keys()
-            else:
-                col_names = []
-                
-            grid_columns.extend([
-                {
-                    "field": col,
-                    "headerName": col.replace("_", " ").title(),
-                    "flex": 1,
-                    **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
-                       if col == "accession_tag" else {})
-                }
-                for col in col_names
-            ])
-        else:
-            grid_columns = columns
-            if select_rows:
-                grid_columns.insert(0, {
-                    "headerCheckboxSelection": True,
-                    "checkboxSelection": True,
-                    "width": 50,
-                    "pinned": "left",
-                    "lockPosition": True,
-                    "suppressMenu": True,
-                    "headerName": "",
-                    "flex": 0
-                })
-    
-    grid = dag.AgGrid(
-        id=id,
-        columnDefs=grid_columns,
-        rowData=row_data,
-        defaultColDef=defaultColDef,
-        dashGridOptions={
-            "pagination": True,
-            "paginationPageSize": pg_sz,
-            "rowSelection": "multiple" if select_rows else None,
-            "domLayout": 'autoHeight',
-            "tooltipShowDelay": 0,
-            "tooltipHideDelay": 1000,
-            "enableCellTextSelection": True,
-            "ensureDomOrder": True,
-        },
-        className="ag-theme-alpine",
-        style={"width": "100%"},
-        dangerously_allow_code=True
-    )
-    return html.Div([
-        html.Div(id=f"{id}-click-data", style={"display": "none"}),
-        grid,
-        dcc.Store(id=f"{id}-cell-clicked")
-    ])
+        # Create grid component
+        grid = dag.AgGrid(
+            id=id,
+            columnDefs=columns,
+            rowData=row_data,
+            defaultColDef=defaultColDef,
+            dashGridOptions={
+                "pagination": True,
+                "paginationPageSize": pg_sz,
+                "rowSelection": "multiple" if select_rows else None,
+                "domLayout": 'autoHeight',
+                "tooltipShowDelay": 0,
+                "tooltipHideDelay": 1000,
+                "enableCellTextSelection": True,
+                "ensureDomOrder": True,
+                "onGridReady": {"function": "function(params) { this.gridApi = params.api; }"},
+            },
+            className="ag-theme-alpine",
+            style={"width": "100%"},
+            dangerously_allow_code=True
+        )
+        
+        logger.info(f"Successfully created grid {id}")
+        return grid
+        
+    except Exception as e:
+        logger.error(f"Error creating grid {id}: {str(e)}")
+        return html.Div(
+            dmc.Alert(
+                title="Error",
+                children=f"Failed to create table: {str(e)}",
+                color="red",
+                variant="filled"
+            ),
+            style={"padding": "20px"}
+        )
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
