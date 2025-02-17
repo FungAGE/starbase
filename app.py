@@ -92,7 +92,7 @@ def initialize_app():
 def serve_app_layout():
     return dmc.MantineProvider(
         html.Div([
-            dmc.NotificationProvider(position="top-center"),
+            dmc.NotificationProvider(position="bottom-right"),
             html.Div(id="notifications-container"),
             dcc.Location(id="url", refresh=False),
             navmenu.navmenu(),
