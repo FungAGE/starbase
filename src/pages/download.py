@@ -153,7 +153,14 @@ layout = dmc.Container(
                         html.Div(id="modal-content"),
                     ],
                 ),
-                make_dl_table(df=[],id="dl-table", table_columns=table_columns),
+                html.Div(
+                    id="dl-table-container",
+                    children=[make_dl_table(
+                        df=pd.DataFrame(),  # Empty initial DataFrame
+                        id="dl-table",
+                        table_columns=table_columns
+                    )]
+                ),
             ],
         ),
     ],

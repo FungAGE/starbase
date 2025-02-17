@@ -89,7 +89,8 @@ download_ships_card = dmc.Paper([
                         style={"paddingBottom": "20px"},
                     ),
                     dmc.Center(download_ships_button),
-                ], p="xl", radius="md", shadow="sm", withBorder=True
+                ], p="xl", radius="md", shadow="sm", withBorder=True, h="100%"
+
             )
 
 def curated_switch(text="Only search curated Starships", size="sm"):
@@ -395,38 +396,30 @@ def create_file_upload(
     ], gap="md")
 
 def create_feedback_button():
-    return dmc.Affix(
-        dmc.Anchor(
-            dmc.Button(
-                children=[
-                    dmc.Group([
-                        DashIconify(icon="octicon:mark-github-16", width=20),
-                        dmc.Stack([
-                            "Found an issue?",
-                            dmc.Text(
-                                "Report it on GitHub",
-                                size="xs",
-                                c="gray.3"
-                            )
-                        ], gap=2)
-                    ], gap=8, style={"minWidth": "180px"})
-                ],
-                variant="filled",
-                color="gray",
-                radius="md",
-                size="lg",
-                style={
-                    "padding": "16px 24px",
-                    "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.1)",
-                    "cursor": "pointer",
-                    "width": "100%",
-                    "height": "auto",
-                }
-            ),
-            href="https://github.com/FungAGE/starbase/issues",
-            target="_blank",
-            style={"textDecoration": "none", "display": "block"}
-        ),
-        position={"bottom": 30, "right": 30},
-        zIndex=1000,
+    return dmc.Notification(
+        title="Found an issue?",
+        id="feedback-notify",
+        action="show",
+        # icon=DashIconify(icon="octicon:mark-github-16", width=20),
+        autoClose=20000,
+        color="gray",
+        radius="md",
+        message=[
+            dmc.Anchor(
+                dmc.Button(
+                    "Report it on GitHub",
+                    variant="light",
+                    color="blue",
+                    size="sm",
+                    leftSection=DashIconify(icon="octicon:mark-github-16", width=20),
+                ),
+                href="https://github.com/FungAGE/starbase/issues",
+                target="_blank",
+            )
+        ],
+        className="d-none d-md-block",
+        style={
+            "width": "250px",
+            "backgroundColor": "var(--mantine-color-gray-1)",
+        }
     )

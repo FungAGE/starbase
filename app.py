@@ -32,7 +32,13 @@ from src.database.init_db import init_databases
 _dash_renderer._set_react_version("18.2.0")
 
 external_stylesheets = [
-    dmc.styles.ALL,
+    "https://unpkg.com/@mantine/core@7.11.0/styles.css",
+    "https://unpkg.com/@mantine/dates@7.11.0/styles.css",
+    "https://unpkg.com/@mantine/code-highlight@7.11.0/styles.css",
+    "https://unpkg.com/@mantine/charts@7.11.0/styles.css",
+    "https://unpkg.com/@mantine/carousel@7.11.0/styles.css",
+    "https://unpkg.com/@mantine/notifications@7.11.0/styles.css",
+    "https://unpkg.com/@mantine/nprogress@7.11.0/styles.css",
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
     "/assets/styles.css",
@@ -86,7 +92,7 @@ def initialize_app():
 def serve_app_layout():
     return dmc.MantineProvider(
         html.Div([
-            dmc.NotificationProvider(position="top-center"),
+            dmc.NotificationProvider(position="bottom-right"),
             html.Div(id="notifications-container"),
             dcc.Location(id="url", refresh=False),
             navmenu.navmenu(),
