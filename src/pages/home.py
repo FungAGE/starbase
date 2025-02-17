@@ -201,6 +201,7 @@ working_features_card = dmc.Paper(
     radius="md",
     withBorder=True,
     mb="xl",
+    h="100%"
 )
 
 developing_features_card = dmc.Paper(
@@ -231,6 +232,7 @@ developing_features_card = dmc.Paper(
     p="xl",
     radius="md",
     withBorder=True,
+    h="100%"
 )
 
 def create_hero_section():
@@ -243,18 +245,21 @@ def create_hero_section():
 
 def create_features_section():
     return dmc.Container([
-        dmc.Grid([
-            dmc.GridCol([
-                working_features_card,
-                developing_features_card
-            ], 
-            span={"sm": 12, "md": 6}
-            ),
-            dmc.GridCol(
-                download_ships_card, 
-                span={"sm": 12, "md": 6}
-            )
-        ], gutter="xl"),
+        dmc.SimpleGrid([
+            working_features_card,
+            developing_features_card,
+            download_ships_card
+        ],
+        cols={
+            "base": 1,
+            "sm": 2,
+            "lg": 3
+        },
+        spacing="xl",
+        style={
+            "minHeight": "100%",
+            "alignItems": "stretch"  # Makes all grid items stretch to match heights
+        }),
     ], size="xl", py="xl", flex=True)
 
 def create_publications_section():

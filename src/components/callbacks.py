@@ -89,7 +89,8 @@ download_ships_card = dmc.Paper([
                         style={"paddingBottom": "20px"},
                     ),
                     dmc.Center(download_ships_button),
-                ], p="xl", radius="md", shadow="sm", withBorder=True
+                ], p="xl", radius="md", shadow="sm", withBorder=True, h="100%"
+
             )
 
 def curated_switch(text="Only search curated Starships", size="sm"):
