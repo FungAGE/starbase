@@ -1,5 +1,7 @@
 import warnings
 import logging
+from flask_compress import Compress
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import dash
 import dash_mantine_components as dmc
@@ -10,7 +12,15 @@ from flask_limiter import Limiter
 from sqlalchemy import text
 import os
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
+
 warnings.filterwarnings("ignore")
 
 logger = logging.getLogger(__name__)
@@ -54,10 +64,21 @@ external_scripts = [
 ]
 
 server = Flask(__name__)
-server.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB limit
-server.config['CACHE_TYPE'] = 'SimpleCache'
-server.config['CACHE_DEFAULT_TIMEOUT'] = 300
+server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
+Compress(server)
+
+server.config.update(
+    MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB limit
+    CACHE_TYPE='SimpleCache',
+    CACHE_DEFAULT_TIMEOUT=300,
+    SEND_FILE_MAX_AGE_DEFAULT=0,
+    COMPRESS_MIMETYPES=['text/html', 'text/css', 'application/javascript'],
+    COMPRESS_LEVEL=6,
+    COMPRESS_ALGORITHM=['gzip', 'br']
+)
+
 cache.init_app(server)
+cleanup_old_cache()
 
 IPSTACK_API_KEY = os.environ.get('IPSTACK_API_KEY') or os.getenv('IPSTACK_API_KEY')
 
@@ -70,6 +91,7 @@ app = Dash(
     title="starbase",
     external_stylesheets=external_stylesheets,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+    update_title=None
 )
 
 limiter = Limiter(
@@ -237,6 +259,26 @@ def force_cache_cleanup():
 
 app.layout = serve_app_layout
 initialize_app()
+
+# Global error handlers
+@server.errorhandler(500)
+def handle_500(e):
+    logger.error(f"Internal server error: {str(e)}")
+    return dmc.Alert(
+        title="Server Error",
+        children="An error occurred. Please try again later.",
+        color="red",
+        variant="filled"
+    ), 500
+
+@server.errorhandler(404)
+def handle_404(e):
+    return dmc.Alert(
+        title="Not Found",
+        children="The requested resource was not found.",
+        color="yellow",
+        variant="filled"
+    ), 404
 
 if __name__ == "__main__":
     app.run_server(debug=False)

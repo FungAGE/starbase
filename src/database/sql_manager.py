@@ -3,6 +3,10 @@ import logging
 import pandas as pd
 from src.config.database import StarbaseSession
 from src.utils.plot_utils import create_sunburst_plot
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from contextlib import contextmanager
+import sqlalchemy.exc
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -118,42 +122,79 @@ def fetch_all_ships(curated=True):
         session.close()
     
 
-def fetch_ship_table(curated=False):
-    """Fetch ship metadata and filter for those with sequence and GFF data."""
-    session = StarbaseSession()
-    
-    query = """
-    SELECT DISTINCT 
-        a.accession_tag,
-        f.familyName,
-        t.species
-    FROM joined_ships js
-    LEFT JOIN accessions a ON js.ship_id = a.id
-    LEFT JOIN taxonomy t ON js.taxid = t.id
-    LEFT JOIN family_names f ON js.ship_family_id = f.id
-    -- Filter for ships that have sequence data
-    LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
-    -- Filter for ships that have GFF data
-    LEFT JOIN gff g ON g.ship_id = a.id
-    WHERE js.orphan IS NULL
-    """
-    
-    if curated:
-        query += " AND js.curated_status = 'curated'"
-
-    query += " ORDER BY f.familyName ASC"
-
+@contextmanager
+def db_session_manager():
+    """Context manager for database sessions with timeout"""
+    session = None
     try:
-        df = pd.read_sql_query(query, session.bind)
-        if df.empty:
-            logger.warning("Fetched ship_table DataFrame is empty.")
-        return df
+        session = StarbaseSession()
+        # SQLite doesn't support SET SESSION, so we'll skip the timeout setting
+        if session.bind.dialect.name != 'sqlite':
+            session.execute(text("SET SESSION wait_timeout=30"))  # Only for MySQL
+        yield session
     except Exception as e:
-        logger.error(f"Error fetching ship_table data: {str(e)}")
+        logger.error(f"Database error: {str(e)}")
+        if session:
+            session.rollback()
         raise
     finally:
-        session.close()
+        if session:
+            session.close()
 
+# Define a common retry decorator for database operations
+def db_retry_decorator(additional_retry_exceptions=()):
+    """
+    Create a retry decorator for database operations
+    Args:
+        additional_retry_exceptions: Tuple of additional exceptions to retry on
+    """
+    retry_exceptions = (sqlalchemy.exc.OperationalError,) + additional_retry_exceptions
+    
+    return retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(retry_exceptions),
+        before_sleep=lambda retry_state: logger.warning(
+            f"Retrying database operation after error: {retry_state.outcome.exception()}"
+        )
+    )
+
+# Apply the retry decorator to all database operations
+@db_retry_decorator()
+def fetch_ship_table(curated=True):
+    """Fetch ship table with retries on failure"""
+    with db_session_manager() as session:
+        try:
+            query = """
+            SELECT DISTINCT 
+                a.accession_tag,
+                f.familyName,
+                t.species
+            FROM joined_ships js
+            LEFT JOIN accessions a ON js.ship_id = a.id
+            LEFT JOIN taxonomy t ON js.taxid = t.id
+            LEFT JOIN family_names f ON js.ship_family_id = f.id
+            -- Filter for ships that have sequence data
+            LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
+            -- Filter for ships that have GFF data
+            LEFT JOIN gff g ON g.ship_id = a.id
+            WHERE js.orphan IS NULL
+            """
+            
+            if curated:
+                query += " AND js.curated_status = 'curated'"
+
+            query += " ORDER BY f.familyName ASC"
+
+            df = pd.read_sql_query(query, session.bind)
+            if df.empty:
+                logger.warning("Fetched ship_table DataFrame is empty.")
+            return df
+        except Exception as e:
+            logger.error(f"Error fetching ship_table data: {str(e)}")
+            return None
+
+@db_retry_decorator()
 def fetch_accession_ship(accession_tag):
     """Fetch sequence and GFF data for a specific ship."""
     session = StarbaseSession()
@@ -197,6 +238,7 @@ def fetch_accession_ship(accession_tag):
     finally:
         session.close()
 
+@db_retry_decorator()
 def fetch_all_captains():
     session = StarbaseSession()
 
@@ -217,6 +259,7 @@ def fetch_all_captains():
     finally:
         session.close()
 
+@db_retry_decorator()
 def fetch_captain_tree():
     session = StarbaseSession()
 
@@ -234,6 +277,7 @@ def fetch_captain_tree():
     finally:
         session.close()
 
+@db_retry_decorator()
 def fetch_sf_data():
     session = StarbaseSession()
 
@@ -254,6 +298,7 @@ def fetch_sf_data():
     finally:
         session.close()
 
+@db_retry_decorator()
 def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
