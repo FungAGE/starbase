@@ -208,12 +208,12 @@ developing_features_card = dmc.Paper(
     [
         dmc.Title(
             [
-                "Functions of ",
+                "Most functions of ",
                 html.Span(
                     "starbase",
                     className="logo-text",
                 ),
-                " under active development:",
+                " are still under active development. We plan on implementing:",
             ],
             order=2,
             mb="md",
