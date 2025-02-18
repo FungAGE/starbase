@@ -15,17 +15,12 @@ from sqlalchemy import create_engine
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('app.log')
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-warnings.filterwarnings("ignore")
-
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+
+warnings.filterwarnings("ignore")
 
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
