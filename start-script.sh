@@ -5,6 +5,7 @@ supercronic $HOME/cron/crontab &
 
 # Start the application with optimized settings
 gunicorn --bind=0.0.0.0:8000 \
+    --reload \
     --workers=4 \
     --threads=4 \
     --worker-class=gthread \
