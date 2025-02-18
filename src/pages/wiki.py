@@ -21,11 +21,10 @@ from src.config.cache import cache
 from src.database.sql_manager import fetch_meta_data
 from src.database.sql_manager import (
     fetch_meta_data,
-    cache_sunburst_plot,
     fetch_paper_data,
 )
 from src.components.tables import make_ship_table, make_wiki_table
-from src.utils.plot_utils import make_logo
+from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs
 from src.components.callbacks import create_modal_callback
 
@@ -297,15 +296,19 @@ layout = dmc.Container(
                                         id="search-sunburst-plot",
                                         style={
                                             "width": "100%",
-                                            "height": "400px",
-                                        }
+                                            "height": "100%",
+                                            "overflow": "hidden",  # Prevent overflow
+                                            "display": "flex",     # Use flexbox
+                                            "alignItems": "center",
+                                            "justifyContent": "center",
+                                        },
                                     ),
                                 ),
                             ],
-                            p="xl",
-                            radius="md",
                             withBorder=True,
-                            mb="xl",
+                            shadow="sm",
+                            radius="md",
+                            p="md"
                         ),
                         dmc.Space(h="sm"),
                         dmc.Paper(
@@ -436,7 +439,7 @@ def create_accordion(cached_meta, cached_papers):
 @callback(
     Output("search-results", "children"),
     Input("filtered-meta-data", "data"),
-    State("meta-data", "data"),
+    Input("meta-data", "data"),  # Change State to Input to handle initial load
 )
 def create_search_results(filtered_meta, cached_meta):
     # Use filtered data if available, otherwise use original data
@@ -453,6 +456,7 @@ def create_search_results(filtered_meta, cached_meta):
                 color="blue",
                 variant="filled"
             )
+            
         # Calculate the count for each accession_tag
         genome_counts = df.groupby('accession_tag').size().reset_index(name='n_genomes')
         
@@ -488,7 +492,8 @@ def create_search_results(filtered_meta, cached_meta):
                 "headerName": "Number of Genomes",
                 "flex": 1,
                 "type": "numericColumn",
-                "valueFormatter": "value.toLocaleString()"
+                "valueFormatter": "value.toLocaleString()",
+                "sortable": True
             },
             {
                 "field": "species",
@@ -500,9 +505,17 @@ def create_search_results(filtered_meta, cached_meta):
                 "headerName": "Element Length (bp)",
                 "flex": 1,
                 "type": "numericColumn",
-                "valueFormatter": "value.toLocaleString()"
+                "valueFormatter": "value.toLocaleString()",
+                "sortable": True
             }
         ]
+        
+        # Convert numeric columns to appropriate type
+        filtered_meta_df['n_genomes'] = pd.to_numeric(filtered_meta_df['n_genomes'], errors='coerce')
+        filtered_meta_df['size'] = pd.to_numeric(filtered_meta_df['size'], errors='coerce')
+        
+        # Fill NA values
+        filtered_meta_df = filtered_meta_df.fillna('')
         
         table = make_ship_table(
             filtered_meta_df, 
@@ -537,54 +550,6 @@ def create_search_results(filtered_meta, cached_meta):
             variant="filled"
         )
 
-
-# @callback(
-#     [
-#         Output("sidebar", "children"),
-#         Output("sidebar-title", "children"),
-#         Output("active-item-cache", "value"),
-#     ],
-#     Input("category-accordion", "active_item"),
-#     State("meta-data", "data"),
-# )
-# def create_sidebar(active_item, cached_meta):
-#     if active_item is None or cached_meta is None:
-#         raise PreventUpdate
-    
-#     try:
-#         title = dmc.Title(f"Taxonomy Distribution for {active_item}", order=2, mb="md")
-        
-#         df = pd.DataFrame(cached_meta)
-#         filtered_df = df[df["familyName"] == active_item]
-#         sunburst_figure = cache_sunburst_plot(
-#             family=active_item, 
-#             df=filtered_df
-#         )
-        
-#         if sunburst_figure is None:
-#             return dmc.Text("No data available", size="lg", c="dimmed"), title, active_item
-        
-#         # Make the plot responsive
-#         sunburst_figure.update_layout(
-#             autosize=True,
-#             margin=dict(l=0, r=0, t=30, b=0),
-#             height=None,
-#         )
-
-#         fig = dcc.Graph(
-#             figure=sunburst_figure,
-#             style={"width": "100%", "height": "100%"},
-#             config={
-#                 'responsive': True,
-#                 'displayModeBar': False,
-#                 'scrollZoom': False
-#             }
-#         )
-
-#         return fig, title, active_item
-#     except Exception as e:
-#         logger.error(f"Error in create_sidebar: {str(e)}")
-#         raise
 
 toggle_modal = create_modal_callback(
     "wiki-table",
@@ -638,7 +603,8 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
         Input("navis-search", "value"),
         Input("haplotype-search", "value"),
         Input("meta-data", "data"),
-    ]
+    ],
+    prevent_initial_call=True
 )
 def update_search_options(taxonomy_val, family_val, navis_val, haplotype_val, meta_data):
     if not meta_data:
@@ -646,29 +612,14 @@ def update_search_options(taxonomy_val, family_val, navis_val, haplotype_val, me
         return empty_data, empty_data, empty_data, empty_data
     
     try:
-        df = pd.DataFrame(meta_data)
-        
-        # Apply filters based on current selections
-        if taxonomy_val:
-            df = df[df["genus"].isin(taxonomy_val)]
-        if family_val:
-            df = df[df["familyName"].isin(family_val)]
-        if navis_val:
-            df = df[df["starship_navis"].isin(navis_val)]
-        if haplotype_val:
-            df = df[df["starship_haplotype"].isin(haplotype_val)]
-        
-        # Get available options based on filtered data
-        taxonomy_options = sorted(df["genus"].dropna().unique())
-        family_options = sorted(df["familyName"].dropna().unique())
-        navis_options = sorted(df["starship_navis"].dropna().unique())
-        haplotype_options = sorted(df["starship_haplotype"].dropna().unique())
+        # Get filtered options from cache if possible
+        options = get_filtered_options(taxonomy_val, family_val, navis_val, haplotype_val)
         
         # Format options for Mantine MultiSelect
-        taxonomy_data = [{"value": x, "label": x} for x in taxonomy_options]
-        family_data = [{"value": x, "label": x} for x in family_options]
-        navis_data = [{"value": x, "label": x} for x in navis_options]
-        haplotype_data = [{"value": x, "label": x} for x in haplotype_options]
+        taxonomy_data = [{"value": x, "label": x} for x in options["taxonomy"]]
+        family_data = [{"value": x, "label": x} for x in options["family"]]
+        navis_data = [{"value": x, "label": x} for x in options["navis"]]
+        haplotype_data = [{"value": x, "label": x} for x in options["haplotype"]]
         
         return taxonomy_data, family_data, navis_data, haplotype_data
     except Exception as e:
@@ -701,77 +652,124 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotyp
     if not original_data:
         raise PreventUpdate
         
-    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+        
+    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
     # If reset button clicked, clear all filters
     if triggered_id == "reset-search":
-        return None, [], [], [], []  # Return None for filtered data to use original
-    
-    # If no search clicked, prevent update
-    if not search_clicks:
-        raise PreventUpdate
-    
-    df = pd.DataFrame(original_data)
-    
-    # Apply filters if they exist
-    if taxonomy and len(taxonomy) > 0:
-        df = df[df["genus"].isin(taxonomy)]
-    if family and len(family) > 0:
-        df = df[df["familyName"].isin(family)]
-    if navis and len(navis) > 0:
-        df = df[df["starship_navis"].isin(navis)]
-    if haplotype and len(haplotype) > 0:
-        df = df[df["starship_haplotype"].isin(haplotype)]
-    
-    # If no filters selected, return None to use original data
-    if not any([taxonomy, family, navis, haplotype]):
         return None, [], [], [], []
     
-    # Return filtered data and keep current filter values
-    return df.to_dict("records"), taxonomy or [], family or [], navis or [], haplotype or []
+    # If no search clicked or no filters selected, prevent update
+    if not search_clicks or not any([taxonomy, family, navis, haplotype]):
+        return None, [], [], [], []
+    
+    try:
+        df = pd.DataFrame(original_data)
+        
+        # Apply filters if they exist
+        if taxonomy and len(taxonomy) > 0:
+            df = df[df["genus"].isin(taxonomy)]
+        if family and len(family) > 0:
+            df = df[df["familyName"].isin(family)]
+        if navis and len(navis) > 0:
+            df = df[df["starship_navis"].isin(navis)]
+        if haplotype and len(haplotype) > 0:
+            df = df[df["starship_haplotype"].isin(haplotype)]
+        
+        # Return filtered data and keep current filter values
+        return df.to_dict("records"), taxonomy or [], family or [], navis or [], haplotype or []
+        
+    except Exception as e:
+        logger.error(f"Error in handle_search: {str(e)}", exc_info=True)
+        return None, [], [], [], []
 
 @callback(
     Output("search-sunburst-plot", "children"),
-    Input("filtered-meta-data", "data"),
-    State("meta-data", "data"),
+    [Input("filtered-meta-data", "data"),
+     Input("meta-data", "data")],
 )
-def update_search_sunburst(filtered_meta, cached_meta):
-    # Use filtered data if available, otherwise use original data
-    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
-    
-    if data_to_use is None:
-        return dmc.Text("Start a search to see taxonomic distribution", size="lg", c="dimmed")
+def update_search_sunburst(filtered_meta, meta_data):
+    # For initial load, use meta_data
+    if filtered_meta is None and meta_data is not None:
+        data_to_use = meta_data
+    # For filtered results, use filtered_meta
+    elif filtered_meta is not None:
+        data_to_use = filtered_meta
+    else:
+        return dmc.Text("No data available", size="lg", c="dimmed")
 
     try:
         df = pd.DataFrame(data_to_use)
         if df.empty:
             return dmc.Text("No results to display", size="lg", c="dimmed")
 
-        # Create sunburst plot for all results
-        sunburst_figure = cache_sunburst_plot(
-            family="Search Results",  # This will be ignored since we're not filtering by family
-            df=df
+        # Create sunburst plot
+        sunburst_figure = create_sunburst_plot(
+            df=df,
+            type="tax",
+            title_switch=False
         )
         
         if sunburst_figure is None:
             return dmc.Text("No data available", size="lg", c="dimmed")
         
-        # Make the plot responsive
+        # Enhanced layout settings for consistent sizing
         sunburst_figure.update_layout(
             autosize=True,
-            margin=dict(l=0, r=0, t=30, b=0),
+            margin=dict(l=0, r=0, t=0, b=0, pad=0),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            uniformtext=dict(
+                minsize=12,
+                mode='hide'
+            ),
+            uirevision='constant',
+            # Remove fixed height to allow container to control size
+            width=None,
             height=None,
         )
 
-        return dcc.Graph(
-            figure=sunburst_figure,
-            style={"width": "100%", "height": "100%"},
-            config={
-                'responsive': True,
-                'displayModeBar': False,
-                'scrollZoom': False
-            }
+        # Update trace settings
+        sunburst_figure.update_traces(
+            textinfo='label+value',
+            insidetextorientation='radial',
+            hoverinfo='label+value+percent parent',
+            hovertemplate=(
+                "<b>%{label}</b><br>" +
+                "Count: %{value}<br>" +
+                "Percentage: %{percentParent:.1%}<br>" +
+                "<extra></extra>"
+            ),
+            textfont=dict(size=12),
         )
+
+        return dcc.Graph(
+                    figure=sunburst_figure,
+                    style={
+                        "width": "100%",
+                        "height": "600px",  # Fixed height in container
+                    },
+                    config={
+                        'responsive': True,
+                        'displayModeBar': False,
+                        'scrollZoom': False,
+                        'staticPlot': False,
+                        'doubleClick': False,
+                        'showTips': False,
+                        'showAxisDragHandles': False,
+                        'displaylogo': False,
+                        'showLink': False,
+                        'animate': False,
+                        'editable': False,
+                        'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
+                        'toImageButtonOptions': {'height': None, 'width': None},
+                    },
+                    clear_on_unhover=True,
+                    className='plot-container'
+                )
     except Exception as e:
         logger.error(f"Error in update_search_sunburst: {str(e)}")
         return dmc.Alert(

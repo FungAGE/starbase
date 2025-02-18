@@ -112,11 +112,18 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                 "tooltipHideDelay": 1000,
                 "enableCellTextSelection": True,
                 "ensureDomOrder": True,
-                "onGridReady": {"function": "function(params) { this.gridApi = params.api; }"},
+                "suppressRowClickSelection": False,
+                "rowMultiSelectWithClick": True,
+                "onGridReady": "function(params) { params.api.sizeColumnsToFit(); }",
+                                "rowHeight": 48,
+                "headerHeight": 48,
+                "suppressRowHoverHighlight": False,
             },
             className="ag-theme-alpine",
             style={"width": "100%"},
-            dangerously_allow_code=True
+            getRowId="params.data.accession_tag",
+            persistence=True,
+            persistence_type="memory",
         )
         
         logger.info(f"Successfully created grid {id}")
@@ -213,7 +220,7 @@ def make_paper_table():
             "headerName": "Title", 
             "flex": 2,
             "tooltipField": "Title",
-            "autoHeight": True,
+            "wrapText": True,
         },
         {
             "field": "PublicationYear", 
@@ -225,6 +232,7 @@ def make_paper_table():
             "headerName": "Authors", 
             "flex": 1.5,
             "tooltipField": "Author",
+            "wrapText": True,
         },
         {
             "field": "DOI", 

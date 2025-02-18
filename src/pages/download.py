@@ -224,18 +224,16 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                 action="show",
                 style={
                     "width": "100%",
-                    "maxWidth": "500px",  # Limit width on larger screens
-                    "margin": "0 auto",   # Center the notification
+                    "maxWidth": "500px",
+                    "margin": "0 auto",
                     "@media (max-width: 600px)": {
-                        "maxWidth": "100%"  # Full width on mobile
+                        "maxWidth": "100%"
                     }
                 }
             )
         )
 
     try:
-        table_df = pd.DataFrame(table_data)
-        
         # Get all ships data first
         df = cache.get("all_ships")
         if df is None:
@@ -246,14 +244,12 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
 
         # Handle download based on which button was clicked
         if button_id == "download-all-btn":
-            accessions = table_df["accession_tag"].to_list()
+            # For download all, use all rows from table_data
+            accessions = [row["accession_tag"] for row in table_data]
             logger.info("Using all table data for download.")
             
-            # Filter all ships by the accessions in the table
-            df = df[df["accession_tag"].isin(accessions)]
-
         elif button_id == "download-selected-btn":
-            if not selected_rows or len(selected_rows) == 0:
+            if not selected_rows:
                 logger.warning("Download selected was triggered but no rows are selected.")
                 return (
                     dash.no_update,
@@ -266,14 +262,14 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                     )
                 )
 
-            # Get selected accessions directly from selected_rows
+            # Get selected accessions from selected_rows
             accessions = [row["accession_tag"] for row in selected_rows]
             logger.info(f"Using selected table data: {accessions}")
-            
-            # Filter all ships by selected accessions
-            df = df[df["accession_tag"].isin(accessions)]
         else:
             return dash.no_update, None
+
+        # Filter all ships by accessions
+        df = df[df["accession_tag"].isin(accessions)]
 
         if df.empty:
             logger.warning("No matching records found.")
@@ -336,11 +332,18 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
 
 @callback(
     Output("download-selected-btn", "disabled"),
-    [Input("dl-table", "selectedRows")]
+    [Input("dl-table", "selectedRows"),
+     Input("dl-table", "rowData")]
 )
-def update_download_selected_button(selected_rows):
-    # Disable the button if no rows are selected
-    return not selected_rows or len(selected_rows) == 0
+def update_download_selected_button(selected_rows, row_data):
+    if not row_data:  # If there's no data in the table
+        return True
+        
+    if not selected_rows:  # If nothing is selected
+        return True
+        
+    # Enable button if we have both data and selections
+    return False
 
 @callback(
     [Output("accession-modal", "opened"),

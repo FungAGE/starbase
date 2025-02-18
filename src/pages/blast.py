@@ -98,22 +98,7 @@ layout = dmc.Container(
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
         
-        dmc.Space(h=20),
-        dmc.Paper(
-            children=[
-                dmc.Title("BLAST Search", order=1, mb="md"),
-                dmc.Text(
-                    "Search protein/nucleotide sequences for Starships and Starship-associated genes",
-                    c="dimmed",
-                    size="lg",
-                ),
-            ],
-            p="xl",
-            radius="md",
-            withBorder=False,
-            mb="xl",
-        ),
-        
+        dmc.Space(h=20),       
         dmc.Grid(
             children=[
                 dmc.GridCol(
@@ -121,6 +106,12 @@ layout = dmc.Container(
                     children=[
                         dmc.Paper(
                             children=dmc.Stack([
+                                dmc.Title("BLAST Search", order=1),
+                                dmc.Text(
+                                    "Search protein/nucleotide sequences for Starships and Starship-associated genes",
+                                    c="dimmed",
+                                    size="lg",
+                                ),
                                 # Input Section
                                 dmc.Stack([
                                     dmc.Title("Input Sequence", order=3),
@@ -190,7 +181,7 @@ layout = dmc.Container(
                                         # align="center",
                                     ),
                                 ], gap="xs"),                                
-                            ], gap="xl"),
+                            ], gap="md"),
                             p="xl",
                             radius="md",
                             withBorder=True,
