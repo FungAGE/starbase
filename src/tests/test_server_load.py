@@ -4,6 +4,14 @@ from dash.testing.browser import Browser
 import time
 import multiprocessing
 import requests
+import os
+import sys
+
+# Add project root to path if needed
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
 
 def heavy_request(url, duration=1):
     """Simulate a heavy request that takes resources"""
@@ -14,8 +22,8 @@ def heavy_request(url, duration=1):
 
 def test_server_under_load(dash_duo: Browser):
     """Test how the application behaves under heavy load"""
-    # Import the app
-    app = import_app('src.app')
+    # Import the app using dash's import_app utility
+    app = import_app("app")
     
     # Start the dash server
     dash_duo.start_server(app)
@@ -30,11 +38,11 @@ def test_server_under_load(dash_duo: Browser):
         )
         processes.append(p)
     
-    # Start load generation
-    for p in processes:
-        p.start()
-    
     try:
+        # Start load generation
+        for p in processes:
+            p.start()
+            
         # Try to load the page while under load
         dash_duo.wait_for_element("#pgv-table", timeout=10)
         
@@ -54,17 +62,19 @@ def test_server_under_load(dash_duo: Browser):
 
 def test_slow_database(dash_duo: Browser, monkeypatch):
     """Test how the application handles slow database responses"""
-    from src.database.sql_manager import fetch_ship_table
+    # Import the app using dash's import_app utility
+    app = import_app("app")
     
     # Patch the database function to be slow
     def slow_fetch(*args, **kwargs):
         time.sleep(5)  # Simulate slow DB
-        return fetch_ship_table(*args, **kwargs)
+        return original_fetch(*args, **kwargs)
     
+    # Get the original function before patching
+    from src.database.sql_manager import fetch_ship_table as original_fetch
     monkeypatch.setattr("src.database.sql_manager.fetch_ship_table", slow_fetch)
     
-    # Import and start the app
-    app = import_app('src.app')
+    # Start the dash server
     dash_duo.start_server(app)
     
     # Try to load the page
