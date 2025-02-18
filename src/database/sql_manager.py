@@ -55,10 +55,6 @@ def fetch_paper_data():
     finally:
         session.close()
 
-def cache_sunburst_plot(family, df):
-    """Create sunburst plots for wiki page and cache the result."""
-    return create_sunburst_plot(df=df, type="tax", title_switch=False)
-
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
