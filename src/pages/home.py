@@ -282,12 +282,12 @@ def create_stats_section():
     }
     
     return dmc.Container([
-        dmc.Title(
-            "Database Statistics", 
-            order=2, 
-            mb="xl"
-        ),
         dmc.Paper([
+            dmc.Title(
+                "Database Statistics", 
+                order=2, 
+                mb="xl"
+            ),
             dmc.SimpleGrid([
                 # Total Starships Section
                 dmc.Stack([
