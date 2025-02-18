@@ -17,7 +17,7 @@ from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 
 from src.components.callbacks import create_modal_callback
-from src.components.error_boundary import error_boundary, handle_callback_error
+from src.components.error_boundary import handle_callback_error
 
 
 logger = logging.getLogger(__name__)
@@ -60,22 +60,19 @@ layout = dmc.Container(
         dcc.Location(id="url", refresh=False),
         
         # Header Section
-        error_boundary(
-            dmc.Paper(
-                children=[
-                    dmc.Title("Starship Genome Viewer", order=1, mb="md"),
-                    dmc.Text(
-                        "Compare and visualize up to 4 Starship sequences",
-                        size="lg",
-                        c="dimmed",
-                    ),
-                ],
-                p="xl",
-                radius="md",
-                withBorder=False,
-                mb="xl",
-            ),
-            id="pgv-header-container"
+        dmc.Paper(
+            children=[
+                dmc.Title("Starship Genome Viewer", order=1, mb="md"),
+                dmc.Text(
+                    "Compare and visualize up to 4 Starship sequences",
+                    size="lg",
+                    c="dimmed",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
         ),
         
         # Main content
@@ -83,10 +80,7 @@ layout = dmc.Container(
             children=[
                 dmc.GridCol(
                     span={"base": 12, "md": 6},
-                    children=error_boundary(
-                        dmc.LoadingOverlay(
-                            overlayProps={
-                                "children": dmc.Paper(
+                    children=dmc.Paper(
                                     children=[
                                         dmc.Stack([
                                             dmc.Group(
@@ -129,15 +123,8 @@ layout = dmc.Container(
                                     radius="md",
                                     withBorder=True,
                                     style={"position": "relative"}
-                                ),
-                                "zIndex": 100
-                            },
-                            loaderProps={"variant": "dots", "color": "blue", "size": "xl"},
-                            visible=True,
-                            style={"position": "relative"}
                         ),
                         id="pgv-controls-container"
-                    )
                 ),
                 
                 # Right Column - Visualization Section

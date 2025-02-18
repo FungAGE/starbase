@@ -8,17 +8,16 @@ logger = logging.getLogger(__name__)
 
 def error_boundary(children, id=None):
     """Wraps content in a div with error handling"""
-    # Create the Paper component without id if none provided
     paper = dmc.Paper(
         children=children,
         p="md",
         withBorder=True,
-        style={"position": "relative"}  # Add relative positioning
+        style={"position": "relative"}
     )
     
     # Only wrap in a div with id if id is provided
     if id:
-        return html.Div(paper, id=id, style={"position": "relative"})  # Add relative positioning
+        return html.Div(paper, id=id, style={"position": "relative"})
     return paper
 
 def handle_callback_error(func):
@@ -32,12 +31,12 @@ def handle_callback_error(func):
             logger.error(traceback.format_exc())
             return dmc.Alert(
                 title="Error",
-                children="An error occurred while loading this component. Please try refreshing the page.",
+                children="An error occurred while loading this component. This is likely due to a temporary issue with the server. Please try refreshing the page in a few minutes.",
                 color="red",
                 variant="filled",
                 style={
-                    "position": "relative",  # Add relative positioning
-                    "zIndex": 1,  # Ensure proper stacking
+                    "position": "relative",
+                    "zIndex": 1,
                     "marginTop": "1rem"
                 }
             )
