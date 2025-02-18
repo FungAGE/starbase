@@ -1,5 +1,6 @@
 import warnings
 import logging
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import dash
 import dash_mantine_components as dmc
@@ -9,8 +10,18 @@ from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from sqlalchemy import text
 import os
+from sqlalchemy.pool import QueuePool
+from sqlalchemy import create_engine
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
+
 warnings.filterwarnings("ignore")
 
 logger = logging.getLogger(__name__)
@@ -27,7 +38,7 @@ from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.config.database import TelemetrySession, SubmissionsSession
-from src.database.init_db import init_databases
+from src.config.settings import DB_PATHS
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -53,14 +64,23 @@ external_scripts = [
     "https://unpkg.com/micromodal/dist/micromodal.min.js",
 ]
 
+# Initialize Flask first
 server = Flask(__name__)
-server.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB limit
-server.config['CACHE_TYPE'] = 'SimpleCache'
-server.config['CACHE_DEFAULT_TIMEOUT'] = 300
+server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
+
+# Configure Flask
+server.config.update(
+    MAX_CONTENT_LENGTH=10 * 1024 * 1024,
+    CACHE_TYPE='SimpleCache',
+    CACHE_DEFAULT_TIMEOUT=300,
+    SEND_FILE_MAX_AGE_DEFAULT=0,
+    PROPAGATE_EXCEPTIONS=True,
+)
+
+# Initialize cache with the app
 cache.init_app(server)
 
-IPSTACK_API_KEY = os.environ.get('IPSTACK_API_KEY') or os.getenv('IPSTACK_API_KEY')
-
+# Initialize Dash app
 app = Dash(
     __name__,
     server=server,
@@ -69,14 +89,10 @@ app = Dash(
     suppress_callback_exceptions=True,
     title="starbase",
     external_stylesheets=external_stylesheets,
+    external_scripts=external_scripts,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
-)
-
-limiter = Limiter(
-    get_client_ip,
-    app=server,
-    storage_uri="memory://",
-    default_limits=[]
+    update_title=None,
+    compress=True
 )
 
 def initialize_app():
@@ -88,6 +104,21 @@ def initialize_app():
         cleanup_old_cache()
                 
     maintain_ip_locations()
+
+# Create a context for cache operations
+with server.app_context():
+    cleanup_old_cache()
+    initialize_app()
+
+IPSTACK_API_KEY = os.environ.get('IPSTACK_API_KEY') or os.getenv('IPSTACK_API_KEY')
+
+limiter = Limiter(
+    get_client_ip,
+    app=server,
+    storage_uri="memory://",
+    default_limits=["200 per minute"],
+    strategy="fixed-window-elastic-expiry"  # More forgiving rate limiting
+)
 
 def serve_app_layout():
     return dmc.MantineProvider(
@@ -236,7 +267,41 @@ def force_cache_cleanup():
         }), 500
 
 app.layout = serve_app_layout
-initialize_app()
+
+# Add global error handlers
+@server.errorhandler(500)
+def handle_500(e):
+    logger.error(f"Internal Server Error: {str(e)}")
+    return {
+        "error": "Internal Server Error",
+        "message": "The server encountered an error. Please try again later."
+    }, 500
+
+@server.errorhandler(429)
+def handle_429(e):
+    return {
+        "error": "Too Many Requests",
+        "message": "Please wait before making more requests."
+    }, 429
+
+# Create database URLs
+DATABASE_URLS = {
+    'starbase': f"sqlite:///{DB_PATHS['starbase']}",
+    'submissions': f"sqlite:///{DB_PATHS['submissions']}",
+    'telemetry': f"sqlite:///{DB_PATHS['telemetry']}"
+}
+
+# Create engines with connection pooling
+engines = {
+    name: create_engine(
+        url,
+        poolclass=QueuePool,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800
+    ) for name, url in DATABASE_URLS.items()
+}
 
 if __name__ == "__main__":
     app.run_server(debug=False)
