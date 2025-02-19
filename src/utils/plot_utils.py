@@ -203,4 +203,3 @@ def make_logo(seqs, fig_name=None, type=None):
             return None
     else:
         return None
-

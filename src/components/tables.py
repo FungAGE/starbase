@@ -35,9 +35,12 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         if df is None:
             row_data = []
         elif isinstance(df, pd.DataFrame):
+            # Handle empty DataFrame
             if df.empty:
+                logger.warning(f"Empty DataFrame provided for grid {id}")
                 row_data = []
             else:
+                # Replace empty familyName with "Unclassified"
                 if 'familyName' in df.columns:
                     df['familyName'] = df['familyName'].fillna('Unclassified')
                     df.loc[df['familyName'].str.strip() == '', 'familyName'] = 'Unclassified'
@@ -52,6 +55,7 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             if not row_data:
                 grid_columns = []
             else:
+                # Get column names from data
                 if isinstance(df, pd.DataFrame):
                     col_names = df.columns
                 elif row_data and isinstance(row_data[0], dict):
@@ -59,70 +63,74 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                 else:
                     col_names = []
                 
-                grid_columns = []
-                for col in col_names:
-                    column_def = {
+                grid_columns = [
+                    {
                         "field": col,
                         "headerName": col.replace("_", " ").title(),
-                        "flex": 1
+                        "flex": 1,
+                        **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
+                           if col == "accession_tag" else {})
                     }
-                    
-                    # Add styling for accession_tag
-                    if col == "accession_tag":
-                        column_def["cellStyle"] = {"cursor": "pointer", "color": "#1976d2"}
-                        if select_rows:  # Add checkbox to accession_tag column
-                            column_def["checkboxSelection"] = True
-                            column_def["headerCheckboxSelection"] = True
-                            column_def["pinned"] = "left"
-                    
-                    grid_columns.append(column_def)
+                    for col in col_names
+                ]
         else:
             grid_columns = columns
 
-        # Create grid component with essential configuration
+        # Add checkbox column if row selection is enabled
+        if select_rows:
+            grid_columns.insert(0, {
+                "headerCheckboxSelection": True,
+                "checkboxSelection": True,
+                "width": 50,
+                "pinned": "left",
+                "lockPosition": True,
+                "suppressMenu": True,
+                "headerName": "",
+                "flex": 0
+            })
+        
+        # Set up default column definitions
+        defaultColDef = {
+            "resizable": True,
+            "sortable": True,
+            "filter": True,
+            "minWidth": 100,
+        }
+        
+        # Create grid component
         grid = dag.AgGrid(
             id=id,
             columnDefs=grid_columns,
             rowData=row_data,
-            rowSelection="multiple" if select_rows else None,
-            pagination=True,
-            paginationPageSize=pg_sz,
-            getRowId="params.data.accession_tag",
-            persistence=True,
-            persistence_type="session",
-            className="ag-theme-alpine",
-            style={"width": "100%"},
+            defaultColDef=defaultColDef,
             dashGridOptions={
+                "pagination": True,
+                "paginationPageSize": pg_sz,
+                "rowSelection": "multiple" if select_rows else None,
                 "domLayout": 'autoHeight',
+                "tooltipShowDelay": 0,
+                "tooltipHideDelay": 1000,
                 "enableCellTextSelection": True,
                 "ensureDomOrder": True,
-                "onGridReady": """
-                    function(params) {
-                        params.api.sizeColumnsToFit();
-                        window.gridApi = params.api;
-                    }
-                """,
-                "onFirstDataRendered": """
-                    function(params) {
-                        params.api.sizeColumnsToFit();
-                    }
-                """,
-                "rowHeight": 48,
-                "headerHeight": 48,
-                "rowMultiSelectWithClick": True if select_rows else False,
                 "suppressRowClickSelection": False,
+                "rowMultiSelectWithClick": True,
+                "onGridReady": "function(params) { params.api.sizeColumnsToFit(); }",
+                                "rowHeight": 48,
+                "headerHeight": 48,
+                "suppressRowHoverHighlight": False,
             },
-            defaultColDef={
-                "resizable": True,
-                "sortable": True,
-                "filter": True,
-                "minWidth": 100,
-            }
+            className="ag-theme-alpine",
+            style={"width": "100%"},
+            getRowId="params.data.accession_tag",
+            persistence=True,
+            persistence_type="memory",
         )
         
+        logger.info(f"Successfully created grid {id}")
         return grid
         
     except Exception as e:
+        logger.error(f"Error creating grid {id}: {str(e)}")
         return html.Div(
             dmc.Alert(
                 title="Error",
