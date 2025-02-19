@@ -144,6 +144,53 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
+    Specific table constructor for ship data with accession tag handling.
+    
+    Args:
+        df (pd.DataFrame): Ship data to display
+        id (str): Unique identifier for the table
+        columns (list): Column definitions
+        select_rows (bool): Enable row selection
+        pg_sz (int): Number of rows per page
+    """
+    # Handle empty or None DataFrame
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        if columns:
+            df = pd.DataFrame(columns=[col["field"] for col in columns])
+        else:
+            df = pd.DataFrame()
+    
+    # Create column definitions
+    if columns:
+        grid_columns = []
+        for col in columns:
+            col_def = {
+                "field": col["field"],
+                "headerName": col["name"] if "name" in col else col["field"].replace("_", " ").title(),
+                "flex": 1
+            }
+            
+            # Add special styling for accession_tag
+            if col["field"] == "accession_tag":
+                col_def.update({
+                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                    "cellClass": "clickable-cell"
+                })
+                
+            grid_columns.append(col_def)
+    else:
+        grid_columns = None
+        
+    return create_ag_grid(
+        df=df,
+        id=id,
+        columns=grid_columns,
+        select_rows=select_rows,
+        pg_sz=pg_sz or 10
+    )
+
+def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
+    """
     Specific table constructor for ship data using DataTable.
     """
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
