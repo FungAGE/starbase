@@ -116,6 +116,15 @@ def create_sunburst_plot(df, type, title_switch=True, cache_bust=None):
         marker=dict(
             line=dict(color="white", width=1)
         ),
+        # Configure text display
+        textfont=dict(
+            size=14,  # Base font size
+            family="Arial, sans-serif"
+        ),
+        insidetextfont=dict(
+            size=14,  # Base font size for inside text
+            family="Arial, sans-serif"
+        )
     )
     
     return fig
@@ -194,3 +203,4 @@ def make_logo(seqs, fig_name=None, type=None):
             return None
     else:
         return None
+
