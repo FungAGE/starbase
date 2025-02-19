@@ -467,10 +467,10 @@ def load_ship_table(href):
             select_rows=True,
             pg_sz=10
         )
-        print("Table created successfully")
+        logger.info("Table created successfully")
         return table
     
-    print("No data available or empty DataFrame")
+    logger.error("No data available or empty DataFrame")
     return html.Div("No data available")
 
 @callback(
