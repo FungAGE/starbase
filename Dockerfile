@@ -37,16 +37,17 @@ RUN apt-get update && apt-get upgrade -y && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create cron directories and set up logging (combined directory creation and cron setup)
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron && \
+# Create cron and cache directories and set up logging (combined directory creation)
+RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
     touch /var/log/cron/cron.log && \
     # Create crontab file for supercronic
     echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
     echo "*/15 * * * * cd $HOME && curl -X POST http://localhost:8000/api/refresh-telemetry >> $HOME/cron/cron.log 2>&1" >> $HOME/cron/crontab && \
     # Add cache check to crontab
     echo "*/5 * * * * curl -f http://localhost:8000/api/cache/status || curl -X POST http://localhost:8000/api/cache/refresh" >> $HOME/cron/crontab && \
-    # Set permissions
-    chown -R $USER:$USER $HOME /var/run/crond /var/log/cron
+    # Set permissions for all directories
+    chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
+    chmod -R 777 $HOME/src/database/db/cache
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
