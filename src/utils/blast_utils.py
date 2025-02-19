@@ -572,14 +572,7 @@ def blast_chords(blast_output):
 
 
 def blast_table(ship_blast_results):
-    """Creates an AG Grid table for displaying BLAST results.
-    
-    Args:
-        ship_blast_results (pd.DataFrame): DataFrame containing BLAST results
-        
-    Returns:
-        dash.html.Div: Container with table and download button
-    """
+    """Creates an AG Grid table for displaying BLAST results."""
     try:
         # Validation checks...
         if not isinstance(ship_blast_results, pd.DataFrame):
@@ -591,7 +584,7 @@ def blast_table(ship_blast_results):
             return html.Div("No results to display")
             
         # Column checks...
-        required_cols = ["accession_tag", "familyName", "pident", "length", "evalue", "bitscore"]
+        required_cols = ["sseqid", "pident", "length", "evalue", "bitscore"]
         missing_cols = [col for col in required_cols if col not in ship_blast_results.columns]
         if missing_cols:
             logger.error(f"Missing required columns: {missing_cols}")
@@ -615,62 +608,77 @@ def blast_table(ship_blast_results):
                 "field": "pident",
                 "headerName": "Percent Identity",
                 "flex": 1,
-                "valueFormatter": "value.toFixed(2)",
-                "type": "numericColumn"
+                "valueFormatter": {"function": "value.toFixed(2)"},
+                "type": "numericColumn",
+                "filter": "agNumberColumnFilter"
             },
             {
                 "field": "length",
                 "headerName": "Hit Length",
                 "flex": 1,
-                "type": "numericColumn"
+                "type": "numericColumn",
+                "filter": "agNumberColumnFilter"
             },
             {
                 "field": "evalue",
                 "headerName": "E-value",
                 "flex": 1,
-                "valueFormatter": "value.toExponential(2)",
-                "type": "numericColumn"
+                "valueFormatter": {"function": "value.toExponential(2)"},
+                "type": "numericColumn",
+                "filter": "agNumberColumnFilter"
             },
             {
                 "field": "bitscore",
                 "headerName": "Bitscore",
                 "flex": 1,
-                "valueFormatter": "value.toFixed(2)",
-                "type": "numericColumn"
+                "valueFormatter": {"function": "value.toFixed(2)"},
+                "type": "numericColumn",
+                "filter": "agNumberColumnFilter"
             }
         ]
 
-        return html.Div([
-            # Table container with fixed height
+        return html.Div(
             html.Div(
                 create_ag_grid(
                     df=ship_blast_results,
                     id="blast-table",
                     columns=columns,
                     select_rows=True,
-                    pg_sz=15
+                    pg_sz=15,
                 ),
-                style={"height": "600px"}
+                style={
+                    "height": "400px",
+                    "width": "100%",
+                    "overflow": "auto",  # Changed from 'hidden' to 'auto'
+                    "position": "relative"
+                }
             ),
-            
-            # Download section
-            dmc.Space(h="md"),
-            dmc.Center(
-                dmc.Button(
-                    "Download BLAST Results",
-                    id="blast-dl-button",
-                    variant="gradient",
-                    gradient={"from": "indigo", "to": "cyan"},
-                    size="lg",
-                    leftSection=[html.I(className="bi bi-download")]
-                )
-            ),
-            dcc.Download(id="blast-dl")
-        ])
+            style={
+                "marginBottom": "20px",
+                "width": "100%"
+            }
+        )
         
     except Exception as e:
         logger.error(f"Error in blast_table: {e}")
         return html.Div(f"Error creating table: {str(e)}")
+
+def blast_download_button():
+    """Creates the download button for BLAST results."""
+    return html.Div([
+        dmc.Space(h="xl"),
+        dmc.Center(
+            dmc.Button(
+                "Download BLAST Results",
+                id="blast-dl-button",
+                variant="gradient",
+                gradient={"from": "indigo", "to": "cyan"},
+                size="lg",
+                leftSection=[html.I(className="bi bi-download")]
+            )
+        ),
+        dcc.Download(id="blast-dl")
+    ])
 
 def select_ship_family(hmmer_results):
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")

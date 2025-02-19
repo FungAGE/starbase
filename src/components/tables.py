@@ -118,9 +118,10 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                 "rowHeight": 48,
                 "headerHeight": 48,
                 "suppressRowHoverHighlight": False,
+                "suppressHorizontalScroll": False
             },
             className="ag-theme-alpine",
-            style={"width": "100%"},
+            style={"width": "100%","height":"100%"},
             getRowId="params.data.accession_tag",
             persistence=True,
             persistence_type="memory",
