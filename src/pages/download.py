@@ -200,13 +200,12 @@ def update_dl_table(url, curated=True, dereplicate=False):
     [Output("dl-package", "data"),
      Output("notifications-container", "children")],
     [Input("download-all-btn", "n_clicks"),
-     Input("download-selected-btn", "n_clicks"),
-     Input("dl-table", "rowData"),
-     Input("dl-table", "selectedRows")],
+     Input("download-selected-btn", "n_clicks")],
+    [State("dl-table", "rowData"),
+     State("dl-table", "selectedRows")],
     prevent_initial_call=True,
 )
 def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
-    # Determine which button was clicked using callback context
     ctx = dash.callback_context
     if not ctx.triggered or not any([dl_all_clicks, dl_select_clicks]):
         raise dash.exceptions.PreventUpdate
@@ -332,17 +331,11 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
 
 @callback(
     Output("download-selected-btn", "disabled"),
-    [Input("dl-table", "selectedRows"),
-     Input("dl-table", "rowData")]
+    [Input("dl-table", "selectedRows")]  # Only selectedRows, no rowData
 )
-def update_download_selected_button(selected_rows, row_data):
-    if not row_data:
-        return True
-        
-    if not selected_rows:
-        return True
-        
-    return False
+def update_download_selected_button(selected_rows):
+    # Disable the button if no rows are selected
+    return not selected_rows or len(selected_rows) == 0
 
 toggle_modal = create_modal_callback(
     "dl-table",
