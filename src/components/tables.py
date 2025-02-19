@@ -326,6 +326,8 @@ def make_dl_table(df, id, table_columns):
             "flex": 1,
             **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
                if col["id"] == "accession_tag" else {}),
+            **({"sort": "asc", "sortIndex": 0}
+               if col["id"] == "accession_tag" else {})
         }
         for col in table_columns
     ]
