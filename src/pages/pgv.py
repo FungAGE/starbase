@@ -456,11 +456,11 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 def load_ship_table(href):
     """Load and display the ship selection table"""
     from src.database.sql_manager import fetch_ship_table
-    from src.components.tables import make_ship_table
+    from src.components.tables import make_pgv_table
     table_df = fetch_ship_table(curated=True)
     
     if table_df is not None and not table_df.empty:
-        table = make_ship_table(
+        table = make_pgv_table(
             df=table_df,
             columns=table_columns,
             id="pgv-table",
@@ -477,8 +477,8 @@ def load_ship_table(href):
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
     Input("update-button", "n_clicks"),
     [
-        State("pgv-table", "selectedRows"),
-        State("pgv-table", "rowData"),
+        State("pgv-table", "selected_rows"),
+        State("pgv-table", "data"),
         State("length-threshold", "value"),
         State("identity-threshold", "value"),
     ],
@@ -494,15 +494,11 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
         if table_data and selected_rows is not None:
             try:
                 if isinstance(selected_rows, list) and len(selected_rows) > 0:
-                    try:
-                        rows = selected_rows
-                    except IndexError as e:
-                        return html.Div("Index out of bounds")
-
                     with tempfile.TemporaryDirectory() as temp_dir:
                         tmp_gffs = []
                         tmp_fas = []
-                        for row in rows:
+                        for idx in selected_rows:
+                            row = table_data[idx]
                             accession = row["accession_tag"]
                             ship_data = fetch_accession_ship(accession)
                             fa_df = ship_data["sequence"]
