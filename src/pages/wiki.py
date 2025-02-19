@@ -1,5 +1,6 @@
 import warnings
 import json
+import time
 
 warnings.filterwarnings("ignore")
 import dash
@@ -658,8 +659,9 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotyp
         
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
-    # If reset button clicked, clear all filters
+    # Clear relevant caches on reset
     if triggered_id == "reset-search":
+        cache.delete_memoized(get_filtered_options)
         return None, [], [], [], []
     
     # If no search clicked or no filters selected, prevent update
@@ -690,8 +692,12 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotyp
     Output("search-sunburst-plot", "children"),
     [Input("filtered-meta-data", "data"),
      Input("meta-data", "data")],
+    prevent_initial_call=False  # Allow initial call
 )
 def update_search_sunburst(filtered_meta, meta_data):
+    # Force cache bypass for visualization updates
+    cache.delete_memoized(get_filtered_options)  # Clear related filter cache
+    
     # For initial load, use meta_data
     if filtered_meta is None and meta_data is not None:
         data_to_use = meta_data
@@ -706,11 +712,12 @@ def update_search_sunburst(filtered_meta, meta_data):
         if df.empty:
             return dmc.Text("No results to display", size="lg", c="dimmed")
 
-        # Create sunburst plot
+        # Create sunburst plot with cache busting parameter
         sunburst_figure = create_sunburst_plot(
             df=df,
             type="tax",
-            title_switch=False
+            title_switch=False,
+            cache_bust=time.time()  # Add timestamp to prevent caching
         )
         
         if sunburst_figure is None:

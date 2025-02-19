@@ -14,7 +14,7 @@ from sqlalchemy.pool import QueuePool
 from sqlalchemy import create_engine
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.ERROR)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)

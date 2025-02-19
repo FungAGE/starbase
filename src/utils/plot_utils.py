@@ -31,7 +31,7 @@ def agg_df(df, groups):
         )
 
 
-def create_sunburst_plot(df, type, title_switch=True):
+def create_sunburst_plot(df, type, title_switch=True, cache_bust=None):
     # Define color schemes and settings based on type
     settings = {
         "ship": {
@@ -96,6 +96,8 @@ def create_sunburst_plot(df, type, title_switch=True):
             font_size=14,
             font_family="Arial, sans-serif"
         ),
+        # Add uirevision to control caching behavior
+        uirevision=str(cache_bust) if cache_bust is not None else True
     )
     
     # Customize hover information
@@ -114,6 +116,15 @@ def create_sunburst_plot(df, type, title_switch=True):
         marker=dict(
             line=dict(color="white", width=1)
         ),
+        # Configure text display
+        textfont=dict(
+            size=14,  # Base font size
+            family="Arial, sans-serif"
+        ),
+        insidetextfont=dict(
+            size=14,  # Base font size for inside text
+            family="Arial, sans-serif"
+        )
     )
     
     return fig

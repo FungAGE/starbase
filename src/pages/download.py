@@ -200,13 +200,12 @@ def update_dl_table(url, curated=True, dereplicate=False):
     [Output("dl-package", "data"),
      Output("notifications-container", "children")],
     [Input("download-all-btn", "n_clicks"),
-     Input("download-selected-btn", "n_clicks"),
-     Input("dl-table", "rowData"),
-     Input("dl-table", "selectedRows")],
+     Input("download-selected-btn", "n_clicks")],
+    [State("dl-table", "rowData"),
+     State("dl-table", "selectedRows")],
     prevent_initial_call=True,
 )
 def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
-    # Determine which button was clicked using callback context
     ctx = dash.callback_context
     if not ctx.triggered or not any([dl_all_clicks, dl_select_clicks]):
         raise dash.exceptions.PreventUpdate
@@ -332,30 +331,15 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
 
 @callback(
     Output("download-selected-btn", "disabled"),
-    [Input("dl-table", "selectedRows"),
-     Input("dl-table", "rowData")]
+    [Input("dl-table", "selectedRows")]  # Only selectedRows, no rowData
 )
-def update_download_selected_button(selected_rows, row_data):
-    if not row_data:  # If there's no data in the table
-        return True
-        
-    if not selected_rows:  # If nothing is selected
-        return True
-        
-    # Enable button if we have both data and selections
-    return False
+def update_download_selected_button(selected_rows):
+    # Disable the button if no rows are selected
+    return not selected_rows or len(selected_rows) == 0
 
-@callback(
-    [Output("accession-modal", "opened"),
-     Output("modal-content", "children"),
-     Output("modal-title", "children")],
-    [Input("dl-table", "cellClicked")],
-    [State("dl-table", "rowData")],
-    prevent_initial_call=True
+toggle_modal = create_modal_callback(
+    "dl-table",
+    "accession-modal",
+    "modal-content",
+    "modal-title"
 )
-def toggle_modal(cell_clicked, row_data):
-    if not cell_clicked or cell_clicked["colId"] != "accession_tag":
-        raise dash.exceptions.PreventUpdate
-        
-    accession = cell_clicked["value"]
-    return create_accession_modal(accession)

@@ -1,4 +1,4 @@
-from dash import html, Output, Input, State, callback, no_update, dcc, clientside_callback, ClientsideFunction
+from dash import html, Output, Input, State, callback, no_update, dcc, callback_context
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from typing import List  
@@ -325,18 +325,37 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         Output(modal_id, "opened"),
         Output(content_id, "children"),
         Output(title_id, "children"),
-        Input(table_id, "cellClicked"),
+        [Input(table_id, "cellClicked"),  # AG Grid
+         Input(table_id, "active_cell")],  # Dash DataTable
+        [State(table_id, "derived_virtual_data"),
+         State(table_id, "page_current"),
+         State(table_id, "page_size")],
         prevent_initial_call=True
     )
-    def toggle_modal(cell_clicked):
+    def toggle_modal(cell_clicked, active_cell, table_data, page_current, page_size):
         try:
-            if not cell_clicked:
+            ctx = callback_context
+            triggered_id = ctx.triggered[0]["prop_id"]
+
+            if not (cell_clicked or active_cell):
                 return False, no_update, no_update
             
-            # Check if the clicked cell is in the accession_tag column
-            if cell_clicked["colId"] == "accession_tag":
+            accession = None
+            if f"{table_id}.cellClicked" in triggered_id and cell_clicked:
+                # AG Grid format
+                if cell_clicked["colId"] == "accession_tag":
+                    accession = str(cell_clicked["value"])
+            elif f"{table_id}.active_cell" in triggered_id and active_cell:
+                # Dash DataTable format
+                if active_cell["column_id"] == "accession_tag":
+                    # Calculate the actual row index based on pagination
+                    actual_row_idx = (page_current or 0) * page_size + active_cell["row"]
+                    if table_data and actual_row_idx < len(table_data):
+                        accession = str(table_data[actual_row_idx]["accession_tag"])
+
+            if accession:
                 # Clean and standardize the accession tag
-                accession = str(cell_clicked["value"]).strip("[]").split("/")[-1].strip()
+                accession = accession.strip("[]").split("/")[-1].strip()
                 logger.debug(f"Looking for accession in cache: {accession}")
                 
                 modal_content, modal_title = create_accession_modal(accession)

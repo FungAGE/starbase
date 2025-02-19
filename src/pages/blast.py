@@ -36,18 +36,9 @@ from src.utils.blast_utils import (
     process_captain_results,
     create_no_matches_alert,
     create_error_alert,
+    blast_download_button,
 )
 
-from src.utils.blast_utils import (
-    run_blast,
-    run_hmmer,
-    run_diamond,
-    blast_table,
-    run_lastz,
-    select_ship_family,
-    parse_lastz_output,
-    blast_chords,
-)
 from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
 from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 
@@ -200,6 +191,7 @@ layout = dmc.Container(
                                     children=[
                                         html.Div(id="ship-family"),
                                         html.Div(id="blast-table"),
+                                        html.Div(id="blast-download"),
                                         html.Div(id="subject-seq-button"),
                                         html.Div(
                                             id="ship-aln",
@@ -514,7 +506,7 @@ def process_blast_results(blast_results_dict, metadata_dict):
 
         blast_df = pd.DataFrame(blast_results_dict)
         meta_df = pd.DataFrame(metadata_dict)
-        
+                
         # Process in chunks if dataset is large
         chunk_size = 1000
         if len(blast_df) > chunk_size:
@@ -540,7 +532,7 @@ def process_blast_results(blast_results_dict, metadata_dict):
                 how="right",
                 suffixes=('', '_blast')
             )
-        
+                
         df_for_table = (df_for_table
             .drop_duplicates(subset=["accession_tag", "pident", "length"])
             .dropna(subset=["accession_tag"])
@@ -558,32 +550,36 @@ def process_blast_results(blast_results_dict, metadata_dict):
 
 # 3. UI Update Callback
 @callback(
-    [Output("ship-family", "children"), Output("blast-table", "children")],
+    [
+        Output("ship-family", "children"),
+        Output("blast-table", "children"),
+        Output("blast-download", "children")
+    ],
     [Input("processed-blast-store", "data"), Input("captain-results-store", "data")],
     State("submit-button", "n_clicks"),
     prevent_initial_call=True
 )
 def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
     if not n_clicks or processed_blast_results is None:
-        return None, None
+        return None, None, None
         
     try:
         if not processed_blast_results:
-            return create_no_matches_alert(), None
+            return create_no_matches_alert(), None, None
             
         try:
             blast_df = pd.DataFrame(processed_blast_results)
             if blast_df.empty:
-                return create_no_matches_alert(), None
+                return create_no_matches_alert(), None, None
         except Exception as e:
             logger.error(f"Error converting BLAST results to DataFrame: {e}")
-            return create_error_alert(str(e)), None
+            return create_error_alert(str(e)), None, None
         
         try:
             best_match = blast_df.nsmallest(1, 'evalue').iloc[0]
         except Exception as e:
             logger.error(f"Error getting best match: {e}")
-            return create_error_alert("Could not determine best match"), None
+            return create_error_alert("Could not determine best match"), None, None
         
         try:
             ship_family = (
@@ -597,19 +593,20 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
             )
         except Exception as e:
             logger.error(f"Error creating family alert: {e}")
-            return create_error_alert("Could not create family alert"), None
+            return create_error_alert("Could not create family alert"), None, None
             
         try:
-            ship_table = blast_table(blast_df)
+            table = blast_table(blast_df)
+            download_button = blast_download_button()
         except Exception as e:
             logger.error(f"Error creating BLAST table: {e}")
-            return ship_family, create_error_alert("Could not create results table")
+            return ship_family, create_error_alert("Could not create results table"), None
         
-        return ship_family, ship_table
+        return ship_family, table, download_button
         
     except Exception as e:
         logger.error(f"Error in update_ui_elements: {e}")
-        return create_error_alert(str(e)), None
+        return create_error_alert(str(e)), None, None
 
 @cache.memoize()
 @callback(
