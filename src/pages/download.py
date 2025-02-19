@@ -336,26 +336,17 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
      Input("dl-table", "rowData")]
 )
 def update_download_selected_button(selected_rows, row_data):
-    if not row_data:  # If there's no data in the table
+    if not row_data:
         return True
         
-    if not selected_rows:  # If nothing is selected
+    if not selected_rows:
         return True
         
-    # Enable button if we have both data and selections
     return False
 
-@callback(
-    [Output("accession-modal", "opened"),
-     Output("modal-content", "children"),
-     Output("modal-title", "children")],
-    [Input("dl-table", "cellClicked")],
-    [State("dl-table", "rowData")],
-    prevent_initial_call=True
+toggle_modal = create_modal_callback(
+    "dl-table",
+    "accession-modal",
+    "modal-content",
+    "modal-title"
 )
-def toggle_modal(cell_clicked, row_data):
-    if not cell_clicked or cell_clicked["colId"] != "accession_tag":
-        raise dash.exceptions.PreventUpdate
-        
-    accession = cell_clicked["value"]
-    return create_accession_modal(accession)
