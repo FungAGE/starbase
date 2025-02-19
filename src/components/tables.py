@@ -35,12 +35,9 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         if df is None:
             row_data = []
         elif isinstance(df, pd.DataFrame):
-            # Handle empty DataFrame
             if df.empty:
-                logger.warning(f"Empty DataFrame provided for grid {id}")
                 row_data = []
             else:
-                # Replace empty familyName with "Unclassified"
                 if 'familyName' in df.columns:
                     df['familyName'] = df['familyName'].fillna('Unclassified')
                     df.loc[df['familyName'].str.strip() == '', 'familyName'] = 'Unclassified'
@@ -55,7 +52,6 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             if not row_data:
                 grid_columns = []
             else:
-                # Get column names from data
                 if isinstance(df, pd.DataFrame):
                     col_names = df.columns
                 elif row_data and isinstance(row_data[0], dict):
@@ -63,74 +59,70 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
                 else:
                     col_names = []
                 
-                grid_columns = [
-                    {
+                grid_columns = []
+                for col in col_names:
+                    column_def = {
                         "field": col,
                         "headerName": col.replace("_", " ").title(),
-                        "flex": 1,
-                        **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
-                           if col == "accession_tag" else {})
+                        "flex": 1
                     }
-                    for col in col_names
-                ]
+                    
+                    # Add styling for accession_tag
+                    if col == "accession_tag":
+                        column_def["cellStyle"] = {"cursor": "pointer", "color": "#1976d2"}
+                        if select_rows:  # Add checkbox to accession_tag column
+                            column_def["checkboxSelection"] = True
+                            column_def["headerCheckboxSelection"] = True
+                            column_def["pinned"] = "left"
+                    
+                    grid_columns.append(column_def)
         else:
             grid_columns = columns
 
-        # Add checkbox column if row selection is enabled
-        if select_rows:
-            grid_columns.insert(0, {
-                "headerCheckboxSelection": True,
-                "checkboxSelection": True,
-                "width": 50,
-                "pinned": "left",
-                "lockPosition": True,
-                "suppressMenu": True,
-                "headerName": "",
-                "flex": 0
-            })
-        
-        # Set up default column definitions
-        defaultColDef = {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-            "minWidth": 100,
-        }
-        
-        # Create grid component
+        # Create grid component with essential configuration
         grid = dag.AgGrid(
             id=id,
             columnDefs=grid_columns,
             rowData=row_data,
-            defaultColDef=defaultColDef,
-            dashGridOptions={
-                "pagination": True,
-                "paginationPageSize": pg_sz,
-                "rowSelection": "multiple" if select_rows else None,
-                "domLayout": 'autoHeight',
-                "tooltipShowDelay": 0,
-                "tooltipHideDelay": 1000,
-                "enableCellTextSelection": True,
-                "ensureDomOrder": True,
-                "suppressRowClickSelection": False,
-                "rowMultiSelectWithClick": True,
-                "onGridReady": "function(params) { params.api.sizeColumnsToFit(); }",
-                                "rowHeight": 48,
-                "headerHeight": 48,
-                "suppressRowHoverHighlight": False,
-            },
-            className="ag-theme-alpine",
-            style={"width": "100%"},
+            rowSelection="multiple" if select_rows else None,
+            pagination=True,
+            paginationPageSize=pg_sz,
             getRowId="params.data.accession_tag",
             persistence=True,
-            persistence_type="memory",
+            persistence_type="session",
+            className="ag-theme-alpine",
+            style={"width": "100%"},
+            dashGridOptions={
+                "domLayout": 'autoHeight',
+                "enableCellTextSelection": True,
+                "ensureDomOrder": True,
+                "onGridReady": """
+                    function(params) {
+                        params.api.sizeColumnsToFit();
+                        window.gridApi = params.api;
+                    }
+                """,
+                "onFirstDataRendered": """
+                    function(params) {
+                        params.api.sizeColumnsToFit();
+                    }
+                """,
+                "rowHeight": 48,
+                "headerHeight": 48,
+                "rowMultiSelectWithClick": True if select_rows else False,
+                "suppressRowClickSelection": False,
+            },
+            defaultColDef={
+                "resizable": True,
+                "sortable": True,
+                "filter": True,
+                "minWidth": 100,
+            }
         )
         
-        logger.info(f"Successfully created grid {id}")
         return grid
         
     except Exception as e:
-        logger.error(f"Error creating grid {id}: {str(e)}")
         return html.Div(
             dmc.Alert(
                 title="Error",
@@ -140,52 +132,63 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             ),
             style={"padding": "20px"}
         )
+    
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
-    Specific table constructor for ship data with accession tag handling.
-    
-    Args:
-        df (pd.DataFrame): Ship data to display
-        id (str): Unique identifier for the table
-        columns (list): Column definitions
-        select_rows (bool): Enable row selection
-        pg_sz (int): Number of rows per page
+    Specific table constructor for ship data using DataTable.
     """
-    # Handle empty or None DataFrame
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         if columns:
-            df = pd.DataFrame(columns=[col["field"] for col in columns])
+            # Handle both "field" and "id" column formats
+            df = pd.DataFrame(columns=[col.get("field") or col.get("id") for col in columns])
         else:
             df = pd.DataFrame()
     
-    # Create column definitions
+    # Convert AG Grid column format to DataTable format
     if columns:
-        grid_columns = []
-        for col in columns:
-            col_def = {
-                "field": col["field"],
-                "headerName": col["name"] if "name" in col else col["field"].replace("_", " ").title(),
-                "flex": 1
+        data_columns = [
+            {
+                "name": col.get("name") or col.get("headerName") or col.get("field", "").replace("_", " ").title(),
+                "id": col.get("id") or col.get("field"),
+                "selectable": True,
             }
-            
-            # Add special styling for accession_tag
-            if col["field"] == "accession_tag":
-                col_def.update({
-                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
-                    "cellClass": "clickable-cell"
-                })
-                
-            grid_columns.append(col_def)
+            for col in columns
+        ]
     else:
-        grid_columns = None
-        
-    return create_ag_grid(
-        df=df,
+        data_columns = [
+            {"name": col.replace("_", " ").title(), "id": col}
+            for col in df.columns
+        ]
+
+    return dash_table.DataTable(
         id=id,
-        columns=grid_columns,
-        select_rows=select_rows,
-        pg_sz=pg_sz or 10
+        columns=data_columns,
+        data=df.to_dict('records'),
+        page_size=pg_sz or 10,
+        page_current=0,
+        page_action='native',
+        sort_action='native',
+        sort_mode='multi',
+        sort_by=[{'column_id': 'familyName', 'direction': 'asc'}],
+        row_selectable='multi' if select_rows else None,
+        selected_rows=[],
+        style_table={'overflowX': 'auto'},
+        style_cell={
+            'padding': '10px',
+            'textAlign': 'left'
+        },
+        style_header={
+            'backgroundColor': 'rgb(230, 230, 230)',
+            'fontWeight': 'bold'
+        },
+        style_data_conditional=[
+            {
+                'if': {'column_id': 'accession_tag'},
+                'color': '#1976d2',
+                'cursor': 'pointer'
+            }
+        ]
     )
 
 def make_paper_table():

@@ -27,16 +27,19 @@ ColorCycler.set_cmap("tab10")
 
 table_columns = [
     {
-        "field": "accession_tag",
-        "headerName": "Accession",
+        "id": "accession_tag",
+        "name": "Accession",
+        "selectable": True,
     },
     {
-        "field": "familyName",
-        "headerName": "Starship Family",
+        "id": "familyName",
+        "name": "Starship Family",
+        "selectable": True,
     },
     {
-        "field": "species",
-        "headerName": "Species",
+        "id": "species",
+        "name": "Species",
+        "selectable": True,
     },
 ]
 
@@ -89,7 +92,7 @@ layout = dmc.Container(
                                     children=[
                                         dmc.Title("Select Starships", order=2),
                                         dmc.Button(
-                                            "Show Selected Starships",
+                                            dmc.Text("Show Selected Starship(s)",size="lg"),
                                             id="update-button",
                                             variant="gradient",
                                             gradient={"from": "indigo", "to": "cyan"},
@@ -448,17 +451,13 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 @callback(
     Output("pgv-table", "children"),
     Input("url", "href"),
-    prevent_initial_call=False  # Allow initial call
+    prevent_initial_call=False
 )
 def load_ship_table(href):
     """Load and display the ship selection table"""
     from src.database.sql_manager import fetch_ship_table
     from src.components.tables import make_ship_table
-    print("Loading ship table...")
-    print("URL href:", href)
-    
     table_df = fetch_ship_table(curated=True)
-    print("Fetched table data:", "None" if table_df is None else f"DataFrame with shape {table_df.shape}")
     
     if table_df is not None and not table_df.empty:
         table = make_ship_table(
@@ -468,90 +467,82 @@ def load_ship_table(href):
             select_rows=True,
             pg_sz=10
         )
-        print("Table created successfully")
         return table
     
-    print("No data available or empty DataFrame")
     return html.Div("No data available")
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
     Input("update-button", "n_clicks"),
     [
-        State("pgv-table", "selectedRows"),
-        State("pgv-table", "rowData"),
+        State("pgv-table", "derived_virtual_data"),  # Get current page data
+        State("pgv-table", "derived_virtual_selected_rows"),  # Get selected indices
         State("length-threshold", "value"),
-        State("identity-threshold", "value"),
+        State("identity-threshold", "value")
     ],
+    prevent_initial_call=True
 )
-def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
+def update_pgv(n_clicks, current_data, selected_indices, len_thr, id_thr):
     from src.database.sql_manager import fetch_accession_ship
     message = None
+    
     if not n_clicks:
-        return no_update, "Select Starships from the table and click 'Show Selected Starships'"
+        return dash.no_update, "Select Starships from the table and click 'Show Selected Starship(s)'"
 
-    if n_clicks > 0:
-        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
-        if table_data and selected_rows is not None:
+    if not selected_indices or not current_data:
+        return html.H4("Please select at least one Starship."), None
+
+    # Get the selected rows data
+    selected_rows = [current_data[i] for i in selected_indices]
+    accessions = [row['accession_tag'] for row in selected_rows]
+
+    tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tmp_gffs = []
+            tmp_fas = []
+            
+            for accession in accessions:
+                ship_data = fetch_accession_ship(accession)
+                fa_df = ship_data["sequence"]
+                tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
+                tmp_fas.append(str(tmp_fa))
+
+                gff_df = ship_data["gff"]
+                tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
+                tmp_gffs.append(tmp_gff)
+
+            if len(accessions) > 1 and len(accessions) <= 4:
+                message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr)
+            elif len(accessions) == 1:
+                single_pgv(tmp_gffs[0], tmp_pgv)
+            else:
+                output = html.P("Please select between 1 and 4 Starships.")
+                return output, None
+
             try:
-                if isinstance(selected_rows, list) and len(selected_rows) > 0:
-                    try:
-                        rows = selected_rows
-                    except IndexError as e:
-                        return html.Div("Index out of bounds")
+                with open(tmp_pgv, "r") as file:
+                    pgv_content = file.read()
+            except IOError:
+                output = html.P("Failed to read the temporary file.")
 
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        tmp_gffs = []
-                        tmp_fas = []
-                        for row in rows:
-                            accession = row["accession_tag"]
-                            ship_data = fetch_accession_ship(accession)
-                            fa_df = ship_data["sequence"]
-                            tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
-                            tmp_fas.append(str(tmp_fa))
-
-                            gff_df = ship_data["gff"]
-                            tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
-                            tmp_gffs.append(tmp_gff)
-
-                        if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr)
-                        elif len(selected_rows) == 1:
-                            single_pgv(tmp_gffs[0], tmp_pgv)
-                        else:
-                            output = html.P("Please select between 1 and 4 Starships.")
-                            return output, None
-                        try:
-                            with open(tmp_pgv, "r") as file:
-                                pgv_content = file.read()
-                        except IOError:
-                            output = html.P("Failed to read the temporary file.")
-
-                        output = html.Iframe(
-                            srcDoc=pgv_content,
-                            style={
-                                "width": "100%",
-                                "height": "800px",
-                                "border": "none",
-                            },
-                        )
-                else:
-                    output = html.H4("Please select at least one Starship.")
-            except Exception as e:
-                logger.error(f"Exception: {e}")
-                output = html.H4(
-                    "Error while comparing ships using BLAST. Try another combination."
-                )
-        else:
-            output = html.H4("Select Starship(s) to visualize.")
-    else:
+            output = html.Iframe(
+                srcDoc=pgv_content,
+                style={
+                    "width": "100%",
+                    "height": "800px",
+                    "border": "none",
+                },
+            )
+    except Exception as e:
+        logger.error(f"Exception: {e}")
         output = html.H4(
-            "Select up to 4 Starships in the table above and click the button to visualize."
+            "Error while comparing ships using BLAST. Try another combination."
         )
     return (
         html.Div(
             [output],
-            className="center-content text-center",
+            className="center-center text-center",
         ),
         message,
     )
