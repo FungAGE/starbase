@@ -161,7 +161,6 @@ cython_debug/
 
 tmp/
 
-database_folder
-database_folder/**
+src/database/**
 .dockerignore
 src/data/db
