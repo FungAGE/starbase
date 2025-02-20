@@ -22,6 +22,9 @@ external_scripts = [
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
     "https://unpkg.com/micromodal/dist/micromodal.min.js",
+    "https://d3js.org/d3.v6.min.js",
+    "/assets/clustermap.min.js"
+
 ]
 
 server = Flask(__name__)
