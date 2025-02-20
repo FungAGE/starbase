@@ -66,6 +66,9 @@ external_scripts = [
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
+    "https://d3js.org/d3.v6.min.js",
+    "/assets/clustermap.min.js"
+
 ]
 
 app = Dash(
