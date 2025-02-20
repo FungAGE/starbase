@@ -119,6 +119,7 @@ def fetch_all_ships(curated=True):
         session.close()
     
 
+# TODO: somehow, we need to be able to index the genbank files. create a column in a table with their paths?
 @cache.memoize(timeout=86400)
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
@@ -128,7 +129,8 @@ def fetch_ship_table(curated=False):
     SELECT DISTINCT 
         a.accession_tag,
         f.familyName,
-        t.species
+        t.species,
+        js.starshipID
     FROM joined_ships js
     LEFT JOIN accessions a ON js.ship_id = a.id
     LEFT JOIN taxonomy t ON js.taxid = t.id
