@@ -4,203 +4,41 @@
     url("/assets/strasua.woff2") format("woff2");
 }
 
-/* Apply the custom font to specific elements */
+/* Logo font */
 .logo-text {
   font-family: "Strasua", sans-serif;
 }
 
+/* Table styles */
 .dash-table-container .row {
   display: block;
   margin: 0;
 }
 
+/* Form elements */
 .form-control {
   padding: 10px;
 }
 
 .upload-box {
-  width: 100%;
-  min-height: 60px;
-  height: auto;
-  line-height: 1.5;
-  border-width: 1px;
-  border-style: dashed;
-  border-radius: 5px;
-  text-align: center;
-  margin: 10px 0;
-  padding: 1rem;
-  box-sizing: border-box;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
 }
 
-.text-red {
-  color: red;
+.upload-box:hover {
+    border-color: #228be6;
+    background-color: rgba(34, 139, 230, 0.05);
 }
 
-.form-label {
-  padding: 10px;
+.upload-box.drag-active {
+    border-color: #228be6;
+    background-color: rgba(34, 139, 230, 0.1);
 }
-
-/* Button styling with responsiveness */
-.button {
-  padding: 10px 20px;
-  font-size: 16px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  width: 100%; /* Full-width button on mobile */
-}
-
-/* Text sizing for different screen sizes */
-.text-custom {
-  font-size: 1rem; /* Default font size */
-}
-
-/* Responsive text classes */
-.text-large {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.text-small {
-  font-size: 14px;
-}
-
-/* Image responsiveness */
-.responsive-img {
-  width: 100%;
-  height: auto;
-  max-width: 1000px;
-}
-
-/* Padding for larger elements */
-.section-padding {
-  padding: 20px 0;
-}
-
-/* Hide elements on smaller screens */
-.hide-on-mobile {
-  display: none;
-}
-
-.center-content {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%; /* Ensure the height is 100% to center vertically */
-}
-
-/* For larger elements that shrink on small screens */
-.auto-resize-600 {
-  width: 100%;
-  max-width: 600px;
-  height: auto;
-}
-
-.auto-resize-750 {
-  width: 100%;
-  max-width: 750px;
-  height: auto;
-}
-
-.auto-resize-900 {
-  width: 100%;
-  max-width: 900px;
-  height: auto;
-}
-
-/* Column widths for different screen sizes */
-.col-custom {
-  flex: 1 1 100%; /* Default to full width */
-}
-
-/* Ensure card header scales with text size and prevents overflow */
-.card-header-custom {
-  display: flex;
-  align-items: center; /* Center align items vertically */
-  padding: 1rem; /* Adjust padding as needed */
-  box-sizing: border-box; /* Include padding and border in element's total width and height */
-  overflow-wrap: break-word; /* Ensure long words break and wrap */
-}
-
-@media screen and (min-width: 769px) {
-  .hide-on-mobile {
-    display: block;
-  }
-}
-
-@media (min-width: 576px) {
-  /* Small screens and up */
-  .col-custom-sm {
-    flex: 1 1 50%; /* 50% width on small screens */
-    padding: 1rem;
-  }
-
-  /* Small screens and up */
-  .text-custom-sm {
-    font-size: 1.2rem; /* Larger font size on small screens */
-  }
-  .card-header-custom {
-    padding: 1.2rem;
-  }
-  .form-control-sm {
-    width: 100%;
-  }
-}
-
-@media (min-width: 768px) {
-  /* Medium screens and up */
-  .col-custom-md {
-    flex: 1 1 33.33%; /* 33.33% width on medium screens */
-    padding: 1.5rem;
-  }
-  /* Medium screens and up */
-  .text-custom-md {
-    font-size: 1.4rem; /* Larger font size on medium screens */
-  }
-  .card-header-custom {
-    padding: 1.4rem;
-  }
-  .form-control-md {
-    width: 100%;
-  }
-}
-
-@media (min-width: 992px) {
-  /* Large screens and up */
-  .col-custom-lg {
-    flex: 1 1 25%; /* 25% width on large screens */
-    padding: 2rem;
-  }
-  .text-custom-lg {
-    font-size: 1.6rem; /* Larger font size on large screens */
-  }
-  .card-header-custom {
-    padding: 1.6rem;
-  }
-  .form-control-lg {
-    width: 50%;
-  }
-}
-
-@media (min-width: 1200px) {
-  /* Extra large screens and up */
-  .col-custom-xl {
-    flex: 1 1 20%; /* 20% width on extra large screens */
-    padding: 2.5rem;
-  }
-  .text-custom-xl {
-    font-size: 1.8rem; /* Larger font size on extra large screens */
-  }
-  .card-header-custom {
-    padding: 1.8rem;
-  }
-  .form-control-xl {
-    width: 33%;
-  }
-}
-
+/* Loading indicator */
 .dash-loading {
   display: flex;
   justify-content: center;
@@ -208,18 +46,90 @@
   height: 100%;
 }
 
-.explore-card-header {
-  text-align: center;
-  font-weight: bold;
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Auto-resizing images */
+.auto-resize-750 {
+  width: 100%;
+  max-width: 750px;
+  height: auto;
 }
-.explore-card-body {
-  height: 50px;
-  text-align: center;
+
+/* Responsive layout for title group */
+.responsive-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2rem;
 }
-.explore-card-text {
-  margin: auto;
+
+@media (max-width: 600px) {
+    .responsive-group {
+        flex-direction: column !important;
+        align-items: center !important;
+        text-align: center !important;
+        gap: 1rem !important;
+    }
+    
+    .responsive-group .mantine-Title-root {
+        text-align: center !important;
+    }
+}
+
+.text-success {
+    color: #28a745;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+
+.mb-3 {
+    margin-bottom: 1rem;
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.text-center {
+    text-align: center;
+}
+.dash-bio-alignmentchart {
+    width: 100% !important;
+    min-height: 200px;
+    overflow: auto;
+}
+
+/* Hide toggle button on desktop */
+.mobile-only {
+    display: none;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    .mobile-only {
+        display: block;
+    }
+    
+    .desktop-table {
+        display: none;
+    }
+    
+    .mobile-cards {
+        display: block !important;
+    }
+}
+
+/* Desktop styles */
+@media (min-width: 769px) {
+    .mobile-cards {
+        display: none !important;
+    }
+    
+    .desktop-table {
+        display: block;
+    }
 }
