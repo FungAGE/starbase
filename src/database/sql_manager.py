@@ -309,6 +309,7 @@ def fetch_ships(
 
 @cache.memoize()
 @db_retry_decorator()
+# TODO: somehow, we need to be able to index the genbank files. create a column in a table with their paths?
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
