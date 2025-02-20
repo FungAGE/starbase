@@ -263,14 +263,14 @@ def get_database_stats():
     try:
         # Get curated and uncurated counts
         curated_count = session.execute("""
-            SELECT COUNT(*) 
+            SELECT COUNT(DISTINCT a.accession_tag) 
             FROM accessions a
             LEFT JOIN joined_ships j ON j.ship_id = a.id
             WHERE j.curated_status = 'curated'
         """).scalar() or 0
         
         uncurated_count = session.execute("""
-            SELECT COUNT(*) 
+            SELECT COUNT(DISTINCT a.accession_tag) 
             FROM accessions a
             LEFT JOIN joined_ships j ON j.ship_id = a.id
             WHERE j.curated_status != 'curated' OR j.curated_status IS NULL
