@@ -21,15 +21,13 @@ cache = Cache(config={
 })
 
 def cleanup_old_cache():
-    """Remove cache files older than 7 days"""
+    """Remove all cache files"""
     try:
-        now = time.time()
         cleanup_count = 0
         for filename in os.listdir(cache_dir):
             filepath = os.path.join(cache_dir, filename)
-            if os.path.getmtime(filepath) < now - (7 * 86400):  # 7 days
-                os.remove(filepath)
-                cleanup_count += 1
-        logger.info(f"Cleaned up {cleanup_count} old cache files")
+            os.remove(filepath)
+            cleanup_count += 1
+        logger.info(f"Cleaned up {cleanup_count} cache files")
     except Exception as e:
         logger.error(f"Cache cleanup failed: {str(e)}")
