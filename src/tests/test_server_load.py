@@ -92,3 +92,60 @@ def test_slow_database(dash_duo: Browser, monkeypatch):
     
     # Check if we handled the slow response gracefully
     assert "Error" not in dash_duo.find_element("#pgv-table").text
+    assert "Error" not in dash_duo.find_element("#pgv-table").text
+
+def test_blast_submission(dash_duo: Browser):
+    """Test submitting a BLAST search with a test file"""
+    # Import the app
+    app = import_app("app")
+    
+    # Start the server
+    dash_duo.start_server(
+        app,
+        port=8052,  # Use a different port
+        host="localhost"
+    )
+    
+    # Read and encode the test file
+    test_file_path = "tmp/aspfum3_s01168.fna"
+    with open(test_file_path, "rb") as file:
+        content = file.read()
+        encoded = base64.b64encode(content).decode()
+    
+    # Create the file content string that Dash expects
+    file_contents = f"data:application/octet-stream;base64,{encoded}"
+    
+    # Use JavaScript to set the file upload content
+    dash_duo.driver.execute_script(
+        """
+        const fileUpload = document.getElementById('blast-fasta-upload');
+        const event = new Event('drop');
+        fileUpload.dispatchEvent(event);
+        """
+    )
+    
+    # Set the file contents using JavaScript
+    dash_duo.driver.execute_script(
+        f"""
+        const contents = '{file_contents}';
+        const filename = 'aspfum3_s01168.fna';
+        window.dash_clientside.clientside.update_upload_status(contents, filename);
+        """
+    )
+    
+    # Click the submit button
+    dash_duo.find_element("#submit-button").click()
+    
+    # Wait for results
+    dash_duo.wait_for_element("#blast-table", timeout=30)
+    
+    # Verify results appeared
+    results_table = dash_duo.find_element("#blast-table")
+    assert results_table is not None
+    
+    # Check for specific content in results
+    table_text = results_table.text
+    assert "BLAST Results" in table_text
+    
+    # Optional: Check for specific matches if expected
+    # assert "Expected Gene Name" in table_text
