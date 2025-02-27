@@ -6,12 +6,14 @@ import multiprocessing
 import requests
 import os
 import sys
+from pathlib import Path
 
 # Add project root to path if needed
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
+sys.path.append(str(Path(__file__).parent.parent.parent))  # Add project root to Python path
 
 def heavy_request(url, duration=1):
     """Simulate a heavy request that takes resources"""
@@ -25,8 +27,12 @@ def test_server_under_load(dash_duo: Browser):
     # Import the app using dash's import_app utility
     app = import_app("app")
     
-    # Start the dash server
-    dash_duo.start_server(app)
+    # Start the server with specific host
+    dash_duo.start_server(
+        app,
+        port=8050,
+        host="localhost"  # Explicitly set host to localhost
+    )
     base_url = dash_duo.server_url
     
     # Create multiple processes to simulate load
@@ -74,8 +80,12 @@ def test_slow_database(dash_duo: Browser, monkeypatch):
     from src.database.sql_manager import fetch_ship_table as original_fetch
     monkeypatch.setattr("src.database.sql_manager.fetch_ship_table", slow_fetch)
     
-    # Start the dash server
-    dash_duo.start_server(app)
+    # Start the server with specific host
+    dash_duo.start_server(
+        app,
+        port=8051,  # Use a different port for second test
+        host="localhost"  # Explicitly set host to localhost
+    )
     
     # Try to load the page
     dash_duo.wait_for_element("#pgv-table", timeout=10)
