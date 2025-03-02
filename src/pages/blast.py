@@ -22,6 +22,8 @@ from src.config.cache import cache
 from src.utils.seq_utils import ( guess_seq_type,
     check_input,
     write_temp_fasta,
+    parse_fasta, 
+    parse_fasta_from_file
                                  )
 from src.utils.blast_utils import (
     run_blast,
@@ -38,23 +40,13 @@ from src.utils.blast_utils import (
     create_error_alert,
 )
 
-from src.utils.blast_utils import (
-    run_blast,
-    run_hmmer,
-    run_diamond,
-    blast_table,
-    run_lastz,
-    select_ship_family,
-    parse_lastz_output,
-    blast_chords,
-)
 from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
-from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
 
 from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
 
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
+from src.components.error_boundary import handle_callback_error, create_error_boundary
 
 
 dash.register_page(__name__)
@@ -85,10 +77,11 @@ modal = dmc.Modal(
 )
 
 
-layout = dmc.Container(
-    fluid=True,
-    children=[
-        dcc.Location(id="url", refresh=False),
+layout = create_error_boundary(
+    dmc.Container(
+        fluid=True,
+        children=[
+            dcc.Location(id="url", refresh=False),
         dcc.Store(id="query-header-store"),
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
@@ -231,6 +224,7 @@ layout = dmc.Container(
         ),
         modal,
     ],
+    )
 )
 
 
@@ -359,6 +353,7 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         Input("blast-fasta-upload", "contents"),
     ],
 )
+@handle_callback_error
 def preprocess(n_clicks, query_text_input, query_file_contents):
     if not n_clicks:
         raise PreventUpdate
@@ -402,6 +397,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
     ],
     prevent_initial_call=True
 )
+@handle_callback_error
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type]):
         return None, None, None
@@ -510,6 +506,7 @@ def process_metadata(curated):
     Output("processed-blast-store", "data"),
     [Input("blast-results-store", "data"), Input("processed-metadata-store", "data")],
 )
+@handle_callback_error
 def process_blast_results(blast_results_dict, metadata_dict):
     if not blast_results_dict or not metadata_dict:
         return None

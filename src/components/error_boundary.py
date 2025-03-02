@@ -74,15 +74,12 @@ def create_error_boundary(page_content):
     Returns:
         Error boundary wrapped content
     """
-    error_wrapped = html.Div(
-        [
-            dmc.LoadingOverlay(
-                html.Div(
-                    page_content,
-                    id="page-content-wrapper"
-                )
-            ),
-            html.Div(id="error-boundary-content")
-        ]
-    )
+    error_wrapped = html.Div([
+        # Wrap the page content directly without LoadingOverlay
+        html.Div(
+            page_content,
+            id="page-content-wrapper"
+        ),
+        html.Div(id="error-boundary-content")
+    ])
     return error_wrapped 
