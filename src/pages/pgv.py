@@ -88,6 +88,34 @@ layout = create_error_boundary(
                     children=dmc.Paper(
                                     children=[
                                         dmc.Title("Select Starships", order=2),
+                                        html.Div(id="pgv-table"),
+                                        dmc.Grid(
+                                            children=[
+                                                dmc.GridCol(
+                                                    span={"base": 12, "sm": 6},
+                                                    children=dmc.NumberInput(
+                                                        id="length-threshold",
+                                                        label="Length Threshold (bp)",
+                                                        value=50,
+                                                        min=0,
+                                                        step=10,
+                                                    ),
+                                                ),
+                                                dmc.GridCol(
+                                                    span={"base": 12, "sm": 6},
+                                                    children=dmc.NumberInput(
+                                                        id="identity-threshold",
+                                                        label="Identity Threshold (%)",
+                                                        value=30,
+                                                        min=0,
+                                                        max=100,
+                                                        step=5,
+                                                    ),
+                                                ),
+                                            ],
+                                            gutter="md",
+                                        ),
+                                        dmc.Space(h="md"),
                                         dmc.Button(
                                             dmc.Text("Show Selected Starship(s)",size="lg"),
                                             id="update-button",
