@@ -3,6 +3,8 @@ import dash_mantine_components as dmc
 from functools import wraps
 import traceback
 import logging
+import functools
+from dash.exceptions import PreventUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -20,24 +22,67 @@ def error_boundary(children, id=None):
         return html.Div(paper, id=id, style={"position": "relative"})
     return paper
 
-def handle_callback_error(func):
-    """Decorator to handle callback errors gracefully"""
-    @wraps(func)
+def handle_callback_error(callback_func):
+    """
+    Decorator to handle callback errors gracefully
+    
+    Args:
+        callback_func: The callback function to wrap
+        
+    Returns:
+        Wrapped function with error handling
+    """
+    @functools.wraps(callback_func)
     def wrapper(*args, **kwargs):
         try:
-            return func(*args, **kwargs)
+            return callback_func(*args, **kwargs)
+        except PreventUpdate:
+            raise
         except Exception as e:
-            logger.error(f"Callback error in {func.__name__}: {str(e)}")
+            # Log the error with full traceback
+            logger.error(f"Callback error in {callback_func.__name__}: {str(e)}")
+            logger.error(f"Inputs: args={args}, kwargs={kwargs}")
             logger.error(traceback.format_exc())
+            
+            # Return user-friendly error component
             return dmc.Alert(
-                title="Error",
-                children="An error occurred while loading this component. This is likely due to a temporary issue with the server. Please try refreshing the page in a few minutes.",
+                title="An Error Occurred",
+                children=[
+                    "We encountered a problem processing your request.",
+                    dmc.Space(h=10),
+                    dmc.Text("The error has been logged and we'll look into it.", size="sm"),
+                    dmc.Space(h=10),
+                    dmc.Button(
+                        "Refresh Page",
+                        variant="outline",
+                        color="red",
+                        onClick="window.location.reload(true)"
+                    )
+                ],
                 color="red",
                 variant="filled",
-                style={
-                    "position": "relative",
-                    "zIndex": 1,
-                    "marginTop": "1rem"
-                }
             )
-    return wrapper 
+    return wrapper
+
+def create_error_boundary(page_content):
+    """
+    Wrap page content with error boundary
+    
+    Args:
+        page_content: The page layout to wrap
+        
+    Returns:
+        Error boundary wrapped content
+    """
+    error_wrapped = html.Div(
+        [
+            dmc.LoadingOverlay(
+                html.Div(
+                    page_content,
+                    id="page-content-wrapper"
+                )
+            ),
+            html.Div(id="error-boundary-content")
+        ]
+    )
+    return error_wrapped 
