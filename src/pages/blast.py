@@ -46,6 +46,7 @@ from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
 
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
+from src.utils.timeout import timeout, TimeoutError
 
 
 dash.register_page(__name__)
@@ -271,54 +272,91 @@ def handle_submission_and_upload(n_clicks, contents, filename):
     limit_info = ""
     limit_alert = None
     alert_style = {"display": "none"}
-    error_message = ""
+    error_message = None
     error_store = None
+
+    try:
+        with timeout(300):  # 5 minute timeout
+            # Handle file upload
+            if triggered_id == "blast-fasta-upload" and contents:
+                try:
+                    content_type, content_string = contents.split(',')
+                    decoded = base64.b64decode(content_string)
+                    
+                    # Process the file contents
+                    if filename is None:
+                        error_message = "No file selected"
+                        error_store = {"error": "No file selected"}
+                    else:
+                        # Your existing file processing logic here
+                        header, seq, error = parse_fasta_from_file(contents)
+                        if error:
+                            error_message = error
+                            error_store = {"error": str(error)}
+                            button_disabled = True
+                        
+                except Exception as e:
+                    logger.error(f"Error processing upload: {str(e)}")
+                    error_message = "Error processing file upload"
+                    error_store = {"error": str(e)}
+                    button_disabled = True
+
+            # Handle rate limit check
+            if triggered_id == "submit-button" and n_clicks:
+                try:
+                    ip_address = get_client_ip()
+                    limit_info_data = get_blast_limit_info(ip_address)
+                    
+                    if limit_info_data["remaining"] <= 0:
+                        button_disabled = True
+                        button_text = "Rate limit exceeded"
+                        limit_info = f"Limit reached: {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour"
+                        limit_alert = dbc.Alert(
+                            [
+                                html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                                f"Rate limit exceeded. You have used {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour. Please try again later.",
+                            ],
+                            color="warning",
+                            className="d-flex align-items-center",
+                        )
+                        alert_style = {"display": "block"}
+                    else:
+                        limit_info = f"Remaining: {limit_info_data['remaining']}/{limit_info_data['limit']} submissions"
+                
+                except Exception as e:
+                    logger.error(f"Error checking rate limit: {str(e)}")
+                    error_message = dbc.Alert(
+                        "Error checking rate limit. Please try again.",
+                        color="danger"
+                    )
+
+    except TimeoutError:
+        button_disabled = False
+        button_text = "Submit"
+        error_message = dbc.Alert(
+            [
+                html.I(className="bi bi-clock-history me-2"),
+                "Request timed out. Please try again with a smaller sequence.",
+            ],
+            color="danger",
+            className="d-flex align-items-center",
+        )
+        alert_style = {"display": "block"}
     
-    # Handle file upload
-    if triggered_id == "blast-fasta-upload" and contents is not None:
-        max_size = 10 * 1024 * 1024  # 10 MB
-        content_type, content_string = contents.split(",")
-        
-        # Use our updated parse_fasta_from_file function
-        header, seq, fasta_error = parse_fasta_from_file(contents)
-        
-        decoded = base64.b64decode(content_string)
-        file_size = len(decoded)
-        
-        if fasta_error:
-            error_message = fasta_error  # This will now be a dmc.Alert component
-            error_store = error_message
-            button_disabled = True
-        elif file_size > max_size:
-            error_message = dbc.Alert(f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger")
-            error_store = error_message
-            button_disabled = True
-    
-    # Handle rate limit check
-    if triggered_id == "submit-button" and n_clicks:
-        try:
-            ip_address = get_client_ip()
-            limit_info_data = get_blast_limit_info(ip_address)
-            
-            if limit_info_data["remaining"] <= 0:
-                button_disabled = True
-                button_text = "Rate limit exceeded"
-                limit_info = f"Limit reached: {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour"
-                limit_alert = dbc.Alert(
-                    [
-                        html.I(className="bi bi-exclamation-triangle-fill me-2"),
-                        f"Rate limit exceeded. You have used {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour. Please try again later.",
-                    ],
-                    color="warning",
-                    className="d-flex align-items-center",
-                )
-                alert_style = {"display": "block"}
-            else:
-                limit_info = f"Remaining: {limit_info_data['remaining']}/{limit_info_data['limit']} submissions"
-        
-        except Exception as e:
-            logger.error(f"Error checking rate limit: {str(e)}")
-    
+    except Exception as e:
+        logger.error(f"Unexpected error in submission: {str(e)}")
+        button_disabled = False
+        button_text = "Submit"
+        error_message = dbc.Alert(
+            [
+                html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                "An unexpected error occurred. Please try again.",
+            ],
+            color="danger",
+            className="d-flex align-items-center",
+        )
+        alert_style = {"display": "block"}
+
     return [
         button_disabled,
         button_text,
@@ -377,6 +415,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
         Output("subject-seq-button", "children"),
+        Output("blast-table", "children"),  # Add this output
     ],
     [
         Input("query-header-store", "data"),
@@ -387,17 +426,17 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 )
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type]):
-        return None, None, None
+        return None, None, None, None
         
     try:
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
+        # Add timeout context
+        with timeout(seconds=300):  # 5 minute timeout
+            # Write sequence to temporary FASTA file
+            tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+            logger.info(f"Temp FASTA written: {tmp_query_fasta}")
 
-        # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
-
-        try:
+            # Run BLAST with existing error handling
+            tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
             blast_results = run_blast(
                 db_list=BLAST_DB_PATHS,
                 query_type=query_type,
@@ -406,32 +445,19 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                 input_eval=0.01,
                 threads=2,
             )
-            logger.info(f"BLAST results: {blast_results.head()}")
+
             if blast_results is None:
-                raise ValueError("BLAST returned no results!")
-        except Exception as e:
-            logger.error(f"BLAST error: {str(e)}")
-            raise
-
-        blast_results_dict = blast_results.to_dict("records")
-
-        # Run HMMER
-        logger.info(f"Running HMMER")
-
-        subject_seq_button = None
-        # subject_seq = None
-
-        try:
-            if search_type == "diamond":
-                results_dict = run_diamond(
-                    db_list=BLAST_DB_PATHS,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
+                return None, None, None, dmc.Alert(
+                    title="No Results",
+                    children="No BLAST matches were found for your sequence.",
+                    color="yellow",
+                    variant="light"
                 )
-            if search_type == "hmmsearch":
+
+            blast_results_dict = blast_results.to_dict("records")
+            
+            # Run HMMER/Diamond with timeout handling
+            try:
                 results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
@@ -439,21 +465,40 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                     input_eval=0.01,
                     query_fasta=tmp_query_fasta,
                     threads=2,
+                ) if search_type == "hmmsearch" else run_diamond(...)
+
+            except TimeoutError:
+                return blast_results_dict, None, None, dmc.Alert(
+                    title="Partial Results",
+                    children="Secondary search timed out. Showing BLAST results only.",
+                    color="yellow",
+                    variant="light"
                 )
 
-            if results_dict is None or len(results_dict) == 0:
-                logger.error("Diamond/HMMER returned no results!")
-                raise
-        except Exception as e:
-            logger.error(f"Diamond/HMMER error: {str(e)}")
-            raise
+            return blast_results_dict, results_dict, None, None
 
-        return blast_results_dict, results_dict, subject_seq_button
-
+    except TimeoutError:
+        return None, None, None, dmc.Alert(
+            title="Search Timeout",
+            children="The search took too long to complete. Please try with a shorter sequence or try again later.",
+            color="red",
+            variant="light"
+        )
+    except MemoryError:
+        return None, None, None, dmc.Alert(
+            title="Server Overloaded",
+            children="The server is currently experiencing high load. Please try again in a few minutes.",
+            color="red",
+            variant="light"
+        )
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
-        return None, None, None
-
+        return None, None, None, dmc.Alert(
+            title="Error",
+            children="An unexpected error occurred. Please try again later.",
+            color="red",
+            variant="light"
+        )
 
 @callback(
     Output("subject-seq-dl-package", "data"),
@@ -552,15 +597,18 @@ def process_blast_results(blast_results_dict, metadata_dict):
 @callback(
     [
         Output("ship-family", "children"),
-        Output("blast-table", "children"),
+        Output("blast-table", "children", allow_duplicate=True),
         Output("blast-download", "children")
     ],
-    [Input("processed-blast-store", "data"), Input("captain-results-store", "data")],
-    State("submit-button", "n_clicks"),
+    [
+        Input("blast-results-store", "data"),
+        Input("captain-results-store", "data"),
+        Input("query-type-store", "data")
+    ],
     prevent_initial_call=True
 )
-def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
-    if not n_clicks or processed_blast_results is None:
+def update_ui_elements(processed_blast_results, captain_results_dict, query_type):
+    if not processed_blast_results or not captain_results_dict:
         return None, None, None
         
     try:
