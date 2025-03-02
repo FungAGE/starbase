@@ -1,6 +1,5 @@
 import warnings
 import logging
-from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import dash
@@ -16,16 +15,12 @@ from sqlalchemy import create_engine
 
 logging.basicConfig(
     level=logging.ERROR,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-warnings.filterwarnings("ignore")
-
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
+
+warnings.filterwarnings("ignore")
 
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.ERROR)
@@ -67,20 +62,18 @@ external_scripts = [
 # Initialize Flask first
 server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
-Compress(server)
 
+# Configure Flask
 server.config.update(
-    MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB limit
+    MAX_CONTENT_LENGTH=10 * 1024 * 1024,
     CACHE_TYPE='SimpleCache',
     CACHE_DEFAULT_TIMEOUT=300,
     SEND_FILE_MAX_AGE_DEFAULT=0,
-    COMPRESS_MIMETYPES=['text/html', 'text/css', 'application/javascript'],
-    COMPRESS_LEVEL=6,
-    COMPRESS_ALGORITHM=['gzip', 'br']
+    PROPAGATE_EXCEPTIONS=True,
 )
 
+# Initialize cache with the app
 cache.init_app(server)
-cleanup_old_cache()
 
 # Initialize Dash app
 app = Dash(
@@ -93,14 +86,8 @@ app = Dash(
     external_stylesheets=external_stylesheets,
     external_scripts=external_scripts,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
-    update_title=None
-)
-
-limiter = Limiter(
-    get_client_ip,
-    app=server,
-    storage_uri="memory://",
-    default_limits=[]
+    update_title=None,
+    compress=True
 )
 
 def initialize_app():
@@ -310,26 +297,6 @@ engines = {
         pool_recycle=1800
     ) for name, url in DATABASE_URLS.items()
 }
-
-# Global error handlers
-@server.errorhandler(500)
-def handle_500(e):
-    logger.error(f"Internal server error: {str(e)}")
-    return dmc.Alert(
-        title="Server Error",
-        children="An error occurred. Please try again later.",
-        color="red",
-        variant="filled"
-    ), 500
-
-@server.errorhandler(404)
-def handle_404(e):
-    return dmc.Alert(
-        title="Not Found",
-        children="The requested resource was not found.",
-        color="yellow",
-        variant="filled"
-    ), 404
 
 if __name__ == "__main__":
     app.run_server(debug=False)

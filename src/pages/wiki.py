@@ -28,7 +28,6 @@ from src.components.tables import make_ship_table, make_wiki_table
 from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs
 from src.components.callbacks import create_modal_callback
-from src.components.error_boundary import handle_callback_error, create_error_boundary
 
 dash.register_page(__name__)
 
@@ -157,14 +156,13 @@ def load_initial_data():
         logger.error(f"Error loading initial data: {str(e)}")
         return None
 
-layout = create_error_boundary(
-    dmc.Container(
-        fluid=True,
-        children=[
-            modal,
-            dcc.Location(id="url", refresh=False),
-            dcc.Store(id="meta-data", data=load_initial_data()),
-            dcc.Store(id="filtered-meta-data"),
+layout = dmc.Container(
+    fluid=True,
+    children=[
+        modal,
+        dcc.Location(id="url", refresh=False),
+        dcc.Store(id="meta-data", data=load_initial_data()),
+        dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
         
         # Header Section
@@ -341,13 +339,11 @@ layout = create_error_boundary(
             ],
         ),
     ],
-    )
 )
 
 
 @cache.memoize()
 @callback(Output("meta-data", "data"), Input("url", "href"))
-@handle_callback_error
 def load_meta_data(url):
     if not url:
         raise PreventUpdate
@@ -375,7 +371,6 @@ def load_meta_data(url):
 # Callback to load paper data
 @cache.memoize()
 @callback(Output("paper-data", "data"), Input("url", "href"))
-@handle_callback_error
 def load_paper_data(url):
     if url:
         try:
@@ -400,7 +395,6 @@ def load_paper_data(url):
     Output("accordion", "children"),
     [Input("meta-data", "data"), Input("paper-data", "data")],
 )
-@handle_callback_error
 def create_accordion(cached_meta, cached_papers):
     if cached_meta is None or cached_papers is None:
         logger.error("One or more inputs are None: meta-data or paper-data.")
@@ -448,7 +442,6 @@ def create_accordion(cached_meta, cached_papers):
     Input("filtered-meta-data", "data"),
     Input("meta-data", "data"),  # Change State to Input to handle initial load
 )
-@handle_callback_error
 def create_search_results(filtered_meta, cached_meta):
     # Use filtered data if available, otherwise use original data
     data_to_use = filtered_meta if filtered_meta is not None else cached_meta
@@ -614,7 +607,6 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
     ],
     prevent_initial_call=True
 )
-@handle_callback_error
 def update_search_options(taxonomy_val, family_val, navis_val, haplotype_val, meta_data):
     if not meta_data:
         empty_data = []
@@ -657,7 +649,6 @@ def update_search_options(taxonomy_val, family_val, navis_val, haplotype_val, me
     ],
     prevent_initial_call=True
 )
-@handle_callback_error
 def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotype, original_data):
     if not original_data:
         raise PreventUpdate
@@ -703,7 +694,6 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotyp
      Input("meta-data", "data")],
     prevent_initial_call=False  # Allow initial call
 )
-@handle_callback_error
 def update_search_sunburst(filtered_meta, meta_data):
     # Force cache bypass for visualization updates
     cache.delete_memoized(get_filtered_options)  # Clear related filter cache

@@ -643,7 +643,7 @@ def blast_table(ship_blast_results):
                     df=ship_blast_results,
                     id="blast-table",
                     columns=columns,
-                    select_rows=False,
+                    select_rows=True,
                     pg_sz=15,
                 ),
                 style={
