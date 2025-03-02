@@ -17,6 +17,8 @@ from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 
 from src.components.callbacks import create_modal_callback
+from src.components.error_boundary import handle_callback_error, create_error_boundary
+
 
 
 logger = logging.getLogger(__name__)
@@ -56,10 +58,11 @@ modal = dmc.Modal(
     ],
 )
 
-layout = dmc.Container(
-    fluid=True,  # Changed from size="xl" to fluid=True for better responsiveness
-    children=[
-        dcc.Location(id="url", refresh=False),
+layout = create_error_boundary(
+    dmc.Container(
+        fluid=True,
+        children=[
+            dcc.Location(id="url", refresh=False),
         
         # Header Section
         dmc.Paper(
@@ -77,20 +80,42 @@ layout = dmc.Container(
             mb="xl",
         ),
         
-        # Main Content Grid
+        # Main content
         dmc.Grid(
             children=[
-                # Left Column - Table Section
                 dmc.GridCol(
-                    span={"base": 12, "md": 6},  # Full width on mobile, half on medium+ screens
-                    children=[
-                        dmc.Paper(
-                            children=dmc.Stack([
-                                # Table Title
-                                dmc.Group(
-                                    pos="apart",
+                    span={"base": 12, "md": 6},
+                    children=dmc.Paper(
                                     children=[
                                         dmc.Title("Select Starships", order=2),
+                                        html.Div(id="pgv-table"),
+                                        dmc.Grid(
+                                            children=[
+                                                dmc.GridCol(
+                                                    span={"base": 12, "sm": 6},
+                                                    children=dmc.NumberInput(
+                                                        id="length-threshold",
+                                                        label="Length Threshold (bp)",
+                                                        value=50,
+                                                        min=0,
+                                                        step=10,
+                                                    ),
+                                                ),
+                                                dmc.GridCol(
+                                                    span={"base": 12, "sm": 6},
+                                                    children=dmc.NumberInput(
+                                                        id="identity-threshold",
+                                                        label="Identity Threshold (%)",
+                                                        value=30,
+                                                        min=0,
+                                                        max=100,
+                                                        step=5,
+                                                    ),
+                                                ),
+                                            ],
+                                            gutter="md",
+                                        ),
+                                        dmc.Space(h="md"),
                                         dmc.Button(
                                             dmc.Text("Show Selected Starship(s)",size="lg"),
                                             id="update-button",
@@ -99,43 +124,12 @@ layout = dmc.Container(
                                             leftSection=html.I(className="bi bi-eye"),
                                         ),
                                     ],
-                                ),
-                                # Threshold Inputs
-                                dmc.Group(
-                                    children=[
-                                        dmc.NumberInput(
-                                            label="Length Threshold (bp)",
-                                            id="length-threshold",
-                                            value=50,
-                                            min=0,
-                                            step=10,
-                                        ),
-                                        dmc.NumberInput(
-                                            label="Identity Threshold (%)",
-                                            id="identity-threshold",
-                                            value=30,
-                                            min=0,
-                                            max=100,
-                                            step=5,
-                                        ),
-                                    ],
-                                    gap="md",
-                                ),
-                                # Table
-                                dcc.Loading(
-                                    id="loading",
-                                    type="circle",
-                                    children=html.Div(
-                                        id="pgv-table",
-                                    ),
-                                ),
-                            ], gap="md"),
-                            p="xl",
-                            radius="md",
-                            withBorder=True,
-                            h="100%",  # Make paper fill the height
+                                    p="xl",
+                                    radius="md",
+                                    withBorder=True,
+                                    style={"position": "relative"}
                         ),
-                    ],
+                        id="pgv-controls-container"
                 ),
                 
                 # Right Column - Visualization Section
@@ -179,6 +173,7 @@ layout = dmc.Container(
         modal,
     ],
     py="xl",
+    )
 )
 
 def plot_legend(gv):
@@ -453,8 +448,8 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
     Input("url", "href"),
     prevent_initial_call=False
 )
+@handle_callback_error
 def load_ship_table(href):
-    """Load and display the ship selection table"""
     from src.database.sql_manager import fetch_ship_table
     from src.components.tables import make_pgv_table
     table_df = fetch_ship_table(curated=True)
@@ -483,6 +478,7 @@ def load_ship_table(href):
         State("identity-threshold", "value"),
     ],
 )
+@handle_callback_error
 def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
     from src.database.sql_manager import fetch_accession_ship
     message = None

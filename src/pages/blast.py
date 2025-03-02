@@ -22,16 +22,14 @@ from src.config.cache import cache
 from src.utils.seq_utils import ( guess_seq_type,
     check_input,
     write_temp_fasta,
-                                 )
+    parse_fasta,
+    parse_fasta_from_file
+    )
 from src.utils.blast_utils import (
     run_blast,
     run_hmmer,
     run_diamond,
     blast_table,
-    run_lastz,
-    select_ship_family,
-    parse_lastz_output,
-    blast_chords,
     make_captain_alert,
     process_captain_results,
     create_no_matches_alert,
@@ -40,13 +38,10 @@ from src.utils.blast_utils import (
 )
 
 from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
-from src.utils.seq_utils import parse_fasta, parse_fasta_from_file
-
 from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
-
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
-
+from src.components.error_boundary import handle_callback_error, create_error_boundary
 
 dash.register_page(__name__)
 
@@ -76,10 +71,11 @@ modal = dmc.Modal(
 )
 
 
-layout = dmc.Container(
-    fluid=True,
-    children=[
-        dcc.Location(id="url", refresh=False),
+layout = create_error_boundary(
+    dmc.Container(
+        fluid=True,
+        children=[
+            dcc.Location(id="url", refresh=False),
         dcc.Store(id="query-header-store"),
         dcc.Store(id="query-seq-store"),
         dcc.Store(id="query-type-store"),
@@ -214,6 +210,7 @@ layout = dmc.Container(
         ),
         modal,
     ],
+    )
 )
 
 
@@ -224,6 +221,7 @@ layout = dmc.Container(
         Input("blast-fasta-upload", "filename"),
     ],
 )
+@handle_callback_error
 def update_fasta_details(seq_content, seq_filename):
     if seq_content is None:
         return [
@@ -262,6 +260,7 @@ def update_fasta_details(seq_content, seq_filename):
     State("blast-fasta-upload", "filename"),
     prevent_initial_call=True
 )
+@handle_callback_error
 def handle_submission_and_upload(n_clicks, contents, filename):
     triggered_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
     
@@ -342,6 +341,7 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         Input("blast-fasta-upload", "contents"),
     ],
 )
+@handle_callback_error
 def preprocess(n_clicks, query_text_input, query_file_contents):
     if not n_clicks:
         raise PreventUpdate
@@ -385,6 +385,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
     ],
     prevent_initial_call=True
 )
+@handle_callback_error
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type]):
         return None, None, None
@@ -459,6 +460,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     Output("subject-seq-dl-package", "data"),
     [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
 )
+@handle_callback_error
 def subject_seq_download(n_clicks, filename):
     try:
         if n_clicks:
@@ -477,6 +479,7 @@ def subject_seq_download(n_clicks, filename):
     Output("processed-metadata-store", "data"),
     Input("curated-input", "value"),
 )
+@handle_callback_error
 def process_metadata(curated):
     try:
         initial_df = cache.get("meta_data")
@@ -493,6 +496,7 @@ def process_metadata(curated):
     Output("processed-blast-store", "data"),
     [Input("blast-results-store", "data"), Input("processed-metadata-store", "data")],
 )
+@handle_callback_error
 def process_blast_results(blast_results_dict, metadata_dict):
     if not blast_results_dict or not metadata_dict:
         return None
@@ -559,6 +563,7 @@ def process_blast_results(blast_results_dict, metadata_dict):
     State("submit-button", "n_clicks"),
     prevent_initial_call=True
 )
+@handle_callback_error
 def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
     if not n_clicks or processed_blast_results is None:
         return None, None, None
@@ -608,134 +613,13 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
         logger.error(f"Error in update_ui_elements: {e}")
         return create_error_alert(str(e)), None, None
 
-@cache.memoize()
-@callback(
-    Output("ship-aln", "children"),
-    [
-        Input("blast-table", "derived_virtual_data"),
-        Input("blast-table", "derived_virtual_selected_rows"),
-        Input("blast-table", "selected_rows"),
-        Input("curated-input", "value"),
-    ],
-    State("query-type-store", "data"),
-)
-def blast_alignments(ship_blast_results, derived_selected_rows, selected_rows, curated, query_type):
-    # Use whichever selection is available
-    active_selection = derived_selected_rows if derived_selected_rows else selected_rows
-    
-    try:
-        if not active_selection or len(active_selection) == 0:
-            return None
-
-        logger.info(f"Creating alignment for selected row: {active_selection[0]}")
-        
-        if not ship_blast_results or len(ship_blast_results) == 0:
-            logger.error("No BLAST results available")
-            return None
-
-        # Get just the selected row
-        row_idx = active_selection[0]  # Take first selected row
-        row = ship_blast_results[row_idx]
-
-        # Extract sequence data for just this row
-        qseq = str(row["qseq"])
-        qseqid = str(row["qseqid"])
-        sseq = str(row["sseq"])
-        sseqid = str(row["sseqid"])
-
-        # Create temporary FASTA file for the selected sequences
-        with tempfile.NamedTemporaryFile(suffix=".fa", mode='w', delete=True) as tmp_fasta:
-            tmp_fasta.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-            tmp_fasta.flush()
-            
-            # Read the FASTA content
-            with open(tmp_fasta.name, "r") as file:
-                data = file.read()
-
-        # Set color scheme based on sequence type
-        color = "nucleotide" if query_type == "nucl" else "clustal2"
-
-        # Create alignment chart for just this row
-        aln = dashbio.AlignmentChart(
-            id="alignment-viewer",
-            data=data,
-            height=200,
-            tilewidth=30,
-            colorscale=color,
-            showconsensus=False,
-            showconservation=False,
-            showgap=False,
-            showid=False,
-            ticksteps=5,
-            tickstart=0,
-        )
-
-        # Add download button below alignment
-        download_section = html.Div([
-            aln,
-            dmc.Space(h="md"),
-            dmc.Button(
-                "Download Alignment FASTA",
-                id="download-alignment-button",
-                leftSection=[html.I(className="bi bi-download")],
-                variant="gradient",
-                gradient={"from": "indigo", "to": "cyan"},
-                size="lg",
-            ),
-            dcc.Download(id="download-alignment-fasta")
-        ])
-
-        return download_section
-
-    except Exception as e:
-        logger.error(f"Error creating alignment visualization: {str(e)}")
-        return html.Div(f"Error creating alignment visualization: {str(e)}")
-
-@callback(
-    Output("download-alignment-fasta", "data"),
-    Input("download-alignment-button", "n_clicks"),
-    [
-        State("blast-table", "derived_virtual_data"),
-        State("blast-table", "derived_virtual_selected_rows"),
-        State("blast-table", "selected_rows"),
-    ],
-    prevent_initial_call=True
-)
-def download_alignment_fasta(n_clicks, ship_blast_results, derived_selected_rows, selected_rows):
-    if not n_clicks:
-        return None
-        
-    active_selection = derived_selected_rows if derived_selected_rows else selected_rows
-    
-    if not active_selection or len(active_selection) == 0:
-        return None
-        
-    try:
-        row = ship_blast_results[active_selection[0]]
-        
-        qseq = str(row["qseq"]).replace("\n", "")
-        qseqid = str(row["qseqid"])
-        sseq = str(row["sseq"]).replace("\n", "")
-        sseqid = str(row["sseqid"])
-        
-        fasta_content = f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n"
-        
-        return dict(
-            content=fasta_content,
-            filename=f"alignment_{qseqid}_{sseqid}.fasta",
-            type="text/plain"
-        )
-        
-    except Exception as e:
-        logger.error(f"Error preparing alignment download: {str(e)}")
-        return None
-
 @callback(
     Output("blast-dl", "data"),
     [Input("blast-dl-button", "n_clicks")],
     [State("blast-table", "derived_virtual_data")],
     prevent_initial_call=True
 )
+@handle_callback_error
 def download_tsv(n_clicks, table_data):
     if not n_clicks:
         return None
@@ -765,80 +649,6 @@ def download_tsv(n_clicks, table_data):
     except Exception as e:
         logger.error(f"Error preparing download: {str(e)}")
         return None
-
-@callback(
-    Output("lastz-plot", "figure"),
-    [
-        Input("blast-table", "derived_virtual_data"),
-        Input("blast-table", "derived_virtual_selected_rows"),
-    ],
-)
-def create_alignment_plot(ship_blast_results, selected_row):
-    """
-    Creates a Plotly scatter plot from the alignment DataFrame and saves it as a PNG.
-    """
-    tmp_fasta_clean = tempfile.NamedTemporaryFile(suffix=".fa", delete=True)
-    lastz_output = tempfile.NamedTemporaryFile(suffix=".tsv", delete=True)
-
-    try:
-        ship_blast_results_df = pd.DataFrame(ship_blast_results)
-        if ship_blast_results_df.empty:
-            logger.error("Error: No blast results available for plotting.")
-            return None
-    except Exception as e:
-        logger.error(f"Error converting blast results to DataFrame: {e}")
-        return None
-
-    if selected_row is None or not selected_row:
-        logger.error("No row selected for alignment.")
-        return None
-
-    try:
-        row = ship_blast_results_df.iloc[selected_row]
-        qseq = re.sub("-", "", row["qseq"])
-        qseqid = row["qseqid"]
-        sseq = re.sub("-", "", row["sseq"])
-        sseqid = row["sseqid"]
-
-        logger.info(f"Selected query ID: {qseqid}, subject ID: {sseqid}")
-
-        with open(tmp_fasta_clean.name, "w") as f:
-            f.write(f">{qseqid}\n{qseq}\n>{sseqid}\n{sseq}\n")
-
-        logger.info("Running LASTZ...")
-        run_lastz(tmp_fasta_clean.name, lastz_output.name)
-
-        lastz_df = parse_lastz_output(lastz_output.name)
-
-        if lastz_df.empty:
-            logger.error("Error: No alignment data from LASTZ.")
-            return None
-
-        x_values = []
-        y_values = []
-
-        for _, lastz_row in lastz_df.iterrows():
-            x_values.extend([lastz_row["qstart"], lastz_row["qend"]])
-            y_values.extend([lastz_row["sstart"], lastz_row["send"]])
-
-        fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode="lines"))
-
-        fig.update_layout(
-            title="LASTZ Alignment",
-            xaxis_title=f"Query: {qseqid}",
-            yaxis_title=f"Subject: {sseqid}",
-        )
-
-        return fig
-
-    except IndexError as e:
-        logger.error(f"Error: Selected row index is out of bounds. Details: {e}")
-        return None
-
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return None
-
 
 toggle_modal = create_modal_callback(
     "blast-table",
