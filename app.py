@@ -13,7 +13,7 @@ from sqlalchemy import text
 import os
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
@@ -24,10 +24,10 @@ logging.basicConfig(
 warnings.filterwarnings("ignore")
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.ERROR)
 
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.ERROR)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
@@ -37,7 +37,6 @@ from src.components.callbacks import create_feedback_button
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.config.database import TelemetrySession, SubmissionsSession
-from src.database.init_db import init_databases
 
 _dash_renderer._set_react_version("18.2.0")
 
