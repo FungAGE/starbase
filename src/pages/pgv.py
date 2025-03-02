@@ -17,7 +17,8 @@ from pygenomeviz.utils import ColorCycler
 from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
 
 from src.components.callbacks import create_modal_callback
-from src.components.error_boundary import handle_callback_error
+from src.components.error_boundary import handle_callback_error, create_error_boundary
+
 
 
 logger = logging.getLogger(__name__)
@@ -54,10 +55,11 @@ modal = dmc.Modal(
     ],
 )
 
-layout = dmc.Container(
-    fluid=True,
-    children=[
-        dcc.Location(id="url", refresh=False),
+layout = create_error_boundary(
+    dmc.Container(
+        fluid=True,
+        children=[
+            dcc.Location(id="url", refresh=False),
         
         # Header Section
         dmc.Paper(
@@ -168,6 +170,7 @@ layout = dmc.Container(
         modal,
     ],
     py="xl",
+    )
 )
 
 def plot_legend(gv):
