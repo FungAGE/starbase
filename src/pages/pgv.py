@@ -9,6 +9,7 @@ import os
 import tempfile
 import pandas as pd
 import logging
+import traceback
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
@@ -482,13 +483,63 @@ def load_ship_table(href):
 @handle_callback_error
 def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
     from src.database.sql_manager import fetch_accession_ship
-    message = None
+    
+    # Early returns with proper error components
     if not n_clicks:
         return no_update, "Select Starships from the table and click 'Show Selected Starships'"
 
-    if n_clicks > 0:
+    if not table_data or selected_rows is None:
+        return html.Div(
+            html.H4("Select Starship(s) to visualize."),
+            className="center-content text-center",
+        ), None
+
+    if not isinstance(selected_rows, list) or len(selected_rows) == 0:
+        return html.Div(
+            html.H4("Please select at least one Starship."),
+            className="center-content text-center",
+        ), None
+
+    if len(selected_rows) > 4:
+        return html.Div(
+            html.H4("Please select between 1 and 4 Starships."),
+            className="center-content text-center",
+        ), None
+
+    try:
+        message = None
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
-        if table_data and selected_rows is not None:
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tmp_gffs = []
+            tmp_fas = []
+            
+            # Process each selected starship
+            for idx in selected_rows:
+                row = table_data[idx]
+                accession = row["accession_tag"]
+                
+                # Fetch and validate ship data
+                ship_data = fetch_accession_ship(accession)
+                if not ship_data or "sequence" not in ship_data or "gff" not in ship_data:
+                    raise ValueError(f"Failed to fetch data for accession {accession}")
+                
+                fa_df = ship_data["sequence"]
+                gff_df = ship_data["gff"]
+                
+                # Write temporary files
+                tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
+                tmp_fas.append(str(tmp_fa))
+                tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
+                tmp_gffs.append(tmp_gff)
+
+            # Generate visualization
+            if len(selected_rows) > 1:
+                message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr)
+            else:
+                single_pgv(tmp_gffs[0], tmp_pgv)
+
+            # Read and return visualization
             try:
                 if isinstance(selected_rows, list) and len(selected_rows) > 0:
                     try:
@@ -505,52 +556,42 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
                             fa_df = ship_data["sequence"]
                             tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
                             tmp_fas.append(str(tmp_fa))
+                with open(tmp_pgv, "r") as file:
+                    pgv_content = file.read()
+            except IOError as e:
+                logger.error(f"Failed to read temporary file: {e}")
+                raise
 
-                            gff_df = ship_data["gff"]
-                            tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
-                            tmp_gffs.append(tmp_gff)
-
-                        if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr)
-                        elif len(selected_rows) == 1:
-                            single_pgv(tmp_gffs[0], tmp_pgv)
-                        else:
-                            output = html.P("Please select between 1 and 4 Starships.")
-                            return output, None
-                        try:
-                            with open(tmp_pgv, "r") as file:
-                                pgv_content = file.read()
-                        except IOError:
-                            output = html.P("Failed to read the temporary file.")
-
-                        output = html.Iframe(
-                            srcDoc=pgv_content,
-                            style={
-                                "width": "100%",
-                                "height": "800px",
-                                "border": "none",
-                            },
-                        )
-                else:
-                    output = html.H4("Please select at least one Starship.")
-            except Exception as e:
-                logger.error(f"Exception: {e}")
-                output = html.H4(
-                    "Error while comparing ships using BLAST. Try another combination."
-                )
-        else:
-            output = html.H4("Select Starship(s) to visualize.")
-    else:
-        output = html.H4(
-            "Select up to 4 Starships in the table above and click the button to visualize."
+        output = html.Iframe(
+            srcDoc=pgv_content,
+            style={
+                "width": "100%",
+                "height": "800px",
+                "border": "none",
+            },
         )
-    return (
-        html.Div(
+        
+        return html.Div(
             [output],
             className="center-content text-center",
-        ),
-        message,
-    )
+        ), message
+
+    except Exception as e:
+        logger.error(f"Error in update_pgv: {str(e)}")
+        logger.error(traceback.format_exc())
+        return html.Div(
+            dmc.Alert(
+                title="Visualization Error",
+                children=[
+                    "Failed to generate visualization.",
+                    dmc.Space(h=10),
+                    dmc.Text(f"Error: {str(e)}", size="sm"),
+                ],
+                color="red",
+                variant="filled",
+            ),
+            className="center-content text-center",
+        ), None
 
 
 toggle_modal = create_modal_callback(
