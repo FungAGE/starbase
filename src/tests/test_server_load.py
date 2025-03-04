@@ -97,7 +97,7 @@ def test_slow_database(dash_duo: Browser, monkeypatch):
     app = import_app("app")
     
     def slow_fetch(*args, **kwargs):
-        time.sleep(2)  # Reduce sleep time for testing
+        time.sleep(2)  # Simulate slow DB response
         return original_fetch(*args, **kwargs)
     
     from src.database.sql_manager import fetch_ship_table as original_fetch
@@ -111,12 +111,28 @@ def test_slow_database(dash_duo: Browser, monkeypatch):
         use_reloader=False
     )
     
-    # Try to load the page
-    dash_duo.wait_for_element("#pgv-table", timeout=15)
+    # Navigate explicitly to the PGV page
+    dash_duo.driver.get(f"{dash_duo.server_url}/pgv")
     
-    # Check for loading indicator
-    loading = dash_duo.find_element(".loading-indicator")
-    assert loading is not None
+    # First verify loading overlay appears and is visible
+    root = dash_duo.wait_for_element(".mantine-LoadingOverlay-root", timeout=5)
+    assert root is not None, "Loading overlay root should exist"
+    
+    overlay = dash_duo.wait_for_element(".mantine-LoadingOverlay-overlay", timeout=5)
+    assert overlay is not None, "Loading overlay should appear during slow load"
+    assert overlay.is_displayed(), "Loading overlay should be visible"
+    
+    # Verify loader component is present
+    loader = dash_duo.wait_for_element(".mantine-LoadingOverlay-loader", timeout=5)
+    assert loader is not None, "Loading spinner should be visible"
+    
+    # Then wait for table to appear
+    table = dash_duo.wait_for_element("#pgv-table", timeout=20)
+    assert table is not None, "Table should eventually load"
+    
+    # Verify no error messages are present
+    error_elements = dash_duo.find_elements(".error-message")
+    assert not error_elements, "No error messages should be shown for slow (but successful) loads"
 
 @pytest.mark.skip_browser
 def test_timeout_handling(dash_duo: Browser):
