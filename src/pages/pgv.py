@@ -58,8 +58,7 @@ modal = dmc.Modal(
     ],
 )
 
-layout = create_error_boundary(
-    dmc.Container(
+layout = dmc.Container(
         fluid=True,
         children=[
             dcc.Location(id="url", refresh=False),
@@ -88,7 +87,7 @@ layout = create_error_boundary(
                     children=dmc.Paper(
                                     children=[
                                         dmc.Title("Select Starships", order=2),
-                                        html.Div(id="pgv-table"),
+                                        create_error_boundary(html.Div(id="pgv-table")),
                                         dmc.Grid(
                                             children=[
                                                 dmc.GridCol(
@@ -171,9 +170,12 @@ layout = create_error_boundary(
             gutter="xl",
         ),
         modal,
+        dcc.Store(
+            id={"type": "page-loading", "index": "pgv"},
+            data=False
+        ),
     ],
     py="xl",
-    )
 )
 
 def plot_legend(gv):
@@ -444,29 +446,37 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 
 
 @callback(
-    Output("pgv-table", "children"),
+    [Output("pgv-table", "children"),
+     Output({"type": "page-loading", "index": "pgv"}, "data-loading")],
     Input("url", "href"),
     prevent_initial_call=False
 )
 @handle_callback_error
 def load_ship_table(href):
-    from src.database.sql_manager import fetch_ship_table
-    from src.components.tables import make_pgv_table
-    table_df = fetch_ship_table(curated=True)
-    
-    if table_df is not None and not table_df.empty:
-        table = make_pgv_table(
-            df=table_df,
-            columns=table_columns,
-            id="pgv-table",
-            select_rows=True,
-            pg_sz=10
-        )
-        logger.info("Table created successfully")
-        return table
-    
-    logger.error("No data available or empty DataFrame")
-    return html.Div("No data available")
+    # Set loading to True at start
+    loading = True
+    try:
+        from src.database.sql_manager import fetch_ship_table
+        from src.components.tables import make_pgv_table
+        table_df = fetch_ship_table(curated=True)
+        
+        if table_df is not None and not table_df.empty:
+            table = make_pgv_table(
+                df=table_df,
+                columns=table_columns,
+                id="pgv-table",
+                select_rows=True,
+                pg_sz=10
+            )
+            logger.info("Table created successfully")
+            return table, False  # Loading complete
+        
+        logger.error("No data available or empty DataFrame")
+        return html.Div("No data available"), False  # Loading complete
+        
+    except Exception as e:
+        logger.error(f"Error loading table: {e}")
+        return html.Div("Error loading table"), False  # Loading complete even on error
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
