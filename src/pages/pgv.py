@@ -9,6 +9,7 @@ import os
 import tempfile
 import pandas as pd
 import logging
+import traceback
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
@@ -85,50 +86,60 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"base": 12, "md": 6},
                     children=dmc.Paper(
-                                    children=[
-                                        dmc.Title("Select Starships", order=2),
-                                        create_error_boundary(html.Div(id="pgv-table")),
-                                        dmc.Grid(
-                                            children=[
-                                                dmc.GridCol(
-                                                    span={"base": 12, "sm": 6},
-                                                    children=dmc.NumberInput(
-                                                        id="length-threshold",
-                                                        label="Length Threshold (bp)",
-                                                        value=50,
-                                                        min=0,
-                                                        step=10,
-                                                    ),
-                                                ),
-                                                dmc.GridCol(
-                                                    span={"base": 12, "sm": 6},
-                                                    children=dmc.NumberInput(
-                                                        id="identity-threshold",
-                                                        label="Identity Threshold (%)",
-                                                        value=30,
-                                                        min=0,
-                                                        max=100,
-                                                        step=5,
-                                                    ),
-                                                ),
-                                            ],
-                                            gutter="md",
+                        children=[
+                            dmc.Title("Select Starships", order=2),
+                            dmc.Stack(
+                                pos="relative",
+                                children=[
+                                    dmc.LoadingOverlay(
+                                        id="pgv-table-loading",
+                                        visible=True,
+                                        overlayProps={"radius": "sm", "blur": 2},
+                                        zIndex=10,
+                                    ),
+                                    html.Div(id="pgv-table"),
+                                ]
+                            ),
+                            dmc.Grid(
+                                children=[
+                                    dmc.GridCol(
+                                        span={"base": 12, "sm": 6},
+                                        children=dmc.NumberInput(
+                                            id="length-threshold",
+                                            label="Length Threshold (bp)",
+                                            value=50,
+                                            min=0,
+                                            step=10,
                                         ),
-                                        dmc.Space(h="md"),
-                                        dmc.Button(
-                                            dmc.Text("Show Selected Starship(s)",size="lg"),
-                                            id="update-button",
-                                            variant="gradient",
-                                            gradient={"from": "indigo", "to": "cyan"},
-                                            leftSection=html.I(className="bi bi-eye"),
+                                    ),
+                                    dmc.GridCol(
+                                        span={"base": 12, "sm": 6},
+                                        children=dmc.NumberInput(
+                                            id="identity-threshold",
+                                            label="Identity Threshold (%)",
+                                            value=30,
+                                            min=0,
+                                            max=100,
+                                            step=5,
                                         ),
-                                    ],
-                                    p="xl",
-                                    radius="md",
-                                    withBorder=True,
-                                    style={"position": "relative"}
-                        ),
-                        id="pgv-controls-container"
+                                    ),
+                                ],
+                                gutter="md",
+                            ),
+                            dmc.Space(h="md"),
+                            dmc.Button(
+                                dmc.Text("Show Selected Starship(s)",size="lg"),
+                                id="update-button",
+                                variant="gradient",
+                                gradient={"from": "indigo", "to": "cyan"},
+                                leftSection=html.I(className="bi bi-eye"),
+                            ),
+                        ],
+                        p="xl",
+                        radius="md",
+                        withBorder=True,
+                        style={"position": "relative"}
+                    ),
                 ),
                 
                 # Right Column - Visualization Section
@@ -447,36 +458,37 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 
 @callback(
     [Output("pgv-table", "children"),
-     Output({"type": "page-loading", "index": "pgv"}, "data-loading")],
+     Output("pgv-table-loading", "visible")],
     Input("url", "href"),
     prevent_initial_call=False
 )
 @handle_callback_error
 def load_ship_table(href):
-    # Set loading to True at start
-    loading = True
-    try:
-        from src.database.sql_manager import fetch_ship_table
-        from src.components.tables import make_pgv_table
-        table_df = fetch_ship_table(curated=True)
-        
-        if table_df is not None and not table_df.empty:
-            table = make_pgv_table(
-                df=table_df,
-                columns=table_columns,
-                id="pgv-table",
-                select_rows=True,
-                pg_sz=10
-            )
-            logger.info("Table created successfully")
-            return table, False  # Loading complete
-        
-        logger.error("No data available or empty DataFrame")
-        return html.Div("No data available"), False  # Loading complete
-        
-    except Exception as e:
-        logger.error(f"Error loading table: {e}")
-        return html.Div("Error loading table"), False  # Loading complete even on error
+    from src.database.sql_manager import fetch_ship_table
+    from src.components.tables import make_pgv_table
+    
+    table_df = fetch_ship_table(curated=True)
+    
+    if table_df is not None and not table_df.empty:
+        if 'id' not in table_df.columns:
+            table_df['id'] = table_df.index.astype(str)
+            
+        table = make_pgv_table(
+            df=table_df,
+            columns=table_columns,
+            id="pgv-table",
+            select_rows=True,
+            pg_sz=10
+        )
+        logger.info("Table created successfully")
+        return table, False
+    
+    logger.error("No data available or empty DataFrame")
+    return dmc.Alert(
+        title="No Data Available",
+        color="yellow",
+        variant="filled"
+    ), False
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],

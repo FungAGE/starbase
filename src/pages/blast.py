@@ -33,7 +33,6 @@ from src.utils.blast_utils import (
     make_captain_alert,
     process_captain_results,
     create_no_matches_alert,
-    create_error_alert,
     blast_download_button,
 )
 
@@ -41,7 +40,7 @@ from src.components.callbacks import curated_switch, create_modal_callback, crea
 from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
-from src.components.error_boundary import handle_callback_error, create_error_boundary
+from src.components.error_boundary import handle_callback_error, create_error_alert
 
 dash.register_page(__name__)
 
@@ -71,8 +70,7 @@ modal = dmc.Modal(
 )
 
 
-layout = create_error_boundary(
-    dmc.Container(
+layout = dmc.Container(
         fluid=True,
         children=[
             dcc.Location(id="url", refresh=False),
@@ -210,7 +208,6 @@ layout = create_error_boundary(
         ),
         modal,
     ],
-    )
 )
 
 
