@@ -52,6 +52,8 @@ external_stylesheets = [
     "https://unpkg.com/@mantine/nprogress@7.11.0/styles.css",
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
+    "https://code.jquery.com/jquery-3.6.0.min.js",
+    "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "/assets/styles.css",
     "https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
     "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-grid.css",
