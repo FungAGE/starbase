@@ -45,20 +45,15 @@ def handle_callback_error(callback_func):
             logger.error(f"Inputs: args={args}, kwargs={kwargs}")
             logger.error(traceback.format_exc())
             
-            # Return user-friendly error component
+            # Return detailed error alert
             return dmc.Alert(
-                title="An Error Occurred",
+                title="Error Loading Data",
                 children=[
                     "We encountered a problem processing your request.",
                     dmc.Space(h=10),
-                    dmc.Text("The error has been logged and we'll look into it.", size="sm"),
+                    dmc.Text(f"Error: {str(e)}", size="sm"),
                     dmc.Space(h=10),
-                    dmc.Button(
-                        "Refresh Page",
-                        variant="outline",
-                        color="red",
-                        onClick="window.location.reload(true)"
-                    )
+                    dmc.Code(str(traceback.format_exc()), block=True)
                 ],
                 color="red",
                 variant="filled",
@@ -96,3 +91,11 @@ def create_error_boundary(page_content):
         )
     ])
     return error_wrapped 
+
+def create_error_alert(error_msg):
+    return dmc.Alert(
+        title="Error",
+        children=f"An error occurred while processing results: {error_msg}",
+        color="red",
+        variant="light",
+    )

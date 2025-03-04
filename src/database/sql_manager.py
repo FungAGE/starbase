@@ -185,7 +185,6 @@ def db_retry_decorator(additional_retry_exceptions=()):
         )
     )
 
-# Apply the retry decorator to all database operations
 @db_retry_decorator()
 def fetch_ship_table(curated=True):
     """Fetch ship table with retries on failure"""
