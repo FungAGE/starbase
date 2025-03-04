@@ -21,10 +21,10 @@ def fetch_meta_data(curated=False):
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.genus, t.species, 
            g.version, g.genomeSource, g.citation, a.accession_tag, g.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
     """
 
     if curated:
@@ -67,12 +67,13 @@ def fetch_download_data(curated=True, dereplicate=False):
     session = StarbaseSession()
 
     query = """
-    SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
+    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.species 
     FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
+    LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
     """
     
     if curated:
