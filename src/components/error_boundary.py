@@ -5,6 +5,7 @@ import traceback
 import logging
 import functools
 from dash.exceptions import PreventUpdate
+from dash_mantine_components import LoadingOverlay
 
 logger = logging.getLogger(__name__)
 
@@ -44,20 +45,15 @@ def handle_callback_error(callback_func):
             logger.error(f"Inputs: args={args}, kwargs={kwargs}")
             logger.error(traceback.format_exc())
             
-            # Return user-friendly error component
+            # Return detailed error alert
             return dmc.Alert(
-                title="An Error Occurred",
+                title="Error Loading Data",
                 children=[
                     "We encountered a problem processing your request.",
                     dmc.Space(h=10),
-                    dmc.Text("The error has been logged and we'll look into it.", size="sm"),
+                    dmc.Text(f"Error: {str(e)}", size="sm"),
                     dmc.Space(h=10),
-                    dmc.Button(
-                        "Refresh Page",
-                        variant="outline",
-                        color="red",
-                        onClick="window.location.reload(true)"
-                    )
+                    dmc.Code(str(traceback.format_exc()), block=True)
                 ],
                 color="red",
                 variant="filled",
@@ -66,20 +62,40 @@ def handle_callback_error(callback_func):
 
 def create_error_boundary(page_content):
     """
-    Wrap page content with error boundary
+    Wrap page content with error boundary and loading overlay
     
     Args:
         page_content: The page layout to wrap
         
     Returns:
-        Error boundary wrapped content
+        Error boundary wrapped content with loading state handling
     """
     error_wrapped = html.Div([
-        # Wrap the page content directly without LoadingOverlay
-        html.Div(
-            page_content,
-            id="page-content-wrapper"
-        ),
-        html.Div(id="error-boundary-content")
+        dmc.Stack(
+            pos="relative",
+            children=[
+                # LoadingOverlay as a sibling, not a wrapper
+                LoadingOverlay(
+                    id="page-loading-overlay",
+                    visible=False,
+                    overlayProps={"radius": "sm", "blur": 2},
+                    zIndex=10,
+                ),
+                # Content in the same Stack as the overlay
+                html.Div(
+                    page_content,
+                    id="page-content-wrapper"
+                ),
+                html.Div(id="error-boundary-content")
+            ]
+        )
     ])
     return error_wrapped 
+
+def create_error_alert(error_msg):
+    return dmc.Alert(
+        title="Error",
+        children=f"An error occurred while processing results: {error_msg}",
+        color="red",
+        variant="light",
+    )

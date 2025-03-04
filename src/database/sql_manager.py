@@ -21,10 +21,10 @@ def fetch_meta_data(curated=False):
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.genus, t.species, 
            g.version, g.genomeSource, g.citation, a.accession_tag, g.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
     """
 
     if curated:
@@ -67,12 +67,13 @@ def fetch_download_data(curated=True, dereplicate=False):
     session = StarbaseSession()
 
     query = """
-    SELECT a.accession_tag, f.familyName, t.`order`, t.family, t.species 
+    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.species 
     FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN taxonomy t ON j.taxid = t.id
+    INNER JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
-    LEFT JOIN accessions a ON j.ship_id = a.id
+    LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
     """
     
     if curated:
@@ -185,10 +186,8 @@ def db_retry_decorator(additional_retry_exceptions=()):
         )
     )
 
-# Apply the retry decorator to all database operations
 @db_retry_decorator()
 def fetch_ship_table(curated=True):
-    """Fetch ship table with retries on failure"""
     with db_session_manager() as session:
         try:
             query = """
@@ -197,24 +196,19 @@ def fetch_ship_table(curated=True):
                 f.familyName,
                 t.species
             FROM joined_ships js
-            LEFT JOIN accessions a ON js.ship_id = a.id
-            LEFT JOIN taxonomy t ON js.taxid = t.id
-            LEFT JOIN family_names f ON js.ship_family_id = f.id
-            -- Filter for ships that have sequence data
-            LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
-            -- Filter for ships that have GFF data
-            LEFT JOIN gff g ON g.ship_id = a.id
-            WHERE js.orphan IS NULL
+            INNER JOIN accessions a ON js.ship_id = a.id
+            INNER JOIN family_names f ON js.ship_family_id = f.id
+            INNER JOIN ships s ON s.accession = a.id
+            INNER JOIN gff g ON g.ship_id = a.id
+            INNER JOIN taxonomy t ON js.taxid = t.id
             """
             
             if curated:
                 query += " AND js.curated_status = 'curated'"
 
-            query += " ORDER BY f.familyName ASC"
+            query += " ORDER BY f.familyName ASC LIMIT 1000"
 
             df = pd.read_sql_query(query, session.bind)
-            if df.empty:
-                logger.warning("Fetched ship_table DataFrame is empty.")
             return df
         except Exception as e:
             logger.error(f"Error fetching ship_table data: {str(e)}")

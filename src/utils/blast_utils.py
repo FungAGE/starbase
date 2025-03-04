@@ -14,7 +14,7 @@ from Bio import SearchIO
 from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
 from src.database.blastdb import blast_db_exists, create_dbs
 from src.components.tables import create_ag_grid
-
+from src.components.error_boundary import create_error_alert
 import logging
 
 logger = logging.getLogger(__name__)
@@ -921,12 +921,4 @@ def create_no_matches_alert():
         color="yellow",
         variant="light",
         withCloseButton=False,
-    )
-
-def create_error_alert(error_msg):
-    return dmc.Alert(
-        title="Error",
-        children=f"An error occurred while processing results: {error_msg}",
-        color="red",
-        variant="light",
     )

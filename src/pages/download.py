@@ -33,6 +33,13 @@ table_columns = [
         "presentation": "markdown",
     },
     {
+        "name": "Reference",
+        "id": "shortCitation",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
         "name": "Order",
         "id": "order",
         "deletable": False,
