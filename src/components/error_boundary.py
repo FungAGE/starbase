@@ -5,6 +5,7 @@ import traceback
 import logging
 import functools
 from dash.exceptions import PreventUpdate
+from dash_mantine_components import LoadingOverlay
 
 logger = logging.getLogger(__name__)
 
@@ -66,20 +67,32 @@ def handle_callback_error(callback_func):
 
 def create_error_boundary(page_content):
     """
-    Wrap page content with error boundary
+    Wrap page content with error boundary and loading overlay
     
     Args:
         page_content: The page layout to wrap
         
     Returns:
-        Error boundary wrapped content
+        Error boundary wrapped content with loading state handling
     """
     error_wrapped = html.Div([
-        # Wrap the page content directly without LoadingOverlay
-        html.Div(
-            page_content,
-            id="page-content-wrapper"
-        ),
-        html.Div(id="error-boundary-content")
+        dmc.Stack(
+            pos="relative",
+            children=[
+                # LoadingOverlay as a sibling, not a wrapper
+                LoadingOverlay(
+                    id="page-loading-overlay",
+                    visible=False,
+                    overlayProps={"radius": "sm", "blur": 2},
+                    zIndex=10,
+                ),
+                # Content in the same Stack as the overlay
+                html.Div(
+                    page_content,
+                    id="page-content-wrapper"
+                ),
+                html.Div(id="error-boundary-content")
+            ]
+        )
     ])
     return error_wrapped 
