@@ -23,15 +23,28 @@ RUN useradd -m -u 1000 $USER
 # Set working directory
 WORKDIR $HOME/
 
-# System dependencies and supercronic installation (combined to reduce layers)
+# System dependencies, conda, and supercronic installation (combined to reduce layers)
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw wget && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     # Install supercronic
     curl -fsSLO "$SUPERCRONIC_URL" && \
     echo "${SUPERCRONIC_SHA1SUM}  ${SUPERCRONIC}" | sha1sum -c - && \
     chmod +x "$SUPERCRONIC" && \
-    mv "$SUPERCRONIC" "/usr/local/bin/supercronic"
+    mv "$SUPERCRONIC" "/usr/local/bin/supercronic" && \
+    # Install Miniforge
+    wget https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-Linux-x86_64.sh -O miniforge.sh && \
+    bash miniforge.sh -b -p /opt/conda && \
+    rm miniforge.sh && \
+    # Add conda to path
+    ln -s /opt/conda/bin/conda /usr/local/bin/conda
+
+# Initialize conda in bash
+RUN conda init bash && \
+    # Install conda packages
+    conda install -y -c bioconda epa-ng gappa && \
+    # Clean conda
+    conda clean -afy
 
 # Python dependencies (copied and installed first as they change less frequently)
 COPY requirements.txt .

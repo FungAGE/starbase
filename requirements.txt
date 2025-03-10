@@ -33,6 +33,3 @@ tenacity==8.2.3
 urllib3==1.26.9
 webdriver_manager==4.0.2
 Werkzeug<=3.1
-# TODO: add the following to conda:
-# epa-ng
-# gappa
