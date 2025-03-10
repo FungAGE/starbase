@@ -54,7 +54,7 @@ def blast_db_exists(blastdb):
 
 def create_dbs():
     
-    from src.database.sql_manager import fetch_all_captains, fetch_all_ships
+    from src.database.sql_manager import fetch_all_captains, fetch_ships
 
     ship_fasta_path = BLAST_DB_PATHS["ship"]
     ship_fasta_dir = os.path.dirname(ship_fasta_path)
@@ -63,7 +63,7 @@ def create_dbs():
     ship_sequences_list = []
     ship_sequences = cache.get("all_ships")
     if ship_sequences is None:
-        ship_sequences = fetch_all_ships()
+        ship_sequences = fetch_ships()
 
     for index, row in ship_sequences.iterrows():
         name = row["accession_tag"]

@@ -319,7 +319,7 @@ def write_tmp(data, seqid, file_type, temp_dir):
 # def load_fa(accession):
 #     df = cache.get("all_ships")
 #     if df is None:
-#         df = fetch_all_ships()
+#         df = fetch_ships()
 
 #     if isinstance(accession, str):
 #         df = df[df["accession_tag"] == accession]

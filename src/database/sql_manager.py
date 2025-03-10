@@ -10,6 +10,24 @@ from sqlalchemy import text
 from src.config.cache import cache
 logger = logging.getLogger(__name__)
 
+# Define a common retry decorator for database operations
+def db_retry_decorator(additional_retry_exceptions=()):
+    """
+    Create a retry decorator for database operations
+    Args:
+        additional_retry_exceptions: Tuple of additional exceptions to retry on
+    """
+    retry_exceptions = (sqlalchemy.exc.OperationalError,) + additional_retry_exceptions
+    
+    return retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(retry_exceptions),
+        before_sleep=lambda retry_state: logger.warning(
+            f"Retrying database operation after error: {retry_state.outcome.exception()}"
+        )
+    )
+
 @cache.memoize(timeout=86400)
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database with caching."""
@@ -61,8 +79,7 @@ def fetch_paper_data():
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
-def fetch_download_data(curated=True, dereplicate=False):
+def fetch_download_data(curated=False, dereplicate=True):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
 
@@ -74,6 +91,9 @@ def fetch_download_data(curated=True, dereplicate=False):
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
+    -- Only show entries that have sequences
+    INNER JOIN ships s ON s.accession = a.id
+    WHERE 1=1
     """
     
     if curated:
@@ -84,7 +104,6 @@ def fetch_download_data(curated=True, dereplicate=False):
         
         if dereplicate:
             df = df.drop_duplicates(subset='accession_tag')
-            logger.info(f"Dereplicated to {len(df)} unique accession tags.")
         
         if df.empty:
             logger.warning("Fetched Download DataFrame is empty.")            
@@ -95,35 +114,77 @@ def fetch_download_data(curated=True, dereplicate=False):
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
-def fetch_all_ships(curated=True):
+def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
+    """
+    Fetch ship data for specified accession tags.
+    
+    Args:
+        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
+        curated (bool, optional): If True, only fetch curated ships.
+        dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
+    
+    Returns:
+        pd.DataFrame: DataFrame containing ship data
+    """
     session = StarbaseSession()
 
     query = """
-    SELECT s.*, a.accession_tag
-    FROM ships s
-    LEFT JOIN accessions a ON s.accession = a.id
-    LEFT JOIN joined_ships j ON j.ship_id = a.id
-    WHERE 1=1
+    WITH valid_ships AS (
+        SELECT DISTINCT 
+            a.id as accession_id, 
+            a.accession_tag,
+            j.curated_status,
+            j.elementBegin,
+            j.elementEnd,
+            j.contigID,
+            t.species,
+            t.genus,
+            t.family,
+            t.`order`,
+            f.familyName,
+            g.assembly_accession
+        FROM joined_ships j
+        INNER JOIN accessions a ON j.ship_id = a.id
+        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN genomes g ON j.genome_id = g.id
+        WHERE 1=1
     """
     
+    if accession_tags:
+        query += " AND a.accession_tag IN ({})".format(
+            ','.join(f"'{tag}'" for tag in accession_tags)
+        )
     if curated:
         query += " AND j.curated_status = 'curated'"
+    
+    query += """
+    )
+    SELECT 
+        v.*,
+        s.sequence
+    FROM valid_ships v
+    LEFT JOIN ships s ON s.accession = v.accession_id
+    """
 
-    session = StarbaseSession()
     try:
         df = pd.read_sql_query(query, session.bind)
+        
+        if dereplicate:
+            df = df.drop_duplicates(subset='accession_tag')
+        
         if df.empty:
-            logger.warning("Fetched all_ships DataFrame is empty.")
+            logger.warning("Fetched ships DataFrame is empty.")
         return df
     except Exception as e:
-        logger.error(f"Error fetching all_ships data: {str(e)}")
+        logger.error(f"Error fetching ships data: {str(e)}")
         raise
     finally:
         session.close()
     
 
 @cache.memoize(timeout=86400)
+@db_retry_decorator()
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
@@ -139,7 +200,6 @@ def fetch_ship_table(curated=False):
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
     LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
-    -- Filter for ships that have GFF data
     LEFT JOIN gff g ON g.ship_id = a.id
     WHERE js.orphan IS NULL
     """
@@ -148,6 +208,13 @@ def fetch_ship_table(curated=False):
         query += " AND js.curated_status = 'curated'"
 
     query += " ORDER BY f.familyName ASC"
+
+    try:
+        df = pd.read_sql_query(query, session.bind)
+        return df
+    except Exception as e:
+        logger.error(f"Error fetching ship table data: {str(e)}")
+        raise
 
 @contextmanager
 def db_session_manager():
@@ -167,52 +234,6 @@ def db_session_manager():
     finally:
         if session:
             session.close()
-
-# Define a common retry decorator for database operations
-def db_retry_decorator(additional_retry_exceptions=()):
-    """
-    Create a retry decorator for database operations
-    Args:
-        additional_retry_exceptions: Tuple of additional exceptions to retry on
-    """
-    retry_exceptions = (sqlalchemy.exc.OperationalError,) + additional_retry_exceptions
-    
-    return retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(retry_exceptions),
-        before_sleep=lambda retry_state: logger.warning(
-            f"Retrying database operation after error: {retry_state.outcome.exception()}"
-        )
-    )
-
-@db_retry_decorator()
-def fetch_ship_table(curated=True):
-    with db_session_manager() as session:
-        try:
-            query = """
-            SELECT DISTINCT 
-                a.accession_tag,
-                f.familyName,
-                t.species
-            FROM joined_ships js
-            INNER JOIN accessions a ON js.ship_id = a.id
-            INNER JOIN family_names f ON js.ship_family_id = f.id
-            INNER JOIN ships s ON s.accession = a.id
-            INNER JOIN gff g ON g.ship_id = a.id
-            INNER JOIN taxonomy t ON js.taxid = t.id
-            """
-            
-            if curated:
-                query += " AND js.curated_status = 'curated'"
-
-            query += " ORDER BY f.familyName ASC LIMIT 1000"
-
-            df = pd.read_sql_query(query, session.bind)
-            return df
-        except Exception as e:
-            logger.error(f"Error fetching ship_table data: {str(e)}")
-            return None
 
 @db_retry_decorator()
 def fetch_accession_ship(accession_tag):
