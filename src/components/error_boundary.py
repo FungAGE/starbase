@@ -92,10 +92,11 @@ def create_error_boundary(page_content):
     ])
     return error_wrapped 
 
-def create_error_alert(error_msg):
-    return dmc.Alert(
-        title="Error",
-        children=f"An error occurred while processing results: {error_msg}",
-        color="red",
-        variant="light",
-    )
+def create_error_alert(error_message):
+    return html.Div([
+        dmc.Alert(
+            title="Error",
+            color="red",
+            children=str(error_message)
+        )
+    ])
