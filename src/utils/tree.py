@@ -6,7 +6,11 @@ from Bio import Phylo
 import plotly.graph_objs as go
 
 import tempfile
+import subprocess
+import os
+import logging
 
+from src.utils.seq_utils import load_fasta_to_dict
 from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
 from src.config.cache import cache
 default_highlight_colors = {
@@ -326,7 +330,7 @@ def add_tip_labels(
     return text_label
 
 
-def plot_tree(highlight_families=None):
+def plot_tree(highlight_families=None, tips=None):
     tree_string = cache.get("captain_tree")
     if tree_string is None:
         tree_string = fetch_captain_tree()
@@ -418,3 +422,58 @@ def plot_tree(highlight_families=None):
     fig = go.Figure(data=nodes, layout=layout)
 
     return fig
+
+def run_mafft(query, ref_msa):
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    MODEL = "PROTGTR+G+F"
+    fasta_dict = load_fasta_to_dict(query)
+    tmp_headers = list(fasta_dict.keys())
+
+    mafft_cmd = f"mafft --thread 2 --auto --addfragments {query} --keeplength {ref_msa} | seqkit grep -n -f {tmp_headers} > {tmp_fasta}"
+    subprocess.run(
+        mafft_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return tmp_headers, tmp_fasta
+
+
+def add_to_tree(query_msa, tree, ref_msa, model, tmp_dir):
+    if query_msa:
+        # Construct the epa-ng command
+        epa_cmd = f"epa-ng -T 2 --redo --ref-msa {ref_msa} --tree {tree} --query {query_msa} --model {model} --out-dir {tmp_dir}"
+
+        # Run the command
+        result = subprocess.run(
+            epa_cmd,
+            shell=True,
+            stdout=subprocess.DEVNULL,  # Uncomment to suppress stdout
+            stderr=subprocess.DEVNULL,  # Uncomment to suppress stderr
+        )
+
+        # Check for errors in command execution
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"epa-ng command failed with return code {result.returncode}"
+            )
+
+        tmp_tree = os.path.join(tmp_dir, "epa_result.jplace")
+        return tmp_tree
+
+
+def gappa(tmp_tree):
+    out_dir = os.path.dirname(tmp_tree)
+    out_tree = os.path.join(out_dir, "epa_result.newick")
+    gappa_cmd = (
+        f"gappa examine graft --out-dir {out_dir} --threads 2 --jplace-path {tmp_tree}"
+    )
+    subprocess.run(
+        gappa_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logging.info(f"Tree output: {out_tree}")
+
+    return out_tree

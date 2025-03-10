@@ -41,8 +41,7 @@ from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS, PHYLOGENY_PATHS
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
-from src.utils.tree import plot_tree
-from src.pages.phylogeny import run_mafft, add_to_tree, gappa
+from src.utils.tree import plot_tree, run_mafft, add_to_tree, gappa
 
 dash.register_page(__name__)
 
