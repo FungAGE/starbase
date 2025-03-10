@@ -21,12 +21,10 @@ from dash.dependencies import Output, Input
 
 from Bio import SeqIO
 
+from src.config.settings import PHYLOGENY_PATHS
 from src.utils.blast_utils import check_input, guess_seq_type, write_temp_fasta
-from src.utils.parsing import extract_fasta_headers
 from src.utils.tree import plot_tree
-from src.utils.parsing import parse_fasta
-
-# from src.components.callbacks import MOUNTED_DIRECTORY_PATH
+from src.utils.seq_utils import parse_fasta, load_fasta_to_dict
 
 dash.register_page(__name__)
 
@@ -34,7 +32,8 @@ dash.register_page(__name__)
 def run_mafft(query, ref_msa):
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     MODEL = "PROTGTR+G+F"
-    tmp_headers = extract_fasta_headers(query, "file")
+    fasta_dict = load_fasta_to_dict(query)
+    tmp_headers = list(fasta_dict.keys())
 
     mafft_cmd = f"mafft --thread 2 --auto --addfragments {query} --keeplength {ref_msa} | seqkit grep -n -f {tmp_headers} > {tmp_fasta}"
     subprocess.run(
@@ -169,22 +168,23 @@ def update_fasta_details(seq_content, seq_filename):
 def update_ui(fasta_upload):
     output = None
     headers_list = None
-    MOUNTED_DIRECTORY_PATH = "database_folder"
     if fasta_upload:
-        with tempfile.TemporaryDirectory() as tmp_dir:  # Use 'with' to keep the temp dir open
+        with tempfile.TemporaryDirectory() as tmp_dir:
             input_type, inputs = check_input(None, fasta_upload)
             query_type = guess_seq_type(inputs)
             tmp_query_fasta = write_temp_fasta(inputs)
-            headers_list = extract_fasta_headers(tmp_query_fasta, "list")
+            fasta_dict = load_fasta_to_dict(tmp_query_fasta)
+            headers_list = list(fasta_dict.keys())
+            
             if query_type == "prot":
                 tmp_headers, query_msa = run_mafft(
                     query=tmp_query_fasta,
-                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/superfamily-rep-captains.clipkit",
+                    ref_msa=PHYLOGENY_PATHS["msa"],
                 )
                 new_tree = add_to_tree(
                     query_msa=query_msa,
-                    tree=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/tree/superfamily-rep-ships.treefile",
-                    ref_msa=f"{MOUNTED_DIRECTORY_PATH}/Starships/captain/tyr/faa/alignments/superfamily-rep-captains.clipkit",
+                    tree=PHYLOGENY_PATHS["tree"],
+                    ref_msa=PHYLOGENY_PATHS["msa"],
                     model="PROTGTR+G+F",
                     tmp_dir=tmp_dir,
                 )

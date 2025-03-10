@@ -48,6 +48,12 @@ BLAST_DB_PATHS = {
     },
 }
 
+# Phylogeny paths
+PHYLOGENY_PATHS = {
+    "tree": os.path.join(DATA_DIR, "captain", "tyr", "faa", "tree", "superfamily-rep-ships.treefile"),
+    "msa": os.path.join(DATA_DIR, "captain", "tyr", "faa", "alignments", "superfamily-rep-captains.clipkit"),
+}
+
 # URL routes
 HOME_URL = os.getenv("HOME_URL", "/")
 WIKI_URL = os.getenv("WIKI_URL", "/wiki")
