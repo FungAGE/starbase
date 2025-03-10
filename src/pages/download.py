@@ -8,7 +8,7 @@ import pandas as pd
 from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback, dereplicated_switch
 from src.config.cache import cache
 
-from src.database.sql_manager import fetch_download_data, fetch_all_ships
+from src.database.sql_manager import fetch_download_data, fetch_ships
 from src.components.tables import make_dl_table
 import logging
 
@@ -178,11 +178,10 @@ layout = dmc.Container(
 @callback(
     [Output("dl-table", "rowData"),
      Output("table-stats", "children")],
-    [Input("url", "href"),
-     Input("curated-input", "checked"),
+    [Input("curated-input", "checked"),
      Input("dereplicated-input", "checked")]
 )
-def update_dl_table(url, curated=True, dereplicate=False):
+def update_dl_table(curated, dereplicate):
     logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
     try:
         df = fetch_download_data(curated=curated, dereplicate=dereplicate)
@@ -209,10 +208,12 @@ def update_dl_table(url, curated=True, dereplicate=False):
     [Input("download-all-btn", "n_clicks"),
      Input("download-selected-btn", "n_clicks")],
     [State("dl-table", "rowData"),
-     State("dl-table", "selectedRows")],
+     State("dl-table", "selectedRows"),
+     State("curated-input", "checked"),
+     State("dereplicated-input", "checked")],
     prevent_initial_call=True,
 )
-def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows):
+def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows, curated, dereplicate):
     ctx = dash.callback_context
     if not ctx.triggered or not any([dl_all_clicks, dl_select_clicks]):
         raise dash.exceptions.PreventUpdate
@@ -236,18 +237,11 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                         "maxWidth": "100%"
                     }
                 }
-            )
+            )   
         )
 
     try:
-        # Get all ships data first
-        df = cache.get("all_ships")
-        if df is None:
-            df = fetch_all_ships()
-            
-        if df is None or df.empty:
-            raise ValueError("Failed to fetch ship data from database")
-
+    
         # Handle download based on which button was clicked
         if button_id == "download-all-btn":
             # For download all, use all rows from table_data
@@ -274,10 +268,9 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
         else:
             return dash.no_update, None
 
-        # Filter all ships by accessions
-        df = df[df["accession_tag"].isin(accessions)]
-
-        if df.empty:
+        dl_df = fetch_ships(accession_tags=accessions, curated=curated, dereplicate=dereplicate)
+            
+        if dl_df is None or dl_df.empty:
             logger.warning("No matching records found.")
             return (
                 dash.no_update,
@@ -294,16 +287,16 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
         try:
             fasta_content = [
                 f">{row['accession_tag']}\n{row['sequence']}"
-                for _, row in df.iterrows()
+                for _, row in dl_df.iterrows()
             ]
             fasta_str = "\n".join(fasta_content)
-            logger.info(f"FASTA content created successfully for {len(df)} sequences.")
+            logger.info(f"FASTA content created successfully for {len(dl_df)} sequences.")
             
             return (
                 dcc.send_string(fasta_str, filename="starships.fasta"),
                 dmc.Notification(
                     title="Success",
-                    message=f"Downloaded {len(df)} Starship sequences",
+                    message=f"Downloaded {len(dl_df)} Starship sequences",
                     color="green",
                     icon=DashIconify(icon="ic:round-check-circle"),
                     action="show",
