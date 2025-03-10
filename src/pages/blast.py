@@ -38,9 +38,11 @@ from src.utils.blast_utils import (
 
 from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
 from src.database.sql_manager import fetch_meta_data
-from src.config.settings import BLAST_DB_PATHS
+from src.config.settings import BLAST_DB_PATHS, PHYLOGENY_PATHS
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
+from src.utils.tree import plot_tree
+from src.pages.phylogeny import run_mafft, add_to_tree, gappa
 
 dash.register_page(__name__)
 
@@ -187,6 +189,7 @@ layout = dmc.Container(
                                         html.Div(id="blast-table"),
                                         html.Div(id="blast-download"),
                                         html.Div(id="subject-seq-button"),
+                                        html.Div(id="phylogeny-plot"),
                                         html.Div(
                                             id="ship-aln",
                                             style={
@@ -328,7 +331,8 @@ def handle_submission_and_upload(n_clicks, contents, filename):
 @blast_limit_decorator
 @callback(
     [
-        Output("query-store", "data"),
+        Output("query-header-store", "data"),
+        Output("query-seq-store", "data"),
         Output("query-type-store", "data"),
     ],
     [
@@ -361,7 +365,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         query_type = guess_seq_type(query_seq)
         logger.info(f"guess_seq_type returned query_type={query_type}")
 
-        return queries, query_type
+        return query_header, query_seq, query_type
 
     except Exception as e:
         logger.error(f"Error in preprocess: {str(e)}")
@@ -373,6 +377,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
         Output("subject-seq-button", "children"),
+        Output("phylogeny-plot", "children"),
     ],
     [
         Input("query-store", "data"),
@@ -383,7 +388,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 @handle_callback_error
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type]):
-        return None, None, None
+        return None, None, None, None
         
     try:
         # Write sequence to temporary FASTA file
@@ -444,11 +449,54 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
             logger.error(f"Diamond/HMMER error: {str(e)}")
             raise
 
-        return blast_results_dict, results_dict, subject_seq_button
+        # Run HMMER and phylogenetic placement if protein sequence
+        phylogeny_plot = None
+        if query_type == "prot" and results_dict:
+            try:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+
+                    # Write query to temporary file
+                    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+                    
+                    # Run MAFFT alignment
+                    tmp_headers, query_msa = run_mafft(
+                        query=tmp_query_fasta,
+                        ref_msa=PHYLOGENY_PATHS["msa"]
+                    )
+                    
+                    # Run EPA-NG placement
+                    new_tree = add_to_tree(
+                        query_msa=query_msa,
+                        tree=PHYLOGENY_PATHS["tree"],
+                        ref_msa=PHYLOGENY_PATHS["msa"],
+                        model="PROTGTR+G+F",
+                        tmp_dir=tmp_dir
+                    )
+                    
+                    # Run Gappa to get final tree
+                    out_tree = gappa(new_tree)
+                    
+                    # Create phylogeny plot
+                    if out_tree is not None:
+                        phylogeny_plot = dcc.Graph(
+                            id="phylogeny",
+                            className="div-card",
+                            figure=plot_tree(
+                                out_tree,
+                                highlight_families="all",
+                                tips=tmp_headers
+                            ),
+                        )
+                        
+            except Exception as e:
+                logger.error(f"Error in phylogenetic placement: {str(e)}")
+                phylogeny_plot = None
+
+        return blast_results_dict, results_dict, subject_seq_button, phylogeny_plot
 
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
-        return None, None, None
+        return None, None, None, None
 
 
 @callback(
