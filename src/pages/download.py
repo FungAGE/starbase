@@ -103,6 +103,7 @@ layout = dmc.Container(
                                     gradient={"from": "indigo", "to": "cyan"},
                                     leftSection=html.I(className="bi bi-cloud-download"),
                                     size="md",
+                                    loaderProps={"type": "dots"},
                                 ),
                                 dmc.Button(
                                     "Download Selected Starships",
@@ -111,6 +112,7 @@ layout = dmc.Container(
                                     gradient={"from": "teal", "to": "lime"},
                                     leftSection=html.I(className="bi bi-download"),
                                     size="md",
+                                    loaderProps={"type": "dots"},
                                 ),
                             ],
                             ),
@@ -204,90 +206,72 @@ def update_dl_table(curated, dereplicate):
         return [], "Error loading data"
 
 @callback(
-    [Output("dl-package", "data"),
-     Output("notifications-container", "children")],
-    [Input("download-all-btn", "n_clicks"),
-     Input("download-selected-btn", "n_clicks")],
+    [Output("dl-package", "data", allow_duplicate=True),
+     Output("notifications-container", "children", allow_duplicate=True)],
+    [Input("download-all-btn", "n_clicks")],
+    [State("dl-table", "rowData"),
+     State("curated-input", "checked"),
+     State("dereplicated-input", "checked")],
+    prevent_initial_call=True,
+    running=[
+        (Output("download-all-btn", "loading"), True, False),
+    ],
+)
+def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
+    if not dl_all_clicks:
+        raise dash.exceptions.PreventUpdate
+    
+    # Use all rows
+    return generate_download_helper(table_data, curated, dereplicate)
+
+@callback(
+    [Output("dl-package", "data", allow_duplicate=True),
+     Output("notifications-container", "children", allow_duplicate=True)],
+    [Input("download-selected-btn", "n_clicks")],
     [State("dl-table", "rowData"),
      State("dl-table", "selectedRows"),
      State("curated-input", "checked"),
      State("dereplicated-input", "checked")],
     prevent_initial_call=True,
+    running=[
+        (Output("download-selected-btn", "loading"), True, False),
+    ],
 )
-def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows, curated, dereplicate):
-    ctx = dash.callback_context
-    if not ctx.triggered or not any([dl_all_clicks, dl_select_clicks]):
+def generate_download_selected(dl_select_clicks, table_data, selected_rows, curated, dereplicate):
+    if not dl_select_clicks or not selected_rows:
         raise dash.exceptions.PreventUpdate
     
-    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    
-    if not table_data or len(table_data) == 0:
-        return (
-            dash.no_update,
-            dmc.Notification(
-                title="Error",
-                message="No data available for download",
-                color="red",
-                icon=DashIconify(icon="ic:round-error"),
-                action="show",
-                style={
-                    "width": "100%",
-                    "maxWidth": "500px",
-                    "margin": "0 auto",
-                    "@media (max-width: 600px)": {
-                        "maxWidth": "100%"
-                    }
-                }
-            )   
-        )
+    # Use only selected rows
+    return generate_download_helper(selected_rows, curated, dereplicate)
 
+def generate_download_helper(rows, curated, dereplicate):
+    """Helper function containing the common download logic"""
     try:
-    
-        # Handle download based on which button was clicked
-        if button_id == "download-all-btn":
-            # For download all, use all rows from table_data
-            accessions = [row["accession_tag"] for row in table_data]
-            logger.info("Using all table data for download.")
+        if not rows:
+            raise ValueError("No rows selected for download")
             
-        elif button_id == "download-selected-btn":
-            if not selected_rows:
-                logger.warning("Download selected was triggered but no rows are selected.")
-                return (
-                    dash.no_update,
-                    dmc.Notification(
-                        title="Warning",
-                        message="Make a selection in the table first",
-                        color="yellow",
-                        icon=DashIconify(icon="ic:round-warning"),
-                        action="show",
-                    )
-                )
-
-            # Get selected accessions from selected_rows
-            accessions = [row["accession_tag"] for row in selected_rows]
-            logger.info(f"Using selected table data: {accessions}")
-        else:
-            return dash.no_update, None
-
+        accessions = [row["accession_tag"] for row in rows]
         dl_df = fetch_ships(accession_tags=accessions, curated=curated, dereplicate=dereplicate)
             
         if dl_df is None or dl_df.empty:
-            logger.warning("No matching records found.")
-            return (
-                dash.no_update,
-                dmc.Notification(
-                    title="Error",
-                    message="No matching records found for the selected accessions",
-                    color="red",
-                    icon=DashIconify(icon="ic:round-error"),
-                    action="show",
+            raise ValueError("No sequences found for download")
+            
+        # Count occurrences of each accession tag
+        accession_counts = dl_df['accession_tag'].value_counts()
+        
+        fasta_content = []
+        for _, row in dl_df.drop_duplicates(subset=['accession_tag', 'sequence']).iterrows():
+            count = accession_counts[row['accession_tag']]
+            
+            if count > 1:
+                # Simplified header for multiple representatives
+                header = (
+                    f">{row['accession_tag']} "
+                    f"[family={row['familyName']}] "
+                    f"[representatives={count}]"
                 )
-            )
-
-        # Create FASTA file
-        try:
-            fasta_content = []
-            for _, row in dl_df.iterrows():
+            else:
+                # Full header for single entries
                 clean_contig = clean_contigIDs(row['contigID'])                
                 header = (
                     f">{row['accession_tag']} "
@@ -297,34 +281,21 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
                     + (f"[assembly={row['assembly_accession']}] " if row['assembly_accession'] else "")
                     + f"[family={row['familyName']}]"
                 )
-                fasta_content.append(f"{header}\n{row['sequence']}")
-                
-            fasta_str = "\n".join(fasta_content)
-            logger.info(f"FASTA content created successfully for {len(dl_df)} sequences.")
+            fasta_content.append(f"{header}\n{row['sequence']}")
             
-            return (
-                dcc.send_string(fasta_str, filename="starships.fasta"),
-                dmc.Notification(
-                    title="Success",
-                    message=f"Downloaded {len(dl_df)} Starship sequences",
-                    color="green",
-                    icon=DashIconify(icon="ic:round-check-circle"),
-                    action="show",
-                )
+        fasta_str = "\n".join(fasta_content)
+        logger.info(f"FASTA content created successfully for {len(fasta_content)} sequences.")
+        
+        return (
+            dcc.send_string(fasta_str, filename="starships.fasta"),
+            dmc.Notification(
+                title="Success",
+                message=f"Downloaded {len(fasta_content)} Starship sequences",
+                color="green",
+                icon=DashIconify(icon="ic:round-check-circle"),
+                action="show",
             )
-            
-        except Exception as e:
-            logger.error(f"Failed to create FASTA content. Details: {e}")
-            return (
-                dash.no_update,
-                dmc.Notification(
-                    title="Error",
-                    message="Error when creating FASTA file for download",
-                    color="red",
-                    icon=DashIconify(icon="ic:round-error"),
-                    action="show",
-                )
-            )
+        )
             
     except Exception as e:
         logger.error(f"Failed to execute database query. Details: {e}")
