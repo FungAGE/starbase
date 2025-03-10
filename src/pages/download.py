@@ -11,6 +11,7 @@ from src.config.cache import cache
 from src.database.sql_manager import fetch_download_data, fetch_ships
 from src.components.tables import make_dl_table
 import logging
+from src.utils.seq_utils import clean_contigIDs
 
 logger = logging.getLogger(__name__)
 
@@ -285,10 +286,19 @@ def generate_download(dl_all_clicks, dl_select_clicks, table_data, selected_rows
 
         # Create FASTA file
         try:
-            fasta_content = [
-                f">{row['accession_tag']}\n{row['sequence']}"
-                for _, row in dl_df.iterrows()
-            ]
+            fasta_content = []
+            for _, row in dl_df.iterrows():
+                clean_contig = clean_contigIDs(row['contigID'])                
+                header = (
+                    f">{row['accession_tag']} "
+                    f"[organism={row['species']}] "
+                    f"[lineage=Fungi; {row['order']}; {row['family']}; {row['genus']}] "
+                    f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
+                    + (f"[assembly={row['assembly_accession']}] " if row['assembly_accession'] else "")
+                    + f"[family={row['familyName']}]"
+                )
+                fasta_content.append(f"{header}\n{row['sequence']}")
+                
             fasta_str = "\n".join(fasta_content)
             logger.info(f"FASTA content created successfully for {len(dl_df)} sequences.")
             

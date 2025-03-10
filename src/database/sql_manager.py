@@ -130,9 +130,24 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
 
     query = """
     WITH valid_ships AS (
-        SELECT DISTINCT a.id as accession_id, a.accession_tag, j.curated_status
+        SELECT DISTINCT 
+            a.id as accession_id, 
+            a.accession_tag,
+            j.curated_status,
+            j.elementBegin,
+            j.elementEnd,
+            j.contigID,
+            t.species,
+            t.genus,
+            t.family,
+            t.`order`,
+            f.familyName,
+            g.assembly_accession
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
+        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN genomes g ON j.genome_id = g.id
         WHERE 1=1
     """
     
@@ -145,7 +160,9 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
     
     query += """
     )
-    SELECT v.accession_tag, v.curated_status, s.sequence
+    SELECT 
+        v.*,
+        s.sequence
     FROM valid_ships v
     LEFT JOIN ships s ON s.accession = v.accession_id
     """
