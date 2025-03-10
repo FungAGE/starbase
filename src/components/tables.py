@@ -1,191 +1,368 @@
 import warnings
-
 warnings.filterwarnings("ignore")
+
+import logging
 
 from dash import dash_table, html
 import dash_bootstrap_components as dbc
 import pandas as pd
+import dash_mantine_components as dmc
+from dash_iconify import DashIconify
+import dash_ag_grid as dag
+import dash_core_components as dcc
 
-from src.components.sqlite import engine
+from src.config.cache import cache
+from src.database.sql_manager import fetch_paper_data
 
-
-def truncate_string(s, length=10):
+logger = logging.getLogger(__name__)
+def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
+def table_loading_alert():
+    return html.Div(
+                dmc.Alert(
+                    title="No Data Available",
+                    children="Waiting for data to load...",
+                    color="blue",
+                    variant="light",
+                    icon=[DashIconify(icon="line-md:loading-loop")],
+                ),
+                style={"padding": "20px"}
+            )
 
-# Function to convert URL string to HTML link
-def url_to_link(url, label):
-    return f'<a href="{url}" target="_blank">{label}</a>'
+def table_no_results_alert():
+    return html.Div(
+                dmc.Alert(
+                    title="No Results Found",
+                    children="The query returned no results.",
+                    color="yellow",
+                    variant="light",
+                    icon=[DashIconify(icon="clarity:empty-line")],
+                ),
+                style={"padding": "20px"}
+            )
 
+def table_error():
+    return html.Div(
+            dmc.Alert(
+                title="Error",
+                children=f"Failed to create table: {str(e)}",
+                color="red",
+                variant="filled"
+            ),
+            style={"padding": "20px"}
+        )
 
-def make_ship_table(df, id, columns=None, pg_sz=None):
-    if pg_sz is None:
-        pg_sz = 10
+def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
+    """
+    Creates an AG Grid component with error handling and consistent styling.
+    
+    Args:
+        df (pd.DataFrame or list): Data to display
+        id (str): Unique identifier for the grid
+        columns (list): Column definitions
+        select_rows (bool): Enable row selection
+        pg_sz (int): Number of rows per page
+    """
+    try:
+        # Check for empty data
+        if df is None or (isinstance(df, pd.DataFrame) and df.empty) or (isinstance(df, list) and len(df) == 0):
+            return table_loading_alert()
+            
+        # Convert DataFrame to row data
+        if isinstance(df, pd.DataFrame):
+            row_data = df.to_dict('records')
+        else:
+            row_data = df  # Assume it's already in records format
+            
+        # Check if row_data is empty after conversion
+        if not row_data:
+            return table_no_results_alert()
+            
+        # Default column definitions if none provided
+        if not columns:
+            grid_columns = [{"field": col} for col in df.columns]
+        else:
+            grid_columns = columns
+            
+        # Default column properties
+        defaultColDef = {
+            "resizable": True,
+            "sortable": True,
+            "filter": True,
+            "minWidth": 100,
+        }
+        
+        # Simplified getRowId function with proper JavaScript syntax
+        get_row_id = "function getRowId(params) { return params.data.accession_tag ? params.data.accession_tag + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) : Date.now() + '_' + Math.random().toString(36).substr(2, 9); }"
+            
+        # Create grid component with updated configuration
+        grid = dag.AgGrid(
+            id=id,
+            columnDefs=grid_columns,
+            rowData=row_data,
+            defaultColDef=defaultColDef,
+            dashGridOptions={
+                "pagination": True,
+                "paginationPageSize": pg_sz,
+                "rowSelection": "multiple" if select_rows else None,
+                "domLayout": 'autoHeight',
+                "tooltipShowDelay": 0,
+                "tooltipHideDelay": 1000,
+                "enableCellTextSelection": True,
+                "ensureDomOrder": True,
+                "suppressRowClickSelection": True,
+                "rowMultiSelectWithClick": False,
+                "onFirstDataRendered": "function(params) { if(params.api) { params.api.sizeColumnsToFit(); }}",
+                "rowHeight": 48,
+                "headerHeight": 48,
+                "suppressRowHoverHighlight": False,
+                "suppressHorizontalScroll": False,
+                "suppressPropertyNamesCheck": True,
+                "suppressReactUi": False,
+                "suppressLoadingOverlay": True,
+                "suppressNoRowsOverlay": True
+            },
+            className="ag-theme-alpine",
+            style={"width": "100%", "height": "100%"},
+            getRowId=get_row_id,
+            persistence=True,
+            persistence_type="memory",
+        )
+        
+        logger.info(f"Successfully created grid {id}")
+        return grid
+        
+    except Exception as e:
+        logger.error(f"Error creating grid {id}: {str(e)}")
+        return table_error()
+    
 
+def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
+    """
+    Specific table constructor for ship data with accession tag handling.
+    
+    Args:
+        df (pd.DataFrame): Ship data to display
+        id (str): Unique identifier for the table
+        columns (list): Column definitions
+        select_rows (bool): Enable row selection
+        pg_sz (int): Number of rows per page
+    """
+    # Handle empty or None DataFrame
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        if columns:
+            df = pd.DataFrame(columns=[col["field"] for col in columns])
+        else:
+            df = pd.DataFrame()
+    
+    # Create column definitions
     if columns:
-        table_columns = columns
+        grid_columns = []
+        for col in columns:
+            col_def = {
+                "field": col["field"],
+                "headerName": col["name"] if "name" in col else col["field"].replace("_", " ").title(),
+                "flex": 1
+            }
+            
+            # Add special styling for accession_tag
+            if col["field"] == "accession_tag":
+                col_def.update({
+                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                    "cellClass": "clickable-cell"
+                })
+                
+            grid_columns.append(col_def)
     else:
-        table_columns = [
+        grid_columns = None
+        
+    return create_ag_grid(
+        df=df,
+        id=id,
+        columns=grid_columns,
+        select_rows=select_rows,
+        pg_sz=pg_sz or 10
+    )
+
+def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
+    """
+    Specific table constructor for ship data using DataTable.
+    """
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        if columns:
+            # Handle both "field" and "id" column formats
+            df = pd.DataFrame(columns=[col.get("field") or col.get("id") for col in columns])
+        else:
+            df = pd.DataFrame()
+    
+    # Convert AG Grid column format to DataTable format
+    if columns:
+        data_columns = [
             {
-                "name": i,
-                "id": i,
-                "deletable": False,
+                "name": col.get("name") or col.get("headerName") or col.get("field", "").replace("_", " ").title(),
+                "id": col.get("id") or col.get("field"),
                 "selectable": True,
             }
-            for i in df.columns
+            for col in columns
+        ]
+    else:
+        data_columns = [
+            {"name": col.replace("_", " ").title(), "id": col}
+            for col in df.columns
         ]
 
-    if df is not None:
-        table_df = df.to_dict("records")
-    else:
-        table_df = []
-    table = dash_table.DataTable(
+    return dash_table.DataTable(
         id=id,
-        columns=table_columns,
-        data=table_df,
-        editable=False,
-        filter_action="native",
-        sort_action="native",
-        sort_mode="multi",
-        row_selectable="multi",
-        row_deletable=False,
-        selected_columns=[],
-        selected_rows=[],
-        page_action="native",
+        columns=data_columns,
+        data=df.to_dict('records'),
+        page_size=pg_sz or 10,
         page_current=0,
-        page_size=pg_sz,
-        style_table={
-            "width": "100%",
-            "height": "100%",
-            "overflowX": "auto",
-        },
-        style_data={
-            "whiteSpace": "minimal",
-        },
+        page_action='native',
+        sort_action='native',
+        sort_mode='multi',
+        sort_by=[{'column_id': 'familyName', 'direction': 'asc'}],
+        row_selectable='multi' if select_rows else None,
+        selected_rows=[],
+        style_table={'overflowX': 'auto'},
         style_cell={
-            "minWidth": "0px",
-            "maxWidth": "100%",
-            "textAlign": "left",
+            'padding': '10px',
+            'textAlign': 'left'
         },
-    )
-    return table
-
-
-def make_paper_table(engine):
-    query = """
-    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, p.shortCitation, f.familyName, f.type_element_reference
-    FROM papers p
-    LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
-    """
-    df = pd.read_sql_query(query, engine)
-
-    df_summary = (
-        df.groupby("Title")
-        .agg(
+        style_header={
+            'backgroundColor': 'rgb(230, 230, 230)',
+            'fontWeight': 'bold'
+        },
+        style_data_conditional=[
             {
+                'if': {'column_id': 'accession_tag'},
+                'color': '#1976d2',
+                'cursor': 'pointer'
+            }
+        ]
+    )
+
+def make_paper_table():
+    """Table for displaying paper data."""
+    df = cache.get("paper_data")
+    if df is None:
+        df = fetch_paper_data()
+    if df is None:
+        df = pd.DataFrame(columns=["Title", "PublicationYear", "Author", "DOI"])
+    elif not df.empty:
+        df_summary = (
+            df.groupby("Title")
+            .agg({
                 "familyName": lambda x: ", ".join(sorted(filter(None, x.unique()))),
                 "Author": "first",
                 "PublicationYear": "first",
                 "DOI": "first",
                 "Url": "first",
-            }
+            })
+            .reset_index()
         )
-        .reset_index()
+        df = df_summary.sort_values(by="PublicationYear", ascending=False)
+        
+        df['DOI'] = df['DOI'].apply(
+            lambda x: f'[{x}](https://doi.org/{x})'
+            if pd.notnull(x) else ''
+        )
+
+    columns = [
+        {
+            "field": "Title", 
+            "headerName": "Title", 
+            "flex": 2,
+            "tooltipField": "Title",
+            "wrapText": True,
+        },
+        {
+            "field": "PublicationYear", 
+            "headerName": "Publication Year", 
+            "flex": 1,
+        },
+        {
+            "field": "Author", 
+            "headerName": "Authors", 
+            "flex": 1.5,
+            "tooltipField": "Author",
+            "wrapText": True,
+        },
+        {
+            "field": "DOI", 
+            "headerName": "DOI", 
+            "flex": 1,
+            "cellRenderer": "markdown"
+        },
+    ]
+    
+    if isinstance(df, pd.DataFrame):
+        row_data = df.fillna('').to_dict("records")
+    else:
+        row_data = []
+        
+    return html.Div(
+        create_ag_grid(
+            df=row_data,
+            id="papers-table", 
+            columns=columns
+        ),
+        style={"width": "100%"}
     )
 
-    sub_df = df_summary.sort_values(by="PublicationYear", ascending=False)
+def make_dl_table(df, id, table_columns):
+    """Table for displaying download data."""
+    if df is None or (isinstance(df, list) and len(df) == 0):
+        df = pd.DataFrame(columns=[col["id"] for col in table_columns])
+    
+    columns = [
+        {
+            "field": col["id"],
+            "headerName": col["name"],
+            "flex": 1,
+            **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
+               if col["id"] == "accession_tag" else {}),
+            **({"sort": "asc", "sortIndex": 0}
+               if col["id"] == "accession_tag" else {})
+        }
+        for col in table_columns
+    ]
+        
+    return create_ag_grid(
+        df=df, 
+        id=id, 
+        columns=columns, 
+        select_rows=True,
+        pg_sz=25
+    )
 
-    sub_df["Title"] = sub_df["Title"].apply(lambda x: truncate_string(x, length=20))
-    sub_df["Author"] = sub_df["Author"].apply(lambda x: truncate_string(x, length=20))
-    sub_df["DOI"] = sub_df["DOI"].apply(lambda x: url_to_link(x, label=x))
-    sub_df["Url"] = sub_df["Url"].apply(lambda x: url_to_link(x, label="full text"))
-
-    # rename columns
-    sub_df_columns = [
+def make_wiki_table(n_ships, max_size, min_size):
+    """Create a summary table for a Starship family."""
+    
+    data = [
         {
-            "name": "Title",
-            "id": "Title",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "Metric": "Total Number of Starships",
+            "Value": f"{n_ships:,.0f}",
         },
         {
-            "name": "Authors",
-            "id": "Author",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "Metric": "Maximum Size (bp)",
+            "Value": f"{max_size:,.0f}",
         },
         {
-            "name": "Publication Year",
-            "id": "PublicationYear",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Starship Families Described",
-            "id": "familyName",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "DOI",
-            "id": "DOI",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
-        },
-        {
-            "name": "Url",
-            "id": "Url",
-            "deletable": False,
-            "selectable": False,
-            "presentation": "markdown",
+            "Metric": "Minimum Size (bp)",
+            "Value": f"{min_size:,.0f}",
         },
     ]
 
-    paper_table = dbc.Card(
-        [
-            dbc.CardHeader(
-                html.Div(
-                    ["Manuscripts Characterizing Starships"],
-                    className="text-custom text-custom-sm text-custom-md text-custom-lg text-custom-xl",
-                )
-            ),
-            dbc.CardBody(
-                [
-                    dash_table.DataTable(
-                        data=sub_df.to_dict("records"),
-                        sort_action="none",
-                        columns=sub_df_columns,
-                        id="papers-table",
-                        markdown_options={"html": True},
-                        style_table={
-                            "overflowX": "auto",  # Enable horizontal scrolling
-                        },
-                        style_data={
-                            "whiteSpace": "normal",  # Allow text to wrap
-                            "overflow": "hidden",
-                            "textOverflow": "ellipsis",
-                        },
-                        style_cell={
-                            "minWidth": "120px",  # Minimum column width
-                            "maxWidth": "100%",  # Maximum column width
-                            "textAlign": "left",  # Align text to the left
-                            "padding": "5px",  # Add padding for better spacing
-                        },
-                        style_header={
-                            "backgroundColor": "lightgrey",
-                            "fontWeight": "bold",
-                            "textAlign": "left",
-                        },
-                    ),
-                ]
-            ),
-        ],
-        # className="auto-resize-900",
-    )
+    columns = [
+        {"field": "Metric", "headerName": "Metric", "flex": 2},
+        {"field": "Value", "headerName": "Value", "flex": 1},
+    ]
 
-    return paper_table
+    return create_ag_grid(
+        df=data,
+        id="wiki-summary-table",
+        columns=columns,
+        select_rows=False,
+        pg_sz=10
+    )

@@ -3,11 +3,12 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from Bio import Phylo
-import pandas as pd
 import plotly.graph_objs as go
 
-metadata = pd.read_csv("src/data/superfam-clades.tsv", sep="\t")
+import tempfile
 
+from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
+from src.config.cache import cache
 default_highlight_colors = {
     "Phoenix": "#00cc96",
     "Hephaestus": "#ab63fa",
@@ -39,8 +40,6 @@ def hex_to_rgba(hex_color):
 rgb_colors = {
     key: hex_to_rgba(value) for key, value in default_highlight_colors.items()
 }
-
-metadata["color"] = metadata["familyName"].map(rgb_colors)
 
 
 def get_x_coordinates(tree):
@@ -129,6 +128,8 @@ def draw_clade(
     y_curr = y_coords[clade]
 
     # Determine the line color based on whether the clade is a tip
+    # metadata["color"] = metadata["familyName"].map(rgb_colors)
+
     if clade.name in metadata["tip"].values:
         line_color = metadata.loc[metadata["tip"] == clade.name, "color"].values[0]
         # Add a dot at the tip
@@ -325,12 +326,19 @@ def add_tip_labels(
     return text_label
 
 
-def plot_tree(
-    tree_file="src/data/funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
-    highlight_families=None,
-    tips=None,
-):
-    tree = Phylo.read(tree_file, "newick")
+def plot_tree(highlight_families=None):
+    tree_string = cache.get("captain_tree")
+    if tree_string is None:
+        tree_string = fetch_captain_tree()
+    with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
+        temp_file.write(tree_string)
+        tree_file = temp_file.name
+
+        tree = Phylo.read(tree_file, "newick")
+
+    metadata = cache.get("sf_data")
+    if metadata is None:
+        metadata = fetch_sf_data()
 
     # graph_title = "Captain Gene Phylogeny"
     graph_title = None

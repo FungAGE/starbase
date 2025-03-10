@@ -1,8 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-import logging
-
 import base64
 import dash
 import dash_bootstrap_components as dbc
@@ -12,143 +7,83 @@ from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
 
 import datetime
-from src.utils.parsing import parse_fasta, parse_gff
+from src.utils.seq_utils import parse_fasta, parse_gff
+import logging
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__)
 
 
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text
-from sqlalchemy.exc import NoSuchTableError
-import pandas as pd
-
-db_url = "sqlite:///database_folder/submissions.sqlite"
+from src.database.sql_engine import get_submissions_session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
+from src.components.callbacks import create_file_upload
 
 layout = dmc.Container(
-    fluid=True,
+    size="md",
     children=[
-        dbc.Form(
-            [
-                dmc.Grid(
-                    justify="start",
-                    align="center",
-                    children=[
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
+        # Header Section
+        dmc.Paper(
+            children=[
+                dmc.Title(
+                    [
+                        "Submit Starships to ",
+                        html.Span("starbase", className="logo-text"),
+                    ],
+                    order=1,
+                    mb="md",
+                ),
+                dmc.Text(
+                    "Fields marked with * are required",
+                    c="red",
+                    size="lg",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=False,
+            mb="xl",
+        ),
+
+        # Form Content
+        dmc.Paper(
+            children=dbc.Form([
+                dmc.Stack([
+                    # File Upload Section
+                    dmc.Stack([
+                        dmc.Title("Upload Files", order=2, mb="md"),
+                        
+                        # FASTA Upload
+                        dmc.Paper(
                             children=[
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            html.H3(
-                                                [
-                                                    "Submission of multiple Starships to ",
-                                                    html.Span(
-                                                        "starbase",
-                                                        className="logo-text",
-                                                    ),
-                                                ],
-                                            )
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                html.Div(
-                                                    [
-                                                        html.P(
-                                                            [
-                                                                "Unfortunately, we can only handle submission for one Starship at a time. If you have a batch of Starships that you'd like to submit, please send the submission via ",
-                                                                html.A(
-                                                                    "email.",
-                                                                    href="mailto:adrian.e.forsythe@gmail.com",
-                                                                ),
-                                                            ],
-                                                            style={
-                                                                "fontSize": "1rem",
-                                                            },
-                                                        ),
-                                                    ]
-                                                )
-                                            ],
-                                        ),
-                                    ],
-                                    className="auto-resize-600",
-                                )
-                            ],
-                        ),
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
-                            children=[
-                                dmc.Title(
-                                    [
-                                        "Submit individual Starships to ",
-                                        html.Span(
-                                            "starbase",
-                                            className="logo-text",
-                                        ),
-                                    ],
-                                ),
-                                html.H4(
-                                    [
-                                        "Fields in ",
-                                        html.Span(
-                                            "red",
-                                            style={"color": "red"},
-                                        ),
-                                        " = manditory.",
-                                    ],
-                                ),
-                            ],
-                        ),
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
-                            children=[
-                                html.H4(
-                                    ["Upload Starship sequence:"],
-                                ),
-                                dcc.Upload(
-                                    id="submit-fasta-upload",
-                                    children=html.Div(
-                                        id="submit-fasta-sequence-upload"
-                                    ),
-                                    className="upload-box text-red text-center",
-                                    multiple=False,
-                                    accept=".fa, .fas, .fasta, .fna",
+                                dmc.Text(["Starship Sequence ", html.Span("*", style={"color": "red"})], fw=500, mb="sm"),
+                                create_file_upload(
+                                    upload_id="submit-fasta-upload",
+                                    output_id="submit-fasta-sequence-upload",
+                                    accept_types=[".fa", ".fas", ".fasta", ".fna"],
+                                    placeholder_text="Select a FASTA file to upload"
                                 ),
                                 dcc.Loading(
                                     id="loading-1",
                                     type="circle",
                                     children=html.Div(id="loading-output-1"),
                                 ),
-                                html.H4(
-                                    [
-                                        "Upload gene annotations associated with Starship sequence (GFF[3] format):"
-                                    ],
-                                ),
-                                dcc.Upload(
-                                    id="submit-upload-gff",
-                                    children=html.Div(id="submit-output-gff-upload"),
-                                    accept=".gff, .gff3, .tsv",
-                                    multiple=False,
-                                    className="upload-box text-red text-center",
+                            ],
+                            p="md",
+                            radius="md",
+                            withBorder=False,
+                        ),
+                        
+                        # GFF Upload
+                        dmc.Paper(
+                            children=[
+                                dmc.Text("Gene Annotations (GFF3)", fw=500, mb="sm"),
+                                create_file_upload(
+                                    upload_id="submit-upload-gff",
+                                    output_id="submit-output-gff-upload", 
+                                    accept_types=[".gff", ".gff3", ".tsv"],
+                                    placeholder_text="Select a GFF file to upload"
                                 ),
                                 dcc.Loading(
                                     id="loading-2",
@@ -156,229 +91,152 @@ layout = dmc.Container(
                                     children=html.Div(id="loading-output-2"),
                                 ),
                             ],
+                            p="md",
+                            radius="md",
+                            withBorder=False,
                         ),
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
+                    ], gap="lg"),
+
+                    # Metadata Section
+                    dmc.Stack([
+                        dmc.Title("Metadata", order=2, mb="md"),
+                        
+                        # Curator Info
+                        dmc.TextInput(
+                            id="uploader",
+                            label="Email of curator",
+                            placeholder="Enter email",
+                            required=True,
+                        ),
+                        
+                        dmc.TextInput(
+                            id="evidence",
+                            label="How were Starships annotated?",
+                            placeholder="i.e. starfish",
+                            required=True,
+                        ),
+                        
+                        # Taxonomy Info
+                        dmc.Group([
+                            dmc.TextInput(
+                                id="genus",
+                                label="Genus",
+                                placeholder="Alternaria",
+                                required=True,
+                                style={"flex": 1},
+                            ),
+                            dmc.TextInput(
+                                id="species",
+                                label="Species",
+                                placeholder="alternata",
+                                required=True,
+                                style={"flex": 1},
+                            ),
+                        ]),
+                        
+                        # Location Info
+                        dmc.TextInput(
+                            id="hostchr",
+                            label="Host genome contig/scaffold/chromosome ID",
+                            placeholder="'chr1', or GenBank Accession",
+                            required=True,
+                        ),
+                        
+                        dmc.Group([
+                            dmc.NumberInput(
+                                id="shipstart",
+                                label="Start coordinate",
+                                placeholder="1200",
+                                required=True,
+                                style={"flex": 1},
+                            ),
+                            dmc.NumberInput(
+                                id="shipend",
+                                label="End coordinate",
+                                placeholder="20500",
+                                required=True,
+                                style={"flex": 1},
+                            ),
+                        ]),
+                        
+                        dmc.RadioGroup(
+                            id="strand-radios",
+                            label="Strand",
+                            value=1,
                             children=[
-                                html.H4(
-                                    ["Starship Metadata"],
-                                ),
-                                dbc.Label(
-                                    "Email of curator: ",
-                                    html_for="uploader",
-                                ),
-                                dcc.Input(
-                                    id="uploader",
-                                    type="email",
-                                    className="form-control auto-resize-600",
-                                    placeholder="Enter email",
-                                    required=True,
-                                ),
-                                dbc.Label("How were Starships annotated?"),
-                                dcc.Input(
-                                    id="evidence",
-                                    type="text",
-                                    className="form-control auto-resize-600",
-                                    required=True,
-                                    placeholder="i.e. starfish",
-                                ),
-                                dbc.Label("Enter genus name:"),
-                                dcc.Input(
-                                    id="genus",
-                                    type="text",
-                                    className="form-control auto-resize-600",
-                                    required=True,
-                                    placeholder="Alternaria",
-                                ),
-                                dbc.Label("Enter species name:"),
-                                dcc.Input(
-                                    id="species",
-                                    type="text",
-                                    className="form-control auto-resize-600",
-                                    required=True,
-                                    placeholder="alternata",
-                                ),
+                                dmc.Radio(label="Positive strand", value=1),
+                                dmc.Space(h=10),
+                                dmc.Radio(label="Negative strand", value=2),
                             ],
                         ),
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
-                            children=[
-                                html.H4("Coordinates of Starship in host genome:"),
-                                dbc.Label("Host genome contig/scaffold/chromosome ID:"),
-                                dcc.Input(
-                                    id="hostchr",
-                                    type="text",
-                                    className="form-control auto-resize-600",
-                                    required=True,
-                                    placeholder="'chr1', or GenBank Accession",
-                                ),
-                                dbc.Label(
-                                    "Start coordinate of Starship (relative to contig/scaffold/chromosome):"
-                                ),
-                                dcc.Input(
-                                    id="shipstart",
-                                    type="number",
-                                    className="form-control auto-resize-600",
-                                    required=True,
-                                    placeholder="i.e. 1200",
-                                ),
-                                dbc.Label(
-                                    "End coordinate for Starship (relative to contig/scaffold/chromosome):"
-                                ),
-                                dcc.Input(
-                                    id="shipend",
-                                    type="number",
-                                    className="form-control auto-resize-600",
-                                    required=True,
-                                    placeholder="i.e. 20500",
-                                ),
-                                dbc.Label("Starship found on strand:"),
-                                dbc.RadioItems(
-                                    id="strand-radios",
-                                    options=[
-                                        {
-                                            "label": "Positive strand",
-                                            "value": 1,
-                                        },
-                                        {
-                                            "label": "Negative strand",
-                                            "value": 2,
-                                        },
-                                    ],
-                                ),
-                            ],
+                        
+                        # Comments
+                        dmc.Textarea(
+                            id="comment",
+                            label="Additional information",
+                            placeholder="Any comments about the Starship features, annotations, or host genome?",
+                            minRows=3,
                         ),
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
-                            children=[
-                                dbc.Label("Additional information:"),
-                                html.Br(),
-                                dcc.Textarea(
-                                    id="comment",
-                                    placeholder="Any comments about the Starship features, annotations, or host genome?",
-                                    style={
-                                        "height": "100px",
-                                    },
-                                    required=False,
-                                    className="auto-resize-600",
-                                ),
-                            ],
+                    ], gap="md"),
+
+                    # Submit Button
+                    dmc.Center(
+                        dmc.Button(
+                            "Submit Starship",
+                            id="submit-ship",
+                            size="lg",
+                            variant="gradient",
+                            gradient={"from": "indigo", "to": "cyan"},
+                            loading=False,
                         ),
-                        dmc.GridCol(
-                            span={
-                                "lg": 6,
-                                "sm": 12,
-                            },
-                            offset={
-                                "lg": 3,
-                                "sm": 0,
-                            },
-                            children=[
-                                dbc.Button(
-                                    html.H4(
-                                        ["Submit"],
-                                        className="text-center auto-resize-600",
-                                    ),
-                                    id="submit-ship",
-                                    n_clicks=0,
-                                    # className="d-grid gap-2 col-6 mx-auto",
-                                ),
-                                dbc.Modal(
-                                    [
-                                        dbc.ModalHeader(
-                                            dbc.ModalTitle("New Submission")
-                                        ),
-                                        dbc.ModalBody(
-                                            html.Div(id="output-data-upload")
-                                        ),
-                                        dbc.ModalFooter(
-                                            dbc.Button(
-                                                "Close",
-                                                id="close",
-                                                className="ms-auto",
-                                                n_clicks=0,
-                                            )
-                                        ),
-                                    ],
-                                    id="submit-modal",
-                                    is_open=False,
-                                ),
-                            ],
-                        ),
-                    ],
-                    style={"padding": "10px"},
-                ),
-            ]
-        )
+                    ),
+                ], gap="xl"),
+            ]),
+            p="xl",
+            radius="md",
+            withBorder=True,
+        ),
+        
+        # Modal
+        dbc.Modal([
+            dbc.ModalHeader(
+                dbc.ModalTitle("Submission Success", className="text-success"),
+                close_button=True
+            ),
+            dbc.ModalBody([
+                html.Div([
+                    html.I(className="fas fa-check-circle text-success fa-3x mb-3"),
+                    html.Div(id="output-data-upload", className="mt-3"),
+                    dmc.Text(
+                        "Your Starship has been successfully added to the database.",
+                        className="text-muted mt-2"
+                    ),
+                ], className="text-center")
+            ]),
+            dbc.ModalFooter(
+                dbc.Button(
+                    "Close",
+                    id="close",
+                    className="ms-auto",
+                    color="primary",
+                    n_clicks=0
+                )
+            ),
+        ], id="submit-modal", is_open=False, centered=True),
     ],
+    style={
+        "margin": "0 auto",
+        "padding": "2rem",
+    },
 )
 
 
-def init_db(db_url):
-    # Create an SQLAlchemy engine
-    engine = create_engine(db_url)
-
-    # Create metadata object to handle table creation
-    metadata = MetaData()
-
-    # Define the 'submissions' table schema
-    submissions_table = Table(
-        'submissions', metadata,
-        Column('seq_contents', Text, nullable=False),
-        Column('seq_filename', Text, nullable=False),
-        Column('seq_date', Text),
-        Column('anno_contents', Text),
-        Column('anno_filename', Text),
-        Column('anno_date', Text),
-        Column('uploader', Text, nullable=False),
-        Column('evidence', Text, nullable=False),
-        Column('genus', Text),
-        Column('species', Text),
-        Column('hostchr', Text),
-        Column('shipstart', Integer, nullable=False),
-        Column('shipend', Integer, nullable=False),
-        Column('shipstrand', Text),
-        Column('comment', Text),
-        Column('id', Integer, primary_key=True, autoincrement=True)
-    )
-
-    # Try to reflect the table if it exists
-    try:
-        submissions_table = Table('submissions', metadata, autoload_with=engine)
-    except NoSuchTableError:
-        # If the table doesn't exist, create it
-        metadata.create_all(engine)
-
-    # Return the engine for future use
-    return engine
-
 # Function to insert a new submission into the database
 def insert_submission(
-    seq_content,
+    seq_contents,
     seq_filename,
     seq_date,
-    anno_content,
+    anno_contents,
     anno_filename,
     anno_date,
     uploader,
@@ -391,55 +249,76 @@ def insert_submission(
     shipstrand,
     comment,
 ):
-
-    engine = init_db(db_url)
-
-    content_type, content_string = seq_content.split(",")
-    seq_decoded = base64.b64decode(content_string).decode("utf-8")
-    seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    anno_contents = ""
-    anno_datetime_obj = ""
-
-    if anno_content:
-        content_type, content_string = anno_content.split(",")
-        anno_contents = base64.b64decode(content_string).decode("utf-8")
-        anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
+    try:
+        content_type, content_string = seq_contents.split(",")
+        seq_decoded = base64.b64decode(content_string).decode("utf-8")
+        seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
 
-    if not comment:
-        comment = ""
+        anno_contents = ""
+        anno_datetime_obj = ""
 
-    with engine.connect() as connection:
-        connection.execute(
-            """INSERT INTO submissions (seq_contents, seq_filename, seq_date, anno_contents,
-            anno_filename, anno_date, uploader, evidence, genus, species, hostchr, shipstart,
-            shipend, shipstrand, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                seq_decoded,
-                seq_filename,
-                seq_datetime_obj,
-                anno_contents,
-                anno_filename,
-                anno_datetime_obj,
-                uploader,
-                evidence,
-                genus,
-                species,
-                hostchr,
-                shipstart,
-                shipend,
-                shipstrand,
-                comment,
-            ),
-        )
+        if anno_contents:
+            content_type, content_string = anno_contents.split(",")
+            anno_contents = base64.b64decode(content_string).decode("utf-8")
+            anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+        with get_submissions_session() as session:
+            query = """
+                INSERT INTO submissions (
+                    seq_contents, seq_filename, seq_date, anno_contents,
+                    anno_filename, anno_date, uploader, evidence,
+                    genus, species, hostchr, shipstart, shipend,
+                    shipstrand, comment
+                )
+                VALUES (
+                    :seq_contents, :seq_filename, :seq_date, :anno_contents, 
+                    :anno_filename, :anno_date, :uploader, :evidence, 
+                    :genus, :species, :hostchr, :shipstart, :shipend, 
+                    :shipstrand, :comment
+                )
+            """
+            session.execute(
+                text(query),
+                {
+                    "seq_contents": seq_decoded,
+                    "seq_filename": seq_filename,
+                    "seq_date": seq_datetime_obj,
+                    "anno_contents": anno_contents,
+                    "anno_filename": anno_filename,
+                    "anno_date": anno_datetime_obj,
+                    "uploader": uploader,
+                    "evidence": evidence,
+                    "genus": genus,
+                    "species": species,
+                    "hostchr": hostchr,
+                    "shipstart": shipstart,
+                    "shipend": shipend,
+                    "shipstrand": shipstrand,
+                    "comment": comment,
+                },
+            )
+            session.commit()
+            logger.info(f"Successfully inserted submission for {seq_filename}")
+            return True
+            
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during submission: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error processing submission: {str(e)}")
+        raise
 
 
 @callback(
-    [Output("submit-modal", "is_open"), Output("output-data-upload", "children")],
+    [
+        Output("submit-modal", "is_open"),
+        Output("output-data-upload", "children"),
+        Output("submit-ship", "loading")
+    ],
     [
         Input("submit-fasta-upload", "contents"),
         Input("submit-fasta-upload", "filename"),
@@ -462,10 +341,10 @@ def insert_submission(
     [State("submit-modal", "is_open")],
 )
 def submit_ship(
-    seq_content,
+    seq_contents,
     seq_filename,
     seq_date,
-    anno_content,
+    anno_contents,
     anno_filename,
     anno_date,
     uploader,
@@ -481,26 +360,28 @@ def submit_ship(
     close_modal,
     is_open,
 ):
-    modal = is_open  # Keep the modal state as it is unless toggled
-    message = """"""
+    modal = is_open
+    message = ""
+    loading = False
 
-    
     if n_clicks and n_clicks > 0:
+        loading = True
         if strand_radio == 1:
             shipstrand = "+"
         else:
             shipstrand = "-"
-        if not seq_content:
+        if not seq_contents:
             return (
                 modal,
                 "No fasta file uploaded",
+                loading
             )  # Return the error message if no file
 
         insert_submission(
-            seq_content,
+            seq_contents,
             seq_filename,
             seq_date,
-            anno_content,
+            anno_contents,
             anno_filename,
             anno_date,
             uploader,
@@ -515,9 +396,23 @@ def submit_ship(
         )
 
         modal = not is_open if not close_modal else False
-        message = html.H5(f"Successfully submitted '{seq_filename}' to starbase")
+        message = html.Div([
+            html.H4(
+                f"Successfully submitted!",
+                className="mb-3"
+            ),
+            dmc.Text(
+                f"Filename: {seq_filename}",
+                className="text-muted"
+            ),
+            dmc.Text(
+                f"Uploaded by: {uploader}",
+                className="text-muted"
+            ),
+        ])
+        loading = False
 
-    return modal, message
+    return modal, message, loading
 
 
 @callback(
@@ -527,8 +422,8 @@ def submit_ship(
         Input("submit-fasta-upload", "filename"),
     ],
 )
-def update_fasta_details(seq_content, seq_filename):
-    if seq_content is None:
+def update_fasta_details(seq_contents, seq_filename):
+    if seq_contents is None:
         return [
             html.Div(
                 html.P(
@@ -539,13 +434,13 @@ def update_fasta_details(seq_content, seq_filename):
     else:
         try:
             # "," is the delimeter for splitting content_type from content_string
-            content_type, content_string = seq_content.split(",")
+            content_type, content_string = seq_contents.split(",")
             query_string = base64.b64decode(content_string).decode("utf-8")
             children = parse_fasta(query_string, seq_filename)
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])
 
 
@@ -556,16 +451,16 @@ def update_fasta_details(seq_content, seq_filename):
         Input("submit-upload-gff", "filename"),
     ],
 )
-def update_gff_details(anno_content, anno_filename):
-    if anno_content is None:
+def update_gff_details(anno_contents, anno_filename):
+    if anno_contents is None:
         return [
             html.Div(["Select a GFF file to upload"]),
         ]
     else:
         try:
-            children = parse_gff(anno_content, anno_filename)
+            children = parse_gff(anno_contents, anno_filename)
             return children
 
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             return html.Div(["There was an error processing this file."])
