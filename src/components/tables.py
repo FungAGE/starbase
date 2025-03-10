@@ -18,6 +18,40 @@ logger = logging.getLogger(__name__)
 def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
+def table_loading_alert():
+    return html.Div(
+                dmc.Alert(
+                    title="No Data Available",
+                    children="Waiting for data to load...",
+                    color="blue",
+                    variant="light",
+                    icon=[DashIconify(icon="line-md:loading-loop")],
+                ),
+                style={"padding": "20px"}
+            )
+
+def table_no_results_alert():
+    return html.Div(
+                dmc.Alert(
+                    title="No Results Found",
+                    children="The query returned no results.",
+                    color="yellow",
+                    variant="light",
+                    icon=[DashIconify(icon="clarity:empty-line")],
+                ),
+                style={"padding": "20px"}
+            )
+
+def table_error():
+    return html.Div(
+            dmc.Alert(
+                title="Error",
+                children=f"Failed to create table: {str(e)}",
+                color="red",
+                variant="filled"
+            ),
+            style={"padding": "20px"}
+        )
 
 def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
     """
@@ -31,15 +65,19 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         pg_sz (int): Number of rows per page
     """
     try:
-        # Ensure we have data to work with
-        if df is None:
-            df = pd.DataFrame()
+        # Check for empty data
+        if df is None or (isinstance(df, pd.DataFrame) and df.empty) or (isinstance(df, list) and len(df) == 0):
+            return table_loading_alert()
             
         # Convert DataFrame to row data
         if isinstance(df, pd.DataFrame):
             row_data = df.to_dict('records')
         else:
             row_data = df  # Assume it's already in records format
+            
+        # Check if row_data is empty after conversion
+        if not row_data:
+            return table_no_results_alert()
             
         # Default column definitions if none provided
         if not columns:
@@ -97,15 +135,7 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         
     except Exception as e:
         logger.error(f"Error creating grid {id}: {str(e)}")
-        return html.Div(
-            dmc.Alert(
-                title="Error",
-                children=f"Failed to create table: {str(e)}",
-                color="red",
-                variant="filled"
-            ),
-            style={"padding": "20px"}
-        )
+        return table_error()
     
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
