@@ -13,6 +13,9 @@ import logging
 from src.utils.seq_utils import load_fasta_to_dict
 from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
 from src.config.cache import cache
+logger = logging.getLogger(__name__)
+
+
 default_highlight_colors = {
     "Phoenix": "#00cc96",
     "Hephaestus": "#ab63fa",
@@ -331,18 +334,23 @@ def add_tip_labels(
 
 
 def plot_tree(highlight_families=None, tips=None):
-    tree_string = cache.get("captain_tree")
-    if tree_string is None:
-        tree_string = fetch_captain_tree()
+    tree_string = fetch_captain_tree()
     with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
         temp_file.write(tree_string)
         tree_file = temp_file.name
 
         tree = Phylo.read(tree_file, "newick")
 
-    metadata = cache.get("sf_data")
-    if metadata is None:
-        metadata = fetch_sf_data()
+    metadata = fetch_sf_data()
+
+    metadata['color'] = metadata['familyName'].map(rgb_colors)
+
+    
+    # Add debug logging
+    logger.debug(f"Metadata columns: {metadata.columns.tolist()}")
+    logger.debug(f"Metadata head: \n{metadata.head()}")
+    logger.debug(f"Highlight families: {highlight_families}")
+    logger.debug(f"Tips: {tips}")
 
     # graph_title = "Captain Gene Phylogeny"
     graph_title = None

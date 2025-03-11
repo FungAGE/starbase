@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import sqlalchemy.exc
 from sqlalchemy import text
 from src.config.cache import cache
+from src.config.settings import PHYLOGENY_PATHS
 logger = logging.getLogger(__name__)
 
 @cache.memoize()
@@ -279,44 +280,22 @@ def fetch_all_captains():
     finally:
         session.close()
 
-@db_retry_decorator()
+@cache.memoize()
 def fetch_captain_tree():
-    session = StarbaseSession()
+    fallback_tree_path = PHYLOGENY_PATHS["tree"]
 
-    tree_query = """SELECT string FROM trees WHERE id=1"""
+    with open(fallback_tree_path, 'r') as f:
+        return f.read()
 
-    try:
-        tree_string = session.execute(tree_query).fetchone()
-
-        if tree_string.empty:
-            logger.warning("Fetched tree string is empty.")
-        return tree_string
-    except Exception as e:
-        logger.error(f"Error fetching tree string: {str(e)}")
-        raise
-    finally:
-        session.close()
-
-@db_retry_decorator()
+@cache.memoize()
 def fetch_sf_data():
-    session = StarbaseSession()
-
-    query = """
-    SELECT sf.*
-    FROM superfam-clades sf
-    """
-
-    try:
-        df = pd.read_sql_query(query, session.bind)
-
-        if df.empty:
-            logger.warning("Fetched sf DataFrame is empty.")
-        return df
-    except Exception as e:
-        logger.error(f"Error fetching sf data: {str(e)}")
-        raise
-    finally:
-        session.close()
+    sf_data = pd.read_csv(PHYLOGENY_PATHS["clades"], sep='\t')
+    
+    # Add debug logging
+    logger.debug(f"Loaded sf_data columns: {sf_data.columns.tolist()}")
+    logger.debug(f"Loaded sf_data head: \n{sf_data.head()}")
+    
+    return sf_data
 
 @cache.memoize()
 @db_retry_decorator()

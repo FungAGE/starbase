@@ -50,8 +50,9 @@ BLAST_DB_PATHS = {
 
 # Phylogeny paths
 PHYLOGENY_PATHS = {
-    "tree": os.path.join(DATA_DIR, "captain", "tyr", "faa", "tree", "superfamily-rep-ships.treefile"),
-    "msa": os.path.join(DATA_DIR, "captain", "tyr", "faa", "alignments", "superfamily-rep-captains.clipkit"),
+    "tree": os.path.join(DATA_DIR, "captain", "tyr", "faa", "tree", "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"),
+    "msa": os.path.join(DATA_DIR, "captain", "tyr", "faa", "alignments", "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit"),
+    "clades": os.path.join(DATA_DIR, "captain", "tyr", "faa", "tree", "superfam-clades.tsv"),
 }
 
 # URL routes

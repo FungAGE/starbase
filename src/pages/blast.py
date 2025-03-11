@@ -615,7 +615,7 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
                                     style={'height': '800px'}
                                 )
                             ],
-                            title="Phylogenetic Placement",
+                            title="Captain Phylogeny",
                             item_id="phylogeny",
                         )
                     ],
