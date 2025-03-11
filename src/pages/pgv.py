@@ -465,11 +465,19 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 @handle_callback_error
 def load_ship_table(href):
     from src.database.sql_manager import fetch_ship_table
-    from src.components.tables import make_pgv_table
+    from src.components.tables import make_pgv_table, table_loading_alert, table_no_results_alert, table_error
     
-    table_df = fetch_ship_table(curated=True)
+    # Show loading state initially
+    if href is None:
+        return table_loading_alert(), True
     
-    if table_df is not None and not table_df.empty:
+    try:
+        table_df = fetch_ship_table(curated=True)
+        
+        if table_df is None or table_df.empty:
+            logger.warning("fetch_ship_table returned None or empty DataFrame")
+            return table_no_results_alert(), False
+            
         if 'id' not in table_df.columns:
             table_df['id'] = table_df.index.astype(str)
             
@@ -482,13 +490,10 @@ def load_ship_table(href):
         )
         logger.info("Table created successfully")
         return table, False
-    
-    logger.error("No data available or empty DataFrame")
-    return dmc.Alert(
-        title="No Data Available",
-        color="yellow",
-        variant="filled"
-    ), False
+        
+    except Exception as e:
+        logger.error(f"Failed to create PGV table. Details: {e}")
+        return table_error(e), False
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],

@@ -9,7 +9,7 @@ from src.components.callbacks import curated_switch, create_accession_modal, cre
 from src.config.cache import cache
 
 from src.database.sql_manager import fetch_download_data, fetch_all_ships
-from src.components.tables import make_dl_table
+from src.components.tables import make_dl_table, table_loading_alert, table_no_results_alert, table_error
 import logging
 
 logger = logging.getLogger(__name__)
@@ -162,11 +162,7 @@ layout = dmc.Container(
                 ),
                 html.Div(
                     id="dl-table-container",
-                    children=[make_dl_table(
-                        df=pd.DataFrame(),  # Empty initial DataFrame
-                        id="dl-table",
-                        table_columns=table_columns
-                    )]
+                    children=[make_dl_table(pd.DataFrame(), "dl-table", table_columns)]
                 ),
             ],
         ),
@@ -176,7 +172,7 @@ layout = dmc.Container(
 
 
 @callback(
-    [Output("dl-table", "rowData"),
+    [Output("dl-table-container", "children"),
      Output("table-stats", "children")],
     [Input("url", "href"),
      Input("curated-input", "checked"),
@@ -184,11 +180,16 @@ layout = dmc.Container(
 )
 def update_dl_table(url, curated=True, dereplicate=False):
     logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
+    
+    # Show loading state initially
+    if url is None:
+        return table_loading_alert(), ""
+    
     try:
         df = fetch_download_data(curated=curated, dereplicate=dereplicate)
         if df is None or df.empty:
             logger.warning("fetch_download_data returned None or empty DataFrame")
-            return [], "No records found"
+            return table_no_results_alert(), "No records found"
             
         logger.info(f"Retrieved {len(df)} records (curated={curated}, dereplicated={dereplicate}).")
         df = df.fillna("")  # Explicitly fill NA values
@@ -197,11 +198,21 @@ def update_dl_table(url, curated=True, dereplicate=False):
         records = [{k: str(v) if pd.notnull(v) else "" for k, v in record.items()} 
                   for record in df.to_dict("records")]
         
-        return records, f"Showing {len(records)} records"
+        if not records:  # Add explicit check for empty records
+            return table_no_results_alert(), "No records found"
+            
+        # Create the table with the data
+        table = make_dl_table(
+            df=records,
+            id="dl-table",
+            table_columns=table_columns
+        )
+        
+        return table, f"Showing {len(records)} records"
         
     except Exception as e:
-        logger.error(f"Failed to execute query in make_dl_table. Details: {e}")
-        return [], "Error loading data"
+        logger.error(f"Failed to execute query to generate table. Details: {e}")
+        return table_error(e), f"Error loading data: {str(e)}"
 
 @callback(
     [Output("dl-package", "data"),
