@@ -6,7 +6,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 # Try potential database directories in order of preference
 potential_db_dirs = [
     os.path.join(PROJECT_ROOT,"src","database", "db"),
-    os.path.join(PROJECT_ROOT,"database", "db")
+    os.path.join(PROJECT_ROOT,"database", "db"),
+    os.path.join(PROJECT_ROOT, "db")
 ]
 
 # Use the first valid directory path, or default to the last option
