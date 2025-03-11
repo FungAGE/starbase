@@ -183,10 +183,6 @@ layout = dmc.Container(
 def update_dl_table(curated, dereplicate):
     logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
     
-    # Show loading state initially
-    if url is None:
-        return table_loading_alert(), ""
-    
     try:
         df = fetch_download_data(curated=curated, dereplicate=dereplicate)
         if df is None or df.empty:
