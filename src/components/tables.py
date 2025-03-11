@@ -42,7 +42,7 @@ def table_no_results_alert():
                 style={"padding": "20px"}
             )
 
-def table_error():
+def table_error(e):
     return html.Div(
             dmc.Alert(
                 title="Error",
@@ -55,7 +55,7 @@ def table_error():
 
 def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
     """
-    Creates an AG Grid component with error handling and consistent styling.
+    Creates an AG Grid component with consistent styling.
     
     Args:
         df (pd.DataFrame or list): Data to display
@@ -64,79 +64,65 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
         select_rows (bool): Enable row selection
         pg_sz (int): Number of rows per page
     """
-    try:
-        # Check for empty data
-        if df is None or (isinstance(df, pd.DataFrame) and df.empty) or (isinstance(df, list) and len(df) == 0):
-            return table_loading_alert()
-            
-        # Convert DataFrame to row data
-        if isinstance(df, pd.DataFrame):
-            row_data = df.to_dict('records')
-        else:
-            row_data = df  # Assume it's already in records format
-            
-        # Check if row_data is empty after conversion
-        if not row_data:
-            return table_no_results_alert()
-            
-        # Default column definitions if none provided
-        if not columns:
-            grid_columns = [{"field": col} for col in df.columns]
-        else:
-            grid_columns = columns
-            
-        # Default column properties
-        defaultColDef = {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-            "minWidth": 100,
-        }
+    # Convert DataFrame to row data
+    if isinstance(df, pd.DataFrame):
+        row_data = df.to_dict('records')
+    else:
+        row_data = df  # Assume it's already in records format
         
-        # Simplified getRowId function with proper JavaScript syntax
-        get_row_id = "function getRowId(params) { return params.data.accession_tag ? params.data.accession_tag + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) : Date.now() + '_' + Math.random().toString(36).substr(2, 9); }"
-            
-        # Create grid component with updated configuration
-        grid = dag.AgGrid(
-            id=id,
-            columnDefs=grid_columns,
-            rowData=row_data,
-            defaultColDef=defaultColDef,
-            dashGridOptions={
-                "pagination": True,
-                "paginationPageSize": pg_sz,
-                "rowSelection": "multiple" if select_rows else None,
-                "domLayout": 'autoHeight',
-                "tooltipShowDelay": 0,
-                "tooltipHideDelay": 1000,
-                "enableCellTextSelection": True,
-                "ensureDomOrder": True,
-                "suppressRowClickSelection": True,
-                "rowMultiSelectWithClick": False,
-                "onFirstDataRendered": "function(params) { if(params.api) { params.api.sizeColumnsToFit(); }}",
-                "rowHeight": 48,
-                "headerHeight": 48,
-                "suppressRowHoverHighlight": False,
-                "suppressHorizontalScroll": False,
-                "suppressPropertyNamesCheck": True,
-                "suppressReactUi": False,
-                "suppressLoadingOverlay": True,
-                "suppressNoRowsOverlay": True
-            },
-            className="ag-theme-alpine",
-            style={"width": "100%", "height": "100%"},
-            getRowId=get_row_id,
-            persistence=True,
-            persistence_type="memory",
-        )
+    # Default column definitions if none provided
+    if not columns:
+        grid_columns = [{"field": col} for col in df.columns]
+    else:
+        grid_columns = columns
         
-        logger.info(f"Successfully created grid {id}")
-        return grid
-        
-    except Exception as e:
-        logger.error(f"Error creating grid {id}: {str(e)}")
-        return table_error()
+    # Default column properties
+    defaultColDef = {
+        "resizable": True,
+        "sortable": True,
+        "filter": True,
+        "minWidth": 100,
+    }
     
+    # Simplified getRowId function with proper JavaScript syntax
+    get_row_id = "function getRowId(params) { return params.data.accession_tag ? params.data.accession_tag + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) : Date.now() + '_' + Math.random().toString(36).substr(2, 9); }"
+        
+    # Create grid component with updated configuration
+    grid = dag.AgGrid(
+        id=id,
+        columnDefs=grid_columns,
+        rowData=row_data,
+        defaultColDef=defaultColDef,
+        dashGridOptions={
+            "pagination": True,
+            "paginationPageSize": pg_sz,
+            "rowSelection": "multiple" if select_rows else None,
+            "domLayout": 'autoHeight',
+            "tooltipShowDelay": 0,
+            "tooltipHideDelay": 1000,
+            "enableCellTextSelection": True,
+            "ensureDomOrder": True,
+            "suppressRowClickSelection": True,
+            "rowMultiSelectWithClick": False,
+            "onFirstDataRendered": "function(params) { if(params.api) { params.api.sizeColumnsToFit(); }}",
+            "rowHeight": 48,
+            "headerHeight": 48,
+            "suppressRowHoverHighlight": False,
+            "suppressHorizontalScroll": False,
+            "suppressPropertyNamesCheck": True,
+            "suppressReactUi": False,
+            "suppressLoadingOverlay": True,
+            "suppressNoRowsOverlay": True
+        },
+        className="ag-theme-alpine",
+        style={"width": "100%", "height": "100%"},
+        getRowId=get_row_id,
+        persistence=True,
+        persistence_type="memory",
+    )
+    
+    logger.info(f"Successfully created grid {id}")
+    return grid
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
