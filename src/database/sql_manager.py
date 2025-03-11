@@ -10,7 +10,7 @@ from sqlalchemy import text
 from src.config.cache import cache
 logger = logging.getLogger(__name__)
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database with caching."""
     session = StarbaseSession()
@@ -39,7 +39,7 @@ def fetch_meta_data(curated=False):
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = StarbaseSession()
@@ -61,7 +61,7 @@ def fetch_paper_data():
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
@@ -95,7 +95,7 @@ def fetch_download_data(curated=True, dereplicate=False):
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_all_ships(curated=True):
     session = StarbaseSession()
 
@@ -123,7 +123,7 @@ def fetch_all_ships(curated=True):
         session.close()
     
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
@@ -318,7 +318,7 @@ def fetch_sf_data():
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 @db_retry_decorator()
 def get_database_stats():
     """Get statistics about the Starship database."""

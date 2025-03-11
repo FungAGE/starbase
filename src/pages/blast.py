@@ -550,7 +550,7 @@ def subject_seq_download(n_clicks, filename):
 
 
 # 1. Metadata Processing Callback
-@cache.memoize(timeout=86400)
+@cache.memoize()
 @callback(
     Output("processed-metadata-store", "data"),
     Input("curated-input", "value"),
