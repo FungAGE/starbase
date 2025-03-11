@@ -15,7 +15,7 @@ CACHE_TIMESTAMP = str(int(time.time()))
 cache = Cache(config={
     'CACHE_TYPE': 'filesystem',
     'CACHE_DIR': cache_dir,
-    'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hour cache
+    'CACHE_DEFAULT_TIMEOUT': 0,  # cache indefinitely
     'CACHE_THRESHOLD': 1000,
     'CACHE_KEY_PREFIX': CACHE_TIMESTAMP
 })

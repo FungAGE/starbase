@@ -1,6 +1,6 @@
 HOME_URL=/
 WIKI_URL=/wiki
-# EXPLORE_URL=/explore
+PHYLOGENY_URL=/phylogeny
 BLAST_URL=/blast
 PGV_URL=/pgv
 SUBMIT_URL=/submit

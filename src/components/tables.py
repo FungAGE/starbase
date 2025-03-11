@@ -18,121 +18,32 @@ logger = logging.getLogger(__name__)
 def truncate_string(s, length=40):
     return s if len(s) <= length else s[:length] + "..."
 
+def table_loading_alert():
+    return html.Div(
+                dmc.Alert(
+                    title="No Data Available",
+                    children="Waiting for data to load...",
+                    color="blue",
+                    variant="light",
+                    icon=[DashIconify(icon="line-md:loading-loop")],
+                ),
+                style={"padding": "20px"}
+            )
 
-def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
-    """
-    Creates an AG Grid component with error handling and consistent styling.
-    
-    Args:
-        df (pd.DataFrame or list): Data to display
-        id (str): Unique identifier for the grid
-        columns (list): Column definitions
-        select_rows (bool): Enable row selection
-        pg_sz (int): Number of rows per page
-    """
-    try:
-        # Handle different input types
-        if df is None:
-            row_data = []
-        elif isinstance(df, pd.DataFrame):
-            # Handle empty DataFrame
-            if df.empty:
-                logger.warning(f"Empty DataFrame provided for grid {id}")
-                row_data = []
-            else:
-                # Replace empty familyName with "Unclassified"
-                if 'familyName' in df.columns:
-                    df['familyName'] = df['familyName'].fillna('Unclassified')
-                    df.loc[df['familyName'].str.strip() == '', 'familyName'] = 'Unclassified'
-                row_data = df.fillna('').to_dict("records")
-        elif isinstance(df, list):
-            row_data = df
-        else:
-            raise ValueError(f"Unexpected data type for df: {type(df)}")
+def table_no_results_alert():
+    return html.Div(
+                dmc.Alert(
+                    title="No Results Found",
+                    children="The query returned no results.",
+                    color="yellow",
+                    variant="light",
+                    icon=[DashIconify(icon="clarity:empty-line")],
+                ),
+                style={"padding": "20px"}
+            )
 
-        # Generate columns if not provided
-        if columns is None:
-            if not row_data:
-                grid_columns = []
-            else:
-                # Get column names from data
-                if isinstance(df, pd.DataFrame):
-                    col_names = df.columns
-                elif row_data and isinstance(row_data[0], dict):
-                    col_names = row_data[0].keys()
-                else:
-                    col_names = []
-                
-                grid_columns = [
-                    {
-                        "field": col,
-                        "headerName": col.replace("_", " ").title(),
-                        "flex": 1,
-                        **({"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
-                           if col == "accession_tag" else {})
-                    }
-                    for col in col_names
-                ]
-        else:
-            grid_columns = columns
-
-        # Add checkbox column if row selection is enabled
-        if select_rows:
-            grid_columns.insert(0, {
-                "headerCheckboxSelection": True,
-                "checkboxSelection": True,
-                "width": 50,
-                "pinned": "left",
-                "lockPosition": True,
-                "suppressMenu": True,
-                "headerName": "",
-                "flex": 0
-            })
-        
-        # Set up default column definitions
-        defaultColDef = {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-            "minWidth": 100,
-        }
-        
-        # Create grid component
-        grid = dag.AgGrid(
-            id=id,
-            columnDefs=grid_columns,
-            rowData=row_data,
-            defaultColDef=defaultColDef,
-            dashGridOptions={
-                "pagination": True,
-                "paginationPageSize": pg_sz,
-                "rowSelection": "multiple" if select_rows else None,
-                "domLayout": 'autoHeight',
-                "tooltipShowDelay": 0,
-                "tooltipHideDelay": 1000,
-                "enableCellTextSelection": True,
-                "ensureDomOrder": True,
-                "suppressRowClickSelection": True,
-                "rowMultiSelectWithClick": False,
-                "onFirstDataRendered": "function(params) { params.api.sizeColumnsToFit(); }",
-                "rowHeight": 48,
-                "headerHeight": 48,
-                "suppressRowHoverHighlight": False,
-                "suppressHorizontalScroll": False
-            },
-            className="ag-theme-alpine",
-            style={"width": "100%","height":"100%"},
-            getRowId="params.data.accession_tag",
-            persistence=True,
-            persistence_type="memory",
-        )
-        
-        logger.info(f"Successfully created grid {id}")
-        return grid
-        
-    except Exception as e:
-        logger.error(f"Error creating grid {id}: {str(e)}")
-        return html.Div(
+def table_error(e):
+    return html.Div(
             dmc.Alert(
                 title="Error",
                 children=f"Failed to create table: {str(e)}",
@@ -141,7 +52,77 @@ def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
             ),
             style={"padding": "20px"}
         )
+
+def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
+    """
+    Creates an AG Grid component with consistent styling.
     
+    Args:
+        df (pd.DataFrame or list): Data to display
+        id (str): Unique identifier for the grid
+        columns (list): Column definitions
+        select_rows (bool): Enable row selection
+        pg_sz (int): Number of rows per page
+    """
+    # Convert DataFrame to row data
+    if isinstance(df, pd.DataFrame):
+        row_data = df.to_dict('records')
+    else:
+        row_data = df  # Assume it's already in records format
+        
+    # Default column definitions if none provided
+    if not columns:
+        grid_columns = [{"field": col} for col in df.columns]
+    else:
+        grid_columns = columns
+        
+    # Default column properties
+    defaultColDef = {
+        "resizable": True,
+        "sortable": True,
+        "filter": True,
+        "minWidth": 100,
+    }
+    
+    # Simplified getRowId function with proper JavaScript syntax
+    get_row_id = "function getRowId(params) { return params.data.accession_tag ? params.data.accession_tag + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) : Date.now() + '_' + Math.random().toString(36).substr(2, 9); }"
+        
+    # Create grid component with updated configuration
+    grid = dag.AgGrid(
+        id=id,
+        columnDefs=grid_columns,
+        rowData=row_data,
+        defaultColDef=defaultColDef,
+        dashGridOptions={
+            "pagination": True,
+            "paginationPageSize": pg_sz,
+            "rowSelection": "multiple" if select_rows else None,
+            "domLayout": 'autoHeight',
+            "tooltipShowDelay": 0,
+            "tooltipHideDelay": 1000,
+            "enableCellTextSelection": True,
+            "ensureDomOrder": True,
+            "suppressRowClickSelection": True,
+            "rowMultiSelectWithClick": False,
+            "onFirstDataRendered": "function(params) { if(params.api) { params.api.sizeColumnsToFit(); }}",
+            "rowHeight": 48,
+            "headerHeight": 48,
+            "suppressRowHoverHighlight": False,
+            "suppressHorizontalScroll": False,
+            "suppressPropertyNamesCheck": True,
+            "suppressReactUi": False,
+            "suppressLoadingOverlay": True,
+            "suppressNoRowsOverlay": True
+        },
+        className="ag-theme-alpine",
+        style={"width": "100%", "height": "100%"},
+        getRowId=get_row_id,
+        persistence=True,
+        persistence_type="memory",
+    )
+    
+    logger.info(f"Successfully created grid {id}")
+    return grid
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """

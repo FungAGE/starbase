@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import sqlalchemy.exc
 from sqlalchemy import text
 from src.config.cache import cache
+from src.config.settings import PHYLOGENY_PATHS
 logger = logging.getLogger(__name__)
 
 # Define a common retry decorator for database operations
@@ -28,7 +29,7 @@ def db_retry_decorator(additional_retry_exceptions=()):
         )
     )
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_meta_data(curated=False):
     """Fetch metadata from the database with caching."""
     session = StarbaseSession()
@@ -57,7 +58,7 @@ def fetch_meta_data(curated=False):
     finally:
         session.close()
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = StarbaseSession()
@@ -79,7 +80,9 @@ def fetch_paper_data():
     finally:
         session.close()
 
-def fetch_download_data(curated=False, dereplicate=True):
+@cache.memoize()
+def fetch_download_data(curated=True, dereplicate=False):
+
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
 
@@ -114,7 +117,8 @@ def fetch_download_data(curated=False, dereplicate=True):
     finally:
         session.close()
 
-def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
+@cache.memoize()
+def fetch_all_ships(accession_tags=None, curated=False, dereplicate=True):
     """
     Fetch ship data for specified accession tags.
     
@@ -183,7 +187,7 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
         session.close()
     
 
-@cache.memoize(timeout=86400)
+@cache.memoize()
 @db_retry_decorator()
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
@@ -300,46 +304,24 @@ def fetch_all_captains():
     finally:
         session.close()
 
-@db_retry_decorator()
+@cache.memoize()
 def fetch_captain_tree():
-    session = StarbaseSession()
+    fallback_tree_path = PHYLOGENY_PATHS["tree"]
 
-    tree_query = """SELECT string FROM trees WHERE id=1"""
+    with open(fallback_tree_path, 'r') as f:
+        return f.read()
 
-    try:
-        tree_string = session.execute(tree_query).fetchone()
-
-        if tree_string.empty:
-            logger.warning("Fetched tree string is empty.")
-        return tree_string
-    except Exception as e:
-        logger.error(f"Error fetching tree string: {str(e)}")
-        raise
-    finally:
-        session.close()
-
-@db_retry_decorator()
+@cache.memoize()
 def fetch_sf_data():
-    session = StarbaseSession()
+    sf_data = pd.read_csv(PHYLOGENY_PATHS["clades"], sep='\t')
+    
+    # Add debug logging
+    logger.debug(f"Loaded sf_data columns: {sf_data.columns.tolist()}")
+    logger.debug(f"Loaded sf_data head: \n{sf_data.head()}")
+    
+    return sf_data
 
-    query = """
-    SELECT sf.*
-    FROM superfam-clades sf
-    """
-
-    try:
-        df = pd.read_sql_query(query, session.bind)
-
-        if df.empty:
-            logger.warning("Fetched sf DataFrame is empty.")
-        return df
-    except Exception as e:
-        logger.error(f"Error fetching sf data: {str(e)}")
-        raise
-    finally:
-        session.close()
-
-@cache.memoize(timeout=86400)
+@cache.memoize()
 @db_retry_decorator()
 def get_database_stats():
     """Get statistics about the Starship database."""

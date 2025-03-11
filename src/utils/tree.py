@@ -6,9 +6,16 @@ from Bio import Phylo
 import plotly.graph_objs as go
 
 import tempfile
+import subprocess
+import os
+import logging
 
+from src.utils.seq_utils import load_fasta_to_dict
 from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
 from src.config.cache import cache
+logger = logging.getLogger(__name__)
+
+
 default_highlight_colors = {
     "Phoenix": "#00cc96",
     "Hephaestus": "#ab63fa",
@@ -99,7 +106,7 @@ def get_clade_lines(
     line_color=None,
     line_width=0.5,
 ):
-    """define a shape of type 'line', for branch"""
+    """Define a shape of type 'line' for a branch."""
     branch_line = dict(
         type="line", layer="below", line=dict(color=line_color, width=line_width)
     )
@@ -118,18 +125,29 @@ def draw_clade(
     clade,
     x_start,
     line_shapes,
+    tip_dots,
     line_width=1,
     x_coords=0,
     y_coords=0,
 ):
-    """Recursively draw the tree branches, down from the given clade"""
+    """Recursively draw the tree branches, down from the given clade."""
     x_curr = x_coords[clade]
     y_curr = y_coords[clade]
 
-    metadata["color"] = metadata["familyName"].map(rgb_colors)
+    # Determine the line color based on whether the clade is a tip
+    # metadata["color"] = metadata["familyName"].map(rgb_colors)
 
     if clade.name in metadata["tip"].values:
         line_color = metadata.loc[metadata["tip"] == clade.name, "color"].values[0]
+        # Add a dot at the tip
+        tip_dot = dict(
+            x=x_curr,
+            y=y_curr,
+            mode="markers",
+            marker=dict(size=5, color=line_color),
+            name=clade.name,
+        )
+        tip_dots.append(tip_dot)
     else:
         line_color = "rgb(25,25,25)"
 
@@ -169,6 +187,7 @@ def draw_clade(
                 child,
                 x_curr,
                 line_shapes,
+                tip_dots,
                 x_coords=x_coords,
                 y_coords=y_coords,
             )
@@ -223,7 +242,9 @@ def superfam_highlight(
     y_coords=None,
 ):
     superfam_df = metadata[metadata["familyName"] == highlights]
-
+    rectangle = None
+    scatter = None
+    text_label = None
     if not superfam_df.empty:
         highlight_names = superfam_df["tip"].tolist()
 
@@ -232,64 +253,104 @@ def superfam_highlight(
             if "color" in superfam_df.columns and not superfam_df["color"].isna().all()
             else "rgba(25, 25, 25, 0.6)"
         )
+        if x_coords is not None and y_coords is not None:
+            x_coord_list = [
+                x_coords[clade] for clade in x_coords if clade.name in highlight_names
+            ]
+            y_coord_list = [
+                y_coords[clade] for clade in y_coords if clade.name in highlight_names
+            ]
 
-    if x_coords is not None and y_coords is not None:
+            x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
+            y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
+
+            rectangle = get_rectangle(
+                x_start,
+                x_end,
+                y_start,
+                y_end,
+                fill_color=color,
+                border_color=color,
+                line_width=2,
+            )
+
+            scatter = go.Scatter(
+                x=[(x_start + x_end) / 2],
+                y=[(y_start + y_end) / 2],
+                mode="markers",
+                marker=dict(size=10, color="rgba(255,255,255,0)"),
+                text=[highlights],
+                hoverinfo="text",
+                name=highlights,
+            )
+
+            text_label = get_text_label(
+                # x=(x_end + x_start) / 2,
+                x=7,
+                y=(y_end + y_start) / 2,
+                text=highlights,
+                font_size=24,
+                font_color="black",
+                x_anchor="center",
+                y_anchor="middle",
+            )
+    return rectangle, scatter, text_label
+
+
+def add_tip_labels(
+    tip,
+    x_coords=0,
+    y_coords=0,
+):
+    text_label = None
+
+    if x_coords is not None and y_coords is not None and tip:
         x_coord_list = [
-            x_coords[clade] for clade in x_coords if clade.name in highlight_names
+            x_coords[clade]
+            for clade in x_coords
+            if clade.name is not None and clade.name in tip
         ]
         y_coord_list = [
-            y_coords[clade] for clade in y_coords if clade.name in highlight_names
+            y_coords[clade]
+            for clade in y_coords
+            if clade.name is not None and clade.name in tip
         ]
 
-        x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
-        y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
+        if x_coord_list and y_coord_list:
+            x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
+            y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
 
-        rectangle = get_rectangle(
-            x_start,
-            x_end,
-            y_start,
-            y_end,
-            fill_color=color,
-            border_color=color,
-            line_width=2,
-        )
+            text_label = get_text_label(
+                x=4,
+                y=(y_end + y_start) / 2,
+                text=tip,
+                font_size=24,
+                font_color="black",
+                x_anchor="center",
+                y_anchor="middle",
+            )
 
-        scatter = go.Scatter(
-            x=[(x_start + x_end) / 2],
-            y=[(y_start + y_end) / 2],
-            mode="markers",
-            marker=dict(size=10, color="rgba(255,255,255,0)"),
-            text=[highlights],
-            hoverinfo="text",
-            name=highlights,
-        )
-
-        text_label = get_text_label(
-            # x=(x_end + x_start) / 2,
-            x=7,
-            y=(y_end + y_start) / 2,
-            text=highlights,
-            font_size=24,
-            font_color="black",
-            x_anchor="center",
-            y_anchor="middle",
-        )
-        return rectangle, scatter, text_label
+    return text_label
 
 
-def plot_tree(highlight_families=None):
-    tree_string = cache.get("captain_tree")
-    if tree_string is None:
-        tree_string = fetch_captain_tree()
+def plot_tree(highlight_families=None, tips=None):
+    tree_string = fetch_captain_tree()
     with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
         temp_file.write(tree_string)
         tree_file = temp_file.name
 
         tree = Phylo.read(tree_file, "newick")
 
-    metadata = cache.get("sf_data")
-    if metadata is None:
-        metadata = fetch_sf_data()
+    metadata = fetch_sf_data()
+
+    metadata['color'] = metadata['familyName'].map(rgb_colors)
+
+    
+    # Add debug logging
+    logger.debug(f"Metadata columns: {metadata.columns.tolist()}")
+    logger.debug(f"Metadata head: \n{metadata.head()}")
+    logger.debug(f"Highlight families: {highlight_families}")
+    logger.debug(f"Tips: {tips}")
 
     # graph_title = "Captain Gene Phylogeny"
     graph_title = None
@@ -298,7 +359,8 @@ def plot_tree(highlight_families=None):
     y_coords = get_y_coordinates(tree)
     line_shapes = []
     text_labels = []
-    scatter_points = []
+    tip_dots = []
+    centroids = []
     nodes = []
 
     draw_clade(
@@ -306,6 +368,7 @@ def plot_tree(highlight_families=None):
         tree.root,
         0,
         line_shapes,
+        tip_dots,
         line_width=1,
         x_coords=x_coords,
         y_coords=y_coords,
@@ -323,9 +386,15 @@ def plot_tree(highlight_families=None):
             y_coords=y_coords,
         )
         line_shapes.append(rectangle)
-        scatter_points.append(scatter)
+        centroids.append(scatter)
         text_labels.append(text_label)
-    nodes = scatter_points
+
+    if tips:
+        for tip in tips:
+            tips_labels = add_tip_labels(tip=tip, x_coords=x_coords, y_coords=y_coords)
+            text_labels.append(tips_labels)
+
+    nodes = centroids
 
     layout = dict(
         height=1200,
@@ -352,12 +421,67 @@ def plot_tree(highlight_families=None):
 
     if highlight_families is not None:
         legend = {"x": 0, "y": 1}
-        annotations = text_labels
+        # Filter out None elements from text_labels
+        annotations = [label for label in text_labels if label is not None]
         font = dict(family="Open Sans")
-        # layout["legend"] = legend
         layout["annotations"] = annotations
         layout["font"] = font
 
     fig = go.Figure(data=nodes, layout=layout)
 
     return fig
+
+def run_mafft(query, ref_msa):
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    MODEL = "PROTGTR+G+F"
+    fasta_dict = load_fasta_to_dict(query)
+    tmp_headers = list(fasta_dict.keys())
+
+    mafft_cmd = f"mafft --thread 2 --auto --addfragments {query} --keeplength {ref_msa} | seqkit grep -n -f {tmp_headers} > {tmp_fasta}"
+    subprocess.run(
+        mafft_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return tmp_headers, tmp_fasta
+
+
+def add_to_tree(query_msa, tree, ref_msa, model, tmp_dir):
+    if query_msa:
+        # Construct the epa-ng command
+        epa_cmd = f"epa-ng -T 2 --redo --ref-msa {ref_msa} --tree {tree} --query {query_msa} --model {model} --out-dir {tmp_dir}"
+
+        # Run the command
+        result = subprocess.run(
+            epa_cmd,
+            shell=True,
+            stdout=subprocess.DEVNULL,  # Uncomment to suppress stdout
+            stderr=subprocess.DEVNULL,  # Uncomment to suppress stderr
+        )
+
+        # Check for errors in command execution
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"epa-ng command failed with return code {result.returncode}"
+            )
+
+        tmp_tree = os.path.join(tmp_dir, "epa_result.jplace")
+        return tmp_tree
+
+
+def gappa(tmp_tree):
+    out_dir = os.path.dirname(tmp_tree)
+    out_tree = os.path.join(out_dir, "epa_result.newick")
+    gappa_cmd = (
+        f"gappa examine graft --out-dir {out_dir} --threads 2 --jplace-path {tmp_tree}"
+    )
+    subprocess.run(
+        gappa_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logging.info(f"Tree output: {out_tree}")
+
+    return out_tree

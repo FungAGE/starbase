@@ -23,9 +23,9 @@ RUN useradd -m -u 1000 $USER
 # Set working directory
 WORKDIR $HOME/
 
-# System dependencies and supercronic installation (combined to reduce layers)
+# System dependencies, conda, and supercronic installation (combined to reduce layers)
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw wget && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     # Install supercronic
     curl -fsSLO "$SUPERCRONIC_URL" && \
