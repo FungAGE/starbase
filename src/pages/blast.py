@@ -2,21 +2,17 @@ import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
-from dash import dcc, html, callback, MATCH, no_update
+from dash import dcc, html, callback
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
-import dash_bio as dashbio
 
 import io
-import re
 import tempfile
 import base64
 from datetime import date
 import pandas as pd
-import plotly.graph_objects as go
 import logging
 
-from dash import get_app
 
 from src.config.cache import cache
 from src.utils.seq_utils import ( guess_seq_type,
@@ -38,10 +34,10 @@ from src.utils.blast_utils import (
 
 from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
 from src.database.sql_manager import fetch_meta_data
-from src.config.settings import BLAST_DB_PATHS, PHYLOGENY_PATHS
+from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
-from src.utils.tree import plot_tree, run_mafft, add_to_tree, gappa
+from src.utils.tree import plot_tree
 
 dash.register_page(__name__)
 
@@ -185,18 +181,10 @@ layout = dmc.Container(
                                 dmc.Stack(
                                     children=[
                                         html.Div(id="ship-family"),
+                                        html.Div(id="phylogeny-plot"),
                                         html.Div(id="blast-table"),
                                         html.Div(id="blast-download"),
                                         html.Div(id="subject-seq-button"),
-                                        html.Div(id="phylogeny-plot"),
-                                        html.Div(
-                                            id="ship-aln",
-                                            style={
-                                                'minHeight': '200px',
-                                                'width': '100%',
-                                                'marginTop': '20px'
-                                            }
-                                        ),
                                     ],
                                 ),
                             ],
@@ -376,7 +364,6 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
         Output("subject-seq-button", "children"),
-        Output("phylogeny-plot", "children"),
     ],
     [
         Input("query-header-store", "data"),
@@ -449,76 +436,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
             logger.error(f"Diamond/HMMER error: {str(e)}")
             raise
 
-        # Run phylogenetic placement if protein sequence
-        phylogeny_plot = None
-        if query_type == "prot" and results_dict:
-            try:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    # Write query to temporary file
-                    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-                    
-                    logger.info(f"Running MAFFT alignment for query: {query_header}")
-                    # Run MAFFT alignment
-                    tmp_headers, query_msa = run_mafft(
-                        query=tmp_query_fasta,
-                        ref_msa=PHYLOGENY_PATHS["msa"]
-                    )
-                    
-                    logger.info("Running EPA-NG placement")
-                    # Run EPA-NG placement
-                    new_tree = add_to_tree(
-                        query_msa=query_msa,
-                        tree=PHYLOGENY_PATHS["tree"],
-                        ref_msa=PHYLOGENY_PATHS["msa"],
-                        model="PROTGTR+G+F",
-                        tmp_dir=tmp_dir
-                    )
-                    
-                    logger.info("Running Gappa to get final tree")
-                    # Run Gappa to get final tree
-                    out_tree = gappa(new_tree)
-                    
-                    # Create phylogeny plot
-                    if out_tree is not None:
-                        logger.info("Creating phylogeny plot")
-                        fig = plot_tree(
-                            highlight_families="all",
-                            tips=[query_header]  # Add the query sequence header
-                        )
-                        
-                        phylogeny_plot = html.Div([
-                            dmc.Paper(
-                                children=[
-                                    dmc.Title("Phylogenetic Placement", order=3),
-                                    dcc.Graph(
-                                        id="phylogeny-graph",
-                                        figure=fig,
-                                        style={'height': '800px'}  # Set explicit height
-                                    )
-                                ],
-                                p="md",
-                                withBorder=True,
-                                shadow="sm",
-                                radius="md",
-                                style={'marginTop': '20px'}
-                            )
-                        ])
-                        
-                        logger.info("Phylogeny plot created successfully")
-                    else:
-                        logger.warning("No tree output from Gappa")
-                        
-            except Exception as e:
-                logger.error(f"Error in phylogenetic placement: {str(e)}")
-                phylogeny_plot = html.Div([
-                    dmc.Alert(
-                        title="Phylogenetic Placement Error",
-                        color="yellow",
-                        children=f"Could not generate phylogenetic tree: {str(e)}"
-                    )
-                ])
-
-        return blast_results_dict, results_dict, subject_seq_button, phylogeny_plot
+        return blast_results_dict, results_dict, subject_seq_button
 
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
@@ -633,7 +551,8 @@ def process_blast_results(blast_results_dict, metadata_dict):
     [
         Output("ship-family", "children"),
         Output("blast-table", "children"),
-        Output("blast-download", "children")
+        Output("blast-download", "children"),
+        Output("phylogeny-plot", "children")
     ],
     [Input("processed-blast-store", "data"), Input("captain-results-store", "data")],
     State("submit-button", "n_clicks"),
@@ -642,27 +561,28 @@ def process_blast_results(blast_results_dict, metadata_dict):
 @handle_callback_error
 def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
     if not n_clicks or processed_blast_results is None:
-        return None, None, None
+        return None, None, None, None
         
     try:
         if not processed_blast_results:
-            return html.Div(create_no_matches_alert()), None, None
+            return html.Div(create_no_matches_alert()), None, None, None
             
         try:
             blast_df = pd.DataFrame(processed_blast_results)
             if blast_df.empty:
-                return html.Div(create_no_matches_alert()), None, None
+                return html.Div(create_no_matches_alert()), None, None, None
         except Exception as e:
             logger.error(f"Error converting BLAST results to DataFrame: {e}")
-            return html.Div(create_error_alert(str(e))), None, None
+            return html.Div(create_error_alert(str(e))), None, None, None
+        
+        ship_family = None
+        table = None
+        download_button = None
+        phylogeny_plot = None
         
         try:
             best_match = blast_df.nsmallest(1, 'evalue').iloc[0]
-        except Exception as e:
-            logger.error(f"Error getting best match: {e}")
-            return html.Div(create_error_alert("Could not determine best match")), None, None
-        
-        try:
+            
             ship_family = (
                 make_captain_alert(
                     best_match["familyName"], 
@@ -674,20 +594,55 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
             )
         except Exception as e:
             logger.error(f"Error creating family alert: {e}")
-            return html.Div(create_error_alert("Could not create family alert")), None, None
+            ship_family = html.Div(create_error_alert(str(e)))
             
+        try:
+            # Create phylogeny plot
+            logger.info("Creating phylogeny plot")
+            fig = plot_tree(
+                highlight_families=best_match["familyName"],
+                tips=[best_match["accession_tag"]]
+            )
+            
+            phylogeny_plot = html.Div([
+                dbc.Accordion(
+                    children=[
+                        dbc.AccordionItem(
+                            children=[
+                                dcc.Graph(
+                                    id="phylogeny-graph",
+                                    figure=fig,
+                                    style={'height': '800px'}
+                                )
+                            ],
+                            title="Phylogenetic Placement",
+                            item_id="phylogeny",
+                        )
+                    ],
+                    always_open=False,
+                    active_item="phylogeny",
+                    id="phylogeny-accordion"
+                )
+            ])
+            
+        except Exception as e:
+            logger.error(f"Error creating phylogeny plot: {e}")
+            phylogeny_plot = html.Div(create_error_alert("Could not create phylogeny plot"))
+        
         try:
             table = blast_table(blast_df)
             download_button = blast_download_button()
         except Exception as e:
             logger.error(f"Error creating BLAST table: {e}")
-            return ship_family, create_error_alert("Could not create results table"), None
+            table = html.Div(create_error_alert("Could not create results table"))
+            download_button = None
         
-        return ship_family, table, download_button
+        return ship_family, table, download_button, phylogeny_plot
         
     except Exception as e:
         logger.error(f"Error in update_ui_elements: {e}")
-        return create_error_alert(str(e)), None, None
+        error_div = html.Div(create_error_alert(str(e)))
+        return error_div, None, None, None
 
 @callback(
     Output("blast-dl", "data"),
