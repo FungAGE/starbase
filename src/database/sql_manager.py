@@ -9,6 +9,7 @@ import sqlalchemy.exc
 from sqlalchemy import text
 from src.config.cache import cache
 from src.config.settings import PHYLOGENY_PATHS
+
 logger = logging.getLogger(__name__)
 
 # Define a common retry decorator for database operations
@@ -118,7 +119,7 @@ def fetch_download_data(curated=True, dereplicate=False):
         session.close()
 
 @cache.memoize()
-def fetch_all_ships(accession_tags=None, curated=False, dereplicate=True):
+def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
     """
     Fetch ship data for specified accession tags.
     

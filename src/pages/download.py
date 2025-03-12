@@ -4,6 +4,7 @@ import dash_mantine_components as dmc
 from dash.dependencies import Output, Input, State
 from dash_iconify import DashIconify
 import pandas as pd
+from datetime import datetime
 
 from src.components.callbacks import curated_switch, create_accession_modal, create_modal_callback, dereplicated_switch
 from src.config.cache import cache
@@ -22,7 +23,7 @@ table_columns = [
         "name": "Accession",
         "id": "accession_tag",
         "deletable": False,
-        "selectable": False,
+        "selectable": True,
         "presentation": "markdown",
         "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
     },
@@ -103,7 +104,7 @@ layout = dmc.Container(
                                     gradient={"from": "indigo", "to": "cyan"},
                                     leftSection=html.I(className="bi bi-cloud-download"),
                                     size="md",
-                                    loaderProps={"type": "dots"},
+                                    loaderProps={"variant": "dots", "color": "white"},
                                 ),
                                 dmc.Button(
                                     "Download Selected Starships",
@@ -112,7 +113,7 @@ layout = dmc.Container(
                                     gradient={"from": "teal", "to": "lime"},
                                     leftSection=html.I(className="bi bi-download"),
                                     size="md",
-                                    loaderProps={"type": "dots"},
+                                    loaderProps={"variant": "dots", "color": "white"},
                                 ),
                             ],
                             ),
@@ -183,10 +184,6 @@ layout = dmc.Container(
 def update_dl_table(curated, dereplicate):
     logger.debug(f"update_dl_table called with curated={curated}, dereplicate={dereplicate}")
     
-    # Show loading state initially
-    if url is None:
-        return table_loading_alert(), ""
-    
     try:
         df = fetch_download_data(curated=curated, dereplicate=dereplicate)
         if df is None or df.empty:
@@ -205,7 +202,7 @@ def update_dl_table(curated, dereplicate):
             
         # Create the table with the data
         table = make_dl_table(
-            df=records,
+            df=records,  # Pass the records directly
             id="dl-table",
             table_columns=table_columns
         )
@@ -215,45 +212,6 @@ def update_dl_table(curated, dereplicate):
     except Exception as e:
         logger.error(f"Failed to execute query to generate table. Details: {e}")
         return table_error(e), f"Error loading data: {str(e)}"
-
-@callback(
-    [Output("dl-package", "data", allow_duplicate=True),
-     Output("notifications-container", "children", allow_duplicate=True)],
-    [Input("download-all-btn", "n_clicks")],
-    [State("dl-table", "rowData"),
-     State("curated-input", "checked"),
-     State("dereplicated-input", "checked")],
-    prevent_initial_call=True,
-    running=[
-        (Output("download-all-btn", "loading"), True, False),
-    ],
-)
-def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
-    if not dl_all_clicks:
-        raise dash.exceptions.PreventUpdate
-    
-    # Use all rows
-    return generate_download_helper(table_data, curated, dereplicate)
-
-@callback(
-    [Output("dl-package", "data", allow_duplicate=True),
-     Output("notifications-container", "children", allow_duplicate=True)],
-    [Input("download-selected-btn", "n_clicks")],
-    [State("dl-table", "rowData"),
-     State("dl-table", "selectedRows"),
-     State("curated-input", "checked"),
-     State("dereplicated-input", "checked")],
-    prevent_initial_call=True,
-    running=[
-        (Output("download-selected-btn", "loading"), True, False),
-    ],
-)
-def generate_download_selected(dl_select_clicks, table_data, selected_rows, curated, dereplicate):
-    if not dl_select_clicks or not selected_rows:
-        raise dash.exceptions.PreventUpdate
-    
-    # Use only selected rows
-    return generate_download_helper(selected_rows, curated, dereplicate)
 
 def generate_download_helper(rows, curated, dereplicate):
     """Helper function containing the common download logic"""
@@ -297,29 +255,86 @@ def generate_download_helper(rows, curated, dereplicate):
         fasta_str = "\n".join(fasta_content)
         logger.info(f"FASTA content created successfully for {len(fasta_content)} sequences.")
         
-        return (
-            dcc.send_string(fasta_str, filename="starships.fasta"),
-            dmc.Notification(
-                title="Success",
-                message=f"Downloaded {len(fasta_content)} Starship sequences",
-                color="green",
-                icon=DashIconify(icon="ic:round-check-circle"),
-                action="show",
-            )
-        )
+        # Return both the FASTA content and download info
+        return dict(
+            content=fasta_str,
+            filename=f"starships_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fasta",
+            type="text/plain"
+        ), len(fasta_content)
             
+    except ValueError as e:
+        logger.warning(f"Download helper warning: {str(e)}")
+        return None, 0
     except Exception as e:
         logger.error(f"Failed to execute database query. Details: {e}")
-        return (
-            dash.no_update,
-            dmc.Notification(
-                title="Error",
-                message="Failed to download sequences",
-                color="red",
-                icon=DashIconify(icon="ic:round-error"),
-                action="show",
-            )
+        return None, 0
+
+@callback(
+    [Output("dl-package", "data", allow_duplicate=True),
+     Output("dl-notify", "children", allow_duplicate=True)],
+    [Input("download-all-btn", "n_clicks")],
+    [State("dl-table", "rowData"),
+     State("curated-input", "checked"),
+     State("dereplicated-input", "checked")],
+    prevent_initial_call=True,
+    running=[
+        (Output("download-all-btn", "loading"), True, False),
+    ],
+)
+def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
+    if not dl_all_clicks:
+        raise dash.exceptions.PreventUpdate
+    
+    download_data, num_sequences = generate_download_helper(table_data, curated, dereplicate)
+    
+    if not download_data:
+        return None, dmc.Alert(
+            children="No sequences found for download",
+            color="red",
+            title="Error"
         )
+        
+    return download_data, dmc.Alert(
+        children=f"Downloading {num_sequences} sequences",
+        color="green",
+        title="Success"
+    )
+
+@callback(
+    [Output("dl-package", "data"),
+     Output("dl-notify", "children")],
+    [Input("download-selected-btn", "n_clicks")],
+    [State("dl-table", "rowData"),
+     State("dl-table", "selectedRows"),
+     State("curated-input", "checked"),
+     State("dereplicated-input", "checked")],
+    prevent_initial_call=True,
+    running=[
+        (Output("download-selected-btn", "loading"), True, False),
+    ],
+)
+def generate_download_selected(dl_select_clicks, table_data, selected_rows, curated, dereplicate):
+    if not dl_select_clicks or not selected_rows:
+        raise dash.exceptions.PreventUpdate
+    
+    # Filter table_data to get only the selected rows
+    selected_data = [row for row in table_data if row.get("accession_tag") in 
+                    [selected.get("accession_tag") for selected in selected_rows]]
+    
+    download_data, num_sequences = generate_download_helper(selected_data, curated, dereplicate)
+    
+    if not download_data:
+        return None, dmc.Alert(
+            children="No sequences found for selected rows",
+            color="red",
+            title="Error"
+        )
+        
+    return download_data, dmc.Alert(
+        children=f"Downloading {num_sequences} sequences",
+        color="green",
+        title="Success"
+    )
 
 @callback(
     Output("download-selected-btn", "disabled"),
