@@ -2,6 +2,10 @@ import tempfile
 import subprocess
 import logging
 from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files
+from src.utils.seq_utils import write_combined_fasta
+from typing import Tuple, Dict, Any
+from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_all_captains
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +42,38 @@ logger = logging.getLogger(__name__)
 # classification pipeline
 ########################################################
 
-def classify_sequence(sequence, db_list, threads=1):
-    """Main classification pipeline that coordinates the 3-step process"""   
-    # perform the following steps in order:
-
-    # Part 1: Captain gene similarity -> family assignment
-    family = classify_family(sequence, db_list, threads)
+def classify_sequence(sequence: str, db_list: Dict[str, Any], threads: int = 1) -> Tuple[str, str, str]:
+    """Classify a new sequence based on comparison to existing classified sequences.
     
-    # Part 2: Cargo jaccard scores -> navis assignment 
-    navis = classify_navis(sequence, threads)
+    Args:
+        sequence: The new sequence to classify
+        db_list: Database configuration and paths
+        threads: Number of CPU threads to use
     
-    # Part 3: Sequence similarity -> haplotype assignment
-    haplotype = classify_haplotype(sequence)
+    Returns:
+        Tuple[str, str, str]: (family, navis, haplotype) assignments
+    """
+    # Get existing classified sequences from database
+    existing_meta = fetch_meta_data(curated=True)
+    existing_ships = fetch_ships(curated=True)
+    existing_captains = fetch_all_captains()
+    
+    # Part 1: Family Assignment via Captain Gene
+    # - First identify captain gene in new sequence via hmmsearch
+    # - Compare to existing captain sequences
+    # - Assign family based on closest match
+    family = classify_family(sequence, db_list, existing_captains, threads)
+    
+    # Part 2: Navis Assignment
+    # - Compare captain sequence to existing classified captains
+    # - Use mmseqs clustering to group with existing navis
+    navis = classify_navis(sequence, existing_captains, existing_meta, threads)
+    
+    # Part 3: Haplotype Assignment
+    # - Compare full sequence to existing classified sequences
+    # - Use sourmash for similarity calculation
+    # - Use MCL clustering to group with existing haplotypes
+    haplotype = classify_haplotype(sequence, existing_ships, existing_meta)
     
     return family, navis, haplotype
 
@@ -70,78 +94,68 @@ def classify_family(sequence, db_list, input_eval=0.001, threads=1):
     # perl -p -e 's/ +/\t/g' elementFinder/macpha6_tyr_vs_YRsuperfams.out | cut -f1,3,5 | grep -v '#' | sort -k3,3g | awk '!x[$1]++' > elementFinder/macpha6_tyr_vs_YRsuperfams_besthits.txt
     # TODO: make sure this parses correctly, or just use a simpler method for grabbing the family assignment from the hmmsearch output
     family_assignment = parse_hmmer(hmmer_results)
+
+    captain_seq = extract_captain_sequence(sequence, hmmer_results)
+
     return family_assignment
 
-def classify_navis(sequence, threads=1):
-    """Uses mmseqs2 to cluster captain sequences"""
-    # Need to implement this
-    # now group all Starships into naves using mmseqs2 easy-cluster on the captain sequences with a very permissive 50% percent ID/ 25% coverage threshold:
-    # mmseqs easy-cluster geneFinder/macpha6_tyr.filt_intersect.fas elementFinder/macpha6_tyr elementFinder/ --threads 2 --min-seq-id 0.5 -c 0.25 --alignment-mode 3 --cov-mode 0 --cluster-reassign
+def classify_navis(sequence: str,
+                  existing_captains: pd.DataFrame, 
+                  existing_meta: pd.DataFrame,
+                  threads: int = 1) -> str:
+    """Assign navis based on captain sequence clustering."""
+    # Create temporary FASTA with:
+    # - Captain sequence from new sequence
+    # - All existing classified captain sequences
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as tmp_fasta:
+        write_combined_fasta(tmp_fasta.name, sequence, existing_captains)
+        
+        # Run mmseqs clustering
+        clusters = mmseqs_easy_cluster(
+            tmp_fasta.name,
+            min_seq_id=0.5,
+            coverage=0.25,
+            threads=threads
+        )
+        
+        # clusters will be a dict like:
+        # {
+        #    'seq1': 'cluster1_rep',
+        #    'seq2': 'cluster1_rep',
+        #    'seq3': 'cluster2_rep',
+        #    ...
+        # }
 
-    clusters = mmseqs_easy_cluster(
-        sequence,
-        min_seq_id=0.5,
-        coverage=0.25,
-        threads=threads
-    )
+        # Find which cluster contains our sequence
+        # Return navis assignment based on existing classifications in that cluster
+        return navis_assignment
 
-    # clusters will be a dict like:
-    # {
-    #    'seq1': 'cluster1_rep',
-    #    'seq2': 'cluster1_rep',
-    #    'seq3': 'cluster2_rep',
-    #    ...
-    # }
-
-    # parse results
-    # $STARFISHDIR/aux/mmseqs2mclFormat.pl -i elementFinder/macpha6_tyr_cluster.tsv -g navis -o elementFinder/
-    return clusters
-
-def classify_haplotype(sequence):
-    """Port of starfish sim/group workflow for haplotype assignment"""
-    # 1. Calculate similarities (port from sim.pl)
-    similarities = calculate_similarities(
-        sequence_file,
-        mode='element',
-        seq_type='nucl',
-        threads=threads
-    )
-
-    # Write results if needed
-    write_similarity_file(similarities, "output.sim")
-    
-    # 2. Group sequences (port from group.pl)
-    # After calculating similarities
-    groups, node_data, edge_data = cluster_sequences(
-        "similarities.sim",
-        group_prefix="HAP",
-        inflation=1.5,
-        threshold=0.05,
-        threads=threads
-    )
-
-    # Write results
-    write_cluster_files(groups, node_data, edge_data, "output_prefix")    
-
-    return haplotype_assignment
-
-# use methods from starfish pipeline
-
-def kmer_similarity():
-    # Sequence similarity calculation using sourmash
-    # Handling different sequence types (nucleotide/protein)
-    # K-mer based comparison
-    # Output formatting
-    return None
-
-def haplotype_grouping():
-    # MCL clustering interface
-    # Similarity value remapping
-    # Group naming/formatting
-    # Node/edge data generation for visualization
-    return None
-
-# use sourmash and mcl to group all elements into haplotypes based on pairwise k-mer similarities of element nucleotide sequences:
-# starfish sim -m element -t nucl -b elementFinder/macpha6.elements.bed -x macpha6 -o elementFinder/ -a ome2assembly.txt
-# starfish group -m mcl -s elementFinder/macpha6.element.nucl.sim -i hap -o elementFinder/ -t 0.05
+def classify_haplotype(sequence: str,
+                      existing_ships: pd.DataFrame,
+                      existing_meta: pd.DataFrame) -> str:
+    """Assign haplotype based on full sequence similarity."""
+    # Create temporary FASTA with:
+    # - New sequence
+    # - All existing classified sequences
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as tmp_fasta:
+        write_combined_fasta(tmp_fasta.name, sequence, existing_ships)
+        
+        # Calculate similarities
+        similarities = calculate_similarities(
+            tmp_fasta.name,
+            mode='element',
+            seq_type='nucl'
+        )
+        
+        # Cluster sequences
+        groups, _, _ = cluster_sequences(
+            similarities,
+            group_prefix="HAP",
+            inflation=1.5,
+            threshold=0.05
+        )
+        
+        # Find which group contains our sequence
+        # Return haplotype based on existing classifications in that group
+        return haplotype_assignment
 
