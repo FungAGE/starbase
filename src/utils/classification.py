@@ -120,7 +120,6 @@ def check_similar_match(sequence: str,
     # Calculate similarities
     similarities = calculate_similarities(
         tmp_fasta,
-        mode='element',
         seq_type='nucl'
     )
     
@@ -276,7 +275,6 @@ def classify_haplotype(sequence: str,
         # Calculate similarities
         similarities = calculate_similarities(
             tmp_fasta.name,
-            mode='element',
             seq_type='nucl'
         )
         

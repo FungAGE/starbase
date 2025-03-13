@@ -994,12 +994,11 @@ def parse_mmseqs_results(cluster_file):
         logger.error(f"Error parsing MMseqs2 results: {str(e)}")
         raise
 
-def calculate_similarities(sequence_file, mode='element', seq_type='nucl', threads=1):
+def calculate_similarities(sequence_file, seq_type='nucl', threads=1):
     """Calculate k-mer similarity between sequences using sourmash.
     
     Args:
         sequence_file (str): Path to input FASTA file
-        mode (str): What features to compare - 'cap' or 'element'
         seq_type (str): Sequence type to compare - 'nucl' or 'prot'
         threads (int): Number of threads to use
         
