@@ -922,3 +922,72 @@ def create_no_matches_alert():
         variant="light",
         withCloseButton=False,
     )
+
+def mmseqs_easy_cluster(fasta_file, min_seq_id=0.5, coverage=0.25, threads=1):
+    """Run mmseqs easy-cluster on input sequences.
+    
+    Args:
+        fasta_file (str): Path to input FASTA file
+        min_seq_id (float): Minimum sequence identity threshold (0-1)
+        coverage (float): Minimum coverage threshold (0-1) 
+        threads (int): Number of threads to use
+        
+    Returns:
+        dict: Parsed clustering results mapping sequence IDs to cluster assignments
+    """
+    # Create temporary directory for mmseqs files
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Build command with all parameters
+        base_name = os.path.join(tmp_dir, "results")
+        cmd = [
+            "mmseqs",
+            "easy-cluster",
+            fasta_file,
+            base_name,
+            tmp_dir,
+            "--threads", str(threads),
+            "--min-seq-id", str(min_seq_id),
+            "-c", str(coverage),
+            "--alignment-mode", "3",
+            "--cov-mode", "0", 
+            "--cluster-reassign"
+        ]
+        
+        try:
+            # Run mmseqs
+            logger.info(f"Running MMseqs2: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            
+            # Parse results from the _cluster.tsv file
+            cluster_file = f"{base_name}_cluster.tsv"
+            return parse_mmseqs_results(cluster_file)
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"MMseqs2 clustering failed: {e.stderr}")
+            raise
+        except Exception as e:
+            logger.error(f"Error during MMseqs2 clustering: {str(e)}")
+            raise
+
+def parse_mmseqs_results(cluster_file):
+    """Parse MMseqs2 cluster TSV output file.
+    
+    Args:
+        cluster_file (str): Path to MMseqs2 cluster TSV file
+        
+    Returns:
+        dict: Mapping of sequence IDs to their cluster assignments
+    """
+    clusters = {}
+    try:
+        with open(cluster_file) as f:
+            for line in f:
+                # Format is: representative_sequence\tmember_sequence
+                rep_seq, member_seq = line.strip().split('\t')
+                clusters[member_seq] = rep_seq
+                
+        return clusters
+        
+    except Exception as e:
+        logger.error(f"Error parsing MMseqs2 results: {str(e)}")
+        raise
