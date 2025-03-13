@@ -301,7 +301,7 @@ def hmmsearch(
         # Maximum 4 threads per HMMER process to leave resources for other concurrent requests
         threads = min(int(threads), 4)
 
-    hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
+    hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} -E {input_eval} {hmmer_db} {query_fasta}"
     logger.info(f"Running HMMER search: {hmmer_cmd}")
     subprocess.run(hmmer_cmd, shell=True)
     return tmp_hmmer
