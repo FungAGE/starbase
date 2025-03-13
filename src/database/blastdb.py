@@ -5,14 +5,8 @@ import logging
 
 from src.config.cache import cache
 from src.config.settings import BLAST_DB_PATHS
-
+from src.utils.seq_utils import write_fasta
 logger = logging.getLogger(__name__)
-
-
-def write_fasta(sequences, fasta_path):
-    with open(fasta_path, "w") as fasta_file:
-        for name, sequence in sequences:
-            fasta_file.write(f">{name}\n{sequence}\n")
 
 
 def create_blast_database(fasta_path, dbtype):

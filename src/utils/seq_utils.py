@@ -60,18 +60,6 @@ def guess_seq_type(query_seq):
         logger.error(f"Error in guessing sequence type: {e}")
         return None
 
-def write_temp_fasta(header, sequence):
-    try:
-        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
-        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
-        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
-        return tmp_query_fasta
-    except Exception as e:
-        logger.error(f"Error writing temporary FASTA: {e}")
-        return None
-
-
 def check_input(query_text_input, query_file_contents):
     try:
         if query_text_input in ("", None) and query_file_contents is None:
@@ -466,3 +454,65 @@ def clean_contigIDs(string):
                 return suffix
             else:
                 return string
+
+def write_temp_fasta(header, sequence):
+    try:
+        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
+        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
+        return tmp_query_fasta
+    except Exception as e:
+        logger.error(f"Error writing temporary FASTA: {e}")
+        return None
+
+
+def write_fasta(sequences, fasta_path):
+    with open(fasta_path, "w") as fasta_file:
+        for name, sequence in sequences:
+            fasta_file.write(f">{name}\n{sequence}\n")
+
+
+def write_combined_fasta(new_sequence: str, 
+                        existing_sequences: pd.DataFrame,
+                        sequence_col: str = "sequence",
+                        id_col: str = None) -> str:
+    """Write a temporary FASTA file combining new sequence with existing sequences.
+    
+    Args:
+        new_sequence: New sequence to classify
+        existing_sequences: DataFrame containing existing sequences
+        sequence_col: Name of column containing sequences
+        id_col: Name of column to use as sequence IDs. If None, uses DataFrame index
+    
+    Returns:
+        str: Path to temporary FASTA file
+    """
+    try:
+        records = []
+        
+        records.append(SeqRecord(
+            Seq(new_sequence),
+            id="query_sequence",
+            description=""
+        ))
+        
+        for idx, row in existing_sequences.iterrows():
+            name = row[id_col] if id_col else str(idx)
+            sequence = row[sequence_col]
+            records.append(SeqRecord(
+                Seq(sequence),
+                id=str(name),  # ensure ID is string
+                description=""
+            ))
+        
+        # Write to temporary file
+        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        SeqIO.write(records, tmp_fasta, "fasta")
+        logger.debug(f"Combined FASTA file written: {tmp_fasta}")
+        
+        return tmp_fasta
+        
+    except Exception as e:
+        logger.error(f"Error writing combined FASTA: {e}")
+        return None
