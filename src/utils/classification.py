@@ -87,10 +87,22 @@ def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[s
     return existing_hashes.get(sequence_hash)
 
 def check_contained_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
-    """Check if sequence is contained within any existing sequences."""
+    """Check if sequence is contained within any existing sequences.
+    Returns accession of the longest containing sequence."""
+    containing_matches = []
+    
     for _, row in existing_ships.iterrows():
         if sequence in row['sequence']:
-            return row['accession_tag']
+            containing_matches.append((
+                len(row['sequence']),  # length for sorting
+                row['accession_tag']
+            ))
+    
+    # Sort by length descending and return longest match if any
+    if containing_matches:
+        containing_matches.sort(reverse=True)  # Sort by length descending
+        return containing_matches[0][1]  # Return accession of longest match
+        
     return None
 
 def check_similar_match(sequence: str, 
@@ -112,19 +124,26 @@ def check_similar_match(sequence: str,
         seq_type='nucl'
     )
     
-    # Find best match above threshold
-    best_match = None
-    best_sim = 0
+    # # Find best match above threshold
+    # best_match = None
+    # best_sim = 0
     
-    for seq_id, sim_dict in similarities.items():
-        if seq_id == 'query_sequence':  # Skip self comparison
-            continue
-        sim = sim_dict.get('query_sequence', 0)
-        if sim > threshold and sim > best_sim:
-            best_match = seq_id
-            best_sim = sim
+    # for seq_id, sim_dict in similarities.items():
+    #     if seq_id == 'query_sequence':  # Skip self comparison
+    #         continue
+    #     sim = sim_dict.get('query_sequence', 0)
+    #     if sim > threshold and sim > best_sim:
+    #         best_match = seq_id
+    #         best_sim = sim
             
-    return best_match
+    # return best_match
+
+    # Check if we have any similarities above threshold
+    if 'query_sequence' in similarities:
+        for acc_id, sim in similarities['query_sequence'].items():
+            if sim >= threshold:
+                return acc_id
+    return None
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     """Generate a new unique accession number."""
