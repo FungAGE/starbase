@@ -3,40 +3,145 @@ import subprocess
 import logging
 from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files, extract_gene_from_hmmer
 from src.utils.seq_utils import write_combined_fasta
-from typing import Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_all_captains
 import pandas as pd
+import hashlib
 
 logger = logging.getLogger(__name__)
 
-# classifcation pipeline that should be used:
-# - classify query sequences for blast page, display results
-# - classify submitted sequences from submission page, assign an accession, and input into submissionsdatabase
-
-# accession format:
-# - normal ship accession: SBS123456
-# - updated ship accession: SBS123456.1
-
+accession_workflow = """
 ########################################################
 # assigning accessions
 ########################################################
-# part 1: check if the sequence is already in the database
-# part 2: if it is completely identical, almost identical, or contained within an existing sequence (also flag for review), assign the normal accession
-# part 3: if it is novel, assign a new accession
+accession format:
+- normal ship accession: SBS123456
+- updated ship accession: SBS123456.1
 
-# workflow:
-# first check for exact matches
-# then check for contained within matches
-# then check for almost identical matches
-# if no matches, assign a new accession
+workflow:
+- first check for exact matches
+- then check for contained within matches
+- then check for almost identical matches
+- if no matches, assign a new accession
 
-# if a sequence is a truncated version of a longer sequence, assign the longer sequence accession, flag for review
+if a sequence is a truncated version of a longer sequence, assign the longer sequence accession, flag for review
 
-# fast method for checking for exact matches:
-# md5 hash of sequence
+- fast method for checking for exact matches: md5 hash of sequence
+- method for checking for contained/highly similar sequences: k-mers
+"""
 
-# method for checking for contained/highly similar sequences:
-# k-mers
+classify_sequence_workflow = """
+classifcation pipeline that should be used:
+- classify query sequences for blast page, display results
+- classify submitted sequences from submission page, assign an accession, and input into submissionsdatabase
+"""
+
+def assign_accession(sequence: str, 
+                    existing_ships: pd.DataFrame = None,
+                    threshold: float = 0.95) -> Tuple[str, bool]:
+    """Assign an accession to a new sequence.
+    
+    Args:
+        sequence: New sequence to assign accession to
+        existing_ships: DataFrame of existing ships (optional, will fetch if None)
+        threshold: Similarity threshold for "almost identical" matches
+    
+    Returns:
+        Tuple[str, bool]: (accession, needs_review)
+            - accession: assigned accession number
+            - needs_review: True if sequence needs manual review
+    """
+    if existing_ships is None:
+        existing_ships = fetch_ships(curated=True)
+    
+    # Step 1: Check for exact matches using MD5 hash
+    exact_match = check_exact_match(sequence, existing_ships)
+    if exact_match:
+        return exact_match, False
+        
+    # Step 2: Check if sequence is contained within existing sequence
+    container_match = check_contained_match(sequence, existing_ships)
+    if container_match:
+        return container_match, True  # Flag for review since it's truncated
+        
+    # Step 3: Check for highly similar sequences
+    similar_match = check_similar_match(sequence, existing_ships, threshold)
+    if similar_match:
+        return similar_match, True  # Flag for review due to high similarity
+        
+    # Step 4: If no matches, assign new accession
+    new_accession = generate_new_accession(existing_ships)
+    return new_accession, False
+
+
+def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
+    """Check if sequence exactly matches an existing sequence using MD5 hash."""
+    sequence_hash = hashlib.md5(sequence.encode()).hexdigest()
+    
+    # Calculate hashes for existing sequences
+    existing_hashes = {
+        hashlib.md5(seq.encode()).hexdigest(): acc 
+        for acc, seq in zip(existing_ships['accession_tag'], existing_ships['sequence'])
+    }
+    
+    return existing_hashes.get(sequence_hash)
+
+def check_contained_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
+    """Check if sequence is contained within any existing sequences."""
+    for _, row in existing_ships.iterrows():
+        if sequence in row['sequence']:
+            return row['accession_tag']
+    return None
+
+def check_similar_match(sequence: str, 
+                       existing_ships: pd.DataFrame,
+                       threshold: float) -> Optional[str]:
+    """Check for sequences with similarity above threshold using k-mer comparison."""
+    # Create temporary FASTA with new and existing sequences
+    tmp_fasta = write_combined_fasta(
+        sequence,
+        existing_ships,
+        sequence_col='sequence',
+        id_col='accession_tag'
+    )
+    
+    # Calculate similarities
+    similarities = calculate_similarities(
+        tmp_fasta,
+        mode='element',
+        seq_type='nucl'
+    )
+    
+    # Find best match above threshold
+    best_match = None
+    best_sim = 0
+    
+    for seq_id, sim_dict in similarities.items():
+        if seq_id == 'query_sequence':  # Skip self comparison
+            continue
+        sim = sim_dict.get('query_sequence', 0)
+        if sim > threshold and sim > best_sim:
+            best_match = seq_id
+            best_sim = sim
+            
+    return best_match
+
+def generate_new_accession(existing_ships: pd.DataFrame) -> str:
+    """Generate a new unique accession number."""
+    # Extract existing accession numbers
+    existing_nums = [
+        int(acc.replace('SBS', '').split('.')[0])
+        for acc in existing_ships['accession_tag']
+        if acc.startswith('SBS')
+    ]
+    
+    # Find next available number
+    if existing_nums:
+        next_num = max(existing_nums) + 1
+    else:
+        next_num = 1
+        
+    return f"SBS{next_num:06d}"
 
 ########################################################
 # classification pipeline
