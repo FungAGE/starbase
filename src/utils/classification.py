@@ -260,7 +260,7 @@ def classify_navis(sequence: str,
 
         # TODO: determine what the output of this function should be
 
-        return navis_assignment
+        return clusters
 
 def classify_haplotype(sequence: str,
                       existing_ships: pd.DataFrame,
@@ -290,4 +290,4 @@ def classify_haplotype(sequence: str,
         # Return haplotype based on existing classifications in that group
 
         # TODO: determine what the output of this function should be
-        return haplotype_assignment
+        return groups
