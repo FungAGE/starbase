@@ -1,7 +1,7 @@
 import tempfile
 import subprocess
 import logging
-from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files
+from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files, extract_gene_from_hmmer
 from src.utils.seq_utils import write_combined_fasta
 from typing import Tuple, Dict, Any
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_all_captains
@@ -95,7 +95,13 @@ def classify_family(sequence, db_list, input_eval=0.001, threads=1):
     # TODO: make sure this parses correctly, or just use a simpler method for grabbing the family assignment from the hmmsearch output
     family_assignment = parse_hmmer(hmmer_results)
 
-    captain_seq = extract_captain_sequence(sequence, hmmer_results)
+    result = extract_gene_from_hmmer(hmmer_results)
+    if not result:
+        return None
+        
+    header, captain_seq = result
+
+    # TODO: determine what the output of this function should be
 
     return family_assignment
 
@@ -128,6 +134,9 @@ def classify_navis(sequence: str,
 
         # Find which cluster contains our sequence
         # Return navis assignment based on existing classifications in that cluster
+
+        # TODO: determine what the output of this function should be
+
         return navis_assignment
 
 def classify_haplotype(sequence: str,
@@ -157,5 +166,6 @@ def classify_haplotype(sequence: str,
         
         # Find which group contains our sequence
         # Return haplotype based on existing classifications in that group
-        return haplotype_assignment
 
+        # TODO: determine what the output of this function should be
+        return haplotype_assignment

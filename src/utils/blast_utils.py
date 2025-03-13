@@ -11,6 +11,8 @@ import pandas as pd
 
 from Bio import SearchIO
 
+from typing import Tuple
+
 from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
 from src.database.blastdb import blast_db_exists, create_dbs
 from src.components.tables import create_ag_grid
@@ -383,39 +385,39 @@ def parse_hmmer(hmmer_output_file):
                     )
     return parsed_file
 
+def extract_gene_from_hmmer(hmmer_results: str) -> Tuple[str, str]:
+    """Extract captain gene sequence from HMMER search results.
+    
+    Args:
+        hmmer_results: Path to HMMER output file
+    
+    Returns:
+        Tuple[str, str]: (header, sequence) of the best captain gene hit
+    """
+    try:
+        # Parse HMMER results
+        data = pd.read_csv(hmmer_results, sep="\t")
+        
+        # Get best hit (lowest e-value) for each query
+        min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
+        min_evalue_rows = min_evalue_rows.reset_index(drop=True)
+        
+        if min_evalue_rows.empty:
+            logger.warning("No captain gene found in sequence")
+            return None
+            
+        # Extract captain sequence from best hit
+        # Remove any '.' characters that HMMER might have inserted
+        header = min_evalue_rows.loc[0, "query_id"]
+        captain_seq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")
+        
+        logger.info(f"Extracted captain sequence of length {len(captain_seq)}")
+        return header, captain_seq
+        
+    except Exception as e:
+        logger.error(f"Error extracting captain sequence: {e}")
+        return None
 
-def extract_gene_from_hmmer(parsed_file):
-    data = pd.read_csv(parsed_file, sep="\t")
-
-    # Get rows with the lowest e-value for each unique entry in Query
-    min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
-    # Reset the index
-    min_evalue_rows = min_evalue_rows.reset_index(drop=True)
-
-    # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".besthit.txt").name
-    # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".best_hsp.fa").name
-    # logger.info(f"Best hit for gene sequence: {top_hit_out_path}")
-
-    query = min_evalue_rows.loc[0, "query_id"]
-    qseq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")
-
-    logger.info(f"Sequence has length {len(qseq)}")
-
-    return query, qseq
-
-    # output = html.Div(
-    #     [
-    #         dbc.Button(
-    #             "Download best captain hit",
-    #             id="subject-seq-button",
-    #             n_clicks=0,
-    #             className="d-grid gap-2 col-6 mx-auto",
-    #             style={"fontSize": "1rem"},
-    #         ),
-    #         dcc.Download(id="subject-seq-dl-package"),
-    #     ]
-    # )
-    # return output
 
 
 def circos_prep(blast_output, links_output, layout_output):
