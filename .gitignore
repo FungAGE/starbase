@@ -161,7 +161,9 @@ cython_debug/
 
 tmp/
 
-.dockerignore
 .vscode/settings.json
 src/database/db/**
 .cache/** */
+
+pytest.ini
+.dockerignore
