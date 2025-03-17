@@ -12,6 +12,7 @@ import base64
 from datetime import date
 import pandas as pd
 import logging
+import subprocess
 
 
 from src.config.cache import cache
@@ -80,6 +81,9 @@ layout = dmc.Container(
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
         
+        dcc.Store(id="timeout-store", data=False),
+        dcc.Interval(id="timeout-interval", interval=300000, n_intervals=0),  # 5 minutes
+        
         dmc.Space(h=20),       
         dmc.Grid(
             children=[
@@ -118,6 +122,7 @@ layout = dmc.Container(
                                             placeholder_text="Drag and drop or click to select a FASTA file"
                                         ),
                                         withBorder=False,
+                                        shadow="sm",
                                         radius="md",
                                         style={"cursor": "pointer"}
                                     ),
@@ -154,6 +159,8 @@ layout = dmc.Container(
                                             variant="gradient",
                                             gradient={"from": "indigo", "to": "cyan"},
                                             size="lg",
+                                            loading=False,
+                                            loaderProps={"variant": "dots", "color": "white"},
                                         ),
                                     ),
                                     dmc.Text(
@@ -166,8 +173,9 @@ layout = dmc.Container(
                             ], gap="md"),
                             p="xl",
                             radius="md",
+                            shadow="sm",
                             withBorder=True,
-                            style={"height": "100%"},  # Make paper fill grid column
+                            style={"height": "100%"},
                         ),
                     ],
                 ),
@@ -176,20 +184,14 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"sm": 12, "lg": 8},
                     children=[
-                        dcc.Loading(
+                        dmc.Stack(
                             children=[
-                                dmc.Stack(
-                                    children=[
-                                        html.Div(id="ship-family"),
-                                        html.Div(id="phylogeny-plot"),
-                                        html.Div(id="blast-table"),
-                                        html.Div(id="blast-download"),
-                                        html.Div(id="subject-seq-button"),
-                                    ],
-                                ),
+                                html.Div(id="ship-family"),
+                                html.Div(id="phylogeny-plot"),
+                                html.Div(id="blast-table"),
+                                html.Div(id="blast-download"),
+                                html.Div(id="subject-seq-button"),
                             ],
-                            type="default",
-                            color="#0066cc",
                         ),
                     ],
                 ),
@@ -242,13 +244,17 @@ def update_fasta_details(seq_content, seq_filename):
     ],
     [
         Input("submit-button", "n_clicks"),
-        Input("blast-fasta-upload", "contents")
+        Input("blast-fasta-upload", "contents"),
+        Input("timeout-interval", "n_intervals")  # Add timeout interval input
     ],
-    State("blast-fasta-upload", "filename"),
+    [
+        State("blast-fasta-upload", "filename"),
+        State("timeout-store", "data")  # Add timeout store state
+    ],
     prevent_initial_call=True
 )
 @handle_callback_error
-def handle_submission_and_upload(n_clicks, contents, filename):
+def handle_submission_and_upload(n_clicks, contents, n_intervals, filename, timeout_triggered):
     triggered_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
     
     # Default return values
@@ -259,6 +265,41 @@ def handle_submission_and_upload(n_clicks, contents, filename):
     alert_style = {"display": "none"}
     error_message = ""
     error_store = None
+    
+    # Handle timeout case
+    if triggered_id == "timeout-interval":
+        # Only show timeout if button was clicked and we're still waiting for results
+        if n_clicks and timeout_triggered and not dash.callback_context.inputs.get("ship-family.children"):
+            limit_alert = dbc.Alert(
+                [
+                    html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                    "The server is taking longer than expected to respond. Please try again later.",
+                ],
+                color="warning",
+                className="d-flex align-items-center",
+            )
+            alert_style = {"display": "block"}
+            button_disabled = True
+            button_text = "Server timeout"
+            return [
+                button_disabled,
+                button_text,
+                limit_info,
+                limit_alert,
+                alert_style,
+                error_message,
+                error_store
+            ]
+        # If button wasn't clicked or results are already shown, don't show timeout
+        return [
+            button_disabled,
+            button_text,
+            limit_info,
+            limit_alert,
+            {"display": "none"},
+            error_message,
+            error_store
+        ]
     
     # Handle file upload
     if triggered_id == "blast-fasta-upload" and contents is not None:
@@ -327,31 +368,26 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         Input("query-text", "value"),
         Input("blast-fasta-upload", "contents"),
     ],
+    running=[
+        (Output("submit-button", "loading"), True, False),
+        (Output("submit-button", "disabled"), True, False),
+    ],
 )
 @handle_callback_error
 def preprocess(n_clicks, query_text_input, query_file_contents):
     if not n_clicks:
         raise PreventUpdate
-
+        
     try:
-        # logger.info(
-        #     f"preprocess called with n_clicks={n_clicks}, query_text_input={query_text_input}, query_file_contents={query_file_contents}"
-        # )
-
+        # Remove timeout wrapper since it uses signals
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
-        logger.info(
-            f"check_input returned input_type={input_type}, query_header={query_header}, query_seq={query_seq}"
-        )
-
+        
         if input_type in ("none", "both"):
-            logger.info("Invalid input type; returning None.")
             return None, None, None
 
         query_type = guess_seq_type(query_seq)
-        logger.info(f"guess_seq_type returned query_type={query_type}")
-
         return query_header, query_seq, query_type
 
     except Exception as e:
@@ -370,46 +406,45 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-seq-store", "data"),
         Input("query-type-store", "data"),
     ],
+    running=[
+        (Output("submit-button", "loading"), True, False),
+        (Output("submit-button", "disabled"), True, False),
+    ],
     prevent_initial_call=True
 )
 @handle_callback_error
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type]):
-        return None, None, None, None
+        return None, None, None
         
     try:
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
-
-        # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
-
+        
+        # Instead of using timeout context manager, we'll rely on subprocess timeout
         try:
             blast_results = run_blast(
                 db_list=BLAST_DB_PATHS,
                 query_type=query_type,
                 query_fasta=tmp_query_fasta,
-                tmp_blast=tmp_blast,
+                tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
                 input_eval=0.01,
                 threads=2,
             )
-            logger.info(f"BLAST results: {blast_results.head()}")
+            
             if blast_results is None:
-                raise ValueError("BLAST returned no results!")
-        except Exception as e:
-            logger.error(f"BLAST error: {str(e)}")
-            raise
+                error_div = html.Div([
+                    dmc.Alert(
+                        title="BLAST Error",
+                        color="red",
+                        children="No BLAST results were returned. Please try again with a different sequence.",
+                    )
+                ])
+                return None, None, error_div
 
-        blast_results_dict = blast_results.to_dict("records")
-
-        # Run HMMER
-        logger.info(f"Running HMMER")
-
-        subject_seq_button = None
-        # subject_seq = None
-
-        try:
+            blast_results_dict = blast_results.to_dict("records")
+            
+            # Run HMMER/Diamond with timeout
             if search_type == "diamond":
                 results_dict = run_diamond(
                     db_list=BLAST_DB_PATHS,
@@ -419,7 +454,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                     query_fasta=tmp_query_fasta,
                     threads=2,
                 )
-            if search_type == "hmmsearch":
+            else:
                 results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
@@ -428,26 +463,29 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                     query_fasta=tmp_query_fasta,
                     threads=2,
                 )
+                
+            return blast_results_dict, results_dict, None
 
-            if results_dict is None or len(results_dict) == 0:
-                logger.error("Diamond/HMMER returned no results!")
-                raise
-        except Exception as e:
-            logger.error(f"Diamond/HMMER error: {str(e)}")
-            raise
-
-        return blast_results_dict, results_dict, subject_seq_button
-
+        except subprocess.TimeoutExpired:
+            error_div = html.Div([
+                dmc.Alert(
+                    title="Operation Timeout",
+                    color="red",
+                    children="The BLAST search took too long to complete. Please try with a shorter sequence or try again later.",
+                )
+            ])
+            return None, None, error_div
+            
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
         error_div = html.Div([
             dmc.Alert(
                 title="Error",
                 color="red",
-                children=str(e)
+                children=f"An error occurred: {str(e)}"
             )
         ])
-        return None, None, error_div, None
+        return None, None, error_div
 
 
 @callback(
@@ -554,8 +592,13 @@ def process_blast_results(blast_results_dict, metadata_dict):
         Output("blast-download", "children"),
         Output("phylogeny-plot", "children")
     ],
-    [Input("processed-blast-store", "data"), Input("captain-results-store", "data")],
+    [Input("processed-blast-store", "data"), 
+     Input("captain-results-store", "data")],
     State("submit-button", "n_clicks"),
+    running=[
+        (Output("submit-button", "loading"), True, False),
+        (Output("submit-button", "disabled"), True, False),
+    ],
     prevent_initial_call=True
 )
 @handle_callback_error
@@ -620,7 +663,7 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
                         )
                     ],
                     always_open=False,
-                    active_item="phylogeny",
+                    active_item=None,
                     id="phylogeny-accordion"
                 )
             ])
@@ -630,8 +673,32 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
             phylogeny_plot = html.Div(create_error_alert("Could not create phylogeny plot"))
         
         try:
-            table = blast_table(blast_df)
+            blast_table_content = blast_table(blast_df)
             download_button = blast_download_button()
+            
+            # Wrap table and download button in accordion
+            table = html.Div([
+                dbc.Accordion(
+                    children=[
+                        dbc.AccordionItem(
+                            children=[
+                                blast_table_content,
+                                html.Div(
+                                    download_button,
+                                    style={"margin-top": "1rem"}
+                                )
+                            ],
+                            title="BLAST Results",
+                            item_id="blast-results",
+                        )
+                    ],
+                    always_open=False,
+                    id="blast-accordion"
+                )
+            ])
+            # Set download_button to None since it's now included in the table accordion
+            download_button = None
+            
         except Exception as e:
             logger.error(f"Error creating BLAST table: {e}")
             table = html.Div(create_error_alert("Could not create results table"))
@@ -687,3 +754,13 @@ toggle_modal = create_modal_callback(
     "blast-modal-content",
     "blast-modal-title"
 )
+
+@callback(
+    Output("timeout-store", "data"),
+    [Input("timeout-interval", "n_intervals")],
+    [State("submit-button", "n_clicks")]
+)
+def check_timeout(n_intervals, n_clicks):
+    if n_clicks and n_intervals > 0:
+        return True
+    return False
