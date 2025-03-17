@@ -76,6 +76,10 @@ def assign_accession(sequence: str,
 
 def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
+    
+    # ! hashing will fail if sequence is None
+    # TODO: handle these errors gracefully
+    
     sequence_hash = hashlib.md5(sequence.encode()).hexdigest()
     
     # Calculate hashes for existing sequences
