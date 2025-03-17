@@ -54,49 +54,71 @@ def assign_accession(sequence: str,
     if existing_ships is None:
         existing_ships = fetch_ships(curated=True)
     
-    # Step 1: Check for exact matches using MD5 hash
+    logger.info(f"Starting accession assignment process")
+    
+    logger.info("Step 1: Checking for exact matches using MD5 hash...")
     exact_match = check_exact_match(sequence, existing_ships)
     if exact_match:
+        logger.info(f"Found exact match: {exact_match}")
         return exact_match, False
         
-    # Step 2: Check if sequence is contained within existing sequence
+    logger.info("Step 2: Checking for contained matches...")
     container_match = check_contained_match(sequence, existing_ships)
     if container_match:
+        logger.info(f"Found containing match: {container_match}")
         return container_match, True  # Flag for review since it's truncated
         
-    # Step 3: Check for highly similar sequences
+    logger.info(f"Step 3: Checking for similar matches (threshold={threshold})...")
     similar_match = check_similar_match(sequence, existing_ships, threshold)
     if similar_match:
+        logger.info(f"Found similar match: {similar_match}")
         return similar_match, True  # Flag for review due to high similarity
         
-    # Step 4: If no matches, assign new accession
+    logger.info("No matches found, generating new accession...")
     new_accession = generate_new_accession(existing_ships)
+    logger.info(f"Generated new accession: {new_accession}")
     return new_accession, False
-
 
 def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
-    
-    # ! hashing will fail if sequence is None
-    # TODO: handle these errors gracefully
-    
     sequence_hash = hashlib.md5(sequence.encode()).hexdigest()
+    logger.debug(f"Query sequence hash: {sequence_hash}")
     
-    # Calculate hashes for existing sequences
-    existing_hashes = {
-        hashlib.md5(seq.encode()).hexdigest(): acc 
-        for acc, seq in zip(existing_ships['accession_tag'], existing_ships['sequence'])
-    }
+    # Calculate hashes for existing sequences, skipping None values
+    existing_hashes = {}
+    skipped_count = 0
+    for acc, seq in zip(existing_ships['accession_tag'], existing_ships['sequence']):
+        if seq is None:
+            skipped_count += 1
+            logger.warning(f"Skipping null sequence for accession {acc}")
+            continue
+        existing_hashes[hashlib.md5(seq.encode()).hexdigest()] = acc
     
-    return existing_hashes.get(sequence_hash)
+    if skipped_count > 0:
+        logger.warning(f"Skipped {skipped_count} sequences due to null values")
+    
+    logger.info(f"Compared against {len(existing_hashes)} valid sequences")
+    match = existing_hashes.get(sequence_hash)
+    if match:
+        logger.info(f"Found exact hash match: {match}")
+    return match
 
 def check_contained_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence is contained within any existing sequences.
     Returns accession of the longest containing sequence."""
     containing_matches = []
+    processed_count = 0
     
     for _, row in existing_ships.iterrows():
+        processed_count += 1
+        if processed_count % 1 == 0:
+            logger.debug(f"Processed {processed_count}/{len(existing_ships)} sequences")
+            
+        if row['sequence'] is None:
+            continue
+            
         if sequence in row['sequence']:
+            logger.info(f"Found containing match: {row['accession_tag']} (length: {len(row['sequence'])})")
             containing_matches.append((
                 len(row['sequence']),  # length for sorting
                 row['accession_tag']
@@ -105,21 +127,30 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame) -> Option
     # Sort by length descending and return longest match if any
     if containing_matches:
         containing_matches.sort(reverse=True)  # Sort by length descending
+        logger.info(f"Found {len(containing_matches)} containing matches")
+        logger.info(f"Selected longest match: {containing_matches[0][1]} (length: {containing_matches[0][0]})")
         return containing_matches[0][1]  # Return accession of longest match
         
+    logger.info("No containing matches found")
     return None
 
 def check_similar_match(sequence: str, 
                        existing_ships: pd.DataFrame,
                        threshold: float) -> Optional[str]:
     """Check for sequences with similarity above threshold using k-mer comparison."""
+    logger.info(f"Starting similarity comparison (threshold={threshold})")
+
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+
     # Create temporary FASTA with new and existing sequences
     tmp_fasta = write_combined_fasta(
         sequence,
         existing_ships,
+        fasta_path=tmp_fasta,
         sequence_col='sequence',
         id_col='accession_tag'
     )
+    logger.debug(f"Created temporary FASTA file: {tmp_fasta}")
     
     # Calculate similarities
     similarities = calculate_similarities(
@@ -140,12 +171,18 @@ def check_similar_match(sequence: str,
     #         best_sim = sim
             
     # return best_match
+    logger.debug(f"Calculated similarities for {len(similarities)} sequences")
+
 
     # Check if we have any similarities above threshold
     if 'query_sequence' in similarities:
         for acc_id, sim in similarities['query_sequence'].items():
+            logger.debug(f"Similarity to {acc_id}: {sim}")
             if sim >= threshold:
+                logger.info(f"Found similar match: {acc_id} (similarity: {sim})")
                 return acc_id
+                
+    logger.info("No similar matches found above threshold")
     return None
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
@@ -157,11 +194,16 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
         if acc.startswith('SBS')
     ]
     
+    # Check if we have existing accessions
+    if not existing_nums:
+        error_msg = "Problem with loading existing ships. No existing SBS accessions found in database."
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
     # Find next available number
-    if existing_nums:
-        next_num = max(existing_nums) + 1
-    else:
-        next_num = 1
+    next_num = max(existing_nums) + 1
+    logger.info(f"Last used accession number: SBS{max(existing_nums):06d}")
+    logger.info(f"Assigning new accession number: SBS{next_num:06d}")
         
     return f"SBS{next_num:06d}"
 
@@ -240,31 +282,31 @@ def classify_navis(sequence: str,
     # Create temporary FASTA with:
     # - Captain sequence from new sequence
     # - All existing classified captain sequences
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as tmp_fasta:
-        write_combined_fasta(tmp_fasta.name, sequence, existing_captains)
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    write_combined_fasta(sequence, existing_captains, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
         
         # Run mmseqs clustering
-        clusters = mmseqs_easy_cluster(
-            tmp_fasta.name,
-            min_seq_id=0.5,
-            coverage=0.25,
-            threads=threads
-        )
+    clusters = mmseqs_easy_cluster(
+        tmp_fasta,
+        min_seq_id=0.5,
+        coverage=0.25,
+        threads=threads
+    )
         
-        # clusters will be a dict like:
-        # {
-        #    'seq1': 'cluster1_rep',
-        #    'seq2': 'cluster1_rep',
-        #    'seq3': 'cluster2_rep',
-        #    ...
-        # }
+    # clusters will be a dict like:
+    # {
+    #    'seq1': 'cluster1_rep',
+    #    'seq2': 'cluster1_rep',
+    #    'seq3': 'cluster2_rep',
+    #    ...
+    # }
 
-        # Find which cluster contains our sequence
-        # Return navis assignment based on existing classifications in that cluster
+    # Find which cluster contains our sequence
+    # Return navis assignment based on existing classifications in that cluster
 
-        # TODO: determine what the output of this function should be
+    # TODO: determine what the output of this function should be
 
-        return clusters
+    return clusters
 
 def classify_haplotype(sequence: str,
                       existing_ships: pd.DataFrame,
@@ -273,25 +315,25 @@ def classify_haplotype(sequence: str,
     # Create temporary FASTA with:
     # - New sequence
     # - All existing classified sequences
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as tmp_fasta:
-        write_combined_fasta(tmp_fasta.name, sequence, existing_ships)
+    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    write_combined_fasta(sequence, existing_ships, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
         
         # Calculate similarities
-        similarities = calculate_similarities(
-            tmp_fasta.name,
-            seq_type='nucl'
-        )
+    similarities = calculate_similarities(
+        tmp_fasta,
+        seq_type='nucl'
+    )
         
-        # Cluster sequences
-        groups, _, _ = cluster_sequences(
-            similarities,
-            group_prefix="HAP",
-            inflation=1.5,
-            threshold=0.05
-        )
-        
-        # Find which group contains our sequence
-        # Return haplotype based on existing classifications in that group
+    # Cluster sequences
+    groups, _, _ = cluster_sequences(
+        similarities,
+        group_prefix="HAP",
+        inflation=1.5,
+        threshold=0.05
+    )
+    
+    # Find which group contains our sequence
+    # Return haplotype based on existing classifications in that group
 
-        # TODO: determine what the output of this function should be
-        return groups
+    # TODO: determine what the output of this function should be
+    return groups

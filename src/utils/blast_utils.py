@@ -994,6 +994,40 @@ def parse_mmseqs_results(cluster_file):
         logger.error(f"Error parsing MMseqs2 results: {str(e)}")
         raise
 
+def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled):
+    sketch_cmd = [
+        "sourmash", "sketch",
+        "--singleton",
+        "--output", sig_file,
+        "-p", f"k={kmer_size},scaled={scaled},noabund",
+        sequence_file
+    ]
+    
+    logger.info(f"Creating sourmash signatures: {' '.join(sketch_cmd)}")
+    try:
+        subprocess.run(sketch_cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Sourmash sketch failed: {e.stderr}")
+        raise
+
+def sourmash_compare(ship_sketch, new_sketch, matrix_file, kmer_size, sketch_type='dna'):
+    compare_cmd = [
+        "sourmash", "compare",
+        ship_sketch,
+        new_sketch,
+        f"--{sketch_type}",  # dna or protein
+        "--csv", matrix_file,
+        "-k", str(kmer_size)
+    ]
+    
+    logger.info(f"Calculating pairwise similarities: {' '.join(compare_cmd)}")
+    try:
+        subprocess.run(compare_cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Sourmash compare failed: {e.stderr}")
+        raise
+
+
 def calculate_similarities(sequence_file, seq_type='nucl', threads=1):
     """Calculate k-mer similarity between sequences using sourmash.
     
@@ -1007,51 +1041,28 @@ def calculate_similarities(sequence_file, seq_type='nucl', threads=1):
     """
     # Set sourmash parameters based on sequence type
     if seq_type == 'nucl':
-        kmer_size = 510  # Default from original Perl script
+        kmer_size = 510  # Default from starfish sig
         scaled = 100
-        sketch_cmd = 'dna'
+        sketch_type = 'dna'
     elif seq_type == 'prot':
         kmer_size = 17
         scaled = 20
-        sketch_cmd = 'protein'
+        sketch_type = 'protein'
     else:
         raise ValueError(f"Invalid sequence type: {seq_type}")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
+        # 0. create sketch of ships
+        ship_sketch_file = os.path.join(tmp_dir, "ships.sig")
+        sourmash_sketch(ships, ship_sketch_file, kmer_size, scaled)
+
         # 1. Create signature file
         sig_file = os.path.join(tmp_dir, "sequences.sig")
-        sketch_cmd = [
-            "sourmash", "sketch",
-            sketch_cmd,
-            "--singleton",
-            "--output", sig_file,
-            "-p", f"k={kmer_size},scaled={scaled},noabund",
-            sequence_file
-        ]
-        
-        logger.info(f"Creating sourmash signatures: {' '.join(sketch_cmd)}")
-        try:
-            subprocess.run(sketch_cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Sourmash sketch failed: {e.stderr}")
-            raise
+        sourmash_sketch(sequence_file, sig_file, kmer_size, scaled)
 
         # 2. Calculate pairwise similarities
         matrix_file = os.path.join(tmp_dir, "similarity.csv")
-        compare_cmd = [
-            "sourmash", "compare",
-            f"--{sketch_cmd}",  # dna or protein
-            "--csv", matrix_file,
-            "-k", str(kmer_size),
-            sig_file
-        ]
-        
-        logger.info(f"Calculating pairwise similarities: {' '.join(compare_cmd)}")
-        try:
-            subprocess.run(compare_cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Sourmash compare failed: {e.stderr}")
-            raise
+        sourmash_compare(ship_sketch_file, sig_file, matrix_file, kmer_size, sketch_type)
 
         # 3. Parse similarity matrix
         return parse_similarity_matrix(matrix_file)

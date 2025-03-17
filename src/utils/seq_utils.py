@@ -473,8 +473,24 @@ def write_fasta(sequences, fasta_path):
             fasta_file.write(f">{name}\n{sequence}\n")
 
 
+def write_multi_fasta(sequences, fasta_path, sequence_col, id_col):
+    records = []
+    for idx, row in sequences.iterrows():
+        name = row[id_col] if id_col else str(idx)
+        sequence = row[sequence_col]
+        records.append(SeqRecord(
+            Seq(sequence),
+            id=str(name),  # ensure ID is string
+            description=""
+        ))
+
+    # Write to temporary file
+    SeqIO.write(records, fasta_path, "fasta")
+    logger.debug(f"Combined FASTA file written: {fasta_path}")
+
 def write_combined_fasta(new_sequence: str, 
                         existing_sequences: pd.DataFrame,
+                        fasta_path: str,
                         sequence_col: str = "sequence",
                         id_col: str = None) -> str:
     """Write a temporary FASTA file combining new sequence with existing sequences.
@@ -497,21 +513,8 @@ def write_combined_fasta(new_sequence: str,
             description=""
         ))
         
-        for idx, row in existing_sequences.iterrows():
-            name = row[id_col] if id_col else str(idx)
-            sequence = row[sequence_col]
-            records.append(SeqRecord(
-                Seq(sequence),
-                id=str(name),  # ensure ID is string
-                description=""
-            ))
+        write_multi_fasta(existing_sequences, fasta_path,sequence_col, id_col)
         
-        # Write to temporary file
-        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        SeqIO.write(records, tmp_fasta, "fasta")
-        logger.debug(f"Combined FASTA file written: {tmp_fasta}")
-        
-        return tmp_fasta
         
     except Exception as e:
         logger.error(f"Error writing combined FASTA: {e}")
