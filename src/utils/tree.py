@@ -134,12 +134,11 @@ def draw_clade(
     x_curr = x_coords[clade]
     y_curr = y_coords[clade]
 
-    # Determine the line color based on whether the clade is a tip
-    # metadata["color"] = metadata["familyName"].map(rgb_colors)
+    # All lines and tips will be black
+    line_color = "rgb(25,25,25)"
 
+    # Add a dot at the tip if it's a terminal node
     if clade.name in metadata["tip"].values:
-        line_color = metadata.loc[metadata["tip"] == clade.name, "color"].values[0]
-        # Add a dot at the tip
         tip_dot = dict(
             x=x_curr,
             y=y_curr,
@@ -148,8 +147,6 @@ def draw_clade(
             name=clade.name,
         )
         tip_dots.append(tip_dot)
-    else:
-        line_color = "rgb(25,25,25)"
 
     # Draw a horizontal line from start to here
     branch_line = get_clade_lines(
@@ -374,10 +371,8 @@ def plot_tree(highlight_families=None, tips=None):
         y_coords=y_coords,
     )
 
-    if highlight_families is not None and highlight_families == "all":
-        highlights = default_highlight_families
-    else:
-        highlights = [highlight_families]
+    # Always show rectangles and tooltips for all families
+    highlights = default_highlight_families
     for highlight in highlights:
         rectangle, scatter, text_label = superfam_highlight(
             metadata,
@@ -387,7 +382,9 @@ def plot_tree(highlight_families=None, tips=None):
         )
         line_shapes.append(rectangle)
         centroids.append(scatter)
-        text_labels.append(text_label)
+        # Only add text labels if highlight_families is specified
+        if highlight_families is not None and (highlight_families == "all" or highlight == highlight_families):
+            text_labels.append(text_label)
 
     if tips:
         for tip in tips:
