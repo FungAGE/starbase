@@ -994,9 +994,10 @@ def parse_mmseqs_results(cluster_file):
         logger.error(f"Error parsing MMseqs2 results: {str(e)}")
         raise
 
-def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled):
+def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled, sketch_type='dna'):
     sketch_cmd = [
         "sourmash", "sketch",
+        f"{sketch_type}",
         "--singleton",
         "--output", sig_file,
         "-p", f"k={kmer_size},scaled={scaled},noabund",
@@ -1028,7 +1029,7 @@ def sourmash_compare(ship_sketch, new_sketch, matrix_file, kmer_size, sketch_typ
         raise
 
 
-def calculate_similarities(sequence_file, seq_type='nucl', threads=1):
+def calculate_similarities(ship_sequence_file, new_sequence_file, seq_type='nucl', threads=1):
     """Calculate k-mer similarity between sequences using sourmash.
     
     Args:
@@ -1054,11 +1055,11 @@ def calculate_similarities(sequence_file, seq_type='nucl', threads=1):
     with tempfile.TemporaryDirectory() as tmp_dir:
         # 0. create sketch of ships
         ship_sketch_file = os.path.join(tmp_dir, "ships.sig")
-        sourmash_sketch(ships, ship_sketch_file, kmer_size, scaled)
+        sourmash_sketch(ship_sequence_file, ship_sketch_file, kmer_size, scaled, sketch_type)
 
         # 1. Create signature file
         sig_file = os.path.join(tmp_dir, "sequences.sig")
-        sourmash_sketch(sequence_file, sig_file, kmer_size, scaled)
+        sourmash_sketch(new_sequence_file, sig_file, kmer_size, scaled, sketch_type)
 
         # 2. Calculate pairwise similarities
         matrix_file = os.path.join(tmp_dir, "similarity.csv")

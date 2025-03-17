@@ -2,7 +2,7 @@ import tempfile
 import subprocess
 import logging
 from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files, extract_gene_from_hmmer
-from src.utils.seq_utils import write_combined_fasta
+from src.utils.seq_utils import write_combined_fasta, write_multi_fasta
 from typing import Optional, Tuple, Dict, Any
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_all_captains
 import pandas as pd
@@ -140,10 +140,13 @@ def check_similar_match(sequence: str,
     """Check for sequences with similarity above threshold using k-mer comparison."""
     logger.info(f"Starting similarity comparison (threshold={threshold})")
 
+    tmp_fasta_all_ships = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    write_multi_fasta(existing_ships, tmp_fasta_all_ships, sequence_col='sequence', id_col='accession_tag')
+
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
 
     # Create temporary FASTA with new and existing sequences
-    tmp_fasta = write_combined_fasta(
+    write_combined_fasta(
         sequence,
         existing_ships,
         fasta_path=tmp_fasta,
@@ -155,6 +158,7 @@ def check_similar_match(sequence: str,
     # Calculate similarities
     similarities = calculate_similarities(
         tmp_fasta,
+        tmp_fasta_all_ships,
         seq_type='nucl'
     )
     
