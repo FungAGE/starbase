@@ -1,9 +1,9 @@
 # coding: utf-8
-from sqlalchemy import Column, Float, ForeignKey, Integer, Numeric, String, Table, Text
+from sqlalchemy import Column, Float, ForeignKey, Integer, Numeric, String, Table, Text, Boolean, DateTime
 from sqlalchemy.sql.sqltypes import NullType
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-
+import datetime
 Base = declarative_base()
 metadata = Base.metadata
 
@@ -225,3 +225,25 @@ t_navis_haplotype = Table(
     Column("starship_haplotype", Text),
     Column("ship_family_id", Integer, ForeignKey("family_names.id")),
 )
+
+class Submission(Base):
+    __tablename__ = "submissions"
+
+    id = Column(Integer, primary_key=True)
+    seq_contents = Column(Text)
+    seq_filename = Column(String)
+    seq_date = Column(String)
+    anno_contents = Column(Text, nullable=True)
+    anno_filename = Column(String, nullable=True)
+    anno_date = Column(String, nullable=True)
+    uploader = Column(String)
+    evidence = Column(Text)
+    genus = Column(String)
+    species = Column(String)
+    hostchr = Column(String)
+    shipstart = Column(Integer)
+    shipend = Column(Integer)
+    shipstrand = Column(String)
+    comment = Column(Text, nullable=True)
+    accession_tag = Column(String, nullable=True)
+    needs_review = Column(Boolean, default=True)

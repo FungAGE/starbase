@@ -1,29 +1,69 @@
 import pytest
-from models import Accession, Captain
-from src.config.database import StarbaseSession
+from datetime import datetime
+from models import Submission
+from src.config.database import SubmissionsSession
+import os
 
-def test_create_new_accession():
-    """Test creating and saving a new accession record"""
+def test_create_new_submission():
+    """Test creating and saving a new submission record"""
+    # Create a session from the sessionmaker
+    session = SubmissionsSession()
+    
     try:
-        # Create a new accession record
-        new_accession = Accession(
-            ship_name="Enterprise",
-            accession="123456",
-            accession_tag="SBS123456",
-            accession_new=1,
+        # Load test sequence from file
+        test_data_path = "/home/adrian/Downloads/Hephaestus_all.fasta.split/Hephaestus_all.part_Aspfis_NFIA_048490.fasta"
+        sequence_filename = os.path.basename(test_data_path)
+        # test_data_path = os.path.join(os.path.dirname(__file__), "test_data", "test_sequence.fasta")
+        with open(test_data_path, "r") as f:
+            sequence_content = f.read()
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        # Create a new submission record
+        new_submission = Submission(
+            seq_contents=sequence_content,
+            seq_filename=sequence_filename,
+            seq_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            uploader="adrian",
+            evidence="manual",
+            genus="Aspergillus",
+            species="fischeri",
+            hostchr="unknown",
+            shipstart=1,
+            shipend=36857,
+            shipstrand="+",
+            comment="Test submission",
+            needs_review=True,
         )
 
-        # Add and commit the new accession to the database
-        StarbaseSession.add(new_accession)
-        StarbaseSession.commit()
+        # Add and commit the new submission to the database
+        session.add(new_submission)
+        session.commit()
 
-        # Verify the accession was created
-        saved_accession = StarbaseSession.query(Accession).filter_by(accession="123456").first()
-        assert saved_accession is not None
-        assert saved_accession.ship_name == "Enterprise"
-        assert saved_accession.accession_tag == "SBS123456"
+        # Verify the submission was created
+        saved_submission = (
+            session.query(Submission)
+            .filter_by(seq_filename=sequence_filename)
+            .first()
+        )
+        
+        assert saved_submission is not None
+        assert saved_submission.seq_contents == sequence_content
+        assert saved_submission.seq_filename == sequence_filename
+        # Just verify the date matches today
+        assert saved_submission.seq_date.split()[0] == today
+        assert saved_submission.uploader == "adrian"
+        assert saved_submission.evidence == "manual"
+        assert saved_submission.genus == "Aspergillus"
+        assert saved_submission.species == "fischeri"
+        assert saved_submission.hostchr == "unknown"
+        assert saved_submission.shipstart == 1
+        assert saved_submission.shipend == 36857
+        assert saved_submission.shipstrand == "+"
+        assert saved_submission.comment == "Test submission"
+        assert saved_submission.needs_review is True
 
     finally:
-        # Cleanup
-        StarbaseSession.rollback()
-        StarbaseSession.close()
+        # Cleanup - roll back the transaction and close the session
+        session.rollback()
+        session.close()

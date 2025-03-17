@@ -282,7 +282,7 @@ def insert_submission(
                     :seq_contents, :seq_filename, :seq_date, :anno_contents, 
                     :anno_filename, :anno_date, :uploader, :evidence, 
                     :genus, :species, :hostchr, :shipstart, :shipend, 
-                    :shipstrand, :comment, :accession, :needs_review
+                    :shipstrand, :comment, :accession_tag, :needs_review
                 )
             """
             session.execute(
@@ -303,7 +303,7 @@ def insert_submission(
                     "shipend": shipend,
                     "shipstrand": shipstrand,
                     "comment": comment,
-                    "accession": accession,
+                    "accession_tag": accession,
                     "needs_review": needs_review,
                 },
             )
