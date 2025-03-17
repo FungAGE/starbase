@@ -175,7 +175,7 @@ layout = dmc.Container(
                             radius="md",
                             shadow="sm",
                             withBorder=True,
-                            style={"height": "100%"},
+                            # style={"height": "100%"},
                         ),
                     ],
                 ),
