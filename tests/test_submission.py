@@ -1,8 +1,10 @@
 import pytest
 from datetime import datetime
 from models import Submission
-from src.config.database import SubmissionsSession
+from src.config.database import StarbaseSession, SubmissionsSession
 import os
+from src.utils.classification import assign_accession
+from src.database.sql_manager import fetch_ships
 
 def test_create_new_submission():
     """Test creating and saving a new submission record"""
@@ -16,6 +18,15 @@ def test_create_new_submission():
         # test_data_path = os.path.join(os.path.dirname(__file__), "test_data", "test_sequence.fasta")
         with open(test_data_path, "r") as f:
             sequence_content = f.read()
+
+        # Create mock existing ships data for testing accession assignment
+        existing_ships = fetch_ships(curated=True)
+
+        # Get accession and review status
+        accession, needs_review = assign_accession(sequence_content, existing_ships)
+        
+        assert accession.startswith('SBS')
+        assert needs_review is True
 
         today = datetime.now().strftime("%Y-%m-%d")
         
