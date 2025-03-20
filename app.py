@@ -108,8 +108,9 @@ limiter = Limiter(
 def initialize_app():
     """Initialize all app components."""
     with server.app_context():
-        # init_databases()
-        
+        from src.database.migrations import create_database_indexes
+        create_database_indexes()
+                
         cache.init_app(server)
         cleanup_old_cache()
                 
