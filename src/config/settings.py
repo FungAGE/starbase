@@ -72,4 +72,4 @@ MAINTENANCE_TOKEN = os.environ.get('MAINTENANCE_TOKEN')
 
 # Cache settings
 CACHE_TIMEOUT = None if os.getenv('CACHE_TIMEOUT') is None else int(os.getenv('CACHE_TIMEOUT'))
-CACHE_DIR = os.getenv('CACHE_DIR', '/tmp/starbase_cache')
+CACHE_DIR = os.path.join(DATA_DIR, 'cache')
