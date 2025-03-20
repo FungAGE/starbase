@@ -108,8 +108,9 @@ limiter = Limiter(
 def initialize_app():
     """Initialize all app components."""
     with server.app_context():
-        # init_databases()
-        
+        from src.database.migrations import create_database_indexes
+        create_database_indexes()
+                
         cache.init_app(server)
         cleanup_old_cache()
                 
@@ -312,26 +313,6 @@ engines = {
         pool_recycle=1800
     ) for name, url in DATABASE_URLS.items()
 }
-
-# Global error handlers
-@server.errorhandler(500)
-def handle_500(e):
-    logger.error(f"Internal server error: {str(e)}")
-    return dmc.Alert(
-        title="Server Error",
-        children="An error occurred. Please try again later.",
-        color="red",
-        variant="filled"
-    ), 500
-
-@server.errorhandler(404)
-def handle_404(e):
-    return dmc.Alert(
-        title="Not Found",
-        children="The requested resource was not found.",
-        color="yellow",
-        variant="filled"
-    ), 404
 
 if __name__ == "__main__":
     app.run_server(debug=False)
