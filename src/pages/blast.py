@@ -758,9 +758,19 @@ toggle_modal = create_modal_callback(
 @callback(
     Output("timeout-store", "data"),
     [Input("timeout-interval", "n_intervals")],
-    [State("submit-button", "n_clicks")]
+    [
+        State("submit-button", "n_clicks"),
+        State("blast-table", "children"),
+        State("ship-family", "children"),
+        State("subject-seq-button", "children"),
+    ]
 )
-def check_timeout(n_intervals, n_clicks):
+def check_timeout(n_intervals, n_clicks, table_content, family_content, error_content):
     if n_clicks and n_intervals > 0:
-        return True
+        has_output = any([
+            table_content is not None,
+            family_content is not None,
+            error_content is not None
+        ])
+        return not has_output
     return False
