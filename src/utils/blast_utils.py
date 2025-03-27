@@ -584,7 +584,7 @@ def blast_table(ship_blast_results):
             return html.Div("No results to display")
             
         # Column checks...
-        required_cols = ["sseqid", "pident", "length", "evalue", "bitscore"]
+        required_cols = ["sseqid","sstart", "send", "length","pident", "evalue", "bitscore"]
         missing_cols = [col for col in required_cols if col not in ship_blast_results.columns]
         if missing_cols:
             logger.error(f"Missing required columns: {missing_cols}")
@@ -595,20 +595,24 @@ def blast_table(ship_blast_results):
                 "field": "accession_tag",
                 "headerName": "Accession",
                 "flex": 1,
-                "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
-                "tooltipField": "accession_tag"
+                "cellStyle": {"cursor": "pointer", "color": "#1976d2"}
             },
             {
                 "field": "familyName",
                 "headerName": "Starship Family",
-                "flex": 1,
-                "tooltipField": "familyName"
+                "flex": 1
             },
             {
-                "field": "pident",
-                "headerName": "Percent Identity",
+                "field": "sstart",
+                "headerName": "Start",
                 "flex": 1,
-                "valueFormatter": {"function": "value.toFixed(2)"},
+                "type": "numericColumn",
+                "filter": "agNumberColumnFilter"
+            },
+            {
+                "field": "send",
+                "headerName": "End",
+                "flex": 1,
                 "type": "numericColumn",
                 "filter": "agNumberColumnFilter"
             },
@@ -616,6 +620,14 @@ def blast_table(ship_blast_results):
                 "field": "length",
                 "headerName": "Hit Length",
                 "flex": 1,
+                "type": "numericColumn",
+                "filter": "agNumberColumnFilter"
+            },
+            {
+                "field": "pident",
+                "headerName": "Percent Identity",
+                "flex": 1,
+                "valueFormatter": {"function": "value.toFixed(2)"},
                 "type": "numericColumn",
                 "filter": "agNumberColumnFilter"
             },
@@ -649,7 +661,7 @@ def blast_table(ship_blast_results):
                 style={
                     "height": "400px",
                     "width": "100%",
-                    "overflow": "auto",  # Changed from 'hidden' to 'auto'
+                    "overflow": "auto",
                     "position": "relative"
                 }
             ),
