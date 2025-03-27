@@ -38,8 +38,8 @@ def fetch_meta_data(curated=False):
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
-           j.elementBegin, j.elementEnd, t.`order`, t.family, t.genus, t.species, 
-           g.version, g.genomeSource, g.citation, a.accession_tag, g.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
+           j.elementBegin, j.elementEnd, t.`order`, t.family, j.genus, j.species, 
+           g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
