@@ -252,24 +252,18 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             "-out", str(tmp_blast),
             "-evalue", str(input_eval),
             "-num_threads", str(threads),
-            "-max_target_seqs", "100",
+            "-max_target_seqs", "10",
             "-max_hsps", "1",
-            "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+            "-outfmt", "0"  # Changed to default BLAST output format
         ]
         
-        subprocess.run(blast_cmd, check=True, timeout=300)  # Add 5-minute timeout
+        subprocess.run(blast_cmd, check=True, timeout=300)
         
-        blast_results = pd.read_csv(
-            tmp_blast,
-            sep="\t",
-            names=[
-                "qseqid", "sseqid", "pident", "length", "mismatch",
-                "gapopen", "qstart", "qend", "sstart", "send",
-                "evalue", "bitscore", "qseq", "sseq"
-            ]
-        )
+        # Read the BLAST output as text
+        with open(tmp_blast, 'r') as f:
+            blast_text = f.read()
         
-        return blast_results
+        return blast_text  # Return the raw BLAST text output
 
     except subprocess.TimeoutExpired:
         logger.error("BLAST search timed out after 5 minutes")

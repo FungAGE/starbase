@@ -2,14 +2,13 @@ import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
-from dash import dcc, html, callback
+from dash import dcc, html, callback, clientside_callback, ClientsideFunction
+
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 
-import io
 import tempfile
 import base64
-from datetime import date
 import pandas as pd
 import logging
 import subprocess
@@ -26,14 +25,13 @@ from src.utils.blast_utils import (
     run_blast,
     run_hmmer,
     run_diamond,
-    blast_table,
     make_captain_alert,
     process_captain_results,
     create_no_matches_alert,
     blast_download_button,
 )
 
-from src.components.callbacks import curated_switch, create_modal_callback, create_file_upload
+from src.components.callbacks import curated_switch, create_file_upload
 from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit_decorator
@@ -44,6 +42,76 @@ dash.register_page(__name__)
 
 logger = logging.getLogger(__name__)
 
+# Custom HTML template that properly initializes the JS environment
+index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <script type="text/javascript">
+            // Setup require function for BlasterJS
+            function require(module) {
+                if (module === "biojs-vis-blasterjs") {
+                    return window.blasterjs;
+                }
+                if (module === "js-class") {
+                    return window.Class;
+                }
+                if (module === "js-extend") {
+                    return window.extend;
+                }
+            }
+        </script>
+        <script src="/assets/js/html2canvas.min.js"></script>
+        <script src="/assets/js/blaster.min.woaln.js"></script>
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
+# Create the asset directory and clientside.js file
+with open('assets/js/clientside.js', 'w') as f:
+    f.write('''
+window.dash_clientside = Object.assign({}, window.dash_clientside, {
+    clientside: {
+        initBlaster: function(data) {
+            if (data && data.blast_text) {
+                try {
+                    // Clear existing content
+                    document.getElementById('blast-multiple-alignments').innerHTML = '';
+                    document.getElementById('blast-alignments-table').innerHTML = '';
+                    // document.getElementById('blast-single-alignment').innerHTML = '';
+                    
+                    // Initialize BlasterJS
+                    var blasterjs = require("biojs-vis-blasterjs");
+                    var instance = new blasterjs({
+                        string: data.blast_text,
+                        multipleAlignments: "blast-multiple-alignments",
+                        alignmentsTable: "blast-alignments-table"
+                        // singleAlignment: "blast-single-alignment"
+                    });
+                    
+                    return window.dash_clientside.no_update;
+                } catch (error) {
+                    console.error('Error initializing BlasterJS:', error);
+                    return error.toString();
+                }
+            }
+            return window.dash_clientside.no_update;
+        }
+    }
+});
+''')
 
 def blast_family_button(family):
     return dbc.Button(
@@ -52,20 +120,6 @@ def blast_family_button(family):
         href=f"/wiki?page={family}",
         external_link=False,
     )
-
-
-modal = dmc.Modal(
-    id="blast-modal",
-    opened=False,
-    centered=True,
-    overlayProps={"blur": 3},
-    size="lg",
-    children=[
-        dmc.Title(id="blast-modal-title", order=3),
-        dmc.Space(h="md"),
-        html.Div(id="blast-modal-content"),
-    ],
-)
 
 
 layout = dmc.Container(
@@ -138,15 +192,6 @@ layout = dmc.Container(
                                         text="Only search curated Starships",
                                         size="sm"
                                     ),
-                                    dmc.Text(
-                                        id="rate-limit-info",
-                                        size="sm",
-                                        c="dimmed",
-                                    ),
-                                    html.Div(
-                                        id="rate-limit-alert",
-                                        style={"display": "none"}
-                                    ),
                                 ], gap="xs"),
                                 
                                 # Submit Section
@@ -161,12 +206,6 @@ layout = dmc.Container(
                                             loading=False,
                                             loaderProps={"variant": "dots", "color": "white"},
                                         ),
-                                    ),
-                                    dmc.Text(
-                                        id="rate-limit-info",
-                                        size="sm",
-                                        c="dimmed",
-                                        # align="center",
                                     ),
                                 ], gap="xs"),                                
                             ], gap="md"),
@@ -187,7 +226,10 @@ layout = dmc.Container(
                             children=[
                                 html.Div(id="ship-family"),
                                 html.Div(id="phylogeny-plot"),
-                                html.Div(id="blast-table"),
+                                html.Div([
+                                    html.Div(id='blast-multiple-alignments'),
+                                    html.Div(id='blast-alignments-table'),
+                                ], id='blast-container'),
                                 html.Div(id="blast-download"),
                                 html.Div(id="subject-seq-button"),
                             ],
@@ -197,8 +239,16 @@ layout = dmc.Container(
             ],
             gutter="xl",
         ),
-        modal,
     ],
+)
+
+clientside_callback(
+    ClientsideFunction(
+        namespace='clientside',
+        function_name='initBlaster'
+    ),
+    Output('blast-container', 'children'),
+    Input('processed-blast-store', 'data'),
 )
 
 
@@ -235,9 +285,6 @@ def update_fasta_details(seq_content, seq_filename):
     [
         Output("submit-button", "disabled"),
         Output("submit-button", "children"),
-        Output("rate-limit-info", "children"),
-        Output("rate-limit-alert", "children"),
-        Output("rate-limit-alert", "style"),
         Output("upload-error-message", "children"),
         Output("upload-error-store", "data"),
     ],
@@ -259,46 +306,16 @@ def handle_submission_and_upload(n_clicks, contents, n_intervals, filename, time
     # Default return values
     button_disabled = False
     button_text = "Submit BLAST"
-    limit_info = ""
-    limit_alert = None
-    alert_style = {"display": "none"}
     error_message = ""
     error_store = None
     
     # Handle timeout case
     if triggered_id == "timeout-interval":
-        # Only show timeout if button was clicked and we're still waiting for results
-        if n_clicks and timeout_triggered and not dash.callback_context.inputs.get("ship-family.children"):
-            limit_alert = dbc.Alert(
-                [
-                    html.I(className="bi bi-exclamation-triangle-fill me-2"),
-                    "The server is taking longer than expected to respond. Please try again later.",
-                ],
-                color="warning",
-                className="d-flex align-items-center",
-            )
-            alert_style = {"display": "block"}
+        if n_clicks and timeout_triggered:
             button_disabled = True
             button_text = "Server timeout"
-            return [
-                button_disabled,
-                button_text,
-                limit_info,
-                limit_alert,
-                alert_style,
-                error_message,
-                error_store
-            ]
-        # If button wasn't clicked or results are already shown, don't show timeout
-        return [
-            button_disabled,
-            button_text,
-            limit_info,
-            limit_alert,
-            {"display": "none"},
-            error_message,
-            error_store
-        ]
+            error_message = "The server is taking longer than expected to respond. Please try again later."
+            error_store = error_message
     
     # Handle file upload
     if triggered_id == "blast-fasta-upload" and contents is not None:
@@ -312,45 +329,17 @@ def handle_submission_and_upload(n_clicks, contents, n_intervals, filename, time
         file_size = len(decoded)
         
         if fasta_error:
-            error_message = fasta_error  # This will now be a dmc.Alert component
+            error_message = fasta_error
             error_store = error_message
             button_disabled = True
         elif file_size > max_size:
-            error_message = dbc.Alert(f"Error: The file '{filename}' exceeds the 10 MB limit.", color="danger")
+            error_message = f"Error: The file '{filename}' exceeds the 10 MB limit."
             error_store = error_message
             button_disabled = True
-    
-    # Handle rate limit check
-    if triggered_id == "submit-button" and n_clicks:
-        try:
-            ip_address = get_client_ip()
-            limit_info_data = get_blast_limit_info(ip_address)
-            
-            if limit_info_data["remaining"] <= 0:
-                button_disabled = True
-                button_text = "Rate limit exceeded"
-                limit_info = f"Limit reached: {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour"
-                limit_alert = dbc.Alert(
-                    [
-                        html.I(className="bi bi-exclamation-triangle-fill me-2"),
-                        f"Rate limit exceeded. You have used {limit_info_data['submissions']}/{limit_info_data['limit']} submissions this hour. Please try again later.",
-                    ],
-                    color="warning",
-                    className="d-flex align-items-center",
-                )
-                alert_style = {"display": "block"}
-            else:
-                limit_info = f"Remaining: {limit_info_data['remaining']}/{limit_info_data['limit']} submissions"
-        
-        except Exception as e:
-            logger.error(f"Error checking rate limit: {str(e)}")
     
     return [
         button_disabled,
         button_text,
-        limit_info,
-        limit_alert,
-        alert_style,
         error_message,
         error_store
     ]
@@ -451,9 +440,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     )
                 ])
                 return None, None, error_div
-
-            blast_results_dict = blast_results.to_dict("records")
-            
+           
             if search_type == "diamond":
                 results_dict = run_diamond(
                     db_list=BLAST_DB_PATHS,
@@ -473,7 +460,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     threads=2,
                 )
                 
-            return blast_results_dict, results_dict, None
+            return blast_results, results_dict, None
 
         except subprocess.TimeoutExpired:
             error_div = html.Div([
@@ -535,59 +522,26 @@ def process_metadata(curated):
 # 2. BLAST Results Processing Callback
 @callback(
     Output("processed-blast-store", "data"),
-    [Input("blast-results-store", "data"), Input("processed-metadata-store", "data")],
+    [Input("blast-results-store", "data")],
 )
 @handle_callback_error
-def process_blast_results(blast_results_dict, metadata_dict):
-    if not blast_results_dict or not metadata_dict:
+def process_blast_results(blast_results):
+    if not blast_results:
         return None
         
     try:
         # Add size limit check
-        results_size = len(str(blast_results_dict))
+        results_size = len(blast_results)
         if results_size > 5 * 1024 * 1024:  # 5MB limit
             logger.warning(f"BLAST results too large: {results_size} bytes")
             return None
 
-        blast_df = pd.DataFrame(blast_results_dict)
-        meta_df = pd.DataFrame(metadata_dict)
-                
-        # Process in chunks if dataset is large
-        chunk_size = 1000
-        if len(blast_df) > chunk_size:
-            chunks = []
-            for i in range(0, len(blast_df), chunk_size):
-                chunk = blast_df.iloc[i:i + chunk_size]
-                processed_chunk = pd.merge(
-                    meta_df[["accession_tag", "familyName"]],
-                    chunk,
-                    left_on="accession_tag",
-                    right_on="sseqid",
-                    how="right",
-                    suffixes=('', '_blast')
-                )
-                chunks.append(processed_chunk)
-            df_for_table = pd.concat(chunks)
-        else:
-            df_for_table = pd.merge(
-                meta_df[["accession_tag", "familyName"]],
-                blast_df,
-                left_on="accession_tag",
-                right_on="sseqid",
-                how="right",
-                suffixes=('', '_blast')
-            )
-                
-        df_for_table = (df_for_table
-            .drop_duplicates(subset=["accession_tag", "pident", "length"])
-            .dropna(subset=["accession_tag"])
-            .fillna("")
-            .sort_values("evalue"))
+        # Format data for BlasterJS
+        data = {
+            'blast_text': blast_results  # Pass the raw BLAST text directly
+        }
         
-        # Limit number of results
-        df_for_table = df_for_table.head(1000)  # Only return top 1000 matches
-        
-        return df_for_table.to_dict('records') if not df_for_table.empty else None
+        return data
         
     except Exception as e:
         logger.error(f"Error processing BLAST results: {str(e)}")
@@ -597,7 +551,6 @@ def process_blast_results(blast_results_dict, metadata_dict):
 @callback(
     [
         Output("ship-family", "children"),
-        Output("blast-table", "children"),
         Output("blast-download", "children"),
         Output("phylogeny-plot", "children")
     ],
@@ -613,171 +566,75 @@ def process_blast_results(blast_results_dict, metadata_dict):
 @handle_callback_error
 def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
     if not n_clicks or processed_blast_results is None:
-        return None, None, None, None
+        return None, None, None
         
     try:
         if not processed_blast_results:
-            return html.Div(create_no_matches_alert()), None, None, None
+            return html.Div(create_no_matches_alert()), None, None
             
-        try:
-            blast_df = pd.DataFrame(processed_blast_results)
-            if blast_df.empty:
-                return html.Div(create_no_matches_alert()), None, None, None
-        except Exception as e:
-            logger.error(f"Error converting BLAST results to DataFrame: {e}")
-            return html.Div(create_error_alert(str(e))), None, None, None
+        # Process captain results for family information
+        ship_family = process_captain_results(captain_results_dict)
         
-        ship_family = None
-        table = None
-        download_button = None
+        # Create download button
+        download_button = blast_download_button()
+        
+        # Create phylogeny plot if captain results are available
         phylogeny_plot = None
-        
-        try:
-            best_match = blast_df.nsmallest(1, 'evalue').iloc[0]
-            
-            ship_family = (
-                make_captain_alert(
-                    best_match["familyName"], 
-                    best_match["length"], 
-                    best_match["evalue"], 
-                    search_type="blast"
-                ) if best_match["pident"] > 50
-                else process_captain_results(captain_results_dict)
-            )
-        except Exception as e:
-            logger.error(f"Error creating family alert: {e}")
-            ship_family = html.Div(create_error_alert(str(e)))
-            
-        try:
-            # Create phylogeny plot
-            logger.info("Creating phylogeny plot")
-            fig = plot_tree(
-                highlight_families=best_match["familyName"],
-                tips=[best_match["accession_tag"]]
-            )
-            
-            phylogeny_plot = html.Div([
-                dbc.Accordion(
-                    children=[
-                        dbc.AccordionItem(
+        if captain_results_dict:
+            try:
+                # Get the family name from captain results
+                family_name = captain_results_dict.get('family_name')
+                if family_name:
+                    fig = plot_tree(
+                        highlight_families=family_name,
+                        tips=None  # We don't have specific tips to highlight
+                    )
+                    
+                    phylogeny_plot = html.Div([
+                        dbc.Accordion(
                             children=[
-                                dcc.Graph(
-                                    id="phylogeny-graph",
-                                    figure=fig,
-                                    style={'height': '800px'}
+                                dbc.AccordionItem(
+                                    children=[
+                                        dcc.Graph(
+                                            id="phylogeny-graph",
+                                            figure=fig,
+                                            style={'height': '800px'}
+                                        )
+                                    ],
+                                    title="Captain Phylogeny",
+                                    item_id="phylogeny",
                                 )
                             ],
-                            title="Captain Phylogeny",
-                            item_id="phylogeny",
+                            always_open=False,
+                            active_item=None,
+                            id="phylogeny-accordion"
                         )
-                    ],
-                    always_open=False,
-                    active_item=None,
-                    id="phylogeny-accordion"
-                )
-            ])
-            
-        except Exception as e:
-            logger.error(f"Error creating phylogeny plot: {e}")
-            phylogeny_plot = html.Div(create_error_alert("Could not create phylogeny plot"))
+                    ])
+            except Exception as e:
+                logger.error(f"Error creating phylogeny plot: {e}")
+                phylogeny_plot = html.Div(create_error_alert("Could not create phylogeny plot"))
         
-        try:
-            blast_table_content = blast_table(blast_df)
-            download_button = blast_download_button()
-            
-            # Wrap table and download button in accordion
-            table = html.Div([
-                dbc.Accordion(
-                    children=[
-                        dbc.AccordionItem(
-                            children=[
-                                blast_table_content,
-                                html.Div(
-                                    download_button,
-                                    style={"margin-top": "1rem"}
-                                )
-                            ],
-                            title="BLAST Results",
-                            item_id="blast-results",
-                        )
-                    ],
-                    always_open=False,
-                    id="blast-accordion"
-                )
-            ])
-            # Set download_button to None since it's now included in the table accordion
-            download_button = None
-            
-        except Exception as e:
-            logger.error(f"Error creating BLAST table: {e}")
-            table = html.Div(create_error_alert("Could not create results table"))
-            download_button = None
-        
-        return ship_family, table, download_button, phylogeny_plot
+        return ship_family, download_button, phylogeny_plot
         
     except Exception as e:
         logger.error(f"Error in update_ui_elements: {e}")
         error_div = html.Div(create_error_alert(str(e)))
-        return error_div, None, None, None
-
-@callback(
-    Output("blast-dl", "data"),
-    [Input("blast-dl-button", "n_clicks")],
-    [State("blast-table", "derived_virtual_data")],
-    prevent_initial_call=True
-)
-@handle_callback_error
-def download_tsv(n_clicks, table_data):
-    if not n_clicks:
-        return None
-        
-    if not table_data:
-        logger.error("Error: No data available for download.")
-        return None
-
-    try:
-        df = pd.DataFrame(table_data)
-        
-        # Format the data for download
-        download_columns = ['accession_tag', 'familyName', 'pident', 'length', 'evalue', 'bitscore']
-        df = df[download_columns]
-        
-        tsv_string = df.to_csv(sep="\t", index=False)
-        tsv_bytes = io.BytesIO(tsv_string.encode())
-        b64 = base64.b64encode(tsv_bytes.getvalue()).decode()
-
-        today = date.today().strftime("%Y-%m-%d")
-
-        return dict(
-            content=f"data:text/tab-separated-values;base64,{b64}",
-            filename=f"starbase_blast_{today}.tsv",
-        )
-
-    except Exception as e:
-        logger.error(f"Error preparing download: {str(e)}")
-        return None
-
-toggle_modal = create_modal_callback(
-    "blast-table",
-    "blast-modal",
-    "blast-modal-content",
-    "blast-modal-title"
-)
+        return error_div, None, None
 
 @callback(
     Output("timeout-store", "data"),
     [Input("timeout-interval", "n_intervals")],
     [
         State("submit-button", "n_clicks"),
-        State("blast-table", "children"),
+        State("blast-container", "children"),
         State("ship-family", "children"),
         State("subject-seq-button", "children"),
     ]
 )
-def check_timeout(n_intervals, n_clicks, table_content, family_content, error_content):
+def check_timeout(n_intervals, n_clicks, blast_container, family_content, error_content):
     if n_clicks and n_intervals > 0:
         has_output = any([
-            table_content is not None,
+            blast_container is not None,
             family_content is not None,
             error_content is not None
         ])
