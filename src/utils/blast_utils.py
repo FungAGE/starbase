@@ -813,7 +813,7 @@ def run_diamond(
 
     return diamond_results.to_dict("records")
 
-def make_captain_alert(family, aln_length, evalue, search_type="blast"):
+def make_captain_alert(family, aln_length, evalue, search_type):
     try:
         # Validate inputs
         if not family or not isinstance(family, str):
@@ -854,7 +854,7 @@ def make_captain_alert(family, aln_length, evalue, search_type="blast"):
                 variant="light",
                 withCloseButton=False,
             )
-        else:  # hmmsearch
+        else:
             return dmc.Alert(
                 title="Family Classification via HMMER Search",
                 children=[
