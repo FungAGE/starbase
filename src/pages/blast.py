@@ -72,18 +72,17 @@ layout = dmc.Container(
         fluid=True,
         children=[
             dcc.Location(id="url", refresh=False),
-        dcc.Store(id="query-header-store"),
-        dcc.Store(id="query-seq-store"),
-        dcc.Store(id="query-type-store"),
-        dcc.Store(id="blast-results-store"),
-        dcc.Store(id="captain-results-store"),
-        dcc.Store(id="upload-error-store"),
-        dcc.Store(id="processed-metadata-store"),
-        dcc.Store(id="processed-blast-store"),
-        
-        dcc.Store(id="timeout-store", data=False),
-        dcc.Interval(id="timeout-interval", interval=300000, n_intervals=0),  # 5 minutes
-        
+            dcc.Store(id="query-header-store"),
+            dcc.Store(id="query-seq-store"),
+            dcc.Store(id="query-type-store"),
+            dcc.Store(id="blast-results-store"),
+            dcc.Store(id="captain-results-store"),
+            dcc.Store(id="upload-error-store"),
+            dcc.Store(id="processed-metadata-store"),
+            dcc.Store(id="processed-blast-store"),
+            dcc.Store(id="submission-id-store"),            
+            dcc.Store(id="timeout-store", data=False),
+            dcc.Interval(id="timeout-interval", interval=30000, n_intervals=0),  # 30 seconds
         dmc.Space(h=20),       
         dmc.Grid(
             children=[
@@ -245,11 +244,11 @@ def update_fasta_details(seq_content, seq_filename):
     [
         Input("submit-button", "n_clicks"),
         Input("blast-fasta-upload", "contents"),
-        Input("timeout-interval", "n_intervals")  # Add timeout interval input
+        Input("timeout-interval", "n_intervals")
     ],
     [
         State("blast-fasta-upload", "filename"),
-        State("timeout-store", "data")  # Add timeout store state
+        State("timeout-store", "data")
     ],
     prevent_initial_call=True
 )
@@ -379,7 +378,6 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
         
     try:
-        # Remove timeout wrapper since it uses signals
         input_type, query_header, query_seq = check_input(
             query_text_input, query_file_contents
         )
@@ -396,6 +394,17 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 
 
 @callback(
+    Output("submission-id-store", "data"),
+    Input("submit-button", "n_clicks"),
+    prevent_initial_call=True
+)
+def update_submission_id(n_clicks):
+    if not n_clicks:
+        raise PreventUpdate
+    return n_clicks  # Use n_clicks as a unique submission ID
+
+
+@callback(
     [
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
@@ -405,6 +414,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         Input("query-header-store", "data"),
         Input("query-seq-store", "data"),
         Input("query-type-store", "data"),
+        Input("submission-id-store", "data"),
     ],
     running=[
         (Output("submit-button", "loading"), True, False),
@@ -413,8 +423,8 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
     prevent_initial_call=True
 )
 @handle_callback_error
-def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
-    if not all([query_header, query_seq, query_type]):
+def fetch_captain(query_header, query_seq, query_type, submission_id, search_type="hmmsearch"):
+    if not all([query_header, query_seq, query_type, submission_id]):
         return None, None, None
         
     try:
@@ -444,7 +454,6 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
 
             blast_results_dict = blast_results.to_dict("records")
             
-            # Run HMMER/Diamond with timeout
             if search_type == "diamond":
                 results_dict = run_diamond(
                     db_list=BLAST_DB_PATHS,
