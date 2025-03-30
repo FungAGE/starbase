@@ -20,194 +20,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def print_table(list_thing, output_name, header=""):
-    with open(output_name, "w") as ofile:
-        if header != "":
-            ofile.write(header + "\n")
-        for line in list_thing:
-            hitstring = "\t".join(str(tab) for tab in line)
-            ofile.write(hitstring + "\n")
-
-
-def stitch_blast(tabfile, output_name):
-    # ------------------------------------------------------
-    # Read file into list
-    # ------------------------------------------------------
-    with open(tabfile, "r") as tabopen:
-        unsorted_tabs = [line.rstrip("\n").split("\t") for line in tabopen]
-
-    # ------------------------------------------------------
-    # Sort file in case some subjects have multiple hits in different places
-    # ------------------------------------------------------
-    # Make a list of all unique queries
-    queries = list(set(tab[0] for tab in unsorted_tabs))
-
-    # tabs = [] # the future sorted list
-    THRESHOLD = (
-        2500  # A threshold for the distance between two hits to be distinct loci
-    )
-    stitchedtab = []
-
-    # For every query, sort locally
-    for query in queries:
-        subject_dic = {}
-        right_subject_order = []  # To keep the right order
-        for tab in unsorted_tabs:
-            if query == tab[0]:  # Just for this query
-                subject = tab[1]
-                if subject not in subject_dic.keys():
-                    subject_dic[subject] = [tab]
-                    right_subject_order.extend([subject])
-                else:
-                    subject_dic[subject].append(tab)
-
-        # Sort the resulting list for that particular query, check every subject and sort it locally
-        for sub in right_subject_order:
-            currentsubject_sorted = sorted(
-                subject_dic[sub], key=lambda x: int(x[9])
-            )  # Sort by the subject_start
-            # tabs.extend(currentsubject_sorted) # Save it into the final tabs list
-
-            # ------------------------------------------------------
-            # Stitch pieces together
-            # ------------------------------------------------------
-            # print("Subject:", sub)
-
-            maxalign = 0
-            queryStarts = []
-            queryEnds = []
-            subjectStarts = []
-            subjectEnds = []
-
-            for i in range(0, len(currentsubject_sorted)):  # Find the main piece
-                # print(i, len(currentsubject_sorted), currentsubject_sorted[i] # For debugging)
-                # query_id, subject_id, percent_identity, alignment_length, N_mismatches, N_gaps, query_start, query_end, subject_start, subject_end, evalue, bit_score = currentsubject_sorted[i]
-                query_start = int(currentsubject_sorted[i][6])
-                query_end = int(currentsubject_sorted[i][7])
-                query_seq = currentsubject_sorted[i][12]
-
-                alignment_length = int(currentsubject_sorted[i][3])
-                subject_start = int(currentsubject_sorted[i][8])
-                subject_end = int(currentsubject_sorted[i][9])
-                subject_seq = currentsubject_sorted[i][13]
-
-                queryStarts.append(query_start)
-                queryEnds.append(query_end)
-                subjectStarts.append(subject_start)
-                subjectEnds.append(subject_end)
-
-                # Is this last piece one better than the previous ones?
-                if alignment_length > maxalign:
-                    upper_hit = currentsubject_sorted[i]
-                    maxalign = alignment_length
-
-                # There is only one clean hit
-                if len(currentsubject_sorted) == 1:
-                    stitchedtab.append(currentsubject_sorted[i])
-
-                # The hit is broken
-                elif i < len(currentsubject_sorted) - 1:
-                    next_subject_start = int(currentsubject_sorted[i + 1][8])
-
-                    if (
-                        abs(subject_end - next_subject_start) > THRESHOLD
-                    ):  # It's probably not part of the same hit # It was subject_start - next_subject_start before
-                        # So write down the previous one
-                        # -----------------
-                        # The new values for the subject
-                        # -----------------
-                        # query_id, subject_id, percent_identity, alignment_length, N_mismatches, N_gaps, query_start, query_end, subject_start, subject_end, evalue, bit_score
-                        new_tab = upper_hit[0:4]
-
-                        # These are our new values of the "unbroken" hit, but I'm not sure how to retrieve the no. of gaps and mistmatches
-                        new_tab.extend([".", ".", min(queryStarts), max(queryEnds)])
-
-                        # subject_start > subject_end for the upper_hit
-                        if int(upper_hit[8]) > int(upper_hit[9]):  # hit is reversed
-                            new_tab.extend([max(subjectStarts), min(subjectEnds)])
-                        else:
-                            new_tab.extend([min(subjectStarts), max(subjectEnds)])
-
-                        # Let's leave the e-val and Bit score the same as the upper hit
-                        new_tab.extend(upper_hit[10:11])
-
-                        gap_length = abs(next_subject_start - subject_end)
-
-                        # Concatenate subject sequences with '-' characters filling the gap
-                        stitched_subject_seq = (
-                            currentsubject_sorted[i][13]
-                            + "-" * gap_length
-                            + currentsubject_sorted[i + 1][13]
-                        )
-
-                        # Update the subject_seq in the upper_hit
-                        upper_hit[13] = stitched_subject_seq
-
-                        stitchedtab.append(new_tab)  # Write it in the final output
-
-                        # -----------------
-                        # Reset for the next hit
-                        # -----------------
-                        queryStarts = []
-                        queryEnds = []
-                        subjectStarts = []
-                        subjectEnds = []
-
-                        maxalign = int(currentsubject_sorted[i + 1][3])
-                        upper_hit = currentsubject_sorted[i + 1]
-
-                else:
-                    # The last hit in that subject
-                    # -----------------
-                    # The new values for the subject
-                    # -----------------
-                    new_tab = upper_hit[0:4]
-
-                    # These are our new values of the "unbroken" hit, but I'm not sure how to retrieve the no. of gaps and mistmatches
-                    new_tab.extend([".", ".", min(queryStarts), max(queryEnds)])
-
-                    # subject_start > subject_end for the upper_hit
-                    if int(upper_hit[8]) > int(upper_hit[9]):  # hit is reversed
-                        new_tab.extend([max(subjectStarts), min(subjectEnds)])
-                    else:
-                        new_tab.extend([min(subjectStarts), max(subjectEnds)])
-                    # Let's leave the e-val and Bit score the same as the upper hit
-                    new_tab.extend(upper_hit[10:])
-
-                    stitchedtab.append(new_tab)  # Write it in the final output
-
-            # print # For separating the subjects
-
-    # ------------------------------------------------------
-    # Print filtered tab file
-    # ------------------------------------------------------
-    print_table(stitchedtab, output_name)
-    df = pd.read_csv(
-        output_name,
-        sep="\t",
-        names=[
-            "qseqid",
-            "sseqid",
-            "pident",
-            "length",
-            "mismatch",
-            "gapopen",
-            "qstart",
-            "qend",
-            "sstart",
-            "send",
-            "evalue",
-            "bitscore",
-            "qseq",
-            "sseq",
-        ],
-    )
-    df = df.dropna()
-
-    logger.info(f"BLAST results parsed with {len(df)} hits.")
-    return df
-
-
 def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
     try:
         # Add input size check
@@ -252,24 +64,18 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             "-out", str(tmp_blast),
             "-evalue", str(input_eval),
             "-num_threads", str(threads),
-            "-max_target_seqs", "100",
+            "-max_target_seqs", "10",
             "-max_hsps", "1",
-            "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+            "-outfmt", "0"  # Changed to default BLAST output format
         ]
         
-        subprocess.run(blast_cmd, check=True, timeout=300)  # Add 5-minute timeout
+        subprocess.run(blast_cmd, check=True, timeout=300)
         
-        blast_results = pd.read_csv(
-            tmp_blast,
-            sep="\t",
-            names=[
-                "qseqid", "sseqid", "pident", "length", "mismatch",
-                "gapopen", "qstart", "qend", "sstart", "send",
-                "evalue", "bitscore", "qseq", "sseq"
-            ]
-        )
+        # Read the BLAST output as text
+        with open(tmp_blast, 'r') as f:
+            blast_text = f.read()
         
-        return blast_results
+        return blast_text  # Return the raw BLAST text output
 
     except subprocess.TimeoutExpired:
         logger.error("BLAST search timed out after 5 minutes")
@@ -488,181 +294,6 @@ def circos_prep(blast_output, links_output, layout_output):
         json.dump(layout, json_file, indent=4)
 
 
-def blast_chords(blast_output):
-    if blast_output is not None and not blast_output.empty:
-        tmp_links_json = tempfile.NamedTemporaryFile(suffix=".json").name
-        tmp_layout_json = tempfile.NamedTemporaryFile(suffix=".json").name
-
-        # Prepare data for Circos plot
-        circos_prep(blast_output, tmp_links_json, tmp_layout_json)
-
-        # Load the prepared JSON data
-        try:
-            with open(tmp_links_json) as f:
-                circos_graph_data = json.load(f)
-            with open(tmp_layout_json) as f:
-                circos_layout = json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading JSON data: {e}")
-            return html.Div(["Error loading plot data."])
-
-        # Check if the loaded data is not empty
-        if not circos_graph_data or not circos_layout:
-            return html.Div(["No valid data found for the BLAST search."])
-
-        logger.info("Circos graph data:", circos_graph_data)
-        logger.info("Circos layout data:", circos_layout)
-
-        layout_config = {
-            "innerRadius": 100,
-            "outerRadius": 200,
-            "cornerRadius": 4,
-            "labels": {
-                "size": 10,
-                "color": "#4d4d4d",
-            },
-        }
-
-        # Minimal Circos plot configuration
-        try:
-            circos_plot = dashbio.Circos(
-                layout=circos_layout,
-                config=layout_config,
-                tracks=[
-                    {
-                        "type": "CHORDS",
-                        "data": circos_graph_data,
-                        "config": {
-                            "opacity": 0.7,
-                            "color": {
-                                "name": "source",
-                                "field": "id",
-                            },
-                            "tooltipContent": {
-                                "source": "source",
-                                "sourceID": "id",
-                                "target": "target",
-                                "targetID": "id",
-                                "targetEnd": "end",
-                                "fields": [
-                                    {
-                                        "field": "value.pident",
-                                        "name": "Identity (%)",
-                                    },
-                                    {"field": "value.evalue", "name": "E-value"},
-                                    {
-                                        "field": "value.bitscore",
-                                        "name": "Bit Score",
-                                    },
-                                ],
-                            },
-                        },
-                    },
-                ],
-                id="blast-chord",
-            )
-
-            return html.Div(circos_plot)
-
-        except Exception as e:
-            logger.error(f"Error creating Circos plot: {e}")
-            return html.Div(["Error creating plot."])
-    else:
-        return html.Div(["No results found for the BLAST search."])
-
-
-def blast_table(ship_blast_results):
-    """Creates an AG Grid table for displaying BLAST results."""
-    try:
-        # Validation checks...
-        if not isinstance(ship_blast_results, pd.DataFrame):
-            logger.error("Invalid input type for blast_table")
-            return html.Div("Error: Invalid data format")
-            
-        if ship_blast_results.empty:
-            logger.warning("Empty DataFrame passed to blast_table")
-            return html.Div("No results to display")
-            
-        # Column checks...
-        required_cols = ["sseqid", "pident", "length", "evalue", "bitscore"]
-        missing_cols = [col for col in required_cols if col not in ship_blast_results.columns]
-        if missing_cols:
-            logger.error(f"Missing required columns: {missing_cols}")
-            return html.Div(f"Error: Missing columns: {', '.join(missing_cols)}")
-
-        columns = [
-            {
-                "field": "accession_tag",
-                "headerName": "Accession",
-                "flex": 1,
-                "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
-                "tooltipField": "accession_tag"
-            },
-            {
-                "field": "familyName",
-                "headerName": "Starship Family",
-                "flex": 1,
-                "tooltipField": "familyName"
-            },
-            {
-                "field": "pident",
-                "headerName": "Percent Identity",
-                "flex": 1,
-                "valueFormatter": {"function": "value.toFixed(2)"},
-                "type": "numericColumn",
-                "filter": "agNumberColumnFilter"
-            },
-            {
-                "field": "length",
-                "headerName": "Hit Length",
-                "flex": 1,
-                "type": "numericColumn",
-                "filter": "agNumberColumnFilter"
-            },
-            {
-                "field": "evalue",
-                "headerName": "E-value",
-                "flex": 1,
-                "valueFormatter": {"function": "value.toExponential(2)"},
-                "type": "numericColumn",
-                "filter": "agNumberColumnFilter"
-            },
-            {
-                "field": "bitscore",
-                "headerName": "Bitscore",
-                "flex": 1,
-                "valueFormatter": {"function": "value.toFixed(2)"},
-                "type": "numericColumn",
-                "filter": "agNumberColumnFilter"
-            }
-        ]
-
-        return html.Div(
-            html.Div(
-                create_ag_grid(
-                    df=ship_blast_results,
-                    id="blast-table",
-                    columns=columns,
-                    select_rows=False,
-                    pg_sz=15,
-                ),
-                style={
-                    "height": "400px",
-                    "width": "100%",
-                    "overflow": "auto",  # Changed from 'hidden' to 'auto'
-                    "position": "relative"
-                }
-            ),
-            style={
-                "marginBottom": "20px",
-                "width": "100%"
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in blast_table: {e}")
-        return html.Div(f"Error creating table: {str(e)}")
-
 def blast_download_button():
     """Creates the download button for BLAST results."""
     return html.Div([
@@ -721,52 +352,6 @@ def select_ship_family(hmmer_results):
         return None, None, None
 
 
-def run_lastz(query_type, seqs, output_file):
-    """
-    Runs LASTZ to align two sequences and writes the output to a specified file.
-    """
-    lastdb_output = tempfile.NamedTemporaryFile(suffix=".db", delete=True)
-    if query_type == "nucl":
-        db_command = f"lastdb {lastdb_output.name} {seqs}"
-    elif query_type == "prot":
-        db_command = f"lastdb -p -c {lastdb_output.name} {seqs}"
-
-    else:
-        db_command = None
-
-    if db_command is not None:
-        subprocess.run(db_command, shell=True, check=True)
-        command = f"lastal {lastdb_output.name} {seqs} -f BLASTTAB > {output_file}"
-        subprocess.run(command, shell=True, check=True)
-
-
-def parse_lastz_output(output_file):
-    """
-    Parses the LASTZ output file and returns a DataFrame with relevant data.
-    """
-    columns = [
-        "query_id",
-        "subject_id",
-        "pident",
-        "aln_len",
-        "mismatch",
-        "gap_opens",
-        "qstart",
-        "qend",
-        "sstart",
-        "send",
-        "evalue",
-        "bitscore",
-    ]
-    df = pd.read_csv(output_file, sep="\t", header=0, comment="#", names=columns)
-    df["qstart"] = pd.to_numeric(df["qstart"], errors="coerce")
-    df["sstart"] = pd.to_numeric(df["sstart"], errors="coerce")
-    df["qend"] = pd.to_numeric(df["qend"], errors="coerce")
-    df["send"] = pd.to_numeric(df["send"], errors="coerce")
-
-    return df
-
-
 def run_diamond(
     db_list=None,
     query_type=None,
@@ -801,7 +386,7 @@ def run_diamond(
 
     return diamond_results.to_dict("records")
 
-def make_captain_alert(family, aln_length, evalue, search_type="blast"):
+def make_captain_alert(family, aln_length, evalue, search_type):
     try:
         # Validate inputs
         if not family or not isinstance(family, str):
@@ -842,7 +427,7 @@ def make_captain_alert(family, aln_length, evalue, search_type="blast"):
                 variant="light",
                 withCloseButton=False,
             )
-        else:  # hmmsearch
+        else:
             return dmc.Alert(
                 title="Family Classification via HMMER Search",
                 children=[

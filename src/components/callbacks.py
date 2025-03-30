@@ -262,12 +262,12 @@ def create_accession_modal(accession):
                                     ]),
                                     html.Tr([
                                         html.Td("Element Position"),
-                                        *[html.Td(f"{modal_data['elementBegin'].iloc[i]} - {modal_data['elementEnd'].iloc[i]}")
+                                        *[html.Td(f"{int(modal_data['elementBegin'].iloc[i])} - {int(modal_data['elementEnd'].iloc[i])}")
                                           for i in range(len(modal_data))]
                                     ]),
                                     html.Tr([
                                         html.Td("Size"),
-                                        *[html.Td(f"{modal_data['size'].iloc[i]:,} bp")
+                                        *[html.Td(f"{int(modal_data['size'].iloc[i])} bp")
                                           for i in range(len(modal_data))]
                                     ]),
                                 ])
@@ -295,11 +295,11 @@ def create_accession_modal(accession):
                         ]),
                         dmc.Group([
                             dmc.Text("Element Position:", fw=700),
-                            dmc.Text(f"{modal_data['elementBegin'].iloc[0]} - {modal_data['elementEnd'].iloc[0]}")
+                            dmc.Text(f"{int(modal_data['elementBegin'].iloc[0])} - {int(modal_data['elementEnd'].iloc[0])}")
                         ]),
                         dmc.Group([
                             dmc.Text("Size:", fw=700),
-                            dmc.Text(f"{modal_data['size'].iloc[0]:,} bp")
+                            dmc.Text(f"{int(modal_data['size'].iloc[0])} bp")
                         ])
                     ]
                 )

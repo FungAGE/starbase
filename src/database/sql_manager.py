@@ -31,15 +31,20 @@ def db_retry_decorator(additional_retry_exceptions=()):
     )
 
 @cache.memoize()
-def fetch_meta_data(curated=False):
-    """Fetch metadata from the database with caching."""
+def fetch_meta_data(curated=False, accession_tag=None):
+    """Fetch metadata from the database with caching.
+    
+    Args:
+        curated (bool): If True, only return curated entries
+        accession_tag (str or list): Single accession tag or list of accession tags
+    """
     session = StarbaseSession()
     
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
-           j.elementBegin, j.elementEnd, t.`order`, t.family, t.genus, t.species, 
-           g.version, g.genomeSource, g.citation, a.accession_tag, g.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
+           j.elementBegin, j.elementEnd, t.`order`, t.family, j.genus, j.species, 
+           g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
@@ -48,10 +53,25 @@ def fetch_meta_data(curated=False):
     """
 
     if curated:
-        meta_query += " AND j.curated_status = 'curated'"
+        meta_query += " WHERE j.curated_status = 'curated'"
+
+    if accession_tag:
+        where_clause = " WHERE " if not curated else " AND "
+        if isinstance(accession_tag, list):
+            # Handle list of accession tags
+            placeholders = ','.join(['%s'] * len(accession_tag))
+            meta_query += f"{where_clause}a.accession_tag IN ({placeholders})"
+            params = accession_tag
+        else:
+            # Handle single accession tag
+            meta_query += f"{where_clause}a.accession_tag = %s"
+            params = [accession_tag]
 
     try:
-        meta_df = pd.read_sql_query(meta_query, session.bind)
+        if accession_tag:
+            meta_df = pd.read_sql_query(meta_query, session.bind, params=params)
+        else:
+            meta_df = pd.read_sql_query(meta_query, session.bind)
         return meta_df
     except Exception as e:
         logger.error(f"Error fetching meta data: {str(e)}")
