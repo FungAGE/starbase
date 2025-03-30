@@ -57,6 +57,7 @@ def create_dbs():
     
     from src.database.sql_manager import fetch_all_captains, fetch_ships, fetch_meta_data
 
+    # TODO: add filter to sql queries so "None" entries are not included
     ship_fasta_path = BLAST_DB_PATHS["ship"]
     ship_fasta_dir = os.path.dirname(ship_fasta_path)
     os.makedirs(ship_fasta_dir, exist_ok=True)
