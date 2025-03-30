@@ -30,6 +30,6 @@ selenium==4.29.0
 setuptools==62.1.0
 SQLAlchemy==1.4.36
 tenacity==8.2.3
-urllib3==1.26.9
+urllib3==1.26.19
 webdriver_manager==4.0.2
 Werkzeug<=3.1
