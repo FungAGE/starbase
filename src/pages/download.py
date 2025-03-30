@@ -12,7 +12,7 @@ from src.config.cache import cache
 from src.database.sql_manager import fetch_download_data, fetch_ships
 from src.components.tables import make_dl_table, table_loading_alert, table_no_results_alert, table_error
 import logging
-from src.utils.seq_utils import clean_contigIDs
+from src.utils.seq_utils import create_ncbi_style_header
 
 logger = logging.getLogger(__name__)
 
@@ -241,15 +241,7 @@ def generate_download_helper(rows, curated, dereplicate):
                 )
             else:
                 # Full header for single entries
-                clean_contig = clean_contigIDs(row['contigID'])                
-                header = (
-                    f">{row['accession_tag']} "
-                    f"[organism={row['species']}] "
-                    f"[lineage=Fungi; {row['order']}; {row['family']}; {row['genus']}] "
-                    f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
-                    + (f"[assembly={row['assembly_accession']}] " if row['assembly_accession'] else "")
-                    + f"[family={row['familyName']}]"
-                )
+                header = create_ncbi_style_header(row)
             fasta_content.append(f"{header}\n{row['sequence']}")
             
         fasta_str = "\n".join(fasta_content)

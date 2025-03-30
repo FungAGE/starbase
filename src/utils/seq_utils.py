@@ -466,3 +466,14 @@ def clean_contigIDs(string):
                 return suffix
             else:
                 return string
+
+def create_ncbi_style_header(row):
+    clean_contig = clean_contigIDs(row['contigID'])                
+    (
+        f">{row['accession_tag']} "
+        f"[organism={row['species']}] "
+        f"[lineage=Fungi; {row['order']}; {row['family']}; {row['genus']}] "
+        f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
+        + (f"[assembly={row['assembly_accession']}] " if row['assembly_accession'] else "")
+        + f"[family={row['familyName']}]"
+    )

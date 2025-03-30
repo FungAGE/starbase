@@ -43,43 +43,6 @@ dash.register_page(__name__)
 
 logger = logging.getLogger(__name__)
 
-# Custom HTML template that properly initializes the JS environment
-index_string = '''
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-    </head>
-    <body>
-        {%app_entry%}
-        <script type="text/javascript">
-            // Setup require function for BlasterJS
-            function require(module) {
-                if (module === "biojs-vis-blasterjs") {
-                    return window.blasterjs;
-                }
-                if (module === "js-class") {
-                    return window.Class;
-                }
-                if (module === "js-extend") {
-                    return window.extend;
-                }
-            }
-        </script>
-        <script src="/assets/js/html2canvas.min.js"></script>
-        <script src="/assets/js/blaster.min.woaln.js"></script>
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>
-'''
-
 def blast_family_button(family):
     return dbc.Button(
         family,
