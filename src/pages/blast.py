@@ -20,7 +20,8 @@ from src.utils.seq_utils import ( guess_seq_type,
     check_input,
     write_temp_fasta,
     parse_fasta,
-    parse_fasta_from_file
+    parse_fasta_from_file,
+    create_ncbi_style_header
     )
 from src.utils.blast_utils import (
     run_blast,

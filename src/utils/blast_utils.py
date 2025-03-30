@@ -11,9 +11,9 @@ import pandas as pd
 
 from Bio import SearchIO
 
+from src.config.settings import BLAST_DB_PATHS
 from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
 from src.database.blastdb import blast_db_exists, create_dbs
-from src.components.tables import create_ag_grid
 from src.components.error_boundary import create_error_alert
 import logging
 
@@ -27,32 +27,34 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
         if os.path.getsize(query_fasta) > max_input_size:
             logger.error(f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes")
             return None
+            
         logger.debug(f"db_list contents: {db_list}")
         
         if not isinstance(db_list, dict):
             logger.error(f"db_list must be a dictionary, got {type(db_list)}")
             raise ValueError("Invalid database configuration")
+        
+        # First ensure the BLAST databases exist
+        ship_db_path = db_list["ship"]["nucl"]
+        if not blast_db_exists(ship_db_path):
+            logger.info("BLAST database not found. Creating new databases...")
+            create_dbs()
             
-        ship_config = db_list.get('ship')
-        if ship_config is None:
-            logger.error("'ship' key not found in db_list")
-            raise ValueError("Database path for 'ship' not configured")
-            
-        db_path = ship_config.get(query_type)
-        if db_path is None:
-            logger.error(f"No database path found for query type: {query_type}")
-            raise ValueError(f"Database path for {query_type} not configured")
+            if not blast_db_exists(ship_db_path):
+                logger.error("Failed to create BLAST database")
+                raise ValueError("Failed to create BLAST database")
+        
+        # Now get the correct database path based on query type
+        if query_type == "nucl":
+            db_path = db_list["ship"]["nucl"]
+        elif query_type == "prot":
+            db_path = db_list["gene"]["tyr"]["prot"]
+        else:
+            logger.error(f"Invalid query type: {query_type}")
+            raise ValueError("Invalid query type")
             
         logger.debug(f"Using database path: {db_path}")
         
-        if not blast_db_exists(db_path):
-            logger.info("BLAST database not found. Creating new database...")
-            create_dbs()
-            
-            if not blast_db_exists(db_path):
-                logger.error("Failed to create BLAST database")
-                raise ValueError("Failed to create BLAST database")
-            
         if not isinstance(db_path, (str, bytes, os.PathLike)):
             logger.error(f"db_path must be a path-like object, got {type(db_path)}")
             raise ValueError("Invalid database path type")
@@ -66,16 +68,15 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             "-num_threads", str(threads),
             "-max_target_seqs", "10",
             "-max_hsps", "1",
-            "-outfmt", "0"  # Changed to default BLAST output format
+            "-outfmt", "0"
         ]
         
         subprocess.run(blast_cmd, check=True, timeout=300)
         
-        # Read the BLAST output as text
         with open(tmp_blast, 'r') as f:
             blast_text = f.read()
         
-        return blast_text  # Return the raw BLAST text output
+        return blast_text
 
     except subprocess.TimeoutExpired:
         logger.error("BLAST search timed out after 5 minutes")
