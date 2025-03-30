@@ -12,7 +12,7 @@ ENV HOME=/home/$USER
 ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
 ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
 
-# Install supercronic (a cron for containers)
+# variables for supercronic installation (a cron for containers)
 ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.24/supercronic-linux-amd64 \
     SUPERCRONIC=supercronic-linux-amd64 \
     SUPERCRONIC_SHA1SUM=6817299e04457e5d6ec4809c72ee13a43e95ba41
@@ -36,6 +36,11 @@ RUN apt-get update && apt-get upgrade -y && \
 # Python dependencies (copied and installed first as they change less frequently)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Node.js, npm, and blasterjs
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g biojs-vis-blasterjs
 
 # Create cron and cache directories and set up logging (combined directory creation)
 RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
