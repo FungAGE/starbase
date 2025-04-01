@@ -66,16 +66,12 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             "-num_threads", str(threads),
             "-max_target_seqs", "10",
             "-max_hsps", "1",
-            "-outfmt", "0"  # Changed to default BLAST output format
+            "-outfmt", "5"  # Changed to default BLAST output format
         ]
         
         subprocess.run(blast_cmd, check=True, timeout=300)
-        
-        # Read the BLAST output as text
-        with open(tmp_blast, 'r') as f:
-            blast_text = f.read()
-        
-        return blast_text  # Return the raw BLAST text output
+              
+        return tmp_blast
 
     except subprocess.TimeoutExpired:
         logger.error("BLAST search timed out after 5 minutes")
@@ -189,6 +185,41 @@ def parse_hmmer(hmmer_output_file):
                     )
     return parsed_file
 
+# parse blast xml output to tsv
+def parse_blast_xml(xml):
+    parsed_file = tempfile.NamedTemporaryFile(suffix=".blast.parsed.txt").name
+    with open(parsed_file, "w") as tsv_file:
+        # Add quotes around field names to ensure proper parsing
+        tsv_file.write('"query_id"\t"hit_IDs"\t"aln_length"\t"query_start"\t"query_end"\t"gaps"\t"query_seq"\t"subject_seq"\t"evalue"\t"bitscore"\t"pident"\n')
+        record = SearchIO.read(xml, "blast-xml")
+        for hit in record:
+            for hsp in hit:
+                try:
+                    query_seq = str(hsp.query) if hsp.query else "N/A"
+                    subject_seq = clean_shipID(str(hsp.hit)) if hsp.hit else "N/A"
+                    aln_length = hsp.aln_span if hasattr(hsp, 'aln_span') else len(query_seq)
+                    query_start = hsp.query_start if hasattr(hsp, 'query_start') else 0
+                    query_end = hsp.query_end if hasattr(hsp, 'query_end') else aln_length
+                    gaps = str(hsp.gap_num) if hasattr(hsp, 'gap_num') else "0"
+                    bitscore = hsp.bitscore if hasattr(hsp, 'bitscore') else 0.0
+                    evalue = hsp.evalue if hasattr(hsp, 'evalue') else 0.0
+                    
+                    # Calculate percent identity
+                    if hasattr(hsp, 'ident_num') and hsp.aln_span > 0:
+                        pident = (hsp.ident_num / hsp.aln_span) * 100
+                    else:
+                        identical_count = sum(1 for q, h in zip(str(hsp.query), str(hsp.hit)) if q == h)
+                        pident = (identical_count / aln_length) * 100 if aln_length > 0 else 0
+                    
+                    # Quote string values and format numbers
+                    line = f'"{record.id}"\t"{hit.id}"\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t"{query_seq}"\t"{subject_seq}"\t{evalue}\t{bitscore}\t{pident}\n'
+                    tsv_file.write(line)
+                    
+                    logger.debug(f"Writing line: {line.strip()}")
+                except Exception as e:
+                    logger.error(f"Error processing HSP: {e}")
+                    continue
+    return parsed_file
 
 def extract_gene_from_hmmer(parsed_file):
     data = pd.read_csv(parsed_file, sep="\t")
@@ -411,38 +442,21 @@ def make_captain_alert(family, aln_length, evalue, search_type):
             logger.error(f"Invalid search type: {search_type}")
             return create_error_alert("Invalid search type")
 
-        if search_type == "blast":
-            return dmc.Alert(
-                title="Family Classification via BLAST Search",
-                children=[
-                    f"Your sequence is likely in Starship family: {family}",
-                    dmc.Space(h=5),
-                    dmc.Text(
-                        f"BLAST Search: Alignment length = {aln_length}, E-value = {formatted_evalue}",
-                        size="sm",
-                        c="dimmed"
-                    ),
-                ],
-                color="blue",
-                variant="light",
-                withCloseButton=False,
-            )
-        else:
-            return dmc.Alert(
-                title="Family Classification via HMMER Search",
-                children=[
-                    f"Your sequence is likely in Starship family: {family}",
-                    dmc.Space(h=5),
-                    dmc.Text(
-                        f"HMMER Search: Alignment length = {aln_length}, E-value = {formatted_evalue}",
-                        size="sm",
-                        c="dimmed"
-                    ),
-                ],
-                color="blue",
-                variant="light",
-                withCloseButton=False,
-            )
+        return dmc.Alert(
+            title=f"Family Classification via {search_type} Search",
+            children=[
+                f"Your sequence is likely in Starship family: {family}",
+                dmc.Space(h=5),
+                dmc.Text(
+                    f"BLAST Search: Alignment length = {aln_length}, E-value = {formatted_evalue}",
+                    size="sm",
+                    c="dimmed"
+                ),
+            ],
+            color="blue",
+            variant="light",
+            withCloseButton=False,
+        )
             
     except Exception as e:
         logger.error(f"Error in make_captain_alert: {e}")
@@ -463,7 +477,7 @@ def process_captain_results(captain_results_dict):
             superfamily, family_aln_length, family_evalue = select_ship_family(captain_results_df)
             if superfamily:
                 return make_captain_alert(superfamily, family_aln_length, family_evalue, search_type="hmmsearch")
-                
+    
         return no_captain_alert
     except Exception as e:
         logger.error(f"Error processing captain results: {str(e)}")

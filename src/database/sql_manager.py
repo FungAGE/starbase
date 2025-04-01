@@ -52,26 +52,31 @@ def fetch_meta_data(curated=False, accession_tag=None):
     LEFT JOIN genomes g ON j.genome_id = g.id
     """
 
+    params = []
     if curated:
         meta_query += " WHERE j.curated_status = 'curated'"
 
     if accession_tag:
         where_clause = " WHERE " if not curated else " AND "
         if isinstance(accession_tag, list):
-            # Handle list of accession tags
-            placeholders = ','.join(['%s'] * len(accession_tag))
+            # Use ? for SQLite placeholders
+            placeholders = ','.join(['?'] * len(accession_tag))
             meta_query += f"{where_clause}a.accession_tag IN ({placeholders})"
-            params = accession_tag
+            params = tuple(accession_tag)
         else:
-            # Handle single accession tag
-            meta_query += f"{where_clause}a.accession_tag = %s"
-            params = [accession_tag]
+            # Use ? for SQLite placeholder
+            meta_query += f"{where_clause}a.accession_tag = ?"
+            params = (accession_tag,)
 
     try:
-        if accession_tag:
+        if params:
             meta_df = pd.read_sql_query(meta_query, session.bind, params=params)
         else:
             meta_df = pd.read_sql_query(meta_query, session.bind)
+        
+        # Convert to dict if single row
+        if len(meta_df) == 1:
+            return meta_df.iloc[0].to_dict()
         return meta_df
     except Exception as e:
         logger.error(f"Error fetching meta data: {str(e)}")
