@@ -1,5 +1,5 @@
 from src.utils.seq_utils import load_fasta_to_dict
-from src.utils.classification import assign_accession
+from src.utils.classification_utils import assign_accession
 from src.config.database import StarbaseSession
 import pandas as pd
 import logging

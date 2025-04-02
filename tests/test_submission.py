@@ -3,7 +3,7 @@ from datetime import datetime
 from models import Submission
 from src.config.database import StarbaseSession, SubmissionsSession
 import os
-from src.utils.classification import assign_accession
+from src.utils.classification_utils import assign_accession
 from src.database.sql_manager import fetch_ships
 
 def test_create_new_submission():

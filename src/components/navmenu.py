@@ -7,6 +7,7 @@ from src.pages import (
     WIKI_URL,
     PGV_URL,
     BLAST_URL,
+    CLASSIFICATION_URL,
     SUBMIT_URL,
     ABOUT_URL,
     METRICS_URL,
@@ -51,6 +52,16 @@ def navmenu(buttons_disabled=False):
                 disabled=buttons_disabled,
             )
         ),
+        dbc.NavItem(
+            dbc.NavLink(
+                "Classification",
+                href=CLASSIFICATION_URL,
+                active="exact",
+                className="nav-item-link",
+                disabled=buttons_disabled,
+            )
+        ),
+
         dbc.NavItem(
             dbc.NavLink(
                 "Submit",

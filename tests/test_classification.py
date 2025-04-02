@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import tempfile
-from src.utils.classification import (
+from src.utils.classification_utils import (
     assign_accession,
     check_exact_match,
     check_contained_match,

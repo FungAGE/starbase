@@ -19,7 +19,7 @@ from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
 from src.components.callbacks import create_file_upload
-from src.utils.classification import assign_accession
+from src.utils.classification_utils import assign_accession
 from src.database.sql_manager import fetch_ships
 
 layout = dmc.Container(

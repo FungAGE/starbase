@@ -215,107 +215,213 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 # classification pipeline
 ########################################################
 
-def classify_sequence(sequence: str, db_list: Dict[str, Any], threads: int = 1) -> Tuple[str, str, str]:
-    """Classify a new sequence based on comparison to existing classified sequences.
+def classify_sequence(
+        sequence: str, 
+        blast_df: pd.DataFrame,
+        hmmer_dict: Dict[str, Any],
+        pident_thresh: float = 90,
+        db_list: Dict[str, Any] = None, 
+        threads: int = 1) -> Tuple[Dict[str, str, str], str, str]:
+    """Classify a new sequence/ship from BLAST results based on comparison to existing classified sequences.
     
+    1. Family assignment via BLAST/HMMER results or run hmmsearch/diamond on new sequence
+    2. Navis assignment via captain sequence clustering
+    3. Haplotype assignment via full sequence similarity
+
     Args:
         sequence: The new sequence to classify
+        blast_df: The BLAST results dataframe to use for family assignment
+        hmmer_dict: The HMMER results dict to use for family assignment
+        pident_thresh: Minimum percentage identity for captain gene
         db_list: Database configuration and paths
         threads: Number of CPU threads to use
     
     Returns:
-        Tuple[str, str, str]: (family, navis, haplotype) assignments
+        Tuple[Dict[str, str, str], str, str]: (family, navis, haplotype) assignments
     """
+    from src.utils.blast_utils import make_captain_alert, process_captain_results
+    from src.utils.blast_utils import create_no_matches_alert
+    from src.utils.seq_utils import guess_seq_type
+
+    logger.info("Starting sequence classification pipeline...")
+
     # Get existing classified sequences from database
+    logger.info("Fetching existing sequences from database...")
     existing_meta = fetch_meta_data(curated=True)
     existing_ships = fetch_ships(curated=True)
     existing_captains = fetch_all_captains()
-    
-    # Part 1: Family Assignment via Captain Gene
-    # - First identify captain gene in new sequence via hmmsearch
-    # - Compare to existing captain sequences
-    # - Assign family based on closest match
-    family = classify_family(sequence, db_list, existing_captains, threads)
-    
-    # Part 2: Navis Assignment
-    # - Compare captain sequence to existing classified captains
-    # - Use mmseqs clustering to group with existing navis
-    navis = classify_navis(sequence, existing_captains, existing_meta, threads)
-    
-    # Part 3: Haplotype Assignment
-    # - Compare full sequence to existing classified sequences
-    # - Use sourmash for similarity calculation
-    # - Use MCL clustering to group with existing haplotypes
-    haplotype = classify_haplotype(sequence, existing_ships, existing_meta)
-    
-    return family, navis, haplotype
+    logger.info("Successfully loaded existing sequences")
 
-def classify_family(sequence, db_list, input_eval=0.001, threads=1):
-    """Uses hmmsearch to assign family based on captain gene similarity"""
-    # first, assign all Starships to a family by searching the candidate captain sequences against the reference captain HMM profile database and identifying the best profile hit to each sequence:
-    tmp_hmmer='elementFinder/macpha6_tyr_vs_YRsuperfams.out'
-    hmmer_db = db_list["gene"]["captain"]["hmm"]["tyr"]
-    # TODO: add this to hmmsearch method?
-    hmmer_cmd = f"hmmsearch --noali --notextw --max -o {tmp_hmmer} --cpu {threads} -E {input_eval} {hmmer_db} {sequence}"
-    logger.info(f"Running HMMER search: {hmmer_cmd}")
-    subprocess.run(hmmer_cmd, shell=True)
-    hmmer_results = hmmsearch(db_list=db_list, 
-                             query_type="captain",
-                             threads=threads,
-                             query_fasta=sequence)
-    # Parse results and return family assignment
-    # perl -p -e 's/ +/\t/g' elementFinder/macpha6_tyr_vs_YRsuperfams.out | cut -f1,3,5 | grep -v '#' | sort -k3,3g | awk '!x[$1]++' > elementFinder/macpha6_tyr_vs_YRsuperfams_besthits.txt
-    # TODO: make sure this parses correctly, or just use a simpler method for grabbing the family assignment from the hmmsearch output
-    family_assignment = parse_hmmer(hmmer_results)
+    family_dict = None
+    navis_dict = None
+    haplotype_dict = None
 
-    result = extract_gene_from_hmmer(hmmer_results)
-    if not result:
-        return None
+    if sequence:
+        logger.info("Determining sequence type...")
+        seq_type = guess_seq_type(sequence)
+        logger.info(f"Sequence type determined: {seq_type}")
+    else:
+        logger.warning("No sequence provided")
+        seq_type = None
+
+    logger.info("Starting family classification...")
+    family_dict = classify_family(
+        sequence=sequence, 
+        seq_type=seq_type, 
+        blast_df=blast_df, 
+        hmmer_dict=hmmer_dict, 
+        db_list=db_list, 
+        pident_thresh=pident_thresh, 
+        threads=threads
+    )
+
+    if family_dict is None:
+        logger.warning("No family assignment possible")
+        return family_dict, None, None
+    else:           
+        logger.info(f"Family assigned: {family_dict}")
+        logger.info("Starting navis classification...")
         
-    header, captain_seq = result
+        navis_dict = classify_navis(
+            sequence=sequence, 
+            existing_captains=existing_captains, 
+            existing_meta=existing_meta, 
+            threads=threads
+        )
+        if navis_dict is None:
+            logger.warning("No navis assignment possible")
+            return family_dict, None, None
+        else:
+            logger.info(f"Navis assigned: {navis_dict}")
+            logger.info("Starting haplotype classification...")
+            
+            haplotype_dict = classify_haplotype(
+                sequence=sequence, 
+                existing_ships=existing_ships, 
+                existing_meta=existing_meta
+            )
+            if haplotype_dict is None:
+                logger.warning("No haplotype assignment possible")
+                return family_dict, navis_dict, None
+            else:
+                logger.info(f"Haplotype assigned: {haplotype_dict}")
+                logger.info("Classification pipeline completed successfully")
+                return family_dict, navis_dict, haplotype_dict
 
-    # TODO: determine what the output of this function should be
+def classify_family(sequence, seq_type, blast_df, hmmer_dict, db_list, pident_thresh=90, input_eval=0.001, threads=1):
+    """Uses blast results, hmmsearch or diamond to assign family based on captain gene similarity"""
+    # Part 1: Family Assignment via Captain Gene
+    # - if given blast or hmmer results, use those to assign family
+    # - if given a sequence, run hmmsearch or diamond to assign family
+    # - compare captain genes to existing captain sequences
+    # - Assign family based on closest match
 
-    return family_assignment
+    from src.utils.blast_utils import run_hmmer
+
+    family_dict = None
+
+    # make sure that inputs are valid
+    if not sequence and not blast_df and not hmmer_dict:
+        raise ValueError("No sequence, blast_df, or hmmer_dict provided")
+    if sequence and seq_type is None:
+        raise ValueError("Sequence provided but no sequence type")
+    if blast_df and hmmer_dict:
+        raise ValueError("Both blast_df and hmmer_dict provided")
+    if (blast_df or hmmer_dict) and sequence:
+            raise ValueError("blast_df or hmmer_dict and sequence provided")
+
+    # Simple selection of top hit using blast or hmmer results
+    if blast_df is not None and len(blast_df) > 0:
+        # Sort by evalue (ascending) and pident (descending) to get best hits
+        blast_df = blast_df.sort_values(['evalue', 'pident'], ascending=[True, False])
+        top_hit = blast_df.iloc[0]
+        logger.info(f"Top hit: {top_hit}")
+
+        top_evalue = float(top_hit['evalue'])
+        top_aln_length = int(top_hit['aln_length'])
+        top_pident = float(top_hit['pident'])
+
+        if top_pident >= pident_thresh:
+            # look up family name from accession tag
+            query_accession = top_hit['query_id']
+            top_family = fetch_meta_data(accession_tag=query_accession)['familyName']
+            family_dict = {"family": top_family, "aln_length": top_aln_length, "evalue": top_evalue}
+
+    if sequence:        
+        hmmer_dict = run_hmmer(
+            db_list=db_list,
+            query_type=seq_type,
+            input_genes="tyr",
+            input_eval=0.01,
+            query_fasta=sequence,
+            threads=2,
+        )
+
+    if hmmer_dict is not None and len(hmmer_dict) > 0:
+        # Handle case where captain_results_dict is a list of results
+        if isinstance(hmmer_dict, list):
+            # Get the first result if available
+            family_name = hmmer_dict[0].get('family_name')
+            aln_length = hmmer_dict[0].get('aln_length')
+            evalue = hmmer_dict[0].get('evalue')
+        else:
+            # Original behavior for dict
+            family_name = hmmer_dict.get('family_name')
+            aln_length = hmmer_dict.get('aln_length')
+            evalue = hmmer_dict.get('evalue')
+        family_dict = {"family": family_name, "aln_length": aln_length, "evalue": evalue}    
+
+    return family_dict
 
 def classify_navis(sequence: str,
                   existing_captains: pd.DataFrame, 
                   existing_meta: pd.DataFrame,
                   threads: int = 1) -> str:
     """Assign navis based on captain sequence clustering."""
+    # Part 2: Navis Assignment
+    # - Compare captain sequence to existing classified captains
+    # - Use mmseqs clustering to group with existing navis
+
     # Create temporary FASTA with:
     # - Captain sequence from new sequence
     # - All existing classified captain sequences
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     write_combined_fasta(sequence, existing_captains, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
         
-        # Run mmseqs clustering
+    # Run mmseqs clustering
     clusters = mmseqs_easy_cluster(
         tmp_fasta,
         min_seq_id=0.5,
         coverage=0.25,
         threads=threads
     )
-        
-    # clusters will be a dict like:
-    # {
-    #    'seq1': 'cluster1_rep',
-    #    'seq2': 'cluster1_rep',
-    #    'seq3': 'cluster2_rep',
-    #    ...
-    # }
 
-    # Find which cluster contains our sequence
-    # Return navis assignment based on existing classifications in that cluster
+    # Find which cluster has the member "query_sequence"
+    cluster_rep = None
+    for cluster, members in clusters.items():
+        if 'query_sequence' in members:
+            cluster_rep = cluster
+            break
+    
+    # id of new sequence is 'query_sequence'
+    # look up the navis name from the cluster representative
+    # ! how can we retain navis names if we are re-clustering?
+    # HACK: use the existing meta data to get the navis names of captain sequences in the cluster
+    navis_name = existing_meta[existing_meta['captainID'] == cluster_rep]['starship_navis'].values[0]
+    if navis_name is None:
+        logger.warning(f"No navis name, but sequence clusters with captainID: {cluster_rep}")
 
-    # TODO: determine what the output of this function should be
-
-    return clusters
+    return navis_name
 
 def classify_haplotype(sequence: str,
                       existing_ships: pd.DataFrame,
                       existing_meta: pd.DataFrame) -> str:
     """Assign haplotype based on full sequence similarity."""
+    # Part 3: Haplotype Assignment
+    # - Compare full sequence to existing classified sequences
+    # - Use sourmash for similarity calculation
+    # - Use MCL clustering to group with existing haplotypes
+
     # Create temporary FASTA with:
     # - New sequence
     # - All existing classified sequences
@@ -336,8 +442,29 @@ def classify_haplotype(sequence: str,
         threshold=0.05
     )
     
-    # Find which group contains our sequence
-    # Return haplotype based on existing classifications in that group
+    # groups looks like this:
+    # 'sequence_id': {
+    #     'group_id': 'HAP000001',
+    #     'is_representative': True
+    # }
 
-    # TODO: determine what the output of this function should be
+    # Find which group has the member "query_sequence"
+    rep_group_id = None
+    for group, members in groups.items():
+        if 'query_sequence' in members:
+            rep_group_id = group['group_id']
+            break
+    
+    # Return haplotype based on existing classifications in that group
+    seq_ids_in_rep_group = []
+    for group, members in groups.items():
+        if group['group_id'] == rep_group_id:
+            seq_ids_in_rep_group.append(group['sequence_id'])
+
+    # just get the first sequence id in the group
+    haplotype_name = existing_meta[existing_meta['captainID'] == seq_ids_in_rep_group[0]]['starship_haplotype'].values[0]
+
+    if haplotype_name is None:
+        logger.warning(f"No haplotype name, but sequence clusters with captainID: {seq_ids_in_rep_group[0]}")
+
     return groups

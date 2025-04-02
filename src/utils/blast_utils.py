@@ -319,7 +319,6 @@ def run_hmmer(
 ):
     try:
         # family classification should only use protein hmm
-        # first run hmmer using nucl hmm
         tmp_hmmer = hmmsearch(
             db_list,
             query_type,
@@ -683,6 +682,7 @@ def blast_download_button():
     ])
 
 def select_ship_family(hmmer_results):
+    """Selects the best matching Starship family from HMMER results."""
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
     hmmer_results.dropna(subset=["evalue"], inplace=True)
 
@@ -967,27 +967,45 @@ def mmseqs_easy_cluster(fasta_file, min_seq_id=0.5, coverage=0.25, threads=1):
         except subprocess.CalledProcessError as e:
             logger.error(f"MMseqs2 clustering failed: {e.stderr}")
             raise
-        except Exception as e:
-            logger.error(f"Error during MMseqs2 clustering: {str(e)}")
-            raise
 
-def parse_mmseqs_results(cluster_file):
-    """Parse MMseqs2 cluster TSV output file.
+def parse_mmseqs_results(sequence_db, results_db):
+    """Create a TSV file from MMseqs2 clustering results.
     
     Args:
-        cluster_file (str): Path to MMseqs2 cluster TSV file
-        
+        sequence_db (str): Path to input sequence database
+        results_db (str): Path to results database
+
     Returns:
         dict: Mapping of sequence IDs to their cluster assignments
     """
-    clusters = {}
     try:
-        with open(cluster_file) as f:
+        results_tsv = results_db + ".tsv" 
+        cmd = [
+            "mmseqs",
+            "createtsv",
+            sequence_db,
+            sequence_db,
+            results_db,
+            results_tsv
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except Exception as e:
+        logger.error(f"Error during conversion of MMseqs2 clustering results to TSV: {str(e)}")
+        raise
+
+    try:
+        clusters = {}
+        with open(results_tsv) as f:
             for line in f:
-                # Format is: representative_sequence\tmember_sequence
-                rep_seq, member_seq = line.strip().split('\t')
-                clusters[member_seq] = rep_seq
-                
+                # The resultsDB_clu.tsv file follows the following format:
+                # #cluster-representative 	cluster-member
+                # Q0KJ32	Q0KJ32
+                # Q0KJ32	C0W539
+                # Q0KJ32	D6KVP9
+                # E3HQM9	E3HQM9
+                # E3HQM9	F0YHT8
+                cluster, member = line.strip().split('\t')
+                clusters[member] = cluster
         return clusters
         
     except Exception as e:

@@ -5,6 +5,7 @@ from src.config.settings import (
     ABOUT_URL,
     PGV_URL,
     SUBMIT_URL,
+    CLASSIFICATION_URL,
     DL_URL,
     METRICS_URL
 )

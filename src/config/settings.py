@@ -60,6 +60,7 @@ PHYLOGENY_PATHS = {
 HOME_URL = os.getenv("HOME_URL", "/")
 WIKI_URL = os.getenv("WIKI_URL", "/wiki")
 BLAST_URL = os.getenv("BLAST_URL", "/blast")
+CLASSIFICATION_URL = os.getenv("CLASSIFICATION_URL", "/classification")
 ABOUT_URL = os.getenv("ABOUT_URL", "/about")
 PGV_URL = os.getenv("PGV_URL", "/pgv")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")

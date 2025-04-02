@@ -265,7 +265,6 @@ def handle_submission_and_upload(n_clicks, contents, filename):
         max_size = 10 * 1024 * 1024  # 10 MB
         content_type, content_string = contents.split(",")
         
-        # Use our updated parse_fasta_from_file function
         header, seq, fasta_error = parse_fasta_from_file(contents)
         
         decoded = base64.b64decode(content_string)

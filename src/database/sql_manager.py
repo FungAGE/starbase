@@ -37,7 +37,7 @@ def fetch_meta_data(curated=False):
     
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
-           j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
+           j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, j.captainID,
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.genus, t.species, 
            g.version, g.genomeSource, g.citation, a.accession_tag, g.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
@@ -285,17 +285,51 @@ def fetch_accession_ship(accession_tag):
         session.close()
 
 @db_retry_decorator()
-def fetch_all_captains():
+def fetch_captains(accession_tags=None, curated=False):
+    """
+    Fetch captain data for specified accession tags.
+    
+    Args:
+        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all captains.
+        curated (bool, optional): If True, only fetch curated captains.
+    
+    Returns:
+        pd.DataFrame: DataFrame containing captain data
+    """
     session = StarbaseSession()
 
-    query = f"""
-    SELECT c.*
-    FROM captains c
+    query = """
+    WITH valid_captains AS (
+        SELECT DISTINCT 
+            c.*,
+            a.id as accession_id, 
+            a.accession_tag,
+            j.curated_status
+        FROM captains c
+        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN joined_ships j ON a.id = j.captainID_new
+        WHERE 1=1
+    """
+    
+    if accession_tags:
+        query += " AND a.accession_tag IN ({})".format(
+            ','.join(f"'{tag}'" for tag in accession_tags)
+        )
+    if curated:
+        query += " AND j.curated_status = 'curated'"
+    
+    query += """
+    )
+    SELECT 
+        v.*,
+        s.sequence
+    FROM valid_captains v
+    LEFT JOIN ships s ON s.accession = v.accession_id
     """
 
     try:
         df = pd.read_sql_query(query, session.bind)
-
+        
         if df.empty:
             logger.warning("Fetched captain DataFrame is empty.")
         return df
@@ -303,7 +337,7 @@ def fetch_all_captains():
         logger.error(f"Error fetching captain data: {str(e)}")
         raise
     finally:
-        session.close()
+        session.close()    
 
 @cache.memoize()
 def fetch_captain_tree():
