@@ -456,6 +456,13 @@ def make_captain_alert(family, aln_length, evalue, search_type):
             color="blue",
             variant="light",
             withCloseButton=False,
+            style={
+                "width": "100%", 
+                "margin": "0 auto",
+                "@media (min-width: 768px)": {
+                    "width": "50%"
+                }
+            }
         )
             
     except Exception as e:
@@ -466,6 +473,13 @@ def process_captain_results(captain_results_dict):
     no_captain_alert = dmc.Alert(
         "No captain sequence found (e-value threshold 0.01).",
         color="warning",
+        style={
+            "width": "100%", 
+            "margin": "0 auto",
+            "@media (min-width: 768px)": {
+                "width": "50%"
+            }
+        }
     )
 
     if not captain_results_dict:
@@ -486,8 +500,15 @@ def process_captain_results(captain_results_dict):
             children="Failed to process captain results",
             color="red",
             variant="light",
+            style={
+                "width": "100%", 
+                "margin": "0 auto",
+                "@media (min-width: 768px)": {
+                    "width": "50%"
+                }
+            }
         )
-    
+
 def create_no_matches_alert():
     return dmc.Alert(
         title="No Matches Found",
@@ -520,4 +541,11 @@ def create_no_matches_alert():
         color="yellow",
         variant="light",
         withCloseButton=False,
+        style={
+            "width": "100%", 
+            "margin": "0 auto",
+            "@media (min-width: 768px)": {
+                "width": "50%"
+            }
+        }
     )

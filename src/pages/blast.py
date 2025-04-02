@@ -166,6 +166,7 @@ layout = dmc.Container(
                             ],
                         ),
                     ],
+                    style={"justify-content": "flex-start"}
                 ),
             ],
             gutter="xl",
@@ -416,7 +417,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                 return None, None, error_div
            
             if search_type == "diamond":
-                results_dict = run_diamond(
+                captain_results_dict = run_diamond(
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
@@ -425,7 +426,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     threads=2,
                 )
             else:
-                results_dict = run_hmmer(
+                captain_results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
@@ -434,7 +435,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     threads=2,
                 )
                 
-            return blast_results_file, results_dict, None
+            return blast_results_file, captain_results_dict, None
 
         except subprocess.TimeoutExpired:
             error_div = html.Div([
@@ -587,8 +588,14 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
         phylogeny_plot = None
         if captain_results_dict:
             try:
-                # Get the family name from captain results
-                family_name = captain_results_dict.get('family_name')
+                # Handle case where captain_results_dict is a list of results
+                if isinstance(captain_results_dict, list):
+                    # Get the first result if available
+                    family_name = captain_results_dict[0].get('family_name') if captain_results_dict else None
+                else:
+                    # Original behavior for dict
+                    family_name = captain_results_dict.get('family_name')
+                
                 if family_name:
                     fig = plot_tree(
                         highlight_families=family_name,
