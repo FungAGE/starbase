@@ -11,12 +11,13 @@ from dash.dependencies import Output, Input, State
 import base64
 import logging
 
-from src.utils.seq_utils import load_fasta_to_dict
+from src.utils.seq_utils import load_fasta_to_dict, guess_seq_type, write_temp_fasta
 from src.config.settings import BLAST_DB_PATHS
 from src.utils.classification_utils import classify_sequence
 from src.components.callbacks import create_file_upload
 from src.components.error_boundary import handle_callback_error, create_error_alert
 from src.utils.seq_utils import parse_fasta
+from src.utils.blast_utils import run_hmmer
 
 dash.register_page(__name__)
 
@@ -81,18 +82,75 @@ def update_fasta_details(seq_content, seq_filename):
             return html.Div(["There was an error processing this file."])
 
 
-@callback(Output('classification-output', 'children'),
-          Input('classification-fasta-upload', 'contents'),
-          prevent_initial_call=True)
+@callback(
+    [
+        Output('classification-progress-family', 'value'),
+        Output('classification-progress-navis', 'value'),
+        Output('classification-progress-haplotype', 'value'),
+        Output('classification-output', 'children')
+    ],
+    Input('classification-fasta-upload', 'contents'),
+    prevent_initial_call=True
+)
 @handle_callback_error
 def update_output(seq_content):
     from src.utils.seq_utils import parse_fasta_from_file
+    from src.utils.blast_utils import run_hmmer
+    
+    # Reset progress bars
+    family_progress = 0
+    navis_progress = 0
+    haplotype_progress = 0
+    
+    # Parse FASTA
     # "," is the delimeter for splitting content_type from content_string
     content_type, content_string = seq_content.split(",")        
     header, seq, fasta_error = parse_fasta_from_file(seq_content)        
     
-    family, navis, haplotype = classify_sequence(seq, BLAST_DB_PATHS, threads=1)
-    print(f"Sequence {header}: Family {family}, Navis {navis}, Haplotype {haplotype}")
+    # Write sequence to temporary FASTA file
+    tmp_query_fasta = write_temp_fasta(header, seq)
+    
+    # Run HMMER first
+    hmmer_dict = run_hmmer(
+        db_list=BLAST_DB_PATHS,
+        query_type=guess_seq_type(seq),
+        input_genes="tyr",
+        input_eval=0.01,
+        query_fasta=tmp_query_fasta,
+        threads=2,
+    )
+    
+    def update_progress(stage, value):
+        nonlocal family_progress, navis_progress, haplotype_progress
+        if stage == 'family':
+            family_progress = value
+        elif stage == 'navis':
+            navis_progress = value
+        elif stage == 'haplotype':
+            haplotype_progress = value
+    
+    try:
+        family_dict, navis_dict, haplotype_dict = classify_sequence(
+            sequence=seq,
+            blast_df=None,
+            hmmer_dict=hmmer_dict,
+            db_list=BLAST_DB_PATHS, 
+            threads=1,
+            progress_callback=update_progress
+        )
+        
+        print(f"Sequence {header}: Family {family_dict}, Navis {navis_dict}, Haplotype {haplotype_dict}")
+        
+        return family_progress, navis_progress, haplotype_progress, None
+        
+    except Exception as e:
+        logger.error(f"Classification error: {str(e)}")
+        return 0, 0, 0, dmc.Alert(
+            title="Classification Error",
+            children=str(e),
+            color="red",
+            variant="light"
+        )
 
 @callback(
     [Output("classification-progress", "value"), Output("classification-progress", "label")],

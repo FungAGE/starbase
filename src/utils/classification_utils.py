@@ -3,8 +3,8 @@ import subprocess
 import logging
 from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files, extract_gene_from_hmmer
 from src.utils.seq_utils import write_combined_fasta, write_multi_fasta
-from typing import Optional, Tuple, Dict, Any
-from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_all_captains
+from typing import Optional, Tuple, Dict, Any, Callable
+from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 import pandas as pd
 import hashlib
 
@@ -220,8 +220,10 @@ def classify_sequence(
         blast_df: pd.DataFrame,
         hmmer_dict: Dict[str, Any],
         pident_thresh: float = 90,
-        db_list: Dict[str, Any] = None, 
-        threads: int = 1) -> Tuple[Dict[str, str, str], str, str]:
+        db_list: Dict[str, Any] = None,
+        threads: int = 1,
+        progress_callback: Callable[[str, int], None] = None
+) -> Tuple[Dict[str, str], str, str]:
     """Classify a new sequence/ship from BLAST results based on comparison to existing classified sequences.
     
     1. Family assignment via BLAST/HMMER results or run hmmsearch/diamond on new sequence
@@ -235,31 +237,38 @@ def classify_sequence(
         pident_thresh: Minimum percentage identity for captain gene
         db_list: Database configuration and paths
         threads: Number of CPU threads to use
+        progress_callback: Optional callback function to report progress
     
     Returns:
-        Tuple[Dict[str, str, str], str, str]: (family, navis, haplotype) assignments
+        Tuple[Dict[str, str], str, str]: (family_dict, navis_dict, haplotype_dict)
     """
     from src.utils.blast_utils import make_captain_alert, process_captain_results
     from src.utils.blast_utils import create_no_matches_alert
     from src.utils.seq_utils import guess_seq_type
 
+    def update_progress(stage: str, percent: int):
+        if progress_callback:
+            progress_callback(stage, percent)
+            logger.debug(f"Progress update - {stage}: {percent}%")
+
     logger.info("Starting sequence classification pipeline...")
+    update_progress('family', 0)
+    update_progress('navis', 0)
+    update_progress('haplotype', 0)
 
     # Get existing classified sequences from database
     logger.info("Fetching existing sequences from database...")
     existing_meta = fetch_meta_data(curated=True)
     existing_ships = fetch_ships(curated=True)
-    existing_captains = fetch_all_captains()
+    existing_captains = fetch_captains()
     logger.info("Successfully loaded existing sequences")
-
-    family_dict = None
-    navis_dict = None
-    haplotype_dict = None
+    update_progress('family', 20)
 
     if sequence:
         logger.info("Determining sequence type...")
         seq_type = guess_seq_type(sequence)
         logger.info(f"Sequence type determined: {seq_type}")
+        update_progress('family', 40)
     else:
         logger.warning("No sequence provided")
         seq_type = None
@@ -277,9 +286,12 @@ def classify_sequence(
 
     if family_dict is None:
         logger.warning("No family assignment possible")
+        update_progress('family', 0)
         return family_dict, None, None
     else:           
         logger.info(f"Family assigned: {family_dict}")
+        update_progress('family', 100)
+        update_progress('navis', 20)
         logger.info("Starting navis classification...")
         
         navis_dict = classify_navis(
@@ -290,9 +302,12 @@ def classify_sequence(
         )
         if navis_dict is None:
             logger.warning("No navis assignment possible")
+            update_progress('navis', 0)
             return family_dict, None, None
         else:
             logger.info(f"Navis assigned: {navis_dict}")
+            update_progress('navis', 100)
+            update_progress('haplotype', 20)
             logger.info("Starting haplotype classification...")
             
             haplotype_dict = classify_haplotype(
@@ -302,9 +317,11 @@ def classify_sequence(
             )
             if haplotype_dict is None:
                 logger.warning("No haplotype assignment possible")
+                update_progress('haplotype', 0)
                 return family_dict, navis_dict, None
             else:
                 logger.info(f"Haplotype assigned: {haplotype_dict}")
+                update_progress('haplotype', 100)
                 logger.info("Classification pipeline completed successfully")
                 return family_dict, navis_dict, haplotype_dict
 
