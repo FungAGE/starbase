@@ -43,29 +43,28 @@ from src.config.settings import DB_PATHS
 _dash_renderer._set_react_version("18.2.0")
 
 external_stylesheets = [
-    "https://unpkg.com/@mantine/core@7.11.0/styles.css",
-    "https://unpkg.com/@mantine/dates@7.11.0/styles.css",
-    "https://unpkg.com/@mantine/code-highlight@7.11.0/styles.css",
-    "https://unpkg.com/@mantine/charts@7.11.0/styles.css",
-    "https://unpkg.com/@mantine/carousel@7.11.0/styles.css",
-    "https://unpkg.com/@mantine/notifications@7.11.0/styles.css",
-    "https://unpkg.com/@mantine/nprogress@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/core@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/dates@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/code-highlight@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/charts@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/carousel@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/notifications@7.11.0/styles.css",
+    "https://cdn.jsdelivr.net/npm/@mantine/nprogress@7.11.0/styles.css",
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
     "https://code.jquery.com/jquery-3.6.0.min.js",
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "/assets/styles.css",
-    "https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
+    "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
     "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-grid.css",
     "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-theme-alpine.css",
 ]
 
 external_scripts = [
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
-    "https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
-    "https://unpkg.com/micromodal/dist/micromodal.min.js",
+    "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
+    "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
 ]
-
 # Initialize Flask first
 server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
@@ -107,9 +106,7 @@ limiter = Limiter(
 
 def initialize_app():
     """Initialize all app components."""
-    with server.app_context():
-        # init_databases()
-        
+    with server.app_context():                
         cache.init_app(server)
         cleanup_old_cache()
                 
@@ -312,26 +309,6 @@ engines = {
         pool_recycle=1800
     ) for name, url in DATABASE_URLS.items()
 }
-
-# Global error handlers
-@server.errorhandler(500)
-def handle_500(e):
-    logger.error(f"Internal server error: {str(e)}")
-    return dmc.Alert(
-        title="Server Error",
-        children="An error occurred. Please try again later.",
-        color="red",
-        variant="filled"
-    ), 500
-
-@server.errorhandler(404)
-def handle_404(e):
-    return dmc.Alert(
-        title="Not Found",
-        children="The requested resource was not found.",
-        color="yellow",
-        variant="filled"
-    ), 404
 
 if __name__ == "__main__":
     app.run_server(debug=False)
