@@ -1,7 +1,6 @@
 import tempfile
 import subprocess
 import logging
-from src.utils.blast_utils import hmmsearch, mmseqs_easy_cluster, parse_hmmer, calculate_similarities, write_similarity_file, cluster_sequences, write_cluster_files, extract_gene_from_hmmer
 from src.utils.seq_utils import write_combined_fasta, write_multi_fasta
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
@@ -325,7 +324,7 @@ def classify_sequence(
                 logger.info("Classification pipeline completed successfully")
                 return family_dict, navis_dict, haplotype_dict
 
-def classify_family(sequence, seq_type, blast_df, hmmer_dict, db_list, pident_thresh=90, input_eval=0.001, threads=1):
+def classify_family(sequence=None, seq_type=None, blast_df=None, hmmer_dict=None, db_list=None, pident_thresh=90, input_eval=0.001, threads=1):
     """Uses blast results, hmmsearch or diamond to assign family based on captain gene similarity"""
     # Part 1: Family Assignment via Captain Gene
     # - if given blast or hmmer results, use those to assign family
@@ -338,14 +337,16 @@ def classify_family(sequence, seq_type, blast_df, hmmer_dict, db_list, pident_th
     family_dict = None
 
     # make sure that inputs are valid
-    if not sequence and not blast_df and not hmmer_dict:
-        raise ValueError("No sequence, blast_df, or hmmer_dict provided")
-    if sequence and seq_type is None:
+    inputs_provided = sum(x is not None for x in [sequence, blast_df, hmmer_dict])
+    
+    if inputs_provided == 0:
+        raise ValueError("Must provide one of: sequence, blast_df, or hmmer_dict")
+    if inputs_provided > 1:
+        raise ValueError("Can only provide one of: sequence, blast_df, or hmmer_dict")
+        
+    # Additional validation for sequence input
+    if sequence is not None and seq_type is None:
         raise ValueError("Sequence provided but no sequence type")
-    if blast_df and hmmer_dict:
-        raise ValueError("Both blast_df and hmmer_dict provided")
-    if (blast_df or hmmer_dict) and sequence:
-            raise ValueError("blast_df or hmmer_dict and sequence provided")
 
     # Simple selection of top hit using blast or hmmer results
     if blast_df is not None and len(blast_df) > 0:
@@ -485,3 +486,370 @@ def classify_haplotype(sequence: str,
         logger.warning(f"No haplotype name, but sequence clusters with captainID: {seq_ids_in_rep_group[0]}")
 
     return groups
+
+def mmseqs_easy_cluster(fasta_file, min_seq_id=0.5, coverage=0.25, threads=1):
+    """Run mmseqs easy-cluster on input sequences.
+    
+    Args:
+        fasta_file (str): Path to input FASTA file
+        min_seq_id (float): Minimum sequence identity threshold (0-1)
+        coverage (float): Minimum coverage threshold (0-1) 
+        threads (int): Number of threads to use
+        
+    Returns:
+        dict: Parsed clustering results mapping sequence IDs to cluster assignments
+    """
+    # Create temporary directory for mmseqs files
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Build command with all parameters
+        base_name = os.path.join(tmp_dir, "results")
+        cmd = [
+            "mmseqs",
+            "easy-cluster",
+            fasta_file,
+            base_name,
+            tmp_dir,
+            "--threads", str(threads),
+            "--min-seq-id", str(min_seq_id),
+            "-c", str(coverage),
+            "--alignment-mode", "3",
+            "--cov-mode", "0", 
+            "--cluster-reassign"
+        ]
+        
+        try:
+            # Run mmseqs
+            logger.info(f"Running MMseqs2: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            
+            # Parse results from the _cluster.tsv file
+            cluster_file = f"{base_name}_cluster.tsv"
+            return parse_mmseqs_results(cluster_file)
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"MMseqs2 clustering failed: {e.stderr}")
+            raise
+
+def parse_mmseqs_results(sequence_db, results_db):
+    """Create a TSV file from MMseqs2 clustering results.
+    
+    Args:
+        sequence_db (str): Path to input sequence database
+        results_db (str): Path to results database
+
+    Returns:
+        dict: Mapping of sequence IDs to their cluster assignments
+    """
+    try:
+        results_tsv = results_db + ".tsv" 
+        cmd = [
+            "mmseqs",
+            "createtsv",
+            sequence_db,
+            sequence_db,
+            results_db,
+            results_tsv
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except Exception as e:
+        logger.error(f"Error during conversion of MMseqs2 clustering results to TSV: {str(e)}")
+        raise
+
+    try:
+        clusters = {}
+        with open(results_tsv) as f:
+            for line in f:
+                # The resultsDB_clu.tsv file follows the following format:
+                # #cluster-representative 	cluster-member
+                # Q0KJ32	Q0KJ32
+                # Q0KJ32	C0W539
+                # Q0KJ32	D6KVP9
+                # E3HQM9	E3HQM9
+                # E3HQM9	F0YHT8
+                cluster, member = line.strip().split('\t')
+                clusters[member] = cluster
+        return clusters
+        
+    except Exception as e:
+        logger.error(f"Error parsing MMseqs2 results: {str(e)}")
+        raise
+
+def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled, sketch_type='dna'):
+    sketch_cmd = [
+        "sourmash", "sketch",
+        f"{sketch_type}",
+        "--singleton",
+        "--output", sig_file,
+        "-p", f"k={kmer_size},scaled={scaled},noabund",
+        sequence_file
+    ]
+    
+    logger.info(f"Creating sourmash signatures: {' '.join(sketch_cmd)}")
+    try:
+        subprocess.run(sketch_cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Sourmash sketch failed: {e.stderr}")
+        raise
+
+def sourmash_compare(ship_sketch, new_sketch, matrix_file, kmer_size, sketch_type='dna'):
+    compare_cmd = [
+        "sourmash", "compare",
+        ship_sketch,
+        new_sketch,
+        f"--{sketch_type}",  # dna or protein
+        "--csv", matrix_file,
+        "-k", str(kmer_size)
+    ]
+    
+    logger.info(f"Calculating pairwise similarities: {' '.join(compare_cmd)}")
+    try:
+        subprocess.run(compare_cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Sourmash compare failed: {e.stderr}")
+        raise
+
+
+def calculate_similarities(ship_sequence_file, new_sequence_file, seq_type='nucl', threads=1):
+    """Calculate k-mer similarity between sequences using sourmash.
+    
+    Args:
+        sequence_file (str): Path to input FASTA file
+        seq_type (str): Sequence type to compare - 'nucl' or 'prot'
+        threads (int): Number of threads to use
+        
+    Returns:
+        dict: Nested dictionary of pairwise similarities {seq1: {seq2: similarity}}
+    """
+    # Set sourmash parameters based on sequence type
+    if seq_type == 'nucl':
+        kmer_size = 510  # Default from starfish sig
+        scaled = 100
+        sketch_type = 'dna'
+    elif seq_type == 'prot':
+        kmer_size = 17
+        scaled = 20
+        sketch_type = 'protein'
+    else:
+        raise ValueError(f"Invalid sequence type: {seq_type}")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # 0. create sketch of ships
+        ship_sketch_file = os.path.join(tmp_dir, "ships.sig")
+        sourmash_sketch(ship_sequence_file, ship_sketch_file, kmer_size, scaled, sketch_type)
+
+        # 1. Create signature file
+        sig_file = os.path.join(tmp_dir, "sequences.sig")
+        sourmash_sketch(new_sequence_file, sig_file, kmer_size, scaled, sketch_type)
+
+        # 2. Calculate pairwise similarities
+        matrix_file = os.path.join(tmp_dir, "similarity.csv")
+        sourmash_compare(ship_sketch_file, sig_file, matrix_file, kmer_size, sketch_type)
+
+        # 3. Parse similarity matrix
+        return parse_similarity_matrix(matrix_file)
+
+def parse_similarity_matrix(matrix_file):
+    """Parse sourmash CSV output into pairwise similarities.
+    
+    Args:
+        matrix_file (str): Path to sourmash CSV output
+        
+    Returns:
+        dict: Nested dictionary of pairwise similarities
+    """
+    similarities = {}
+    
+    with open(matrix_file) as f:
+        # First line contains sequence IDs
+        headers = next(f).strip().split(',')
+        seq_ids = headers[1:]  # First column is empty
+        
+        # Read similarity values
+        for i, line in enumerate(f):
+            values = line.strip().split(',')
+            seq_id = values[0]
+            similarities[seq_id] = {}
+            
+            # Convert similarity values to float and store
+            for j, val in enumerate(values[1:]):
+                target_id = seq_ids[j]
+                if seq_id != target_id:  # Skip self-comparisons
+                    sim = float(val)
+                    if sim > 0:  # Only store non-zero similarities
+                        similarities[seq_id][target_id] = sim
+
+    return similarities
+
+def write_similarity_file(similarities, output_file):
+    """Write similarities to output file in starfish format.
+    
+    Args:
+        similarities (dict): Nested dictionary of pairwise similarities
+        output_file (str): Path to output file
+    """
+    with open(output_file, 'w') as f:
+        for seq1 in sorted(similarities):
+            for seq2 in sorted(similarities[seq1]):
+                # Format: seq1\tseq2\tsimilarity
+                sim = similarities[seq1][seq2]
+                f.write(f"{seq1}\t{seq2}\t{sim:.3f}\n")
+
+def cluster_sequences(similarity_file, group_prefix="HAP", inflation=1.5, threshold=0.0, threads=1):
+    """Group sequences into clusters using MCL algorithm.
+    
+    Args:
+        similarity_file (str): Path to similarity file (from calculate_similarities)
+        group_prefix (str): Prefix for naming groups
+        inflation (float): MCL inflation parameter
+        threshold (float): Minimum similarity threshold (0-1)
+        threads (int): Number of threads to use
+        
+    Returns:
+        tuple: (groups, node_data, edge_data) where:
+            groups: dict mapping sequence IDs to group assignments
+            node_data: dict of node metadata
+            edge_data: dict of edge weights
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # 1. Remap similarity values if threshold > 0
+        if threshold > 0:
+            remapped_sim = os.path.join(tmp_dir, "remapped.sim")
+            remap_similarities(similarity_file, remapped_sim, threshold)
+            input_file = remapped_sim
+        else:
+            input_file = similarity_file
+
+        # 2. Run MCL clustering
+        mcl_output = os.path.join(tmp_dir, "mcl_clusters.txt")
+        run_mcl_clustering(input_file, mcl_output, inflation, threads)
+        
+        # 3. Parse results and assign group names
+        groups = parse_and_name_groups(mcl_output, group_prefix)
+        
+        # 4. Generate node and edge data for visualization
+        node_data = generate_node_data(groups)
+        edge_data = generate_edge_data(similarity_file)
+        
+        return groups, node_data, edge_data
+
+def remap_similarities(input_file, output_file, threshold):
+    """Remap similarity values based on threshold.
+    
+    Following MCL manual recommendation to increase contrast between edge weights.
+    Values are remapped by subtracting the threshold.
+    """
+    with open(input_file) as f_in, open(output_file, 'w') as f_out:
+        for line in f_in:
+            ref, query, sim = line.strip().split('\t')
+            sim = float(sim)
+            if sim < threshold:
+                remapped = 0
+            else:
+                remapped = sim - threshold
+            f_out.write(f"{ref}\t{query}\t{remapped:.3f}\n")
+
+def run_mcl_clustering(input_file, output_file, inflation, threads):
+    """Run MCL clustering algorithm."""
+    cmd = [
+        "mcl",
+        input_file,
+        "-I", str(inflation),
+        "--abc",  # Input format is label pairs with weight
+        "-te", str(threads),
+        "-o", output_file
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"MCL clustering failed: {e.stderr}")
+        raise
+
+def parse_and_name_groups(mcl_output, prefix):
+    """Parse MCL output and assign group names.
+    
+    Returns dict mapping sequence IDs to their group assignments.
+    """
+    groups = {}
+    group_count = 0
+    
+    with open(mcl_output) as f:
+        for line in f:
+            members = line.strip().split('\t')
+            if len(members) > 0:
+                group_count += 1
+                group_name = f"{prefix}{group_count:04d}"
+                
+                # First member is considered the representative
+                for member in members:
+                    groups[member] = {
+                        'group_id': group_name,
+                        'is_representative': member == members[0]
+                    }
+    
+    logger.info(f"Grouped sequences into {group_count} clusters")
+    return groups
+
+def generate_node_data(groups):
+    """Generate node metadata for visualization."""
+    node_data = {}
+    
+    for seq_id, data in groups.items():
+        node_data[seq_id] = {
+            'id': seq_id,
+            'group': data['group_id']
+        }
+    
+    return node_data
+
+def generate_edge_data(similarity_file):
+    """Generate edge data with average similarities for visualization."""
+    edges = {}
+    
+    with open(similarity_file) as f:
+        for line in f:
+            node1, node2, weight = line.strip().split('\t')
+            weight = float(weight)
+            
+            # Sort nodes to ensure consistent edge keys
+            key = tuple(sorted([node1, node2]))
+            
+            if key not in edges:
+                edges[key] = {'sum': weight, 'count': 1}
+            else:
+                edges[key]['sum'] += weight
+                edges[key]['count'] += 1
+    
+    # Calculate averages
+    edge_data = {}
+    for (node1, node2), data in edges.items():
+        avg_weight = data['sum'] / data['count']
+        edge_data[(node1, node2)] = avg_weight
+    
+    return edge_data
+
+def write_cluster_files(groups, node_data, edge_data, output_prefix):
+    """Write clustering results to files."""
+    # Write main clustering results
+    with open(f"{output_prefix}.mcl", 'w') as f:
+        current_group = None
+        for seq_id, data in sorted(groups.items(), key=lambda x: (x[1]['group_id'], not x[1]['is_representative'])):
+            if data['group_id'] != current_group:
+                if current_group is not None:
+                    f.write('\n')
+                f.write(f"{data['group_id']}\t{seq_id}")
+                current_group = data['group_id']
+            else:
+                f.write(f"\t{seq_id}")
+    
+    # Write node data
+    with open(f"{output_prefix}.nodes.txt", 'w') as f:
+        f.write("id\tgroup\n")
+        for node_id, data in sorted(node_data.items()):
+            f.write(f"{node_id}\t{data['group']}\n")
+    
+    # Write edge data
+    with open(f"{output_prefix}.edges.txt", 'w') as f:
+        f.write("from\tto\tweight\n")
+        for (node1, node2), weight in sorted(edge_data.items()):
+            f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
