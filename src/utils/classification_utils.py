@@ -6,6 +6,7 @@ import hashlib
 import os
 import tempfile
 import glob
+import signal
 
 from src.utils.seq_utils import write_combined_fasta, write_multi_fasta, write_fasta
 from typing import Optional, Tuple, Dict, Any, Callable
@@ -187,8 +188,8 @@ def check_similar_match(sequence: str,
     
     # Calculate similarities
     similarities = calculate_similarities(
-        tmp_fasta,
-        tmp_fasta_all_ships,
+        ship_sequence_file=tmp_fasta,
+        new_sequence_file=tmp_fasta_all_ships,
         seq_type='nucl'
     )
     
@@ -322,17 +323,17 @@ def classify_sequence(
         update_progress('navis', 20)
         logger.info("Starting navis classification...")
         
-        navis_dict = classify_navis(
+        navis_name = classify_navis(
             fasta=tmp_protein_filename, 
             existing_captains=existing_captains, 
             threads=threads
         )
-        if navis_dict is None:
+        if navis_name is None:
             logger.warning("No navis assignment possible")
             update_progress('navis', 0)
             return family_dict, None, None
         else:
-            logger.info(f"Navis assigned: {navis_dict}")
+            logger.info(f"Navis assigned: {navis_name}")
             update_progress('navis', 100)
             update_progress('haplotype', 20)
             logger.info("Starting haplotype classification...")
@@ -343,12 +344,12 @@ def classify_sequence(
             if haplotype_dict is None:
                 logger.warning("No haplotype assignment possible")
                 update_progress('haplotype', 0)
-                return family_dict, navis_dict, None
+                return family_dict, navis_name, None
             else:
                 logger.info(f"Haplotype assigned: {haplotype_dict}")
                 update_progress('haplotype', 100)
                 logger.info("Classification pipeline completed successfully")
-                return family_dict, navis_dict, haplotype_dict
+                return family_dict, navis_name, haplotype_dict
 
 def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, db_list=None, pident_thresh=90, input_eval=0.001, threads=1):
     """Uses blast results, hmmsearch or diamond to assign family based on captain gene similarity"""
@@ -418,11 +419,7 @@ def classify_navis(fasta: str,
     # - Captain sequence from new sequence
     # - All existing classified captain sequences
 
-    # FIXME: 2 problems
-    # 1. the query sequence is None
-    # 2. there are no existing sequences in this directory
     logger.debug("Starting navis classification")
-
     tmp_fasta_dir = create_tmp_fasta_dir(fasta, existing_captains)
     logger.debug(f"Created temporary FASTA directory: {tmp_fasta_dir}")
         
@@ -462,7 +459,8 @@ def classify_navis(fasta: str,
         return navis_name
 
 def classify_haplotype(fasta: str,
-                      existing_ships: pd.DataFrame) -> str:
+                      existing_ships: pd.DataFrame,
+                      navis: str) -> str:
     """Assign haplotype based on full sequence similarity."""
     # Part 3: Haplotype Assignment
     # - Compare full sequence to existing classified sequences
@@ -471,13 +469,16 @@ def classify_haplotype(fasta: str,
 
     # Create temporary FASTA with:
     # - New sequence
-    # - All existing classified sequences
+    # - All existing classified sequences for this navis
+
+    existing_ships_navis = existing_ships[existing_ships['starship_navis'] == navis]
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    write_combined_fasta(fasta, existing_ships, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
+    write_combined_fasta(fasta, existing_ships_navis, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
         
     # Calculate similarities
     similarities = calculate_similarities(
-        tmp_fasta,
+        ship_sequence_file=tmp_fasta,
+        new_sequence_file=tmp_fasta,
         seq_type='nucl'
     )
         
@@ -514,7 +515,7 @@ def classify_haplotype(fasta: str,
     if haplotype_name is None:
         logger.warning(f"No haplotype name, but sequence clusters with captainID: {seq_ids_in_rep_group[0]}")
 
-    return groups
+    return haplotype_name
 
 def mmseqs_easy_cluster(fasta_dir: str, output_dir: str, min_seq_id=0.5, coverage=0.25, threads=1) -> Dict[str, str]:
     """Run mmseqs easy-cluster on input sequences.
@@ -561,12 +562,25 @@ def mmseqs_easy_cluster(fasta_dir: str, output_dir: str, min_seq_id=0.5, coverag
         "--createdb-mode", "0"  # Add this to ensure proper database creation
     ]
     
+    process = None
     try:
-        # logger.debug(f"Running clustering: {' '.join(cluster_cmd)}")
-        result = subprocess.run(cluster_cmd, capture_output=True, text=True, check=True)
-        # logger.debug(result.stdout)
-        if result.stderr:
-            logger.debug(f"STDERR: {result.stderr}")
+        # Start process with a new process group
+        process = subprocess.Popen(
+            cluster_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True  # This ensures the process has its own session
+        )
+        
+        # Wait for process with timeout
+        stdout, stderr = process.communicate(timeout=300)  # 5 minute timeout
+        
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, cluster_cmd, stdout, stderr)
+            
+        if stderr:
+            logger.debug(f"STDERR: {stderr}")
             
         # Parse clustering results from the TSV file
         cluster_file = f"{results_prefix}_cluster.tsv"
@@ -584,13 +598,42 @@ def mmseqs_easy_cluster(fasta_dir: str, output_dir: str, min_seq_id=0.5, coverag
         logger.debug(f"Found {len(set(clusters.values()))} clusters")
         return clusters
         
+    except subprocess.TimeoutExpired:
+        logger.error("MMseqs2 process timed out")
+        if process:
+            # Kill the entire process group
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                # Give it a moment to terminate gracefully
+                process.wait(timeout=5)
+            except:
+                # If it doesn't terminate gracefully, force kill
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                except:
+                    pass
+        raise
+        
     except subprocess.CalledProcessError as e:
         logger.error(f"MMseqs2 command failed: {e.stderr}")
         raise
+        
     except Exception as e:
         logger.error(f"Error during sequence clustering: {str(e)}")
         logger.exception("Full traceback:")
         raise
+        
+    finally:
+        # Cleanup process if it's still running
+        if process and process.poll() is None:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                process.wait(timeout=5)
+            except:
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                except:
+                    pass
 
 def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled, sketch_type='dna'):
     sketch_cmd = [
@@ -627,7 +670,7 @@ def sourmash_compare(ship_sketch, new_sketch, matrix_file, kmer_size, sketch_typ
         raise
 
 
-def calculate_similarities(ship_sequence_file, new_sequence_file, seq_type='nucl', threads=1):
+def calculate_similarities(ship_sequence_file=None, new_sequence_file=None, seq_type='nucl', threads=1):
     """Calculate k-mer similarity between sequences using sourmash.
     
     Args:

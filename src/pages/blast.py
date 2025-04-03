@@ -409,24 +409,14 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
         # subject_seq = None
 
         try:
-            if search_type == "diamond":
-                results_dict = run_diamond(
-                    db_list=BLAST_DB_PATHS,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-            if search_type == "hmmsearch":
-                results_dict = run_hmmer(
-                    db_list=BLAST_DB_PATHS,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
+            results_dict, protein_filename = run_hmmer(
+                db_list=BLAST_DB_PATHS,
+                query_type=query_type,
+                input_gene="tyr",
+                input_eval=0.01,
+                query_fasta=tmp_query_fasta,
+                threads=2,
+            )
 
             if results_dict is None or len(results_dict) == 0:
                 logger.error("Diamond/HMMER returned no results!")

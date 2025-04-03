@@ -336,10 +336,14 @@ def fetch_captains(accession_tags=None, curated=False, with_sequence=False):
             c.*,
             a.id as accession_id, 
             a.accession_tag,
-            j.curated_status
+            j.curated_status,
+            f.familyName,
+            j.starship_navis,
+            j.starship_haplotype
         FROM captains c
         INNER JOIN joined_ships j ON c.id = j.captainID_new
         INNER JOIN accessions a ON j.ship_id = a.id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
         WHERE 1=1
     """
     
