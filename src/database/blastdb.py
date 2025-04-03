@@ -47,41 +47,38 @@ def blast_db_exists(blastdb):
 
 
 def create_dbs():
-    
     from src.database.sql_manager import fetch_captains, fetch_ships
 
+    # Create ship database
     ship_fasta_path = BLAST_DB_PATHS["ship"]
     ship_fasta_dir = os.path.dirname(ship_fasta_path)
     os.makedirs(ship_fasta_dir, exist_ok=True)
 
-    ship_sequences_list = []
     ship_sequences = cache.get("all_ships")
     if ship_sequences is None:
         ship_sequences = fetch_ships()
 
-    for index, row in ship_sequences.iterrows():
-        name = row["accession_tag"]
-        sequence = row["sequence"]
-        ship_sequences_list.append((name, sequence))
+    ship_sequences_dict = {
+        row["accession_tag"]: row["sequence"] 
+        for _, row in ship_sequences.iterrows()
+    }
 
-    write_fasta(ship_sequences_list, ship_fasta_path)
+    write_fasta(ship_sequences_dict, ship_fasta_path)
     create_blast_database(ship_fasta_path, "nucl")
 
+    # Create captain database
     captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]
     captain_fasta_dir = os.path.dirname(captain_fasta_path)
-    os.makedirs(
-        captain_fasta_dir, exist_ok=True
-    )
+    os.makedirs(captain_fasta_dir, exist_ok=True)
 
-    captain_sequences_list = []
     captain_sequences = cache.get("all_captains")
     if captain_sequences is None:
         captain_sequences = fetch_captains()
 
-    for index, row in captain_sequences.iterrows():
-        name = row["captainID"]
-        sequence = row["sequence"]
-        captain_sequences_list.append((name, sequence))
+    captain_sequences_dict = {
+        row["captainID"]: row["sequence"]
+        for _, row in captain_sequences.iterrows()
+    }
 
-    write_fasta(captain_sequences_list, captain_fasta_path)
+    write_fasta(captain_sequences_dict, captain_fasta_path)
     create_blast_database(captain_fasta_path, "prot")

@@ -11,6 +11,7 @@ from Bio.SeqUtils import nt_search
 from Bio import SeqIO
 from dash import html
 import dash_mantine_components as dmc
+from typing import Dict
 
 warnings.filterwarnings("ignore")
 
@@ -467,9 +468,15 @@ def write_temp_fasta(header, sequence):
         return None
 
 
-def write_fasta(sequences, fasta_path):
+def write_fasta(sequences: Dict[str, str], fasta_path: str):
+    """Write a FASTA file from a dictionary of sequences.
+    
+    Args:
+        sequences: Dictionary mapping sequence names to sequences
+        fasta_path: Path to output FASTA file
+    """
     with open(fasta_path, "w") as fasta_file:
-        for name, sequence in sequences:
+        for name, sequence in sequences.items():
             fasta_file.write(f">{name}\n{sequence}\n")
 
 
