@@ -45,6 +45,24 @@ def blast_db_exists(blastdb):
 
     return False
 
+def create_diamond_database(fasta_path, threads=2):
+    cmd = [
+        "/usr/bin/diamond prepdb",
+        "--db",
+        fasta_path,
+        "--threads",
+        str(threads),
+    ]
+
+    logger.info(f"Creating Diamond database with command: {' '.join(cmd)}")
+
+    try:
+        subprocess.run(cmd, check=True)
+        logger.info("Diamond database created successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to create Diamond database: {e}")
+        raise
+
 
 def create_dbs():
     from src.database.sql_manager import fetch_captains, fetch_ships
@@ -56,7 +74,7 @@ def create_dbs():
 
     ship_sequences = cache.get("all_ships")
     if ship_sequences is None:
-        ship_sequences = fetch_ships()
+        ship_sequences = fetch_ships(with_sequence=True)
 
     ship_sequences_dict = {
         row["accession_tag"]: row["sequence"] 
@@ -73,7 +91,7 @@ def create_dbs():
 
     captain_sequences = cache.get("all_captains")
     if captain_sequences is None:
-        captain_sequences = fetch_captains()
+        captain_sequences = fetch_captains(with_sequence=True)
 
     captain_sequences_dict = {
         row["captainID"]: row["sequence"]
@@ -82,3 +100,4 @@ def create_dbs():
 
     write_fasta(captain_sequences_dict, captain_fasta_path)
     create_blast_database(captain_fasta_path, "prot")
+    create_diamond_database(captain_fasta_path, "prot")

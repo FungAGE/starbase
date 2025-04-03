@@ -220,7 +220,7 @@ def generate_download_helper(rows, curated, dereplicate):
             raise ValueError("No rows selected for download")
             
         accessions = [row["accession_tag"] for row in rows]
-        dl_df = fetch_ships(accession_tags=accessions, curated=curated, dereplicate=dereplicate)
+        dl_df = fetch_ships(accession_tags=accessions, curated=curated, dereplicate=dereplicate, with_sequence=True)
             
         if dl_df is None or dl_df.empty:
             raise ValueError("No sequences found for download")

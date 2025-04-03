@@ -391,7 +391,6 @@ def submit_ship(
                 loading
             )  # Return the error message if no file
         else:
-            # ? do I need to decode the sequence content here? because it's already decoded in the callback?
             # Decode sequence content
             content_type, content_string = seq_contents.split(",")
             seq_decoded = base64.b64decode(content_string).decode("utf-8")
@@ -401,7 +400,7 @@ def submit_ship(
             sequence = parse_fasta(seq_decoded, seq_filename)[0]['sequence']
             
             # Get existing ships for comparison
-            existing_ships = fetch_ships(curated=True)
+            existing_ships = fetch_ships(curated=True, with_sequence=True)
             
             # Assign accession and check if review needed
             accession, needs_review = assign_accession(sequence, existing_ships)
