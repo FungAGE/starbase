@@ -1,11 +1,15 @@
 import tempfile
 import subprocess
 import logging
-from src.utils.seq_utils import write_combined_fasta, write_multi_fasta
-from typing import Optional, Tuple, Dict, Any, Callable
-from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 import pandas as pd
 import hashlib
+import os
+import tempfile
+import glob
+
+from src.utils.seq_utils import write_combined_fasta, write_multi_fasta, write_fasta
+from typing import Optional, Tuple, Dict, Any, Callable
+from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +137,33 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame) -> Option
     logger.info("No containing matches found")
     return None
 
+def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
+    """Create a temporary directory for FASTA files."""
+    from src.utils.seq_utils import load_fasta_to_dict
+    
+    # load sequence from fasta file
+    fasta_sequences = load_fasta_to_dict(fasta)
+    
+    # append existing sequences to dict
+    if existing_ships is not None and not existing_ships.empty:
+        sequences = {
+            **fasta_sequences,
+            **dict(zip(existing_ships['accession_tag'], existing_ships['sequence']))
+        }
+    else:
+        sequences = fasta_sequences
+
+    # save each as a fasta file in a temporary directory
+    tmp_fasta_dir = tempfile.mkdtemp()
+    for seq_id, seq in sequences.items():
+        tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
+        write_fasta(
+            {seq_id: seq},
+            tmp_fasta
+        )
+    logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
+    return tmp_fasta_dir
+
 def check_similar_match(sequence: str, 
                        existing_ships: pd.DataFrame,
                        threshold: float) -> Optional[str]:
@@ -215,7 +246,8 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 ########################################################
 
 def classify_sequence(
-        sequence: str, 
+        fasta: str,
+        seq_type: str,
         blast_df: pd.DataFrame,
         hmmer_dict: Dict[str, Any],
         pident_thresh: float = 90,
@@ -230,7 +262,8 @@ def classify_sequence(
     3. Haplotype assignment via full sequence similarity
 
     Args:
-        sequence: The new sequence to classify
+        fasta: The new sequence to classify
+        seq_type: The type of sequence to classify
         blast_df: The BLAST results dataframe to use for family assignment
         hmmer_dict: The HMMER results dict to use for family assignment
         pident_thresh: Minimum percentage identity for captain gene
@@ -241,9 +274,6 @@ def classify_sequence(
     Returns:
         Tuple[Dict[str, str], str, str]: (family_dict, navis_dict, haplotype_dict)
     """
-    from src.utils.blast_utils import make_captain_alert, process_captain_results
-    from src.utils.blast_utils import create_no_matches_alert
-    from src.utils.seq_utils import guess_seq_type
 
     def update_progress(stage: str, percent: int):
         if progress_callback:
@@ -255,26 +285,25 @@ def classify_sequence(
     update_progress('navis', 0)
     update_progress('haplotype', 0)
 
+    # make sure that inputs are valid
+    inputs_provided = sum(x is not None for x in [fasta, blast_df, hmmer_dict])
+    
+    if inputs_provided == 0:
+        raise ValueError("Must provide one of: fasta, blast_df, or hmmer_dict")
+    if inputs_provided > 1:
+        raise ValueError("Can only provide one of: fasta, blast_df, or hmmer_dict")
+        
     # Get existing classified sequences from database
     logger.info("Fetching existing sequences from database...")
-    existing_meta = fetch_meta_data(curated=True)
-    existing_ships = fetch_ships(curated=True)
-    existing_captains = fetch_captains()
+    existing_ships = fetch_ships(curated=True, dereplicate=False, with_sequence=True)
+    existing_captains = fetch_captains(curated=True, with_sequence=True)
+
     logger.info("Successfully loaded existing sequences")
     update_progress('family', 20)
 
-    if sequence:
-        logger.info("Determining sequence type...")
-        seq_type = guess_seq_type(sequence)
-        logger.info(f"Sequence type determined: {seq_type}")
-        update_progress('family', 40)
-    else:
-        logger.warning("No sequence provided")
-        seq_type = None
-
     logger.info("Starting family classification...")
-    family_dict = classify_family(
-        sequence=sequence, 
+    family_dict, tmp_protein_filename = classify_family(
+        fasta=fasta, 
         seq_type=seq_type, 
         blast_df=blast_df, 
         hmmer_dict=hmmer_dict, 
@@ -294,9 +323,8 @@ def classify_sequence(
         logger.info("Starting navis classification...")
         
         navis_dict = classify_navis(
-            sequence=sequence, 
+            fasta=tmp_protein_filename, 
             existing_captains=existing_captains, 
-            existing_meta=existing_meta, 
             threads=threads
         )
         if navis_dict is None:
@@ -310,10 +338,8 @@ def classify_sequence(
             logger.info("Starting haplotype classification...")
             
             haplotype_dict = classify_haplotype(
-                sequence=sequence, 
-                existing_ships=existing_ships, 
-                existing_meta=existing_meta
-            )
+                fasta=fasta, 
+                existing_ships=existing_ships)
             if haplotype_dict is None:
                 logger.warning("No haplotype assignment possible")
                 update_progress('haplotype', 0)
@@ -324,7 +350,7 @@ def classify_sequence(
                 logger.info("Classification pipeline completed successfully")
                 return family_dict, navis_dict, haplotype_dict
 
-def classify_family(sequence=None, seq_type=None, blast_df=None, hmmer_dict=None, db_list=None, pident_thresh=90, input_eval=0.001, threads=1):
+def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, db_list=None, pident_thresh=90, input_eval=0.001, threads=1):
     """Uses blast results, hmmsearch or diamond to assign family based on captain gene similarity"""
     # Part 1: Family Assignment via Captain Gene
     # - if given blast or hmmer results, use those to assign family
@@ -332,21 +358,11 @@ def classify_family(sequence=None, seq_type=None, blast_df=None, hmmer_dict=None
     # - compare captain genes to existing captain sequences
     # - Assign family based on closest match
 
-    from src.utils.blast_utils import run_hmmer
-
-    family_dict = None
-
-    # make sure that inputs are valid
-    inputs_provided = sum(x is not None for x in [sequence, blast_df, hmmer_dict])
+    from src.utils.blast_utils import run_hmmer, select_ship_family
+    from src.utils.seq_utils import load_fasta_to_dict
     
-    if inputs_provided == 0:
-        raise ValueError("Must provide one of: sequence, blast_df, or hmmer_dict")
-    if inputs_provided > 1:
-        raise ValueError("Can only provide one of: sequence, blast_df, or hmmer_dict")
-        
-    # Additional validation for sequence input
-    if sequence is not None and seq_type is None:
-        raise ValueError("Sequence provided but no sequence type")
+    family_dict = None
+    tmp_protein_filename = None
 
     # Simple selection of top hit using blast or hmmer results
     if blast_df is not None and len(blast_df) > 0:
@@ -365,75 +381,88 @@ def classify_family(sequence=None, seq_type=None, blast_df=None, hmmer_dict=None
             top_family = fetch_meta_data(accession_tag=query_accession)['familyName']
             family_dict = {"family": top_family, "aln_length": top_aln_length, "evalue": top_evalue}
 
-    if sequence:        
-        hmmer_dict = run_hmmer(
+    if fasta:
+        # Load sequence from FASTA file
+        sequences = load_fasta_to_dict(fasta)
+        if not sequences:
+            logger.error("No sequences found in FASTA file")
+            return None, None
+            
+        hmmer_dict, tmp_protein_filename = run_hmmer(
             db_list=db_list,
             query_type=seq_type,
-            input_genes="tyr",
+            input_gene="tyr",
             input_eval=0.01,
-            query_fasta=sequence,
+            query_fasta=fasta,
             threads=2,
         )
 
     if hmmer_dict is not None and len(hmmer_dict) > 0:
-        # Handle case where captain_results_dict is a list of results
-        if isinstance(hmmer_dict, list):
-            # Get the first result if available
-            family_name = hmmer_dict[0].get('family_name')
-            aln_length = hmmer_dict[0].get('aln_length')
-            evalue = hmmer_dict[0].get('evalue')
-        else:
-            # Original behavior for dict
-            family_name = hmmer_dict.get('family_name')
-            aln_length = hmmer_dict.get('aln_length')
-            evalue = hmmer_dict.get('evalue')
-        family_dict = {"family": family_name, "aln_length": aln_length, "evalue": evalue}    
+        hmmer_df = pd.DataFrame(hmmer_dict)
+        if len(hmmer_df) > 0:
+            family_name, family_aln_length, family_evalue = select_ship_family(hmmer_df)
+            if family_name:
+                family_dict = {"family": family_name, "aln_length": family_aln_length, "evalue": family_evalue}
+                
+    return family_dict, tmp_protein_filename
 
-    return family_dict
-
-def classify_navis(sequence: str,
+def classify_navis(fasta: str,
                   existing_captains: pd.DataFrame, 
-                  existing_meta: pd.DataFrame,
                   threads: int = 1) -> str:
     """Assign navis based on captain sequence clustering."""
     # Part 2: Navis Assignment
     # - Compare captain sequence to existing classified captains
     # - Use mmseqs clustering to group with existing navis
 
-    # Create temporary FASTA with:
+    # Create temporary dir with FASTAs from:
     # - Captain sequence from new sequence
     # - All existing classified captain sequences
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    write_combined_fasta(sequence, existing_captains, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
+
+    # FIXME: 2 problems
+    # 1. the query sequence is None
+    # 2. there are no existing sequences in this directory
+    logger.debug("Starting navis classification")
+
+    tmp_fasta_dir = create_tmp_fasta_dir(fasta, existing_captains)
+    logger.debug(f"Created temporary FASTA directory: {tmp_fasta_dir}")
         
     # Run mmseqs clustering
     clusters = mmseqs_easy_cluster(
-        tmp_fasta,
+        tmp_fasta_dir,
+        output_dir=os.path.join(tmp_fasta_dir, "clusters"),
         min_seq_id=0.5,
         coverage=0.25,
         threads=threads
     )
+    logger.debug(f"Clustering complete, got {len(clusters)} results")
 
-    # Find which cluster has the member "query_sequence"
-    cluster_rep = None
-    for cluster, members in clusters.items():
-        if 'query_sequence' in members:
-            cluster_rep = cluster
-            break
+    # The clusters dict maps member sequences to their representatives
+    # So we can directly look up the query sequence
+    if 'query_sequence' not in clusters:
+        logger.warning("Query sequence not found in clustering results")
+        return None
+        
+    # Get the representative sequence for our query's cluster
+    cluster_rep = clusters['query_sequence']
+    logger.debug(f"Query sequence belongs to cluster with representative: {cluster_rep}")
     
-    # id of new sequence is 'query_sequence'
-    # look up the navis name from the cluster representative
-    # ! how can we retain navis names if we are re-clustering?
-    # HACK: use the existing meta data to get the navis names of captain sequences in the cluster
-    navis_name = existing_meta[existing_meta['captainID'] == cluster_rep]['starship_navis'].values[0]
-    if navis_name is None:
-        logger.warning(f"No navis name, but sequence clusters with captainID: {cluster_rep}")
+    if cluster_rep == 'query_sequence':
+        logger.warning("Query sequence is the cluster representative")
+        return None
+    else:    
+        # Look up the navis name from the cluster representative
+        matching_captains = existing_captains[existing_captains['captainID'] == cluster_rep]
+        if matching_captains.empty:
+            logger.warning(f"No matching captain found for cluster representative: {cluster_rep}")
+            return None
+            
+        navis_name = matching_captains['starship_navis'].iloc[0]
+        logger.debug(f"Found navis name: {navis_name}")
+        
+        return navis_name
 
-    return navis_name
-
-def classify_haplotype(sequence: str,
-                      existing_ships: pd.DataFrame,
-                      existing_meta: pd.DataFrame) -> str:
+def classify_haplotype(fasta: str,
+                      existing_ships: pd.DataFrame) -> str:
     """Assign haplotype based on full sequence similarity."""
     # Part 3: Haplotype Assignment
     # - Compare full sequence to existing classified sequences
@@ -444,9 +473,9 @@ def classify_haplotype(sequence: str,
     # - New sequence
     # - All existing classified sequences
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    write_combined_fasta(sequence, existing_ships, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
+    write_combined_fasta(fasta, existing_ships, fasta_path=tmp_fasta, sequence_col='sequence', id_col='accession_tag')
         
-        # Calculate similarities
+    # Calculate similarities
     similarities = calculate_similarities(
         tmp_fasta,
         seq_type='nucl'
@@ -480,98 +509,87 @@ def classify_haplotype(sequence: str,
             seq_ids_in_rep_group.append(group['sequence_id'])
 
     # just get the first sequence id in the group
-    haplotype_name = existing_meta[existing_meta['captainID'] == seq_ids_in_rep_group[0]]['starship_haplotype'].values[0]
+    haplotype_name = existing_ships[existing_ships['captainID'] == seq_ids_in_rep_group[0]]['starship_haplotype'].values[0]
 
     if haplotype_name is None:
         logger.warning(f"No haplotype name, but sequence clusters with captainID: {seq_ids_in_rep_group[0]}")
 
     return groups
 
-def mmseqs_easy_cluster(fasta_file, min_seq_id=0.5, coverage=0.25, threads=1):
+def mmseqs_easy_cluster(fasta_dir: str, output_dir: str, min_seq_id=0.5, coverage=0.25, threads=1) -> Dict[str, str]:
     """Run mmseqs easy-cluster on input sequences.
     
     Args:
-        fasta_file (str): Path to input FASTA file
-        min_seq_id (float): Minimum sequence identity threshold (0-1)
-        coverage (float): Minimum coverage threshold (0-1) 
-        threads (int): Number of threads to use
+        fasta_dir: Directory containing FASTA files
+        output_dir: Directory for output files
+        min_seq_id: Minimum sequence identity threshold (0-1)
+        coverage: Minimum coverage threshold (0-1) 
+        threads: Number of threads to use
         
     Returns:
         dict: Parsed clustering results mapping sequence IDs to cluster assignments
     """
-    # Create temporary directory for mmseqs files
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        # Build command with all parameters
-        base_name = os.path.join(tmp_dir, "results")
-        cmd = [
-            "mmseqs",
-            "easy-cluster",
-            fasta_file,
-            base_name,
-            tmp_dir,
-            "--threads", str(threads),
-            "--min-seq-id", str(min_seq_id),
-            "-c", str(coverage),
-            "--alignment-mode", "3",
-            "--cov-mode", "0", 
-            "--cluster-reassign"
-        ]
-        
-        try:
-            # Run mmseqs
-            logger.info(f"Running MMseqs2: {' '.join(cmd)}")
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-            
-            # Parse results from the _cluster.tsv file
-            cluster_file = f"{base_name}_cluster.tsv"
-            return parse_mmseqs_results(cluster_file)
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"MMseqs2 clustering failed: {e.stderr}")
-            raise
+    logger.debug(f"Starting sequence clustering with MMseqs2")
+    logger.debug(f"Input directory: {fasta_dir}")
+    logger.debug(f"Output directory: {output_dir}")
 
-def parse_mmseqs_results(sequence_db, results_db):
-    """Create a TSV file from MMseqs2 clustering results.
+    # Get all FASTA files in directory
+    fasta_files = glob.glob(os.path.join(fasta_dir, "*.fa"))
+    if not fasta_files:
+        raise ValueError(f"No .fa files found in {fasta_dir}")
+    logger.debug(f"Found {len(fasta_files)} FASTA files")
     
-    Args:
-        sequence_db (str): Path to input sequence database
-        results_db (str): Path to results database
+    # Create directories for MMseqs2 output
+    clusters_dir = os.path.join(output_dir, "clusters")
+    tmp_dir = os.path.join(clusters_dir, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
 
-    Returns:
-        dict: Mapping of sequence IDs to their cluster assignments
-    """
+    # Run easy-cluster directly on FASTA files
+    results_prefix = os.path.join(clusters_dir, "results")
+    cluster_cmd = [
+        "mmseqs",
+        "easy-cluster",
+        *fasta_files,  # Pass all FASTA files directly
+        results_prefix,  # This is just the prefix, MMseqs2 will add _cluster.tsv
+        tmp_dir,  # Temporary directory for MMseqs2
+        "--threads", str(threads),
+        "--min-seq-id", str(min_seq_id),
+        "-c", str(coverage),
+        "--alignment-mode", "3",
+        "--cov-mode", "0",
+        "--cluster-reassign",
+        "--createdb-mode", "0"  # Add this to ensure proper database creation
+    ]
+    
     try:
-        results_tsv = results_db + ".tsv" 
-        cmd = [
-            "mmseqs",
-            "createtsv",
-            sequence_db,
-            sequence_db,
-            results_db,
-            results_tsv
-        ]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except Exception as e:
-        logger.error(f"Error during conversion of MMseqs2 clustering results to TSV: {str(e)}")
-        raise
-
-    try:
+        # logger.debug(f"Running clustering: {' '.join(cluster_cmd)}")
+        result = subprocess.run(cluster_cmd, capture_output=True, text=True, check=True)
+        # logger.debug(result.stdout)
+        if result.stderr:
+            logger.debug(f"STDERR: {result.stderr}")
+            
+        # Parse clustering results from the TSV file
+        cluster_file = f"{results_prefix}_cluster.tsv"
+        logger.debug(f"Looking for cluster results in: {cluster_file}")
+        
+        if not os.path.exists(cluster_file):
+            raise FileNotFoundError(f"Cluster results file not found: {cluster_file}")
+            
         clusters = {}
-        with open(results_tsv) as f:
+        with open(cluster_file) as f:
             for line in f:
-                # The resultsDB_clu.tsv file follows the following format:
-                # #cluster-representative 	cluster-member
-                # Q0KJ32	Q0KJ32
-                # Q0KJ32	C0W539
-                # Q0KJ32	D6KVP9
-                # E3HQM9	E3HQM9
-                # E3HQM9	F0YHT8
-                cluster, member = line.strip().split('\t')
-                clusters[member] = cluster
+                rep_seq, member_seq = line.strip().split('\t')
+                clusters[member_seq] = rep_seq
+                
+        logger.debug(f"Found {len(set(clusters.values()))} clusters")
         return clusters
         
+    except subprocess.CalledProcessError as e:
+        logger.error(f"MMseqs2 command failed: {e.stderr}")
+        raise
     except Exception as e:
-        logger.error(f"Error parsing MMseqs2 results: {str(e)}")
+        logger.error(f"Error during sequence clustering: {str(e)}")
+        logger.exception("Full traceback:")
         raise
 
 def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled, sketch_type='dna'):

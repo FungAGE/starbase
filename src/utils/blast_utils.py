@@ -13,7 +13,7 @@ from Bio import SearchIO
 
 from typing import Tuple
 
-from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
+from src.utils.seq_utils import clean_shipID
 from src.database.blastdb import blast_db_exists, create_dbs
 from src.components.tables import create_ag_grid
 from src.components.error_boundary import create_error_alert
@@ -283,138 +283,204 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
 def hmmsearch(
     db_list=None,
     query_type=None,
-    input_genes="tyr",
+    input_gene="tyr",
     input_eval=None,
     query_fasta=None,
     threads=None,
 ):
-    tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-    hmmer_db = db_list["gene"][input_genes]["hmm"][query_type]
-    if not os.path.exists(hmmer_db) or os.path.getsize(hmmer_db) == 0:
-        raise ValueError(f"HMMER database {hmmer_db} not found or is empty.")
+    """Run HMMER search."""
+    try:
+        logger.debug(f"Starting hmmsearch with params: query_type={query_type}, input_gene={input_gene}")
+        
+        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
+        logger.debug(f"Created temporary output file: {tmp_hmmer}")
+        
+        hmmer_db = db_list["gene"][input_gene]["hmm"][query_type]
+        logger.debug(f"Using HMMER database: {hmmer_db}")
+        
+        if not os.path.exists(hmmer_db):
+            logger.error(f"HMMER database not found: {hmmer_db}")
+            raise ValueError(f"HMMER database {hmmer_db} not found.")
+            
+        if os.path.getsize(hmmer_db) == 0:
+            logger.error(f"HMMER database is empty: {hmmer_db}")
+            raise ValueError(f"HMMER database {hmmer_db} is empty.")
 
-    # Calculate optimal thread count based on system resources
-    if threads is None:
-        # Use 1 thread by default to avoid resource contention
-        # since multiple workers/threads might run HMMER simultaneously
-        threads = 1
-    else:
-        # Cap threads to avoid oversubscription
-        # Maximum 4 threads per HMMER process to leave resources for other concurrent requests
-        threads = min(int(threads), 4)
+        # Calculate optimal thread count
+        if threads is None:
+            threads = 1
+        else:
+            threads = min(int(threads), 4)
+        logger.debug(f"Using {threads} threads")
 
-    hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} -E {input_eval} {hmmer_db} {query_fasta}"
-    logger.info(f"Running HMMER search: {hmmer_cmd}")
-    subprocess.run(hmmer_cmd, shell=True)
-    return tmp_hmmer
+        hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} -E {input_eval} {hmmer_db} {query_fasta}"
+        logger.debug(f"Running HMMER command: {hmmer_cmd}")
+        
+        result = subprocess.run(hmmer_cmd, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"HMMER search failed with return code {result.returncode}")
+            logger.error(f"STDERR: {result.stderr}")
+            raise subprocess.CalledProcessError(result.returncode, hmmer_cmd)
+            
+        logger.debug("HMMER search completed successfully")
+        return tmp_hmmer
+
+    except Exception as e:
+        logger.error(f"Error in hmmsearch: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
 
 
 def run_hmmer(
     db_list=None,
     query_type=None,
-    input_genes="tyr",
-    input_eval=None,
+    input_gene="tyr",
+    input_eval=0.01,
     query_fasta=None,
-    threads=None,
+    threads=2,
 ):
+    """Run HMMER search on input sequence.
+    
+    Args:
+        db_list: Dictionary containing database paths
+        query_type: Type of sequence ('nucl' or 'prot')
+        input_gene: Gene to search for (default: 'tyr')
+        input_eval: E-value threshold
+        query_fasta: Path to query FASTA file
+        threads: Number of CPU threads to use
+        
+    Returns:
+        Tuple[Dict, str]: (HMMER results dictionary, path to protein sequence file)
+    """
     try:
-        # family classification should only use protein hmm
+        logger.debug(f"Starting HMMER search with params: query_type={query_type}, input_gene={input_gene}")
+        logger.debug(f"Input FASTA file: {query_fasta}")
+        
+        protein_filename = query_fasta
+        
+        # Use diamond to extract protein sequence if input is nucleotide
+        if query_type != "prot":
+            logger.debug("Input is nucleotide sequence, running Diamond first")
+            protein_filename = run_diamond(
+                db_list=db_list,
+                query_type=query_type,
+                input_gene=input_gene,
+                input_eval=input_eval,
+                query_fasta=query_fasta,
+                threads=threads
+            )
+            logger.debug(f"Diamond search complete. Output file: {protein_filename}")
+
+        logger.debug(f"Running HMMER search on protein sequence: {protein_filename}")
         tmp_hmmer = hmmsearch(
-            db_list,
-            query_type,
-            input_genes,
-            input_eval,
-            query_fasta,
-            threads,
+            db_list=db_list,
+            query_type="prot",  # Always use protein HMM
+            input_gene=input_gene,
+            input_eval=input_eval,
+            query_fasta=protein_filename,
+            threads=threads,
         )
+        logger.debug(f"HMMER search complete. Output file: {tmp_hmmer}")
 
+        logger.debug("Parsing HMMER results")
         tmp_hmmer_parsed = parse_hmmer(tmp_hmmer)
-        # extract the gene sequence
-        gene_header, gene_seq = extract_gene_from_hmmer(tmp_hmmer_parsed)
+        logger.debug(f"Parsed HMMER results saved to: {tmp_hmmer_parsed}")
+        
+        hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
+        logger.debug(f"HMMER results loaded into DataFrame with shape: {hmmer_results.shape}")
+        logger.debug(f"HMMER results columns: {hmmer_results.columns}")
 
-        # translate nucl queries
-        if query_type == "nucl" and gene_header is not None and gene_seq is not None:
-            tmp_protein = get_protein_sequence(gene_header, gene_seq)
-            if tmp_protein is not None:
-                # run hmmer using protein sequence of extracted gene
-                tmp_hmmer_protein = hmmsearch(
-                    db_list,
-                    "prot",
-                    input_genes,
-                    input_eval,
-                    tmp_protein,
-                    threads,
-                )
-                tmp_hmmer_protein_parsed = parse_hmmer(tmp_hmmer_protein)
-                logger.info(
-                    f"Second hmmersearch run stored at: {tmp_hmmer_protein_parsed}"
-                )
-                hmmer_results = pd.read_csv(tmp_hmmer_protein_parsed, sep="\t")
-        else:
-            hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
+        return hmmer_results.to_dict("records"), protein_filename
 
-        logger.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
-
-        return hmmer_results.to_dict("records")
     except Exception as e:
-        logger.error(f"Error in HMMER search: {e}")
-        return None
+        logger.error(f"Error in HMMER search: {str(e)}")
+        logger.exception("Full traceback:")
+        return None, None
 
 
 # Parse the HMMER results
 def parse_hmmer(hmmer_output_file):
-    parsed_file = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-    with open(parsed_file, "w") as tsv_file:
-        tsv_file.write(
-            "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
-        )
-        for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
-            for hit in record.hits:
-                for hsp in hit.hsps:
-                    query_seq = str(hsp.query.seq)
-                    subject_seq = clean_shipID(str(hsp.hit.seq))
-                    aln_length = hsp.aln_span
-                    query_start = hsp.query_start
-                    query_end = hsp.query_end
-                    gaps = str("N/A")
-                    bitscore = hsp.bitscore
-                    evalue = hsp.evalue
-                    tsv_file.write(
-                        f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
-                    )
-    return parsed_file
+    """Parse HMMER output file."""
+    try:
+        logger.debug(f"Starting to parse HMMER output file: {hmmer_output_file}")
+        
+        parsed_file = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
+        logger.debug(f"Created temporary parsed output file: {parsed_file}")
+        
+        with open(parsed_file, "w") as tsv_file:
+            tsv_file.write(
+                "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+            )
+            
+            logger.debug("Parsing HMMER records")
+            record_count = 0
+            hit_count = 0
+            
+            for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
+                record_count += 1                
+                for hit in record.hits:
+                    hit_count += 1                    
+                    for hsp in hit.hsps:
+                        query_seq = str(hsp.query.seq)
+                        subject_seq = clean_shipID(str(hsp.hit.seq))
+                        aln_length = hsp.aln_span
+                        query_start = hsp.query_start
+                        query_end = hsp.query_end
+                        gaps = str("N/A")
+                        bitscore = hsp.bitscore
+                        evalue = hsp.evalue
+                        
+                        tsv_file.write(
+                            f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
+                        )            
+        return parsed_file
 
-def extract_gene_from_hmmer(hmmer_results: str) -> Tuple[str, str]:
-    """Extract captain gene sequence from HMMER search results.
+    except Exception as e:
+        logger.error(f"Error parsing HMMER output: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
+
+def extract_gene(tsv_file: str, gene_type: str, output_type: str = "hmmer") -> Tuple[str, str]:
+    """Extract gene sequence from HMMER search results.
     
     Args:
-        hmmer_results: Path to HMMER output file
+        tsv_file: Path to tsv file containing HMMER output or diamond output
+        gene_type: Type of gene to extract (e.g. "tyr")
     
     Returns:
         Tuple[str, str]: (header, sequence) of the best captain gene hit
     """
+    if output_type == "hmmer":
+        qid = "query_id"
+        qseq = "query_seq"
+        # "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+    elif output_type == "diamond":
+        qid = "qseqid"
+        qseq = "qseq_translated"
+        # qseqid sseqid length qstart qend gaps qseq/qseq_translated sseq evalue bitscore        
+    
     try:
         # Parse HMMER results
-        data = pd.read_csv(hmmer_results, sep="\t")
+        data = pd.read_csv(tsv_file, sep="\t")
         
         # Get best hit (lowest e-value) for each query
-        min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
+        min_evalue_rows = data.loc[data.groupby(qid)["evalue"].idxmin()]
         min_evalue_rows = min_evalue_rows.reset_index(drop=True)
         
         if min_evalue_rows.empty:
-            logger.warning("No captain gene found in sequence")
+            logger.warning(f"No {gene_type} gene found in sequence")
             return None
             
-        # Extract captain sequence from best hit
+        # Extract gene sequence from best hit
         # Remove any '.' characters that HMMER might have inserted
-        header = min_evalue_rows.loc[0, "query_id"]
-        captain_seq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")
+        header = min_evalue_rows.loc[0, qid]
+        gene_seq = min_evalue_rows.loc[0, qseq].replace(".", "")
         
-        logger.info(f"Extracted captain sequence of length {len(captain_seq)}")
-        return header, captain_seq
+        logger.info(f"Extracted {gene_type} gene sequence of length {len(gene_seq)}")
+        return header, gene_seq 
         
     except Exception as e:
-        logger.error(f"Error extracting captain sequence: {e}")
+        logger.error(f"Error extracting {gene_type} gene sequence: {e}")
         return None
 
 
@@ -772,19 +838,18 @@ def parse_lastz_output(output_file):
 def run_diamond(
     db_list=None,
     query_type=None,
-    input_genes="tyr",
-    input_eval=None,
+    input_gene=None,
+    input_eval=0.01,
     query_fasta=None,
     threads=2,
 ):
+    from src.utils.seq_utils import write_fasta
+    diamond_out = tempfile.NamedTemporaryFile(suffix=".faa").name
 
-    diamond_out = tempfile.NamedTemporaryFile(suffix=".fa").name
-
-    header, seq = parse_fasta_from_text(query_fasta)
-
-    diamond_db = db_list["gene"][input_genes]["prot"]
+    # only using protein db for now
+    diamond_db = db_list["gene"][input_gene]["prot"]
     if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
-        raise ValueError(f"HMMER database {diamond_db} not found or is empty.")
+        raise ValueError(f"BLAST database {diamond_db} not found or is empty.")
 
     if query_type == "nucl":
         blast_type = "blastx"
@@ -793,15 +858,24 @@ def run_diamond(
         blast_type = "blastp"
         out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
 
-    subprocess.run("/home/adrian/anaconda3/bin/diamond help", shell=True, check=True)
-    diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids | sed '1i >{header}' > {diamond_out}"
-
+    header = "query_sequence"
+    diamond_cmd = f"/usr/bin/diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids | cut -f 7 | sed '1i >{header}' > {diamond_out}"
+    logger.debug(f"Running Diamond command: {diamond_cmd}")
     subprocess.run(diamond_cmd, shell=True, check=True)
 
-    column_names = out_fmt.split()[1:]
-    diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
+    # select the top hit
+    # gene_header, gene_seq = extract_gene(diamond_out, input_gene, output_type="diamond")
 
-    return diamond_results.to_dict("records")
+    # protein_out = tempfile.NamedTemporaryFile(
+    #     suffix=".faa", delete=False
+    # ).name
+    # write_fasta({gene_header: gene_seq}, protein_out)
+
+    # column_names = out_fmt.split()[1:]
+    # diamond_df = pd.read_csv(diamond_out, sep="\t", names=column_names)
+
+    # return diamond_df.to_dict("records"), protein_out
+    return diamond_out
 
 def make_captain_alert(family, aln_length, evalue, search_type="blast"):
     try:

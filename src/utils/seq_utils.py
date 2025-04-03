@@ -178,7 +178,7 @@ def get_protein_sequence(header, nuc_sequence):
     else:
         return None
 
-def ensure_fasta_header(text, default_header=">query"):
+def ensure_fasta_header(text, default_header=">query_sequence"):
     """
     Ensures that the input contains a valid FASTA header.
     If no header is found, adds a default one.
@@ -275,10 +275,11 @@ def parse_fasta_from_text(text, format="fasta"):
 def parse_fasta_from_file(contents):
     header = None
     seq = None
+    fasta_error = None
     try:
         if not contents:
             logger.warning("No file contents provided")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="No File Contents",
                 color="yellow",
                 children="Please select a valid FASTA file.",
@@ -287,7 +288,7 @@ def parse_fasta_from_file(contents):
         # Validate content format
         if "," not in contents:
             logger.error("Invalid content format")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="Invalid File Format",
                 color="red",
                 children="The file content appears to be corrupted. Please try uploading again.",
@@ -296,7 +297,7 @@ def parse_fasta_from_file(contents):
         split_contents = contents.split(",")
         if len(split_contents) < 2:
             logger.error("Invalid content split")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="Invalid File Format",
                 color="red",
                 children="The file content is not in the expected format.",
@@ -309,7 +310,7 @@ def parse_fasta_from_file(contents):
             decoded_sequence = base64.b64decode(sequence).decode("utf-8")
         except Exception as e:
             logger.error(f"Base64 decode error: {e}")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="Decoding Error",
                 color="red",
                 children="Could not decode the file contents. Please ensure you're uploading a valid FASTA file.",
@@ -320,7 +321,7 @@ def parse_fasta_from_file(contents):
             sequences = list(SeqIO.parse(fasta_io, "fasta"))
         except Exception as e:
             logger.error(f"FASTA parse error: {e}")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="FASTA Parse Error",
                 color="red",
                 children="Could not parse the file as FASTA format. Please check the file format.",
@@ -328,14 +329,14 @@ def parse_fasta_from_file(contents):
 
         if len(sequences) == 0:
             logger.warning("No sequences found in file")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="Empty FASTA File",
                 color="yellow",
                 children="No sequences were found in the uploaded file.",
             )
         elif len(sequences) > 1:
             logger.warning("Multiple sequences found")
-            return None, None, dmc.Alert(
+            fasta_error = dmc.Alert(
                 title="Multiple Sequences",
                 color="yellow",
                 children=[
@@ -347,7 +348,7 @@ def parse_fasta_from_file(contents):
         query = sequences[0]
         header, seq = str(query.id), str(query.seq)
         logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
-        return header, seq, None
+        return header, seq, fasta_error
 
     except Exception as e:
         logger.error(f"Unexpected error in parse_fasta_from_file: {str(e)}")
