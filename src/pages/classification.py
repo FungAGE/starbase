@@ -161,7 +161,6 @@ def setup_classification(seq_content):
         {
             "seq_type": seq_type, 
             "fasta": tmp_fasta, 
-            "protein": tmp_fasta,
             "fetch_ship_params": {
                 "curated": False,
                 "with_sequence": True,
@@ -225,7 +224,7 @@ def check_exact_matches(data):
     existing_ships = fetch_ships(**fetch_ship_params)
     logger.info(f"Checking exact matches against {len(existing_ships)} existing ships")
     
-    exact_match = check_exact_match(data["protein"], existing_ships)
+    exact_match = check_exact_match(data["fasta"], existing_ships)
     matches_found = False
 
     if exact_match:
@@ -273,7 +272,7 @@ def check_contained_matches(exact_matches, data):
     existing_ships = fetch_ships(**fetch_ship_params)
     logger.info(f"Checking contained matches against {len(existing_ships)} existing ships")
     
-    contained_match = check_contained_match(data["protein"], existing_ships)
+    contained_match = check_contained_match(data["fasta"], existing_ships)
     matches_found = contained_match is not None
 
     if matches_found:
@@ -315,7 +314,7 @@ def check_similar_matches(contained_matches, data):
     logger.info(f"Checking similar matches against {len(existing_ships)} existing ships")
     
     # Add threshold parameter (you may want to adjust this value)
-    similar_match = check_similar_match(data["protein"], existing_ships, threshold=0.9)
+    similar_match = check_similar_match(data["fasta"], existing_ships, threshold=0.9)
     matches_found = similar_match is not None
 
     if matches_found:
@@ -484,7 +483,7 @@ def run_navis_classification(family_name, data, family_data, exact_matches, cont
         fetch_captain_params = data["fetch_captain_params"]
         existing_captains = fetch_captains(**fetch_captain_params)
         navis_name = classify_navis(
-            fasta=data["protein"],
+            protein=family_data["protein"],
             existing_captains=existing_captains,
             threads=1
         )
@@ -578,7 +577,7 @@ def run_haplotype_classification(navis_data, data, exact_matches, contained_matc
         curated_ships = existing_ships[existing_ships["curated"] == True]
 
         haplotype_name = classify_haplotype(
-            fasta=data["protein"],
+            fasta=data["fasta"],
             existing_ships=curated_ships,
             navis=data["navis"]
         )
