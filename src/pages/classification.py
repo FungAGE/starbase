@@ -38,10 +38,9 @@ layout = dmc.Container(
         # text for stage
         dcc.Store(id="classification-stage"),
 
-        # exact matches
+        # matches store
         dcc.Store(id="classification-exact-matches"),
-
-        # similar matches
+        dcc.Store(id="classification-contained-matches"),
         dcc.Store(id="classification-similar-matches"),
 
         # progress for family classification
@@ -131,11 +130,11 @@ layout = dmc.Container(
 @callback(
     [
         Output("classification-upload", "data"),
-        Output("classification-stage", "children",allow_duplicate=True),
-        Output("classification-family-progress", "value",allow_duplicate=True),
-        Output("classification-family-progress", "animated",allow_duplicate=True),
-        Output("classification-family-progress", "striped",allow_duplicate=True),
-        Output("classification-family-color", "color",allow_duplicate=True),
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-family-progress", "value", allow_duplicate=True),
+        Output("classification-family-progress", "animated", allow_duplicate=True),
+        Output("classification-family-progress", "striped", allow_duplicate=True),
+        Output("classification-family-color", "color", allow_duplicate=True),
     ],
     Input("classification-fasta-upload", "contents"),
     prevent_initial_call=True
@@ -158,13 +157,16 @@ def setup_classification(seq_content):
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     write_fasta({"query_sequence": seq}, tmp_fasta)
     
-    # TODO: these items are too large to be stored in the store.
-    # need to find a better way to handle this.
-    existing_ships = fetch_ships(curated=True, with_sequence=True).to_dict(orient="records")
-    existing_captains = fetch_captains(curated=True, with_sequence=True).to_dict(orient="records")
-
     return (
-        {"seq_type": seq_type, "fasta": tmp_fasta, "protein": tmp_fasta, "existing_ships": existing_ships, "existing_captains": existing_captains},  # data store
+        {
+            "seq_type": seq_type, 
+            "fasta": tmp_fasta, 
+            "protein": tmp_fasta,
+            "query_params": {
+                "curated": True,
+                "with_sequence": True
+            }
+        },
         "Checking for exact matches",
         10,
         True,
@@ -202,9 +204,7 @@ def make_alert_using_match(match_class=None, classification=None, type=None):
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-exact-matches", "data"),
     ],
-    [
-        Input("classification-upload", "data"),
-    ],
+    [Input("classification-upload", "data")],
     prevent_initial_call=True
 )
 @handle_callback_error
@@ -214,7 +214,9 @@ def check_exact_matches(data):
         print("No data provided for exact match check")
         raise PreventUpdate
     
-    existing_ships = pd.DataFrame(data["existing_ships"])
+    # Fetch ships data using query parameters
+    query_params = data["query_params"]
+    existing_ships = fetch_ships(**query_params)
     print(f"Checking exact matches against {len(existing_ships)} existing ships")
     
     exact_match = check_exact_match(data["protein"], existing_ships)
@@ -223,7 +225,7 @@ def check_exact_matches(data):
     if exact_match:
         print(f"Found exact match: {exact_match}")
         match_row = existing_ships[existing_ships["accession_tag"] == exact_match]
-        match_family = match_row["starship_family"].values[0]
+        match_family = match_row["familyName"].values[0]
         match_navis = match_row["starship_navis"].values[0]
         match_haplotype = match_row["starship_haplotype"].values[0]
         matches_found = True
@@ -249,23 +251,20 @@ def check_exact_matches(data):
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-contained-matches", "data"),
     ],
-    [
-        Input("classification-exact-matches", "data"),
-        State("classification-upload", "data"),
-    ],
+    [Input("classification-exact-matches", "data")],
+    [State("classification-upload", "data")],
     prevent_initial_call=True
 )
 @handle_callback_error
 def check_contained_matches(exact_matches, data):
     print("Starting contained match check...")
-    if exact_matches:
-        print("Skipping contained match check - exact match was found")
-        raise PreventUpdate
-    if data is None:
-        print("No data provided for contained match check")
+    if exact_matches or data is None:
+        logger.info("Skipping contained match check - exact match was found or no data")
         raise PreventUpdate
     
-    existing_ships = pd.DataFrame(data["existing_ships"])
+    # Fetch ships data using query parameters
+    query_params = data["query_params"]
+    existing_ships = fetch_ships(**query_params)
     print(f"Checking contained matches against {len(existing_ships)} existing ships")
     
     contained_match = check_contained_match(data["protein"], existing_ships)
@@ -277,11 +276,11 @@ def check_contained_matches(exact_matches, data):
         print("No contained matches found")
 
     return (
-        "Checking for similar matches",
-        make_alert_using_match(contained_match, "Family", "contained"),
-        make_alert_using_match(contained_match, "Navis", "contained"),
-        make_alert_using_match(contained_match, "Haplotype", "contained"),
-        {"found": matches_found} if matches_found else None
+        "Checking for similar matches",  # stage
+        make_alert_using_match(contained_match, "Family", "contained"),  # family output
+        make_alert_using_match(contained_match, "Navis", "contained"),  # navis output
+        make_alert_using_match(contained_match, "Haplotype", "contained"),  # haplotype output
+        {"found": matches_found} if matches_found else None  # contained matches data
     )
 
 # then, check for similar matches
@@ -293,39 +292,38 @@ def check_contained_matches(exact_matches, data):
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-similar-matches", "data"),
     ],
-    [
-        Input("classification-contained-matches", "data"),
-        State("classification-upload", "data"),
-    ],
+    [Input("classification-contained-matches", "data")],
+    [State("classification-upload", "data")],
     prevent_initial_call=True
 )
 @handle_callback_error
 def check_similar_matches(contained_matches, data):
-    print("Starting similar match check...")
-    if contained_matches:
-        print("Skipping similar match check - contained match was found")
-        raise PreventUpdate
-    if data is None:
-        print("No data provided for similar match check")
+    logging.info("Starting similar match check...")
+    if contained_matches or data is None:
+        logging.info("Skipping similar match check - contained match was found or no data")
         raise PreventUpdate
     
-    existing_ships = pd.DataFrame(data["existing_ships"])
-    print(f"Checking similar matches against {len(existing_ships)} existing ships")
+    # Fetch ships data using query parameters
+    query_params = data["query_params"]
+    existing_ships = fetch_ships(**query_params)
+    logging.info(f"Checking similar matches against {len(existing_ships)} existing ships")
     
-    similar_match = check_similar_match(data["protein"], existing_ships)
+    # Add threshold parameter (you may want to adjust this value)
+    similar_match = check_similar_match(data["protein"], existing_ships, threshold=0.9)
     matches_found = similar_match is not None
 
     if matches_found:
-        print(f"Found similar match: {similar_match}")
+        logging.info(f"Found similar match: {similar_match}")
     else:
-        print("No similar matches found")
+        logging.warning("No similar matches found")
 
+    # Make sure to return a tuple matching the number of outputs
     return (
-        "Running Family Classification",
-        make_alert_using_match(similar_match, "Family", "similar"),
-        make_alert_using_match(similar_match, "Navis", "similar"),
-        make_alert_using_match(similar_match, "Haplotype", "similar"),
-        {"found": matches_found} if matches_found else None
+        "Running Family Classification",  # stage
+        make_alert_using_match(similar_match, "Family", "similar"),  # family output
+        make_alert_using_match(similar_match, "Navis", "similar"),  # navis output
+        make_alert_using_match(similar_match, "Haplotype", "similar"),  # haplotype output
+        {"found": matches_found} if matches_found else None  # similar matches data
     )
 
 # Run Family Classification
@@ -346,15 +344,25 @@ def check_similar_matches(contained_matches, data):
         Output("classification-navis-color", "color", allow_duplicate=True),
     ],
     [
-        Input("classification-upload", "data"),
-        Input("classification-exact-matches", "data"),
         Input("classification-similar-matches", "data"),
+    ],
+    [
+        State("classification-upload", "data"),
+        State("classification-exact-matches", "data"),
+        State("classification-contained-matches", "data"),
     ],
     prevent_initial_call=True
 )
 @handle_callback_error
-def run_family_classification(data, exact_matches, similar_matches):
-    if exact_matches or similar_matches:
+def run_family_classification(similar_matches, data, exact_matches, contained_matches):
+    # Check for required data
+    if data is None:
+        raise PreventUpdate
+        
+    # Check if any previous matches were found
+    if (exact_matches and exact_matches.get("found")) or \
+       (contained_matches and contained_matches.get("found")) or \
+       (similar_matches and similar_matches.get("found")):
         raise PreventUpdate
 
     try:
@@ -439,17 +447,36 @@ def run_family_classification(data, exact_matches, similar_matches):
         Output("classification-haplotype-color", "color", allow_duplicate=True),
     ],
     [
-        Input("classification-family-data", "data"),
+        Input("classification-family-name", "children"),
+    ],
+    [
+        State("classification-upload", "data"),
+        State("classification-family-data", "data"),
+        State("classification-exact-matches", "data"),
+        State("classification-contained-matches", "data"),
+        State("classification-similar-matches", "data"),
     ],
     prevent_initial_call=True
 )
 @handle_callback_error
-def run_navis_classification(data):
-    if data is None:
+def run_navis_classification(family_name, data, family_data, exact_matches, contained_matches, similar_matches):
+    # Check for required data
+    if data is None or family_data is None:
+        raise PreventUpdate
+        
+    # Check if any previous matches were found
+    if (exact_matches and exact_matches.get("found")) or \
+       (contained_matches and contained_matches.get("found")) or \
+       (similar_matches and similar_matches.get("found")):
+        raise PreventUpdate
+        
+    # Check if family classification failed
+    if family_name == "Error":
         raise PreventUpdate
 
     try:
-        existing_captains = pd.DataFrame(data["existing_captains"])
+        query_params = data["query_params"]
+        existing_captains = fetch_captains(**query_params)
         navis_name = classify_navis(
             fasta=data["protein"],
             existing_captains=existing_captains,
@@ -519,17 +546,33 @@ def run_navis_classification(data):
     [
         Input("classification-navis-data", "data"),
     ],
+    [
+        State("classification-upload", "data"),
+        State("classification-exact-matches", "data"),
+        State("classification-contained-matches", "data"),
+        State("classification-similar-matches", "data"),
+    ],
     prevent_initial_call=True
 )
 @handle_callback_error
-def run_haplotype_classification(data):
-    if data is None:
+def run_haplotype_classification(navis_data, data, exact_matches, contained_matches, similar_matches):
+    # Check for required data
+    if data is None or navis_data is None:
+        raise PreventUpdate
+        
+    # Check if any previous matches were found
+    if (exact_matches and exact_matches.get("found")) or \
+       (contained_matches and contained_matches.get("found")) or \
+       (similar_matches and similar_matches.get("found")):
         raise PreventUpdate
 
     try:
+        query_params = data["query_params"]
+        existing_ships = fetch_ships(**query_params)
+
         haplotype_name = classify_haplotype(
             fasta=data["protein"],
-            existing_ships=data["existing_ships"],
+            existing_ships=existing_ships,
             navis=data["navis"]
         )
 

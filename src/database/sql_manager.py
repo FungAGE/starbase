@@ -119,6 +119,7 @@ def fetch_download_data(curated=True, dereplicate=False):
         session.close()
 
 @cache.memoize()
+@db_retry_decorator()
 def fetch_ships(accession_tags=None, curated=False, dereplicate=True, with_sequence=False):
     """
     Fetch ship data for specified accession tags.
@@ -315,6 +316,7 @@ def fetch_accession_ship(accession_tag):
     finally:
         session.close()
 
+@cache.memoize()
 @db_retry_decorator()
 def fetch_captains(accession_tags=None, curated=False, with_sequence=False):
     """
