@@ -215,29 +215,29 @@ def make_alert_using_match(match_class=None, classification=None, type=None):
 )
 @handle_callback_error
 def check_exact_matches(data):
-    print("Starting exact match check...")
+    logger.info("Starting exact match check...")
     if data is None:
-        print("No data provided for exact match check")
+        logger.warning("No data provided for exact match check")
         raise PreventUpdate
     
     # Fetch ships data using query parameters
     fetch_ship_params = data["fetch_ship_params"]
     existing_ships = fetch_ships(**fetch_ship_params)
-    print(f"Checking exact matches against {len(existing_ships)} existing ships")
+    logger.info(f"Checking exact matches against {len(existing_ships)} existing ships")
     
     exact_match = check_exact_match(data["protein"], existing_ships)
     matches_found = False
 
     if exact_match:
-        print(f"Found exact match: {exact_match}")
+        logger.info(f"Found exact match: {exact_match}")
         match_row = existing_ships[existing_ships["accession_tag"] == exact_match]
         match_family = match_row["familyName"].values[0]
         match_navis = match_row["starship_navis"].values[0]
         match_haplotype = match_row["starship_haplotype"].values[0]
         matches_found = True
-        print(f"Exact match details - Family: {match_family}, Navis: {match_navis}, Haplotype: {match_haplotype}")
+        logger.info(f"Exact match details - Family: {match_family}, Navis: {match_navis}, Haplotype: {match_haplotype}")
     else:
-        print("No exact matches found")
+        logger.warning("No exact matches found")
         match_family = match_navis = match_haplotype = None
 
     return (
@@ -263,7 +263,7 @@ def check_exact_matches(data):
 )
 @handle_callback_error
 def check_contained_matches(exact_matches, data):
-    print("Starting contained match check...")
+    logger.info("Starting contained match check...")
     if exact_matches or data is None:
         logger.info("Skipping contained match check - exact match was found or no data")
         raise PreventUpdate
@@ -271,15 +271,15 @@ def check_contained_matches(exact_matches, data):
     # Fetch ships data using query parameters
     fetch_ship_params = data["fetch_ship_params"]
     existing_ships = fetch_ships(**fetch_ship_params)
-    print(f"Checking contained matches against {len(existing_ships)} existing ships")
+    logger.info(f"Checking contained matches against {len(existing_ships)} existing ships")
     
     contained_match = check_contained_match(data["protein"], existing_ships)
     matches_found = contained_match is not None
 
     if matches_found:
-        print(f"Found contained match: {contained_match}")
+        logger.info(f"Found contained match: {contained_match}")
     else:
-        print("No contained matches found")
+        logger.warning("No contained matches found")
 
     return (
         "Checking for similar matches",  # stage
@@ -304,24 +304,24 @@ def check_contained_matches(exact_matches, data):
 )
 @handle_callback_error
 def check_similar_matches(contained_matches, data):
-    logging.info("Starting similar match check...")
+    logger.info("Starting similar match check...")
     if contained_matches or data is None:
-        logging.info("Skipping similar match check - contained match was found or no data")
+        logger.info("Skipping similar match check - contained match was found or no data")
         raise PreventUpdate
     
     # Fetch ships data using query parameters
     fetch_ship_params = data["fetch_ship_params"]
     existing_ships = fetch_ships(**fetch_ship_params)
-    logging.info(f"Checking similar matches against {len(existing_ships)} existing ships")
+    logger.info(f"Checking similar matches against {len(existing_ships)} existing ships")
     
     # Add threshold parameter (you may want to adjust this value)
     similar_match = check_similar_match(data["protein"], existing_ships, threshold=0.9)
     matches_found = similar_match is not None
 
     if matches_found:
-        logging.info(f"Found similar match: {similar_match}")
+        logger.info(f"Found similar match: {similar_match}")
     else:
-        logging.warning("No similar matches found")
+        logger.warning("No similar matches found")
 
     # Make sure to return a tuple matching the number of outputs
     return (
