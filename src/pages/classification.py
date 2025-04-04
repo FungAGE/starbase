@@ -9,17 +9,16 @@ from dash import html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 
-import base64
 import logging
 import tempfile
-import os
+import pandas as pd
 
 from src.utils.seq_utils import guess_seq_type
 from src.config.settings import BLAST_DB_PATHS
-from src.utils.classification_utils import classify_sequence, classify_family, classify_navis, classify_haplotype
+from src.utils.classification_utils import check_exact_match, check_contained_match, check_similar_match, classify_family, classify_navis, classify_haplotype
 from src.components.callbacks import create_file_upload
 from src.components.error_boundary import handle_callback_error
-from src.utils.seq_utils import parse_fasta, parse_fasta_from_file, write_fasta
+from src.utils.seq_utils import parse_fasta_from_file, write_fasta
 from src.database.sql_manager import fetch_captains, fetch_ships
 
 
@@ -31,10 +30,41 @@ layout = dmc.Container(
     size="md",
     children=[
         html.H1("Classification Workflow"),
-        # Hidden stores for passing data between callbacks
-        dcc.Store(id="classification-data-store"),
-        dcc.Store(id="classification-temp-files-store"),
-        
+
+        # Stores
+        # file upload
+        dcc.Store(id="classification-upload"),
+
+        # text for stage
+        dcc.Store(id="classification-stage"),
+
+        # exact matches
+        dcc.Store(id="classification-exact-matches"),
+
+        # similar matches
+        dcc.Store(id="classification-similar-matches"),
+
+        # progress for family classification
+        dcc.Store(id="classification-family-progress"),
+        dcc.Store(id="classification-family-color"),
+        dcc.Store(id="classification-family-name"),
+        dcc.Store(id="classification-family-output"),
+        dcc.Store(id="classification-family-data"),
+
+        # progress for navis classification
+        dcc.Store(id="classification-navis-progress"),
+        dcc.Store(id="classification-navis-color"),
+        dcc.Store(id="classification-navis-name"),
+        dcc.Store(id="classification-navis-output"),
+        dcc.Store(id="classification-navis-data"),
+
+        # progress for haplotype classification
+        dcc.Store(id="classification-haplotype-progress"),
+        dcc.Store(id="classification-haplotype-color"),
+        dcc.Store(id="classification-haplotype-name"),
+        dcc.Store(id="classification-haplotype-output"),
+        dcc.Store(id="classification-haplotype-data"),
+
         dmc.Stack([
             dmc.Paper(
                 children=create_file_upload(
@@ -52,52 +82,60 @@ layout = dmc.Container(
                     dmc.Text("Current Stage:", size="lg", fw=500),
                     dmc.Text(id="classification-stage", size="lg", c="blue")
                 ]),
-                dbc.Progress(
-                    [
+                dmc.Stack([
+                    dmc.Group([
+                        dmc.Text("Family:", size="sm", w=100),
                         dbc.Progress(
-                            id="family-progress",
+                            id="classification-family-progress",
                             value=0,
                             color="green",
-                            bar=True,
-                            striped=False,
                             animated=False,
-                            label="Family",
-                            style={"width": "33%"}
+                            striped=False,
+                            style={"width": "100%", "marginBottom": "10px"}
                         ),
+                        html.Div(id="classification-family-output")
+                    ]),
+                    dmc.Group([
+                        dmc.Text("Navis:", size="sm", w=100),
                         dbc.Progress(
-                            id="navis-progress",
+                            id="classification-navis-progress",
                             value=0,
                             color="blue",
-                            bar=True,
-                            striped=False,
                             animated=False,
-                            label="Navis",
-                            style={"width": "33%"}
+                            striped=False,
+                            style={"width": "100%", "marginBottom": "10px"}
                         ),
+                        html.Div(id="classification-navis-output")
+                    ]),
+                    dmc.Group([
+                        dmc.Text("Haplotype:", size="sm", w=100),
                         dbc.Progress(
-                            id="haplotype-progress",
+                            id="classification-haplotype-progress",
                             value=0,
                             color="violet",
-                            bar=True,
-                            striped=False,
                             animated=False,
-                            label="Haplotype",
-                            style={"width": "34%"}
+                            striped=False,
+                            style={"width": "100%", "marginBottom": "10px"}
                         ),
-                    ],
-                    style={"width": "100%"},
-                    className="mb-3",
-                ),
+                        html.Div(id="classification-haplotype-output")
+                    ]),
+                ]),
             ]),
         ], gap="md"),
         html.Div(id='classification-output', className="mt-4"),
     ]
 )
 
+# Callbacks
+# handle upload and start family classification progress
 @callback(
     [
-        Output("classification-data-store", "data"),
-        Output("classification-temp-files-store", "data"),
+        Output("classification-upload", "data"),
+        Output("classification-stage", "children",allow_duplicate=True),
+        Output("classification-family-progress", "value",allow_duplicate=True),
+        Output("classification-family-progress", "animated",allow_duplicate=True),
+        Output("classification-family-progress", "striped",allow_duplicate=True),
+        Output("classification-family-color", "color",allow_duplicate=True),
     ],
     Input("classification-fasta-upload", "contents"),
     prevent_initial_call=True
@@ -120,186 +158,415 @@ def setup_classification(seq_content):
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     write_fasta({"query_sequence": seq}, tmp_fasta)
     
+    # TODO: these items are too large to be stored in the store.
+    # need to find a better way to handle this.
+    existing_ships = fetch_ships(curated=True, with_sequence=True).to_dict(orient="records")
+    existing_captains = fetch_captains(curated=True, with_sequence=True).to_dict(orient="records")
+
     return (
-        {"seq_type": seq_type, "results": [], "stage": "family"},  # data store
-        {"fasta": tmp_fasta, "protein": None}  # temp files store
+        {"seq_type": seq_type, "fasta": tmp_fasta, "protein": tmp_fasta, "existing_ships": existing_ships, "existing_captains": existing_captains},  # data store
+        "Checking for exact matches",
+        10,
+        True,
+        True,
+        "green",
     )
 
-# Step 2: Family Classification
+def make_alert_using_match(match_class=None, classification=None, type=None):    
+    if match_class:
+        if classification == "Family":
+            color = "green"
+        elif classification == "Navis":
+            color = "blue"
+        elif classification == "Haplotype":
+            color = "violet"
+
+        return (
+            dmc.Alert(
+                title=f"{classification} found using {type} match",
+                children=f"{classification}: {match_class}",
+                color=color,
+                variant="light",
+                className="mb-3"
+            )
+        )
+    else:
+        return None
+
+# First, check for exact matches
 @callback(
     [
-        Output("classification-stage", "children"),
-        Output("family-progress", "value"),
-        Output("family-progress", "color"),
-        Output("family-progress", "striped"),
-        Output("family-progress", "animated"),
-        Output("navis-progress", "value"),
-        Output("navis-progress", "color"),
-        Output("navis-progress", "striped"),
-        Output("navis-progress", "animated"),
-        Output("haplotype-progress", "value"),
-        Output("haplotype-progress", "color"),
-        Output("haplotype-progress", "striped"),
-        Output("haplotype-progress", "animated"),
-        Output("classification-output", "children"),
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-family-output", "children", allow_duplicate=True),
+        Output("classification-navis-output", "children", allow_duplicate=True),
+        Output("classification-haplotype-output", "children", allow_duplicate=True),
+        Output("classification-exact-matches", "data"),
     ],
     [
-        Input("classification-data-store", "data"),
-        Input("classification-temp-files-store", "data"),
+        Input("classification-upload", "data"),
     ],
     prevent_initial_call=True
 )
 @handle_callback_error
-def update_classification_status(data, temp_files):
-    if not data or not temp_files:
+def check_exact_matches(data):
+    print("Starting exact match check...")
+    if data is None:
+        print("No data provided for exact match check")
         raise PreventUpdate
-        
-    stage = data.get("stage", "family")
-    results = []
     
-    # Initialize all progress bars as inactive
-    family_progress = navis_progress = haplotype_progress = 0
-    family_color = navis_color = haplotype_color = "secondary"
-    family_striped = navis_striped = haplotype_striped = False
-    family_animated = navis_animated = haplotype_animated = False
+    existing_ships = pd.DataFrame(data["existing_ships"])
+    print(f"Checking exact matches against {len(existing_ships)} existing ships")
     
-    # Start with family classification
-    family_color = "green"
-    family_striped = family_animated = True
-    
-    # Run family classification
-    family_dict, tmp_protein = classify_family(
-        fasta=temp_files["fasta"],
-        seq_type=data["seq_type"],
-        db_list=BLAST_DB_PATHS,
-        threads=1
+    exact_match = check_exact_match(data["protein"], existing_ships)
+    matches_found = False
+
+    if exact_match:
+        print(f"Found exact match: {exact_match}")
+        match_row = existing_ships[existing_ships["accession_tag"] == exact_match]
+        match_family = match_row["starship_family"].values[0]
+        match_navis = match_row["starship_navis"].values[0]
+        match_haplotype = match_row["starship_haplotype"].values[0]
+        matches_found = True
+        print(f"Exact match details - Family: {match_family}, Navis: {match_navis}, Haplotype: {match_haplotype}")
+    else:
+        print("No exact matches found")
+        match_family = match_navis = match_haplotype = None
+
+    return (
+        "Checking for contained matches",
+        make_alert_using_match(match_family, "Family", "exact"),
+        make_alert_using_match(match_navis, "Navis", "exact"),
+        make_alert_using_match(match_haplotype, "Haplotype", "exact"),
+        {"found": matches_found} if matches_found else None
     )
+
+# then, check for contained matches
+@callback(
+    [
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-family-output", "children", allow_duplicate=True),
+        Output("classification-navis-output", "children", allow_duplicate=True),
+        Output("classification-haplotype-output", "children", allow_duplicate=True),
+        Output("classification-contained-matches", "data"),
+    ],
+    [
+        Input("classification-exact-matches", "data"),
+        State("classification-upload", "data"),
+    ],
+    prevent_initial_call=True
+)
+@handle_callback_error
+def check_contained_matches(exact_matches, data):
+    print("Starting contained match check...")
+    if exact_matches:
+        print("Skipping contained match check - exact match was found")
+        raise PreventUpdate
+    if data is None:
+        print("No data provided for contained match check")
+        raise PreventUpdate
     
-    if not family_dict:
-        # Family classification failed
-        family_color = "secondary"
-        return (
-            "Classification Failed at Family Stage",
-            0, family_color, False, False,
-            0, "secondary", False, False,
-            0, "secondary", False, False,
-            html.Div([])
-        )
-        
-    # Family classification succeeded
-    family_progress = 100
-    family_striped = family_animated = False
-    try:
-        evalue = float(family_dict['evalue'])
-        evalue_str = f"{evalue:.2e}"
-    except (ValueError, TypeError):
-        evalue_str = str(family_dict['evalue'])
-        
-    results.append(dmc.Alert(
-        title="Family Classification",
-        children=[
-            f"Family: {family_dict['family']}",
-            html.Br(),
-            f"Alignment Length: {family_dict['aln_length']}",
-            html.Br(),
-            f"E-value: {evalue_str}"
-        ],
-        color="green",
-        variant="light",
-        className="mb-3"
-    ))
+    existing_ships = pd.DataFrame(data["existing_ships"])
+    print(f"Checking contained matches against {len(existing_ships)} existing ships")
     
-    if not tmp_protein:
-        return (
-            "Classification Stopped after Family Stage",
-            100, "green", False, False,
-            0, "secondary", False, False,
-            0, "secondary", False, False,
-            html.Div(results)
-        )
-        
-    # Start Navis classification
-    navis_color = "blue"
-    navis_striped = navis_animated = True
-    
-    navis_name = classify_navis(
-        fasta=tmp_protein,
-        existing_captains=fetch_captains(curated=True, with_sequence=True),
-        threads=1
+    contained_match = check_contained_match(data["protein"], existing_ships)
+    matches_found = contained_match is not None
+
+    if matches_found:
+        print(f"Found contained match: {contained_match}")
+    else:
+        print("No contained matches found")
+
+    return (
+        "Checking for similar matches",
+        make_alert_using_match(contained_match, "Family", "contained"),
+        make_alert_using_match(contained_match, "Navis", "contained"),
+        make_alert_using_match(contained_match, "Haplotype", "contained"),
+        {"found": matches_found} if matches_found else None
     )
+
+# then, check for similar matches
+@callback(
+    [
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-family-output", "children", allow_duplicate=True),
+        Output("classification-navis-output", "children", allow_duplicate=True),
+        Output("classification-haplotype-output", "children", allow_duplicate=True),
+        Output("classification-similar-matches", "data"),
+    ],
+    [
+        Input("classification-contained-matches", "data"),
+        State("classification-upload", "data"),
+    ],
+    prevent_initial_call=True
+)
+@handle_callback_error
+def check_similar_matches(contained_matches, data):
+    print("Starting similar match check...")
+    if contained_matches:
+        print("Skipping similar match check - contained match was found")
+        raise PreventUpdate
+    if data is None:
+        print("No data provided for similar match check")
+        raise PreventUpdate
     
-    if not navis_name:
-        return (
-            "Classification Stopped at Navis Stage",
-            100, "green", False, False,
-            0, "secondary", False, False,
-            0, "secondary", False, False,
-            html.Div(results)
-        )
-        
-    # Navis classification succeeded
-    navis_progress = 100
-    navis_striped = navis_animated = False
-    results.append(dmc.Alert(
-        title="Navis Classification",
-        children=f"Navis: {navis_name}",
-        color="blue",
-        variant="light",
-        className="mb-3"
-    ))
+    existing_ships = pd.DataFrame(data["existing_ships"])
+    print(f"Checking similar matches against {len(existing_ships)} existing ships")
     
-    # Start Haplotype classification
-    haplotype_color = "violet"
-    haplotype_striped = haplotype_animated = True
-    
+    similar_match = check_similar_match(data["protein"], existing_ships)
+    matches_found = similar_match is not None
+
+    if matches_found:
+        print(f"Found similar match: {similar_match}")
+    else:
+        print("No similar matches found")
+
+    return (
+        "Running Family Classification",
+        make_alert_using_match(similar_match, "Family", "similar"),
+        make_alert_using_match(similar_match, "Navis", "similar"),
+        make_alert_using_match(similar_match, "Haplotype", "similar"),
+        {"found": matches_found} if matches_found else None
+    )
+
+# Run Family Classification
+# outputs will be return when work is complete
+@callback(
+    [
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-family-progress", "value", allow_duplicate=True),
+        Output("classification-family-progress", "animated", allow_duplicate=True),
+        Output("classification-family-progress", "striped", allow_duplicate=True),
+        Output("classification-family-color", "color", allow_duplicate=True),
+        Output("classification-family-name", "children", allow_duplicate=True),
+        Output("classification-family-output", "children", allow_duplicate=True),
+        Output("classification-family-data", "data"),
+        Output("classification-navis-progress", "value", allow_duplicate=True),
+        Output("classification-navis-progress", "animated", allow_duplicate=True),
+        Output("classification-navis-progress", "striped", allow_duplicate=True),
+        Output("classification-navis-color", "color", allow_duplicate=True),
+    ],
+    [
+        Input("classification-upload", "data"),
+        Input("classification-exact-matches", "data"),
+        Input("classification-similar-matches", "data"),
+    ],
+    prevent_initial_call=True
+)
+@handle_callback_error
+def run_family_classification(data, exact_matches, similar_matches):
+    if exact_matches or similar_matches:
+        raise PreventUpdate
+
     try:
-        ships_df = fetch_ships(curated=True, with_sequence=True)
+        # Run the classification
+        family_dict, tmp_protein = classify_family(
+            fasta=data["fasta"],
+            seq_type=data["seq_type"],
+            db_list=BLAST_DB_PATHS,
+            threads=1
+        )
+
+        if not family_dict:
+            raise ValueError("Family classification failed")
+
+        # Success case
+        return (
+            "Running Navis Classification",  # stage
+            100,  # family progress complete
+            False,  # family not animated
+            True,  # family stays striped
+            "green",  # family success color
+            family_dict['family'],  # family name
+            dmc.Alert(  # output
+                title="Family Classification",
+                children=[
+                    f"Family: {family_dict['family']}",
+                    html.Br(),
+                    f"Alignment Length: {family_dict['aln_length']}",
+                    html.Br(),
+                    f"E-value: {family_dict['evalue']}"
+                ],
+                color="green",
+                variant="light",
+                className="mb-3"
+            ),
+            {"protein": tmp_protein},  # data for next step
+            10,  # navis progress starts
+            True,  # navis animated
+            True,  # navis striped
+            "blue",  # navis color
+        )
+
+    except Exception as e:
+        # Failure case
+        return (
+            "Family Classification Failed",  # stage
+            100,  # family progress complete
+            False,  # family not animated
+            False,  # family not striped
+            "red",  # family failure color
+            "Error",  # family name
+            dmc.Alert(  # error output
+                title="Family Classification Error",
+                children=str(e),
+                color="red",
+                variant="light",
+                className="mb-3"
+            ),
+            None,  # no data for next step
+            0,  # navis progress reset
+            False,  # navis not animated
+            False,  # navis not striped
+            "gray",  # navis disabled color
+        )
+
+  
+# Run Navis Classification
+# outputs will be return when work is complete
+@callback(
+    [
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-navis-progress", "value", allow_duplicate=True),
+        Output("classification-navis-progress", "animated", allow_duplicate=True),
+        Output("classification-navis-progress", "striped", allow_duplicate=True),
+        Output("classification-navis-color", "color", allow_duplicate=True),
+        Output("classification-navis-name", "children", allow_duplicate=True),
+        Output("classification-family-output", "children", allow_duplicate=True),
+        Output("classification-navis-data", "data"),
+        Output("classification-haplotype-progress", "value", allow_duplicate=True),
+        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
+        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
+        Output("classification-haplotype-color", "color", allow_duplicate=True),
+    ],
+    [
+        Input("classification-family-data", "data"),
+    ],
+    prevent_initial_call=True
+)
+@handle_callback_error
+def run_navis_classification(data):
+    if data is None:
+        raise PreventUpdate
+
+    try:
+        existing_captains = pd.DataFrame(data["existing_captains"])
+        navis_name = classify_navis(
+            fasta=data["protein"],
+            existing_captains=existing_captains,
+            threads=1
+        )
+
+        if not navis_name:
+            raise ValueError("Navis classification failed")
+
+        # Success case
+        return (
+            "Running Haplotype Classification",  # stage
+            100,  # navis progress complete
+            False,  # navis not animated
+            True,  # navis stays striped
+            "green",  # navis success color
+            navis_name,  # navis name
+            dmc.Alert(  # output
+                title="Navis Classification",
+                children=f"Navis: {navis_name}",
+                color="blue",
+                variant="light",
+                className="mb-3"
+            ),
+            {"protein": data["protein"], "navis": navis_name},  # data for next step
+            10,  # haplotype progress starts
+            True,  # haplotype animated
+            True,  # haplotype striped
+            "violet",  # haplotype color
+        )
+
+    except Exception as e:
+        # Failure case
+        return (
+            "Navis Classification Failed",  # stage
+            100,  # navis progress complete
+            False,  # navis not animated
+            False,  # navis not striped
+            "red",  # navis failure color
+            "Error",  # navis name
+            dmc.Alert(  # error output
+                title="Navis Classification Error",
+                children=str(e),
+                color="red",
+                variant="light",
+                className="mb-3"
+            ),
+            None,  # no data for next step
+            0,  # haplotype progress reset
+            False,  # haplotype not animated
+            False,  # haplotype not striped
+            "gray",  # haplotype disabled color
+        )
+
+# Run Haplotype Classification
+# outputs will be return when work is complete
+@callback(
+    [
+        Output("classification-stage", "children", allow_duplicate=True),
+        Output("classification-haplotype-progress", "value", allow_duplicate=True),
+        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
+        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
+        Output("classification-haplotype-color", "color", allow_duplicate=True),
+        Output("classification-haplotype-name", "children", allow_duplicate=True),
+        Output("classification-family-output", "children", allow_duplicate=True),
+    ],
+    [
+        Input("classification-navis-data", "data"),
+    ],
+    prevent_initial_call=True
+)
+@handle_callback_error
+def run_haplotype_classification(data):
+    if data is None:
+        raise PreventUpdate
+
+    try:
         haplotype_name = classify_haplotype(
-            fasta=temp_files["fasta"],
-            existing_ships=ships_df,
-            navis=navis_name
+            fasta=data["protein"],
+            existing_ships=data["existing_ships"],
+            navis=data["navis"]
         )
-        
-        if haplotype_name:
-            haplotype_progress = 100
-            haplotype_striped = haplotype_animated = False
-            results.append(dmc.Alert(
+
+        if not haplotype_name:
+            raise ValueError("Haplotype classification failed")
+
+        # Success case
+        return (
+            "Classification Complete",  # stage
+            100,  # haplotype progress complete
+            False,  # haplotype not animated
+            True,  # haplotype stays striped
+            "green",  # haplotype success color
+            haplotype_name,  # haplotype name
+            dmc.Alert(  # output
                 title="Haplotype Classification",
                 children=f"Haplotype: {haplotype_name}",
                 color="violet",
                 variant="light",
                 className="mb-3"
-            ))
-    except Exception as e:
-        logger.error(f"Haplotype classification error: {str(e)}")
-        return (
-            "Classification Stopped at Haplotype Stage",
-            100, "green", False, False,
-            100, "blue", False, False,
-            0, "secondary", False, False,
-            html.Div(results)
+            ),
         )
-    
-    # Cleanup temporary files
-    try:
-        os.unlink(temp_files["fasta"])
-        if temp_files.get("protein"):
-            os.unlink(temp_files["protein"])
-    except:
-        pass
-    
-    if not results:
-        results.append(dmc.Alert(
-            title="No Classifications Found",
-            children="Could not classify the sequence at any level",
-            color="yellow",
-            variant="light"
-        ))
-    
-    return (
-        "Classification Complete",
-        family_progress, family_color, family_striped, family_animated,
-        navis_progress, navis_color, navis_striped, navis_animated,
-        haplotype_progress, haplotype_color, haplotype_striped, haplotype_animated,
-        html.Div(results)
-    )
+
+    except Exception as e:
+        # Failure case
+        return (
+            "Haplotype Classification Failed",  # stage
+            100,  # haplotype progress complete
+            False,  # haplotype not animated
+            False,  # haplotype not striped
+            "red",  # haplotype failure color
+            "Error",  # haplotype name
+            dmc.Alert(  # error output
+                title="Haplotype Classification Error",
+                children=str(e),
+                color="red",
+                variant="light",
+                className="mb-3"
+            ),
+        )
