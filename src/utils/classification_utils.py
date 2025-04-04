@@ -125,41 +125,61 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame,
     containing_matches = []
     query_len = len(sequence)
     
-    for _, row in existing_ships.iterrows():
-        if row['sequence'] is None:
-            continue
-            
-        # Skip if reference sequence is shorter than query
-        if len(row['sequence']) < query_len:
-            continue
-            
-        # Perform local alignment
-        alignments = pairwise2.align.localxx(
-            sequence,
-            row['sequence'],
-            one_alignment_only=True,  # Only get best alignment
-            score_only=False
-        )
+    logger.info(f"Checking for contained matches (query length: {query_len})")
+    
+    # Create temporary files for minimap2
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as query_file, \
+         tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as ref_file:
         
-        if not alignments:
-            continue
-            
-        alignment = alignments[0]
-        align_length = alignment.end - alignment.start
-        identity = alignment.score / query_len
-        coverage = align_length / query_len
+        logger.debug("Writing query sequence to temporary file")
+        query_file.write(f">query\n{sequence}\n")
+        query_file.flush()
         
-        if coverage >= min_coverage and identity >= min_identity:
-            logger.info(
-                f"Found containing match: {row['accession_tag']} "
-                f"(coverage: {coverage:.2f}, identity: {identity:.2f}, "
-                f"length: {len(row['sequence'])})"
-            )
-            containing_matches.append((
-                identity * coverage,  # score for sorting
-                len(row['sequence']),  # length for tiebreaking
-                row['accession_tag']
-            ))
+        # Write reference sequences
+        ref_count = 0
+        logger.debug("Writing reference sequences to temporary file")
+        for _, row in existing_ships.iterrows():
+            if row['sequence'] is not None and len(row['sequence']) >= query_len:
+                ref_file.write(f">{row['accession_tag']}\n{row['sequence']}\n")
+                ref_count += 1
+        ref_file.flush()
+        logger.info(f"Written {ref_count} reference sequences for comparison")
+        
+        # Run minimap2
+        logger.info("Running minimap2 alignment")
+        cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"minimap2 failed with error: {result.stderr}")
+            return None
+            
+        alignment_count = 0
+        for line in result.stdout.splitlines():
+            alignment_count += 1
+            fields = line.split('\t')
+            if len(fields) < 10:
+                continue
+                
+            ref_name = fields[5]
+            matches = int(fields[9])
+            align_length = int(fields[10])
+            
+            coverage = align_length / query_len
+            identity = matches / align_length
+            
+            if coverage >= min_coverage and identity >= min_identity:
+                logger.info(
+                    f"Found containing match: {ref_name} "
+                    f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
+                )
+                containing_matches.append((
+                    identity * coverage,  # score for sorting
+                    len(existing_ships[existing_ships['accession_tag'] == ref_name]['sequence'].iloc[0]),  # length for tiebreaking
+                    ref_name
+                ))
+        
+        logger.info(f"Processed {alignment_count} alignments from minimap2")
     
     # Sort by score descending, then by length descending
     if containing_matches:
@@ -443,7 +463,7 @@ def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, d
                 
     return family_dict, tmp_protein_filename
 
-def classify_navis(fasta: str,
+def classify_navis(protein: str,
                   existing_captains: pd.DataFrame, 
                   threads: int = 1) -> str:
     """Assign navis based on captain sequence clustering."""
@@ -456,7 +476,7 @@ def classify_navis(fasta: str,
     # - All existing classified captain sequences
 
     logger.debug("Starting navis classification")
-    tmp_fasta_dir = create_tmp_fasta_dir(fasta, existing_captains)
+    tmp_fasta_dir = create_tmp_fasta_dir(protein, existing_captains)
     logger.debug(f"Created temporary FASTA directory: {tmp_fasta_dir}")
         
     # Run mmseqs clustering
