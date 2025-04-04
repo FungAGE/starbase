@@ -162,10 +162,16 @@ def setup_classification(seq_content):
             "seq_type": seq_type, 
             "fasta": tmp_fasta, 
             "protein": tmp_fasta,
-            "query_params": {
+            "fetch_ship_params": {
+                "curated": False,
+                "with_sequence": True,
+                "dereplicate": True
+            },
+            "fetch_captain_params": {
                 "curated": True,
                 "with_sequence": True
             }
+
         },
         "Checking for exact matches",
         10,
@@ -215,8 +221,8 @@ def check_exact_matches(data):
         raise PreventUpdate
     
     # Fetch ships data using query parameters
-    query_params = data["query_params"]
-    existing_ships = fetch_ships(**query_params)
+    fetch_ship_params = data["fetch_ship_params"]
+    existing_ships = fetch_ships(**fetch_ship_params)
     print(f"Checking exact matches against {len(existing_ships)} existing ships")
     
     exact_match = check_exact_match(data["protein"], existing_ships)
@@ -263,8 +269,8 @@ def check_contained_matches(exact_matches, data):
         raise PreventUpdate
     
     # Fetch ships data using query parameters
-    query_params = data["query_params"]
-    existing_ships = fetch_ships(**query_params)
+    fetch_ship_params = data["fetch_ship_params"]
+    existing_ships = fetch_ships(**fetch_ship_params)
     print(f"Checking contained matches against {len(existing_ships)} existing ships")
     
     contained_match = check_contained_match(data["protein"], existing_ships)
@@ -304,8 +310,8 @@ def check_similar_matches(contained_matches, data):
         raise PreventUpdate
     
     # Fetch ships data using query parameters
-    query_params = data["query_params"]
-    existing_ships = fetch_ships(**query_params)
+    fetch_ship_params = data["fetch_ship_params"]
+    existing_ships = fetch_ships(**fetch_ship_params)
     logging.info(f"Checking similar matches against {len(existing_ships)} existing ships")
     
     # Add threshold parameter (you may want to adjust this value)
@@ -475,8 +481,8 @@ def run_navis_classification(family_name, data, family_data, exact_matches, cont
         raise PreventUpdate
 
     try:
-        query_params = data["query_params"]
-        existing_captains = fetch_captains(**query_params)
+        fetch_captain_params = data["fetch_captain_params"]
+        existing_captains = fetch_captains(**fetch_captain_params)
         navis_name = classify_navis(
             fasta=data["protein"],
             existing_captains=existing_captains,
@@ -567,12 +573,13 @@ def run_haplotype_classification(navis_data, data, exact_matches, contained_matc
         raise PreventUpdate
 
     try:
-        query_params = data["query_params"]
-        existing_ships = fetch_ships(**query_params)
+        fetch_ship_params = data["fetch_ship_params"]
+        existing_ships = fetch_ships(**fetch_ship_params)
+        curated_ships = existing_ships[existing_ships["curated"] == True]
 
         haplotype_name = classify_haplotype(
             fasta=data["protein"],
-            existing_ships=existing_ships,
+            existing_ships=curated_ships,
             navis=data["navis"]
         )
 
