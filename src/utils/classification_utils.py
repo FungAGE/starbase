@@ -7,6 +7,8 @@ import os
 import tempfile
 import glob
 import signal
+from Bio import pairwise2
+from Bio.pairwise2 import format_alignment
 
 from src.utils.seq_utils import write_combined_fasta, write_multi_fasta, write_fasta
 from typing import Optional, Tuple, Dict, Any, Callable
@@ -107,33 +109,67 @@ def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[s
         logger.info(f"Found exact hash match: {match}")
     return match
 
-def check_contained_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
+def check_contained_match(sequence: str, existing_ships: pd.DataFrame, 
+                         min_coverage: float = 0.95, min_identity: float = 0.95) -> Optional[str]:
     """Check if sequence is contained within any existing sequences.
-    Returns accession of the longest containing sequence."""
+    
+    Args:
+        sequence: Query sequence to check
+        existing_ships: DataFrame containing existing sequences
+        min_coverage: Minimum coverage of query sequence required (default: 0.95)
+        min_identity: Minimum sequence identity required (default: 0.95)
+    
+    Returns:
+        accession_tag of the best containing match, or None if no match found
+    """
     containing_matches = []
-    processed_count = 0
+    query_len = len(sequence)
     
     for _, row in existing_ships.iterrows():
-        processed_count += 1
-        if processed_count % 1 == 0:
-            logger.debug(f"Processed {processed_count}/{len(existing_ships)} sequences")
-            
         if row['sequence'] is None:
             continue
             
-        if sequence in row['sequence']:
-            logger.info(f"Found containing match: {row['accession_tag']} (length: {len(row['sequence'])})")
+        # Skip if reference sequence is shorter than query
+        if len(row['sequence']) < query_len:
+            continue
+            
+        # Perform local alignment
+        alignments = pairwise2.align.localxx(
+            sequence,
+            row['sequence'],
+            one_alignment_only=True,  # Only get best alignment
+            score_only=False
+        )
+        
+        if not alignments:
+            continue
+            
+        alignment = alignments[0]
+        align_length = alignment.end - alignment.start
+        identity = alignment.score / query_len
+        coverage = align_length / query_len
+        
+        if coverage >= min_coverage and identity >= min_identity:
+            logger.info(
+                f"Found containing match: {row['accession_tag']} "
+                f"(coverage: {coverage:.2f}, identity: {identity:.2f}, "
+                f"length: {len(row['sequence'])})"
+            )
             containing_matches.append((
-                len(row['sequence']),  # length for sorting
+                identity * coverage,  # score for sorting
+                len(row['sequence']),  # length for tiebreaking
                 row['accession_tag']
             ))
     
-    # Sort by length descending and return longest match if any
+    # Sort by score descending, then by length descending
     if containing_matches:
-        containing_matches.sort(reverse=True)  # Sort by length descending
+        containing_matches.sort(reverse=True)
         logger.info(f"Found {len(containing_matches)} containing matches")
-        logger.info(f"Selected longest match: {containing_matches[0][1]} (length: {containing_matches[0][0]})")
-        return containing_matches[0][1]  # Return accession of longest match
+        logger.info(
+            f"Selected best match: {containing_matches[0][2]} "
+            f"(score: {containing_matches[0][0]:.2f}, length: {containing_matches[0][1]})"
+        )
+        return containing_matches[0][2]  # Return accession of best match
         
     logger.info("No containing matches found")
     return None
