@@ -420,9 +420,17 @@ def run_diamond(
 def make_captain_alert(family, aln_length, evalue, search_type):
     try:
         # Validate inputs
-        if not family or not isinstance(family, str):
+        if family is None or (isinstance(family, str) and not family.strip()):
             logger.error(f"Invalid family parameter: {family}")
             return create_error_alert("Invalid family name")
+            
+        # Convert pandas Series to scalar if needed
+        if hasattr(family, 'iloc'):
+            family = family.iloc[0]
+        if hasattr(aln_length, 'iloc'):
+            aln_length = aln_length.iloc[0]
+        if hasattr(evalue, 'iloc'):
+            evalue = evalue.iloc[0]
             
         if not aln_length:
             logger.error(f"Invalid alignment length: {aln_length}")
