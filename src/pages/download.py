@@ -57,7 +57,7 @@ table_columns = [
     },
     {
         "name": "Species",
-        "id": "species",
+        "id": "name",
         "deletable": False,
         "selectable": False,
         "presentation": "markdown",

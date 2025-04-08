@@ -208,7 +208,7 @@ def create_accession_modal(accession):
                         ]),
                         dmc.Group([
                             dmc.Text("Species:", fw=700),
-                            dmc.Text(modal_data["species"].iloc[0])
+                            dmc.Text(modal_data["name"].iloc[0])
                         ]),
                         dmc.Group([
                             dmc.Text("Strain:", fw=700),

@@ -504,7 +504,7 @@ def create_search_results(filtered_meta, cached_meta):
                 "sortable": True
             },
             {
-                "field": "species",
+                "field": "name",
                 "headerName": "Species",
                 "flex": 1
             },
@@ -578,7 +578,7 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
         df = pd.DataFrame(meta_data)
         
         if taxonomy:
-            df = df[df["genus"].isin(taxonomy)]
+            df = df[df["name"].isin(taxonomy)]
         if family:
             df = df[df["familyName"].isin(family)]
         if navis:
@@ -587,7 +587,7 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
             df = df[df["starship_haplotype"].isin(haplotype)]
         
         return {
-            "taxonomy": sorted(df["genus"].dropna().unique()),
+            "taxonomy": sorted(df["name"].dropna().unique()),
             "family": sorted(df["familyName"].dropna().unique()),
             "navis": sorted(df["starship_navis"].dropna().unique()),
             "haplotype": sorted(df["starship_haplotype"].dropna().unique())
@@ -682,7 +682,7 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, navis, haplotyp
         
         # Apply filters if they exist
         if taxonomy and len(taxonomy) > 0:
-            df = df[df["genus"].isin(taxonomy)]
+            df = df[df["name"].isin(taxonomy)]
         if family and len(family) > 0:
             df = df[df["familyName"].isin(family)]
         if navis and len(navis) > 0:

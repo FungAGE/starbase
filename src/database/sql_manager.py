@@ -43,7 +43,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
-           j.elementBegin, j.elementEnd, t.`order`, t.family, j.genus, j.species, 
+           j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
            g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
@@ -113,7 +113,7 @@ def fetch_download_data(curated=True, dereplicate=False):
     session = StarbaseSession()
 
     query = """
-    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.species 
+    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
@@ -167,8 +167,7 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
             j.elementBegin,
             j.elementEnd,
             j.contigID,
-            t.species,
-            t.genus,
+            t.name,
             t.family,
             t.`order`,
             f.familyName,
@@ -223,7 +222,7 @@ def fetch_ship_table(curated=False):
     SELECT DISTINCT 
         a.accession_tag,
         f.familyName,
-        t.species
+        t.name
     FROM joined_ships js
     LEFT JOIN accessions a ON js.ship_id = a.id
     LEFT JOIN taxonomy t ON js.taxid = t.id
@@ -372,7 +371,7 @@ def get_database_stats():
             "curated_starships": curated_count,
             "uncurated_starships": uncurated_count,
             "species_count": session.execute(
-                "SELECT COUNT(DISTINCT species) FROM taxonomy"
+                "SELECT COUNT(DISTINCT name) FROM taxonomy"
             ).scalar() or 0,
             "family_count": session.execute(
                 "SELECT COUNT(DISTINCT newFamilyID) FROM family_names WHERE newFamilyID IS NOT NULL"
