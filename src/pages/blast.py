@@ -652,3 +652,42 @@ def check_timeout(n_intervals, n_clicks, blast_container, family_content, error_
         ])
         return not has_output
     return False
+
+clientside_callback(
+    """
+    function(n_intervals) {
+        window.addEventListener('blastAccessionClick', function(event) {
+            if (event.detail && event.detail.accession) {
+                // Find the store and update it
+                var store = document.getElementById('blast-modal-data');
+                if (store) {
+                    store.setAttribute('data-dash-store', JSON.stringify(event.detail.accession));
+                }
+            }
+        });
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("modal-event-handler", "children"),
+    Input("interval-component", "n_intervals"),
+)
+
+@callback(
+    Output("blast-modal-content", "children"),
+    Input("blast-modal-data", "data"),
+    prevent_initial_call=True
+)
+def update_modal_content(accession):
+    from src.components.callbacks import create_accession_modal
+    if not accession:
+        raise PreventUpdate
+    
+    try:
+        modal_content, _ = create_accession_modal(accession)
+        return modal_content
+    except Exception as e:
+        logger.error(f"Error in update_modal_content: {str(e)}")
+        return html.Div(
+            f"Error loading details: {str(e)}", 
+            style={"color": "red", "padding": "20px"}
+        )

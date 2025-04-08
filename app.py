@@ -13,6 +13,7 @@ from sqlalchemy import text
 import os
 from sqlalchemy.pool import QueuePool
 from sqlalchemy import create_engine
+import json
 
 logging.basicConfig(
     level=logging.ERROR,
@@ -34,7 +35,7 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 from src.components import navmenu
-from src.components.callbacks import create_feedback_button
+from src.components.callbacks import create_feedback_button, create_accession_modal
 from src.utils.telemetry import log_request, get_client_ip, is_development_ip, maintain_ip_locations
 from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.config.database import TelemetrySession, SubmissionsSession
@@ -274,6 +275,41 @@ def force_cache_cleanup():
         return jsonify({
             "status": "error",
             "error": str(e)
+        }), 500
+
+def component_to_dict(component):
+    """Convert a Dash component to a dictionary format."""
+    if isinstance(component, (str, int, float)):
+        return str(component)
+    elif isinstance(component, (list, tuple)):
+        return [component_to_dict(c) for c in component]
+    elif hasattr(component, 'children'):
+        result = {
+            'type': component.__class__.__name__,
+            'children': component_to_dict(component.children) if component.children is not None else None
+        }
+        # Add other props
+        if hasattr(component, 'style') and component.style:
+            result['style'] = component.style
+        if hasattr(component, 'className') and component.className:
+            result['className'] = component.className
+        return result
+    elif component is None:
+        return None
+    else:
+        return str(component)
+
+@app.server.route('/api/accession/<accession_id>')
+def get_accession_details(accession_id):
+    try:
+        content, title = create_accession_modal(accession_id)
+        return jsonify({
+            'content': component_to_dict(content),
+            'title': component_to_dict(title)
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
         }), 500
 
 app.layout = serve_app_layout
