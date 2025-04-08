@@ -5,7 +5,7 @@ from typing import List
 
 import logging
 import traceback
-import json
+import pandas as pd
 
 from src.config.cache import cache
 from src.database.sql_manager import fetch_meta_data
@@ -262,8 +262,11 @@ def create_accession_modal(accession):
                                     ]),
                                     html.Tr([
                                         html.Td("Element Position"),
-                                        *[html.Td(f"{int(modal_data['elementBegin'].iloc[i])} - {int(modal_data['elementEnd'].iloc[i])}")
-                                          for i in range(len(modal_data))]
+                                        *[html.Td(
+                                            f"{int(modal_data['elementBegin'].iloc[i])} - {int(modal_data['elementEnd'].iloc[i])}"
+                                            if pd.notna(modal_data['elementBegin'].iloc[i]) and pd.notna(modal_data['elementEnd'].iloc[i])
+                                            else ""
+                                        ) for i in range(len(modal_data))]
                                     ]),
                                     html.Tr([
                                         html.Td("Size"),
@@ -295,7 +298,11 @@ def create_accession_modal(accession):
                         ]),
                         dmc.Group([
                             dmc.Text("Element Position:", fw=700),
-                            dmc.Text(f"{int(modal_data['elementBegin'].iloc[0])} - {int(modal_data['elementEnd'].iloc[0])}")
+                            dmc.Text(
+                                f"{int(modal_data['elementBegin'].iloc[0])} - {int(modal_data['elementEnd'].iloc[0])}"
+                                if pd.notna(modal_data['elementBegin'].iloc[0]) and pd.notna(modal_data['elementEnd'].iloc[0])
+                                else ""
+                            )
                         ]),
                         dmc.Group([
                             dmc.Text("Size:", fw=700),
