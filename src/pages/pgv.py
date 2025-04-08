@@ -40,7 +40,7 @@ table_columns = [
         "selectable": True,
     },
     {
-        "id": "species",
+        "id": "name",
         "name": "Species",
         "selectable": True,
     },

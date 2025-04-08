@@ -43,7 +43,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
-           j.elementBegin, j.elementEnd, t.`order`, t.family, j.genus, j.species, 
+           j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
            g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
@@ -52,26 +52,31 @@ def fetch_meta_data(curated=False, accession_tag=None):
     LEFT JOIN genomes g ON j.genome_id = g.id
     """
 
+    params = []
     if curated:
         meta_query += " WHERE j.curated_status = 'curated'"
 
     if accession_tag:
         where_clause = " WHERE " if not curated else " AND "
         if isinstance(accession_tag, list):
-            # Handle list of accession tags
-            placeholders = ','.join(['%s'] * len(accession_tag))
+            # Use ? for SQLite placeholders
+            placeholders = ','.join(['?'] * len(accession_tag))
             meta_query += f"{where_clause}a.accession_tag IN ({placeholders})"
-            params = accession_tag
+            params = tuple(accession_tag)
         else:
-            # Handle single accession tag
-            meta_query += f"{where_clause}a.accession_tag = %s"
-            params = [accession_tag]
+            # Use ? for SQLite placeholder
+            meta_query += f"{where_clause}a.accession_tag = ?"
+            params = (accession_tag,)
 
     try:
-        if accession_tag:
+        if params:
             meta_df = pd.read_sql_query(meta_query, session.bind, params=params)
         else:
             meta_df = pd.read_sql_query(meta_query, session.bind)
+        
+        # Convert to dict if single row
+        if len(meta_df) == 1:
+            return meta_df.iloc[0].to_dict()
         return meta_df
     except Exception as e:
         logger.error(f"Error fetching meta data: {str(e)}")
@@ -108,7 +113,7 @@ def fetch_download_data(curated=True, dereplicate=False):
     session = StarbaseSession()
 
     query = """
-    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.species 
+    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
@@ -162,8 +167,7 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
             j.elementBegin,
             j.elementEnd,
             j.contigID,
-            t.species,
-            t.genus,
+            t.name,
             t.family,
             t.`order`,
             f.familyName,
@@ -218,7 +222,7 @@ def fetch_ship_table(curated=False):
     SELECT DISTINCT 
         a.accession_tag,
         f.familyName,
-        t.species
+        t.name
     FROM joined_ships js
     LEFT JOIN accessions a ON js.ship_id = a.id
     LEFT JOIN taxonomy t ON js.taxid = t.id
@@ -367,7 +371,7 @@ def get_database_stats():
             "curated_starships": curated_count,
             "uncurated_starships": uncurated_count,
             "species_count": session.execute(
-                "SELECT COUNT(DISTINCT species) FROM taxonomy"
+                "SELECT COUNT(DISTINCT name) FROM taxonomy"
             ).scalar() or 0,
             "family_count": session.execute(
                 "SELECT COUNT(DISTINCT newFamilyID) FROM family_names WHERE newFamilyID IS NOT NULL"

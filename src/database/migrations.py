@@ -21,7 +21,7 @@ def create_database_indexes():
         "CREATE INDEX IF NOT EXISTS idx_accessions_id ON accessions(id)",
         
         # taxonomy indexes
-        "CREATE INDEX IF NOT EXISTS idx_taxonomy_species ON taxonomy(species)",
+        "CREATE INDEX IF NOT EXISTS idx_taxonomy_name ON taxonomy(name)",
         "CREATE INDEX IF NOT EXISTS idx_taxonomy_taxid ON taxonomy(taxID)",
         
         # family_names indexes

@@ -29,6 +29,7 @@ from src.utils.blast_utils import (
     make_captain_alert,
     process_captain_results,
     create_no_matches_alert,
+    parse_blast_xml,
     blast_download_button,
 )
 
@@ -165,6 +166,7 @@ layout = dmc.Container(
                             ],
                         ),
                     ],
+                    style={"justify-content": "flex-start"}
                 ),
             ],
             gutter="xl",
@@ -394,7 +396,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
         
         # Instead of using timeout context manager, we'll rely on subprocess timeout
         try:
-            blast_results = run_blast(
+            blast_results_file = run_blast(
                 db_list=BLAST_DB_PATHS,
                 query_type=query_type,
                 query_fasta=tmp_query_fasta,
@@ -403,7 +405,8 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                 threads=2,
             )
             
-            if blast_results is None:
+
+            if blast_results_file is None:
                 error_div = html.Div([
                     dmc.Alert(
                         title="BLAST Error",
@@ -414,7 +417,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                 return None, None, error_div
            
             if search_type == "diamond":
-                results_dict = run_diamond(
+                captain_results_dict = run_diamond(
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
@@ -423,7 +426,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     threads=2,
                 )
             else:
-                results_dict = run_hmmer(
+                captain_results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
@@ -432,7 +435,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     threads=2,
                 )
                 
-            return blast_results, results_dict, None
+            return blast_results_file, captain_results_dict, None
 
         except subprocess.TimeoutExpired:
             error_div = html.Div([
@@ -497,11 +500,15 @@ def process_metadata(curated):
     [Input("blast-results-store", "data")],
 )
 @handle_callback_error
-def process_blast_results(blast_results):
-    if not blast_results:
+def process_blast_results(blast_results_file):
+    if not blast_results_file:
         return None
         
     try:
+        # Read the BLAST output as text
+        with open(blast_results_file, 'r') as f:
+            blast_results = f.read()
+
         # Add size limit check
         results_size = len(blast_results)
         if results_size > 5 * 1024 * 1024:  # 5MB limit
@@ -526,7 +533,7 @@ def process_blast_results(blast_results):
         Output("blast-download", "children"),
         Output("phylogeny-plot", "children")
     ],
-    [Input("processed-blast-store", "data"), 
+    [Input("blast-results-store", "data"), 
      Input("captain-results-store", "data")],
     State("submit-button", "n_clicks"),
     running=[
@@ -536,17 +543,44 @@ def process_blast_results(blast_results):
     prevent_initial_call=True
 )
 @handle_callback_error
-def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
-    if not n_clicks or processed_blast_results is None:
+def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
+    if not n_clicks or blast_results_file is None:
         return None, None, None
         
     try:
-        if not processed_blast_results:
+        if not blast_results_file:
             return html.Div(create_no_matches_alert()), None, None
-            
-        # Process captain results for family information
-        ship_family = process_captain_results(captain_results_dict)
+
+        # Process blast results first for more basic family identification
+        blast_tsv = parse_blast_xml(blast_results_file)
+        blast_df = pd.read_csv(blast_tsv, sep="\t")
         
+        # Check if dataframe is empty
+        if blast_df.empty:
+            return html.Div(create_no_matches_alert()), None, None
+                    
+        # Simple selection of top hit
+        if len(blast_df) > 0:
+            # Sort by evalue (ascending) and pident (descending) to get best hits
+            blast_df = blast_df.sort_values(['evalue', 'pident'], ascending=[True, False])
+            top_hit = blast_df.iloc[0]
+            logger.info(f"Top hit: {top_hit}")
+
+            top_evalue = float(top_hit['evalue'])
+            top_aln_length = int(top_hit['aln_length'])
+            top_pident = float(top_hit['pident'])
+
+            if top_pident >= 90:
+                # look up family name from accession tag
+                query_accession = top_hit['query_id']
+                top_family = fetch_meta_data(accession_tag=query_accession)['familyName']
+                ship_family = make_captain_alert(top_family, top_aln_length, top_evalue, "blast")
+            else:
+                # Process captain results
+                ship_family = process_captain_results(captain_results_dict)
+        else:
+            return html.Div(create_no_matches_alert()), None, None
+
         # Create download button
         download_button = blast_download_button()
         
@@ -554,8 +588,14 @@ def update_ui_elements(processed_blast_results, captain_results_dict, n_clicks):
         phylogeny_plot = None
         if captain_results_dict:
             try:
-                # Get the family name from captain results
-                family_name = captain_results_dict.get('family_name')
+                # Handle case where captain_results_dict is a list of results
+                if isinstance(captain_results_dict, list):
+                    # Get the first result if available
+                    family_name = captain_results_dict[0].get('family_name') if captain_results_dict else None
+                else:
+                    # Original behavior for dict
+                    family_name = captain_results_dict.get('family_name')
+                
                 if family_name:
                     fig = plot_tree(
                         highlight_families=family_name,
@@ -612,3 +652,42 @@ def check_timeout(n_intervals, n_clicks, blast_container, family_content, error_
         ])
         return not has_output
     return False
+
+clientside_callback(
+    """
+    function(n_intervals) {
+        window.addEventListener('blastAccessionClick', function(event) {
+            if (event.detail && event.detail.accession) {
+                // Find the store and update it
+                var store = document.getElementById('blast-modal-data');
+                if (store) {
+                    store.setAttribute('data-dash-store', JSON.stringify(event.detail.accession));
+                }
+            }
+        });
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("modal-event-handler", "children"),
+    Input("interval-component", "n_intervals"),
+)
+
+@callback(
+    Output("blast-modal-content", "children"),
+    Input("blast-modal-data", "data"),
+    prevent_initial_call=True
+)
+def update_modal_content(accession):
+    from src.components.callbacks import create_accession_modal
+    if not accession:
+        raise PreventUpdate
+    
+    try:
+        modal_content, _ = create_accession_modal(accession)
+        return modal_content
+    except Exception as e:
+        logger.error(f"Error in update_modal_content: {str(e)}")
+        return html.Div(
+            f"Error loading details: {str(e)}", 
+            style={"color": "red", "padding": "20px"}
+        )
