@@ -573,8 +573,14 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
             if top_pident >= 90:
                 # look up family name from accession tag
                 query_accession = top_hit['query_id']
-                top_family = fetch_meta_data(accession_tag=query_accession)['familyName']
-                ship_family = make_captain_alert(top_family, top_aln_length, top_evalue, "blast")
+                meta_data = fetch_meta_data(accession_tag=query_accession)
+                if not meta_data.empty:
+                    top_family = meta_data['familyName'].iloc[0]  # Safely get first value
+                    ship_family = make_captain_alert(top_family, top_aln_length, top_evalue, "blast")
+                else:
+                    # Handle case where no metadata is found
+                    logger.warning(f"No metadata found for accession: {query_accession}")
+                    ship_family = process_captain_results(captain_results_dict)
             else:
                 # Process captain results
                 ship_family = process_captain_results(captain_results_dict)
