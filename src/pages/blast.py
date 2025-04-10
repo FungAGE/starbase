@@ -39,6 +39,8 @@ from src.utils.telemetry import get_client_ip, get_blast_limit_info, blast_limit
 from src.components.error_boundary import handle_callback_error, create_error_alert
 from src.utils.tree import plot_tree
 
+from src.tasks import run_blast_search_task, run_hmmer_search_task
+
 dash.register_page(__name__)
 
 logger = logging.getLogger(__name__)
@@ -374,58 +376,29 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
 @handle_callback_error
 def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type]):
-        return None, None, None, None
+        return None, None, None
         
     try:
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        logger.info(f"Temp FASTA written: {tmp_query_fasta}")
-
-        # Run BLAST
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
-
-        try:
-            blast_results = run_blast(
-                db_list=BLAST_DB_PATHS,
-                query_type=query_type,
-                query_fasta=tmp_query_fasta,
-                tmp_blast=tmp_blast,
-                input_eval=0.01,
-                threads=2,
-            )
-            logger.info(f"BLAST results: {blast_results.head()}")
-            if blast_results is None:
-                raise ValueError("BLAST returned no results!")
-        except Exception as e:
-            logger.error(f"BLAST error: {str(e)}")
-            raise
-
-        blast_results_dict = blast_results.to_dict("records")
-
-        # Run HMMER
-        logger.info(f"Running HMMER")
-
+        # Launch BLAST and HMMER tasks asynchronously
+        blast_task = run_blast_search_task.delay(query_header, query_seq, query_type)
+        hmmer_task = run_hmmer_search_task.delay(query_header, query_seq, query_type)
+        
+        # Wait for results with timeout
+        blast_results = blast_task.get(timeout=300)  # 5 minute timeout
+        hmmer_results = hmmer_task.get(timeout=300)
+        
+        if blast_results is None:
+            raise ValueError("BLAST search failed or returned no results")
+            
         subject_seq_button = None
-        # subject_seq = None
-
-        try:
-            results_dict, protein_filename = run_hmmer(
-                db_list=BLAST_DB_PATHS,
-                query_type=query_type,
-                input_gene="tyr",
-                input_eval=0.01,
-                query_fasta=tmp_query_fasta,
-                threads=2,
-            )
-
-            if results_dict is None or len(results_dict) == 0:
-                logger.error("Diamond/HMMER returned no results!")
-                raise
-        except Exception as e:
-            logger.error(f"Diamond/HMMER error: {str(e)}")
-            raise
-
-        return blast_results_dict, results_dict, subject_seq_button
+        
+        if hmmer_results is None:
+            logger.error("HMMER search failed or returned no results")
+            hmmer_dict = {}
+        else:
+            hmmer_dict = hmmer_results['results']
+            
+        return blast_results, hmmer_dict, subject_seq_button
 
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
@@ -436,7 +409,7 @@ def fetch_captain(query_header, query_seq, query_type, search_type="hmmsearch"):
                 children=str(e)
             )
         ])
-        return None, None, error_div, None
+        return None, None, error_div
 
 
 @callback(

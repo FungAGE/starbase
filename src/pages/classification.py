@@ -221,38 +221,57 @@ def make_alert_using_match(match_class=None, classification=None, type=None):
 )
 @handle_callback_error
 def check_exact_matches(data):
+    from src.tasks import check_exact_matches_task
     logger.info("Starting exact match check...")
     if data is None:
         logger.warning("No data provided for exact match check")
         raise PreventUpdate
-    
-    # Fetch ships data using query parameters
-    fetch_ship_params = data["fetch_ship_params"]
-    existing_ships = fetch_ships(**fetch_ship_params)
-    logger.info(f"Checking exact matches against {len(existing_ships)} existing ships")
-    
-    exact_match = check_exact_match(data["fasta"], existing_ships)
-    matches_found = False
-
-    if exact_match:
-        logger.info(f"Found exact match: {exact_match}")
-        match_row = existing_ships[existing_ships["accession_tag"] == exact_match]
-        match_family = match_row["familyName"].values[0]
-        match_navis = match_row["starship_navis"].values[0]
-        match_haplotype = match_row["starship_haplotype"].values[0]
-        matches_found = True
-        logger.info(f"Exact match details - Family: {match_family}, Navis: {match_navis}, Haplotype: {match_haplotype}")
-    else:
-        logger.warning("No exact matches found")
-        match_family = match_navis = match_haplotype = None
-
-    return (
-        "Checking for contained matches",
-        make_alert_using_match(match_family, "Family", "exact"),
-        make_alert_using_match(match_navis, "Navis", "exact"),
-        make_alert_using_match(match_haplotype, "Haplotype", "exact"),
-        {"found": matches_found} if matches_found else None
-    )
+        
+    try:
+        # Fetch ships and convert DataFrame to dictionary
+        existing_ships = fetch_ships(**data["fetch_ship_params"])
+        ships_dict = existing_ships.to_dict('records')
+        
+        # Call the Celery task with the dictionary
+        task = check_exact_matches_task.delay(data["fasta"], ships_dict)
+        result = task.get(timeout=300)  # 5 minute timeout
+        
+        if result:
+            return [
+                "Exact Match Found",
+                dmc.Alert(
+                    title="Exact Match",
+                    children=f"Found exact match: {result}",
+                    color="green",
+                    variant="light",
+                ),
+                None,
+                None,
+                {"found": True, "match": result}
+            ]
+        else:
+            return [
+                "Checking for Contained Matches",
+                None,
+                None,
+                None,
+                {"found": False}
+            ]
+            
+    except Exception as e:
+        logger.error(f"Error in check_exact_matches: {str(e)}")
+        return [
+            "Error",
+            dmc.Alert(
+                title="Error",
+                children=str(e),
+                color="red",
+                variant="light",
+            ),
+            None,
+            None,
+            None
+        ]
 
 # then, check for contained matches
 @callback(
@@ -269,31 +288,61 @@ def check_exact_matches(data):
 )
 @handle_callback_error
 def check_contained_matches(exact_matches, data):
+    from src.tasks import check_contained_matches_task
     logger.info("Starting contained match check...")
     if exact_matches or data is None:
         logger.info("Skipping contained match check - exact match was found or no data")
         raise PreventUpdate
-    
-    # Fetch ships data using query parameters
-    fetch_ship_params = data["fetch_ship_params"]
-    existing_ships = fetch_ships(**fetch_ship_params)
-    logger.info(f"Checking contained matches against {len(existing_ships)} existing ships")
-    
-    contained_match = check_contained_match(data["fasta"], existing_ships)
-    matches_found = contained_match is not None
-
-    if matches_found:
-        logger.info(f"Found contained match: {contained_match}")
-    else:
-        logger.warning("No contained matches found")
-
-    return (
-        "Checking for similar matches",  # stage
-        make_alert_using_match(contained_match, "Family", "contained"),  # family output
-        make_alert_using_match(contained_match, "Navis", "contained"),  # navis output
-        make_alert_using_match(contained_match, "Haplotype", "contained"),  # haplotype output
-        {"found": matches_found} if matches_found else None  # contained matches data
-    )
+        
+    try:
+        # Fetch ships and convert DataFrame to dictionary
+        existing_ships = fetch_ships(**data["fetch_ship_params"])
+        ships_dict = existing_ships.to_dict('records')  # Convert to list of dictionaries
+        
+        # Call the Celery task with the dictionary
+        task = check_contained_matches_task.delay(
+            fasta=data["fasta"],
+            ships_dict=ships_dict  # Pass the dictionary instead of DataFrame
+        )
+        
+        result = task.get(timeout=300)  # 5 minute timeout
+        
+        if result:
+            return [
+                "Contained Match Found",
+                dmc.Alert(
+                    title="Contained Match",
+                    children=f"Found contained match: {result}",
+                    color="green",
+                    variant="light",
+                ),
+                None,
+                None,
+                {"found": True, "match": result}
+            ]
+        else:
+            return [
+                "No Contained Matches Found",
+                None,
+                None,
+                None,
+                {"found": False}
+            ]
+            
+    except Exception as e:
+        logger.error(f"Error in check_contained_matches: {str(e)}")
+        return [
+            "Error",
+            dmc.Alert(
+                title="Error",
+                children=str(e),
+                color="red",
+                variant="light",
+            ),
+            None,
+            None,
+            None
+        ]
 
 # then, check for similar matches
 @callback(
@@ -310,6 +359,7 @@ def check_contained_matches(exact_matches, data):
 )
 @handle_callback_error
 def check_similar_matches(contained_matches, data):
+    from src.tasks import check_similar_matches_task
     logger.info("Starting similar match check...")
     if contained_matches or data is None:
         logger.info("Skipping similar match check - contained match was found or no data")
@@ -321,7 +371,8 @@ def check_similar_matches(contained_matches, data):
     logger.info(f"Checking similar matches against {len(existing_ships)} existing ships")
     
     # Add threshold parameter (you may want to adjust this value)
-    similar_match = check_similar_match(data["fasta"], existing_ships, threshold=0.9)
+    similar_match = check_similar_matches_task.delay(data["fasta"], existing_ships, threshold=0.9)
+    similar_match = similar_match.get(timeout=300)
     matches_found = similar_match is not None
 
     if matches_found:
@@ -367,6 +418,7 @@ def check_similar_matches(contained_matches, data):
 )
 @handle_callback_error
 def run_family_classification(similar_matches, data, exact_matches, contained_matches):
+    from src.tasks import run_family_classification_task, run_metaeuk_easy_predict_task
     # Check for required data
     if data is None:
         raise PreventUpdate
@@ -378,12 +430,13 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
         raise PreventUpdate
 
     # TODO: decide if annotate should be run here or in a separate callback
-    codon_fasta, pred_proteins, gff = metaeuk_easy_predict(
+    codon_fasta, pred_proteins, gff = run_metaeuk_easy_predict_task.delay(
         fasta=data["fasta"],
         seq_type=data["seq_type"],
         db_list=BLAST_DB_PATHS,
         threads=1
     )
+    codon_fasta, pred_proteins, gff = codon_fasta.get(timeout=300)
 
     if not codon_fasta or not pred_proteins or not gff: 
         fasta = data["fasta"]
@@ -396,12 +449,13 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
 
     try:
         # Run the classification
-        family_dict, protein = classify_family(
+        family_dict, protein = run_family_classification_task.delay(
             fasta=fasta,
             seq_type=seq_type,
             db_list=BLAST_DB_PATHS,
             threads=1
         )
+        family_dict, protein = family_dict.get(timeout=300)
 
         if not family_dict:
             raise ValueError("Family classification failed")
@@ -489,6 +543,7 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
 )
 @handle_callback_error
 def run_navis_classification(family_name, data, family_data, exact_matches, contained_matches, similar_matches):
+    from src.tasks import run_navis_classification_task
     # Check for required data
     if data is None or family_data is None:
         raise PreventUpdate
@@ -506,12 +561,12 @@ def run_navis_classification(family_name, data, family_data, exact_matches, cont
     try:
         fetch_captain_params = data["fetch_captain_params"]
         existing_captains = fetch_captains(**fetch_captain_params)
-        navis_name = classify_navis(
+        navis_name = run_navis_classification_task.delay(
             protein=family_data["protein"],
             existing_captains=existing_captains,
             threads=1
         )
-
+        navis_name = navis_name.get(timeout=300)
         if not navis_name:
             raise ValueError("Navis classification failed")
 
@@ -585,6 +640,7 @@ def run_navis_classification(family_name, data, family_data, exact_matches, cont
 )
 @handle_callback_error
 def run_haplotype_classification(navis_data, data, exact_matches, contained_matches, similar_matches):
+    from src.tasks import run_haplotype_classification_task
     # Check for required data
     if data is None or navis_data is None:
         raise PreventUpdate
@@ -600,12 +656,12 @@ def run_haplotype_classification(navis_data, data, exact_matches, contained_matc
         existing_ships = fetch_ships(**fetch_ship_params)
         curated_ships = existing_ships[existing_ships["curated"] == True]
 
-        haplotype_name = classify_haplotype(
+        haplotype_name = run_haplotype_classification_task.delay(
             fasta=data["fasta"],
             existing_ships=curated_ships,
             navis=data["navis"]
         )
-
+        haplotype_name = haplotype_name.get(timeout=300)
         if not haplotype_name:
             raise ValueError("Haplotype classification failed")
 
