@@ -377,31 +377,83 @@ def run_diamond(
     query_fasta=None,
     threads=2,
 ):
-
-    diamond_out = tempfile.NamedTemporaryFile(suffix=".fa").name
-
-    header, seq = parse_fasta_from_text(query_fasta)
-
-    diamond_db = db_list["gene"][input_genes]["prot"]
-    if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
-        raise ValueError(f"HMMER database {diamond_db} not found or is empty.")
-
-    if query_type == "nucl":
-        blast_type = "blastx"
-        out_fmt = "6 qseqid sseqid length qstart qend gaps qseq_translated sseq evalue bitscore"
-    else:
-        blast_type = "blastp"
-        out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
-
-    subprocess.run("/home/adrian/anaconda3/bin/diamond help", shell=True, check=True)
-    diamond_cmd = f"diamond {blast_type} --db {diamond_db} -q {query_fasta} -f {out_fmt} -e 0.001 --strand both -p {threads} -k 1 --skip-missing-seqids | sed '1i >{header}' > {diamond_out}"
-
-    subprocess.run(diamond_cmd, shell=True, check=True)
-
-    column_names = out_fmt.split()[1:]
-    diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
-
-    return diamond_results.to_dict("records")
+    """Run DIAMOND search against protein database.
+    
+    Args:
+        db_list: Dictionary containing database paths
+        query_type: Type of query sequence ('nucl' or 'prot')
+        input_genes: Gene type to search against (default: 'tyr')
+        input_eval: E-value threshold
+        query_fasta: Path to query FASTA file
+        threads: Number of threads to use
+        
+    Returns:
+        List of dictionaries containing DIAMOND results
+    """
+    try:
+        # Create temporary output file
+        diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
+        
+        # Get correct database path
+        try:
+            diamond_db = db_list["gene"][input_genes]["prot"]
+        except KeyError:
+            raise ValueError(f"Database path not found for gene type: {input_genes}")
+            
+        # Verify database exists
+        if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
+            raise ValueError(f"DIAMOND database {diamond_db} not found or is empty")
+            
+        # Set search parameters based on query type
+        if query_type == "nucl":
+            blast_type = "blastx"
+            out_fmt = "6 qseqid sseqid length qstart qend gaps qseq_translated sseq evalue bitscore"
+        else:
+            blast_type = "blastp" 
+            out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
+            
+        # Set e-value threshold
+        evalue = input_eval if input_eval else 0.001
+        
+        # Build DIAMOND command
+        diamond_cmd = [
+            "diamond",
+            blast_type,
+            "--db", diamond_db,
+            "-q", query_fasta,
+            "-f", out_fmt,
+            "-e", str(evalue),
+            "--strand", "both",
+            "-p", str(threads),
+            "-k", "1",
+            "--skip-missing-seqids",
+            "-o", diamond_out
+        ]
+        
+        # Run DIAMOND
+        try:
+            subprocess.run(diamond_cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"DIAMOND error: {e.stderr}")
+            raise
+            
+        # Parse results
+        if os.path.getsize(diamond_out) > 0:
+            column_names = out_fmt.split()[1:]
+            diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
+            return diamond_results.to_dict("records")
+        else:
+            logger.warning("No DIAMOND hits found")
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error running DIAMOND: {str(e)}")
+        raise
+        
+    finally:
+        # Cleanup
+        if 'diamond_out' in locals() and os.path.exists(diamond_out):
+            os.unlink(diamond_out)
 
 def make_captain_alert(family, aln_length, evalue, search_type):
     try:

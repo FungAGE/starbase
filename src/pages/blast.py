@@ -426,72 +426,75 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
         
-        # Instead of using timeout context manager, we'll rely on subprocess timeout
-        try:
-            # Get the appropriate database configuration
-            db = get_blast_db(query_type)
-            
-            blast_results_file = run_blast(
-                db_list=db,
+        # Get the appropriate database configuration
+        db = get_blast_db(query_type)
+        
+        if query_type == "nucl":
+            # For nucleotide sequences, run diamond blastx first
+            diamond_results = run_diamond(
+                db_list=BLAST_DB_PATHS,  # Pass full paths dict
                 query_type=query_type,
-                query_fasta=tmp_query_fasta,
-                tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
+                input_genes="tyr",
                 input_eval=evalue_threshold,
-                threads=2,
+                query_fasta=tmp_query_fasta,
+                threads=2
             )
             
-
-            if blast_results_file is None:
-                error_div = html.Div([
-                    dmc.Alert(
-                        title="BLAST Error",
-                        color="red",
-                        children="No BLAST results were returned. Please try again with a different sequence.",
+            if diamond_results:
+                # Extract protein sequence from diamond results
+                protein_seq = diamond_results[0].get('qseq_translated')
+                if protein_seq:
+                    # Write protein sequence to temp file
+                    tmp_protein_fasta = write_temp_fasta(query_header, protein_seq)
+                    
+                    # Run hmmsearch with protein sequence
+                    captain_results_dict = run_hmmer(
+                        db_list=BLAST_DB_PATHS,  # Pass full paths dict
+                        query_type="prot",
+                        input_genes="tyr",
+                        input_eval=evalue_threshold,
+                        query_fasta=tmp_protein_fasta,
+                        threads=2
                     )
-                ])
-                return None, None, error_div
-           
-            if search_type == "diamond":
-                captain_results_dict = run_diamond(
-                    db_list=db,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=evalue_threshold,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-            else:
-                captain_results_dict = run_hmmer(
-                    db_list=db,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=evalue_threshold,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-                
-            return blast_results_file, captain_results_dict, None
-
-        except subprocess.TimeoutExpired:
-            error_div = html.Div([
-                dmc.Alert(
-                    title="Operation Timeout",
-                    color="red",
-                    children="The BLAST search took too long to complete. Please try with a shorter sequence or try again later.",
-                )
-            ])
-            return None, None, error_div
+        else:
+            # For protein sequences, run diamond blastp
+            diamond_results = run_diamond(
+                db_list=BLAST_DB_PATHS,
+                query_type="prot",
+                input_genes="tyr", 
+                input_eval=evalue_threshold,
+                query_fasta=tmp_query_fasta,
+                threads=2
+            )
             
+            if diamond_results:
+                captain_results_dict = run_hmmer(
+                    db_list=BLAST_DB_PATHS,
+                    query_type="prot",
+                    input_genes="tyr",
+                    input_eval=evalue_threshold,
+                    query_fasta=tmp_query_fasta,
+                    threads=2
+                )
+
+        # Run BLAST search for visualization
+        blast_results_file = run_blast(
+            db_list=db,  # Pass string path
+            query_type=query_type,
+            query_fasta=tmp_query_fasta,
+            tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
+            input_eval=evalue_threshold,
+            threads=2
+        )
+
+        if blast_results_file is None:
+            return None, None, create_error_alert("No BLAST results were returned")
+            
+        return blast_results_file, captain_results_dict, None
+
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
-        error_div = html.Div([
-            dmc.Alert(
-                title="Error",
-                color="red",
-                children=f"An error occurred: {str(e)}"
-            )
-        ])
-        return None, None, error_div
+        return None, None, create_error_alert(str(e))
 
 
 @callback(
