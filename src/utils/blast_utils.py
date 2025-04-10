@@ -27,40 +27,26 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
         if os.path.getsize(query_fasta) > max_input_size:
             logger.error(f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes")
             return None
-        logger.debug(f"db_list contents: {db_list}")
         
-        if not isinstance(db_list, dict):
-            logger.error(f"db_list must be a dictionary, got {type(db_list)}")
-            raise ValueError("Invalid database configuration")
+        # db_list should now be a direct path string
+        if not isinstance(db_list, (str, bytes, os.PathLike)):
+            logger.error(f"db_list must be a path-like object, got {type(db_list)}")
+            raise ValueError("Invalid database path")
             
-        ship_config = db_list.get('ship')
-        if ship_config is None:
-            logger.error("'ship' key not found in db_list")
-            raise ValueError("Database path for 'ship' not configured")
-            
-        db_path = ship_config.get(query_type)
-        if db_path is None:
-            logger.error(f"No database path found for query type: {query_type}")
-            raise ValueError(f"Database path for {query_type} not configured")
-            
-        logger.debug(f"Using database path: {db_path}")
+        logger.debug(f"Using database path: {db_list}")
         
-        if not blast_db_exists(db_path):
+        if not blast_db_exists(db_list):
             logger.info("BLAST database not found. Creating new database...")
             create_dbs()
             
-            if not blast_db_exists(db_path):
+            if not blast_db_exists(db_list):
                 logger.error("Failed to create BLAST database")
                 raise ValueError("Failed to create BLAST database")
-            
-        if not isinstance(db_path, (str, bytes, os.PathLike)):
-            logger.error(f"db_path must be a path-like object, got {type(db_path)}")
-            raise ValueError("Invalid database path type")
-            
+        
         blast_cmd = [
             "blastn" if query_type == "nucl" else "blastp",
             "-query", str(query_fasta),
-            "-db", str(db_path),
+            "-db", str(db_list),
             "-out", str(tmp_blast),
             "-evalue", str(input_eval),
             "-num_threads", str(threads),
@@ -554,3 +540,13 @@ def create_no_matches_alert():
             }
         }
     )
+
+def get_blast_db(query_type):
+    """Get the appropriate BLAST database configuration based on query type."""
+    from src.config.settings import BLAST_DB_PATHS
+    if query_type == "nucl":
+        return BLAST_DB_PATHS["ship"]["nucl"]
+    elif query_type == "prot":
+        return BLAST_DB_PATHS["gene"]["tyr"]["prot"]
+    else:
+        raise ValueError(f"Invalid query type: {query_type}")

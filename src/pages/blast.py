@@ -31,6 +31,7 @@ from src.utils.blast_utils import (
     create_no_matches_alert,
     parse_blast_xml,
     blast_download_button,
+    get_blast_db,
 )
 
 from src.components.callbacks import curated_switch, create_file_upload
@@ -427,8 +428,11 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
         
         # Instead of using timeout context manager, we'll rely on subprocess timeout
         try:
+            # Get the appropriate database configuration
+            db = get_blast_db(query_type)
+            
             blast_results_file = run_blast(
-                db_list=BLAST_DB_PATHS,
+                db_list=db,
                 query_type=query_type,
                 query_fasta=tmp_query_fasta,
                 tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
@@ -449,7 +453,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
            
             if search_type == "diamond":
                 captain_results_dict = run_diamond(
-                    db_list=BLAST_DB_PATHS,
+                    db_list=db,
                     query_type=query_type,
                     input_genes="tyr",
                     input_eval=evalue_threshold,
@@ -458,7 +462,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
                 )
             else:
                 captain_results_dict = run_hmmer(
-                    db_list=BLAST_DB_PATHS,
+                    db_list=db,
                     query_type=query_type,
                     input_genes="tyr",
                     input_eval=evalue_threshold,
