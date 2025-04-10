@@ -408,13 +408,16 @@ def classify_sequence(
                 return family_dict, navis_name, haplotype_dict
 
 def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, db_list=None, pident_thresh=90, input_eval=0.001, threads=1):
-    """Uses blast results, hmmsearch or diamond to assign family based on captain gene similarity"""
-    # Part 1: Family Assignment via Captain Gene
-    # - if given blast or hmmer results, use those to assign family
-    # - if given a sequence, run hmmsearch or diamond to assign family
-    # - compare captain genes to existing captain sequences
-    # - Assign family based on closest match
-
+    """Uses blast results, hmmsearch or diamond to assign family based on captain gene similarity
+    Part 1: Family Assignment via Captain Gene
+    - if given blast or hmmer results, use those to assign family
+    - if given a sequence, run hmmsearch or diamond to assign family
+    - compare captain genes to existing captain sequences
+    - Assign family based on closest match    
+    Returns:
+        - For nucleotide input (seq_type=="nucl"): (family_dict, protein_file)
+        - For protein input (seq_type=="prot"): (family_dict, None)
+    """
     from src.utils.blast_utils import run_hmmer, select_ship_family
     from src.utils.seq_utils import load_fasta_to_dict
     
@@ -461,7 +464,11 @@ def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, d
             if family_name:
                 family_dict = {"family": family_name, "aln_length": family_aln_length, "evalue": family_evalue}
                 
-    return family_dict, tmp_protein_filename
+    # Return based on sequence type
+    if seq_type == "nucl":
+        return family_dict, tmp_protein_filename
+    else:
+        return family_dict, None
 
 def classify_navis(protein: str,
                   existing_captains: pd.DataFrame, 
@@ -970,3 +977,35 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
         f.write("from\tto\tweight\n")
         for (node1, node2), weight in sorted(edge_data.items()):
             f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
+
+# denova annotation using metaeuk easy-predict
+def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
+    query_db = os.path.join(output_prefix, "queryDB")
+    # create db
+    try:
+        subprocess.run(["mmseqs", "createdb", query_fasta, query_db, "--dbtype", "2"], check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Metaeuk createdb failed: {e.stderr}")
+        raise
+    except Exception as e:
+        logger.error(f"Error during metaeuk createdb: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
+    # run easy-predict
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            subprocess.run(["metaeuk", "easy-predict", query_db, ref_db, os.path.join(output_prefix, "predsResults"), tmp_dir, "--metaeuk-eval", "0.0001", "-e", "100", "--max-seqs", "1", "--min-length", "40", "--search-type", "3", "--threads", str(threads)], check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Metaeuk easy-predict failed: {e.stderr}")
+        raise
+    except Exception as e:
+        logger.error(f"Error during metaeuk easy-predict: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
+
+    codon_fasta = os.path.join(output_prefix, "predsResults.codon.fas")
+    fasta = os.path.join(output_prefix, "predsResults.fas")
+    gff = os.path.join(output_prefix, "predsResults.gff")
+
+    return codon_fasta, fasta, gff
+                

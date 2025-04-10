@@ -15,7 +15,7 @@ import pandas as pd
 
 from src.utils.seq_utils import guess_seq_type
 from src.config.settings import BLAST_DB_PATHS
-from src.utils.classification_utils import check_exact_match, check_contained_match, check_similar_match, classify_family, classify_navis, classify_haplotype
+from src.utils.classification_utils import check_exact_match, check_contained_match, check_similar_match, metaeuk_easy_predict, classify_family, classify_navis, classify_haplotype
 from src.components.callbacks import create_file_upload
 from src.components.error_boundary import handle_callback_error
 from src.utils.seq_utils import parse_fasta_from_file, write_fasta
@@ -42,6 +42,13 @@ layout = dmc.Container(
         dcc.Store(id="classification-exact-matches"),
         dcc.Store(id="classification-contained-matches"),
         dcc.Store(id="classification-similar-matches"),
+
+        # annotate store
+        dcc.Store(id="classification-annotate-progress"),
+        dcc.Store(id="classification-annotate-color"),
+        dcc.Store(id="classification-codon-fasta"),
+        dcc.Store(id="classification-fasta"),
+        dcc.Store(id="classification-gff"),
 
         # progress for family classification
         dcc.Store(id="classification-family-progress"),
@@ -363,18 +370,35 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
     # Check for required data
     if data is None:
         raise PreventUpdate
-        
+    
     # Check if any previous matches were found
     if (exact_matches and exact_matches.get("found")) or \
        (contained_matches and contained_matches.get("found")) or \
        (similar_matches and similar_matches.get("found")):
         raise PreventUpdate
 
+    # TODO: decide if annotate should be run here or in a separate callback
+    codon_fasta, pred_proteins, gff = metaeuk_easy_predict(
+        fasta=data["fasta"],
+        seq_type=data["seq_type"],
+        db_list=BLAST_DB_PATHS,
+        threads=1
+    )
+
+    if not codon_fasta or not pred_proteins or not gff: 
+        fasta = data["fasta"]
+        seq_type = data["seq_type"]
+        raise ValueError("Metaeuk easy-predict failed")
+    elif pred_proteins is not None:
+        fasta = pred_proteins
+        seq_type = "prot"
+
+
     try:
         # Run the classification
-        family_dict, tmp_protein = classify_family(
-            fasta=data["fasta"],
-            seq_type=data["seq_type"],
+        family_dict, protein = classify_family(
+            fasta=fasta,
+            seq_type=seq_type,
             db_list=BLAST_DB_PATHS,
             threads=1
         )
@@ -403,7 +427,7 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
                 variant="light",
                 className="mb-3"
             ),
-            {"protein": tmp_protein},  # data for next step
+            {"protein": protein},  # data for next step
             10,  # navis progress starts
             True,  # navis animated
             True,  # navis striped

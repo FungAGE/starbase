@@ -350,7 +350,10 @@ def run_hmmer(
         threads: Number of CPU threads to use
         
     Returns:
-        Tuple[Dict, str]: (HMMER results dictionary, path to protein sequence file)
+        For nucleotide input (query_type=="nucl"): 
+            Tuple[Dict, str]: (HMMER results dictionary, path to protein sequence file)
+        For protein input (query_type=="prot"):
+            Tuple[Dict, None]: (HMMER results dictionary, None)
     """
     try:
         logger.debug(f"Starting HMMER search with params: query_type={query_type}, input_gene={input_gene}")
@@ -359,7 +362,7 @@ def run_hmmer(
         protein_filename = query_fasta
         
         # Use diamond to extract protein sequence if input is nucleotide
-        if query_type != "prot":
+        if query_type == "nucl":
             logger.debug("Input is nucleotide sequence, running Diamond first")
             protein_filename = run_diamond(
                 db_list=db_list,
@@ -390,7 +393,11 @@ def run_hmmer(
         logger.debug(f"HMMER results loaded into DataFrame with shape: {hmmer_results.shape}")
         logger.debug(f"HMMER results columns: {hmmer_results.columns}")
 
-        return hmmer_results.to_dict("records"), protein_filename
+        # Return protein_filename only for nucleotide input
+        if query_type == "nucl":
+            return hmmer_results.to_dict("records"), protein_filename
+        else:
+            return hmmer_results.to_dict("records"), None
 
     except Exception as e:
         logger.error(f"Error in HMMER search: {str(e)}")
