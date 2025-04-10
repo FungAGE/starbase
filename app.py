@@ -97,13 +97,6 @@ app = Dash(
     update_title=None
 )
 
-limiter = Limiter(
-    get_client_ip,
-    app=server,
-    storage_uri="memory://",
-    default_limits=[]
-)
-
 def initialize_app():
     """Initialize all app components."""
     with server.app_context():                
