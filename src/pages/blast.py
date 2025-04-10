@@ -88,7 +88,9 @@ layout = dmc.Container(
                                     dmc.Textarea(
                                         id="query-text",
                                         placeholder="Paste FASTA sequence here...",
+                                        autosize=True,
                                         minRows=5,
+                                        maxRows=15,
                                         style={"width": "100%"},
                                     ),
                                 ], gap="xs"),
@@ -119,12 +121,40 @@ layout = dmc.Container(
                                 # Options Section
                                 dmc.Stack([
                                     dmc.Title("Search Options", order=3),
-                                    curated_switch(
-                                        text="Only search curated Starships",
-                                        size="sm"
+                                    dmc.Grid(
+                                        children=[
+                                            dmc.GridCol(
+                                                span={"xs": 12, "sm": 6},
+                                                children=[
+                                                    dmc.Stack([
+                                                        curated_switch(
+                                                            text="Only search curated Starships",
+                                                            size="sm"
+                                                        ),
+                                                    ], gap="xs"),
+                                                ]
+                                            ),
+                                            dmc.GridCol(
+                                                span={"xs": 12, "sm": 6},
+                                                children=[
+                                                    dmc.NumberInput(
+                                                        id="evalue-threshold",
+                                                        label="E-value Threshold",
+                                                        value=0.001,
+                                                        min=0,
+                                                        max=1,
+                                                        step=0.005,
+                                                    ),
+                                                ]
+                                            ),
+                                        ],
+                                        gutter="md",
+                                        align="center",
                                     ),
                                 ], gap="xs"),
                                 
+                                dmc.Space(h="md"),
+
                                 # Submit Section
                                 dmc.Stack([
                                     dmc.Center(
@@ -379,6 +409,7 @@ def update_submission_id(n_clicks):
         Input("query-type-store", "data"),
         Input("submission-id-store", "data"),
     ],
+    State("evalue-threshold", "value"),
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -386,7 +417,7 @@ def update_submission_id(n_clicks):
     prevent_initial_call=True
 )
 @handle_callback_error
-def fetch_captain(query_header, query_seq, query_type, submission_id, search_type="hmmsearch"):
+def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_threshold, search_type="hmmsearch"):
     if not all([query_header, query_seq, query_type, submission_id]):
         return None, None, None
         
@@ -401,7 +432,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                 query_type=query_type,
                 query_fasta=tmp_query_fasta,
                 tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
-                input_eval=0.01,
+                input_eval=evalue_threshold,
                 threads=2,
             )
             
@@ -421,7 +452,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
-                    input_eval=0.01,
+                    input_eval=evalue_threshold,
                     query_fasta=tmp_query_fasta,
                     threads=2,
                 )
@@ -430,7 +461,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, search_typ
                     db_list=BLAST_DB_PATHS,
                     query_type=query_type,
                     input_genes="tyr",
-                    input_eval=0.01,
+                    input_eval=evalue_threshold,
                     query_fasta=tmp_query_fasta,
                     threads=2,
                 )
@@ -497,7 +528,7 @@ def process_metadata(curated):
 # 2. BLAST Results Processing Callback
 @callback(
     Output("processed-blast-store", "data"),
-    [Input("blast-results-store", "data")],
+    Input("blast-results-store", "data"),
 )
 @handle_callback_error
 def process_blast_results(blast_results_file):
