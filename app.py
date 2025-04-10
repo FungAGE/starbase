@@ -39,6 +39,7 @@ from src.utils.telemetry import log_request, get_client_ip, is_development_ip, m
 from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.config.database import TelemetrySession, SubmissionsSession
 from src.config.settings import DB_PATHS
+from src.config.celery_config import celery
 
 _dash_renderer._set_react_version("18.2.0")
 
@@ -65,23 +66,33 @@ external_scripts = [
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
 ]
-# Initialize Flask first
-server = Flask(__name__)
-server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
-Compress(server)
 
-server.config.update(
-    MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB limit
-    CACHE_TYPE='SimpleCache',
-    CACHE_DEFAULT_TIMEOUT=300,
-    SEND_FILE_MAX_AGE_DEFAULT=0,
-    COMPRESS_MIMETYPES=['text/html', 'text/css', 'application/javascript'],
-    COMPRESS_LEVEL=6,
-    COMPRESS_ALGORITHM=['gzip', 'br']
-)
+def create_app():
+    """Factory function to create the Flask app"""
+    server = Flask(__name__)
+    server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
+    Compress(server)
+    
+    server.config.update(
+        MAX_CONTENT_LENGTH=10 * 1024 * 1024,
+        CACHE_TYPE='SimpleCache',
+        CACHE_DEFAULT_TIMEOUT=300,
+        SEND_FILE_MAX_AGE_DEFAULT=0,
+        COMPRESS_MIMETYPES=['text/html', 'text/css', 'application/javascript'],
+        COMPRESS_LEVEL=6,
+        COMPRESS_ALGORITHM=['gzip', 'br']
+    )
+    
+    # Initialize cache
+    cache.init_app(server)
+    
+    # Initialize Celery
+    celery.conf.update(server.config)
+    
+    return server
 
-cache.init_app(server)
-cleanup_old_cache()
+# Create the Flask app
+server = create_app()
 
 # Initialize Dash app
 app = Dash(
@@ -191,12 +202,13 @@ def telemetry_health():
 @app.server.route('/api/refresh-telemetry', methods=['POST'])
 def refresh_telemetry():
     """Endpoint to refresh telemetry data"""
+    from src.tasks import refresh_telemetry_task
     try:
-        maintain_ip_locations(IPSTACK_API_KEY)
-        cache.delete('telemetry_data')
-        return {"status": "success"}, 200
+        # Launch async task
+        task = refresh_telemetry_task.delay(IPSTACK_API_KEY)
+        return {"status": "success", "task_id": task.id}, 202
     except Exception as e:
-        logger.error(f"Error refreshing telemetry: {str(e)}")
+        logger.error(f"Error launching telemetry refresh task: {str(e)}")
         return {"status": "error", "message": str(e)}, 500
 
 def check_submissions_db():
@@ -253,14 +265,16 @@ def refresh_cache():
 @limiter.limit("1 per minute")
 def force_cache_cleanup():
     """Force cleanup of old cache files"""
+    from src.tasks import cleanup_cache_task
     try:
-        cleanup_old_cache()
+        task = cleanup_cache_task.delay()
         return jsonify({
             "status": "success",
-            "message": "Cache cleanup completed"
-        }), 200
+            "task_id": task.id,
+            "message": "Cache cleanup initiated"
+        }), 202
     except Exception as e:
-        logger.error(f"Cache cleanup failed: {str(e)}")
+        logger.error(f"Failed to launch cache cleanup task: {str(e)}")
         return jsonify({
             "status": "error",
             "error": str(e)
