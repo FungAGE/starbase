@@ -1,7 +1,7 @@
 import dash_bootstrap_components as dbc
 from dash import html
 
-from src.pages import (
+from src.config.settings import (
     HOME_URL,
     DL_URL,
     WIKI_URL,
