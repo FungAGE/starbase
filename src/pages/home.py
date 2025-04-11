@@ -235,6 +235,25 @@ developing_features_card = dmc.Paper(
     h="100%"
 )
 
+accession_card = dmc.Paper([
+    dmc.Title(html.Div([html.Span("S",style={"font-style":"bold"}),"tar",html.Span("b",style={"font-style":"bold"}),"ase ",html.Span("S",style={"font-style":"bold"}),"hip Accessions"])),
+    dmc.Text("To maintain data management and integrity, we employ an accessioning framework within Starbase. Starbase Ship Accessions (abbreviated as SBS) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",c="dimmed"),
+    dmc.Space(h=20),
+    dmc.Image(
+        src="assets/images/accession_tag.svg",
+        fit="contain",
+        radius="md",
+        style={"maxWidth": "100%"}
+    )
+    ],
+    shadow="sm",
+    p="xl",
+    radius="md",
+    withBorder=True,
+    h="100%"
+)
+
+
 def create_hero_section():
     return dmc.Container([
         dmc.Space(h=20),
@@ -248,7 +267,8 @@ def create_features_section():
         dmc.SimpleGrid([
             working_features_card,
             developing_features_card,
-            download_ships_card
+            download_ships_card,
+            accession_card,
         ],
         cols={
             "base": 1,
