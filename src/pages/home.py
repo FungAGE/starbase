@@ -118,13 +118,13 @@ not_working = [
 ]
 
 starship_card = dmc.Paper([
-    dmc.Title("What is a Starship?", order=2, mb="md"),
+    dmc.Title(html.Div(["What is a ",html.Span("Starship",style={"font-style": "italic"}),"?"]), order=2, mb="md"),
     dmc.Grid([
         dmc.GridCol([
             dmc.Text([
                 html.Div(
                     [
-                        "Starships are novel family of class II DNA transposons, endemic to Pezizomycotina. Starships can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
+                        html.Span("Starships",style={"font-style": "italic"})," are novel family of class II DNA transposons, endemic to Pezizomycotina. ",html.Span("Starships",style={"font-style": "italic"})," can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
                         html.Span(
                                                 "Paecilomyces",
                                                 style={"font-style": "italic"},
@@ -150,7 +150,7 @@ starship_card = dmc.Paper([
                                                     "font-style": "italic",
                                                 },
                                             ),
-                                            " Read more about Starships ",
+                                            " Read more about ",html.Span("Starships",style={"font-style": "italic"})," ",
                                             dmc.Anchor(
                                                 "here",
                                                 href="https://en.wikipedia.org/wiki/Starship_(genetics)",
@@ -265,7 +265,7 @@ def create_features_section():
 def create_publications_section():
     return dmc.Container([
         dmc.Paper([
-            dmc.Title("Manuscripts Characterizing Starships", order=2, mb="xl"),
+            dmc.Title(html.Div(["Manuscripts Characterizing ",html.Span("Starships",style={"font-style": "italic"})])),
             html.Div(
                 make_paper_table(),
                 style={"width": "100%"}
@@ -300,7 +300,7 @@ def create_stats_section():
                                     color="#868E96"
                                 ),
                                 dmc.Text(
-                                    "Total Starships", 
+                                    html.Div(["Total ",html.Span("Starships",style={"font-style": "italic"})]), 
                                     size="lg",
                                     c="dimmed",
                                     style={"fontSize": "clamp(1.1rem, 2vw, 1.5rem)"}
@@ -393,7 +393,7 @@ def create_stats_section():
                             color="#868E96"
                         ),
                         dmc.Text(
-                            "Starship Families", 
+                            html.Div([html.Span("Starship",style={"font-style": "italic"})," Families"]), 
                             size="lg",
                             c="dimmed",
                             style={"fontSize": "clamp(1.1rem, 2vw, 1.5rem)"}
