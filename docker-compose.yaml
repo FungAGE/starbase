@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: starbase_app
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=dev
+    volumes:
+      - .:/app
+      - ./src/database/db:/app/src/database/db
+    restart: always
+    command: ["./start-script.sh"]
