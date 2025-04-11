@@ -1,11 +1,10 @@
 import warnings
 
-warnings.filterwarnings("ignore")
-
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 
+warnings.filterwarnings("ignore")
 
 dash.register_page(__name__)
 
