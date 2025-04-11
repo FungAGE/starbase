@@ -1,7 +1,5 @@
 import dash_mantine_components as dmc
 from dash import dcc, html
-import dash_bio as dashbio
-import dash_table
 
 import os
 import tempfile
@@ -11,9 +9,12 @@ import pandas as pd
 
 from Bio import SearchIO
 
-from src.utils.seq_utils import get_protein_sequence, parse_fasta_from_text, clean_shipID
+from src.utils.seq_utils import (
+    get_protein_sequence,
+    parse_fasta_from_text,
+    clean_shipID,
+)
 from src.database.blastdb import blast_db_exists, create_dbs
-from src.components.tables import create_ag_grid
 from src.components.error_boundary import create_error_alert
 import logging
 
@@ -25,52 +26,62 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
         # Add input size check
         max_input_size = 10 * 1024 * 1024  # 10MB
         if os.path.getsize(query_fasta) > max_input_size:
-            logger.error(f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes")
+            logger.error(
+                f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes"
+            )
             return None
         logger.debug(f"db_list contents: {db_list}")
-        
+
         if not isinstance(db_list, dict):
             logger.error(f"db_list must be a dictionary, got {type(db_list)}")
             raise ValueError("Invalid database configuration")
-            
-        ship_config = db_list.get('ship')
+
+        ship_config = db_list.get("ship")
         if ship_config is None:
             logger.error("'ship' key not found in db_list")
             raise ValueError("Database path for 'ship' not configured")
-            
+
         db_path = ship_config.get(query_type)
         if db_path is None:
             logger.error(f"No database path found for query type: {query_type}")
             raise ValueError(f"Database path for {query_type} not configured")
-            
+
         logger.debug(f"Using database path: {db_path}")
-        
+
         if not blast_db_exists(db_path):
             logger.info("BLAST database not found. Creating new database...")
             create_dbs()
-            
+
             if not blast_db_exists(db_path):
                 logger.error("Failed to create BLAST database")
                 raise ValueError("Failed to create BLAST database")
-            
+
         if not isinstance(db_path, (str, bytes, os.PathLike)):
             logger.error(f"db_path must be a path-like object, got {type(db_path)}")
             raise ValueError("Invalid database path type")
-            
+
         blast_cmd = [
             "blastn" if query_type == "nucl" else "blastp",
-            "-query", str(query_fasta),
-            "-db", str(db_path),
-            "-out", str(tmp_blast),
-            "-evalue", str(input_eval),
-            "-num_threads", str(threads),
-            "-max_target_seqs", "10",
-            "-max_hsps", "1",
-            "-outfmt", "5"  # Changed to default BLAST output format
+            "-query",
+            str(query_fasta),
+            "-db",
+            str(db_path),
+            "-out",
+            str(tmp_blast),
+            "-evalue",
+            str(input_eval),
+            "-num_threads",
+            str(threads),
+            "-max_target_seqs",
+            "10",
+            "-max_hsps",
+            "1",
+            "-outfmt",
+            "5",  # Changed to default BLAST output format
         ]
-        
+
         subprocess.run(blast_cmd, check=True, timeout=300)
-              
+
         return tmp_blast
 
     except subprocess.TimeoutExpired:
@@ -79,6 +90,7 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
     except Exception as e:
         logger.error(f"Error during BLAST search: {e}")
         return None
+
 
 def hmmsearch(
     db_list=None,
@@ -185,41 +197,55 @@ def parse_hmmer(hmmer_output_file):
                     )
     return parsed_file
 
+
 # parse blast xml output to tsv
 def parse_blast_xml(xml):
     parsed_file = tempfile.NamedTemporaryFile(suffix=".blast.parsed.txt").name
     with open(parsed_file, "w") as tsv_file:
         # Add quotes around field names to ensure proper parsing
-        tsv_file.write('"query_id"\t"hit_IDs"\t"aln_length"\t"query_start"\t"query_end"\t"gaps"\t"query_seq"\t"subject_seq"\t"evalue"\t"bitscore"\t"pident"\n')
+        tsv_file.write(
+            '"query_id"\t"hit_IDs"\t"aln_length"\t"query_start"\t"query_end"\t"gaps"\t"query_seq"\t"subject_seq"\t"evalue"\t"bitscore"\t"pident"\n'
+        )
         record = SearchIO.read(xml, "blast-xml")
         for hit in record:
             for hsp in hit:
                 try:
                     query_seq = str(hsp.query) if hsp.query else "N/A"
                     subject_seq = clean_shipID(str(hsp.hit)) if hsp.hit else "N/A"
-                    aln_length = hsp.aln_span if hasattr(hsp, 'aln_span') else len(query_seq)
-                    query_start = hsp.query_start if hasattr(hsp, 'query_start') else 0
-                    query_end = hsp.query_end if hasattr(hsp, 'query_end') else aln_length
-                    gaps = str(hsp.gap_num) if hasattr(hsp, 'gap_num') else "0"
-                    bitscore = hsp.bitscore if hasattr(hsp, 'bitscore') else 0.0
-                    evalue = hsp.evalue if hasattr(hsp, 'evalue') else 0.0
-                    
+                    aln_length = (
+                        hsp.aln_span if hasattr(hsp, "aln_span") else len(query_seq)
+                    )
+                    query_start = hsp.query_start if hasattr(hsp, "query_start") else 0
+                    query_end = (
+                        hsp.query_end if hasattr(hsp, "query_end") else aln_length
+                    )
+                    gaps = str(hsp.gap_num) if hasattr(hsp, "gap_num") else "0"
+                    bitscore = hsp.bitscore if hasattr(hsp, "bitscore") else 0.0
+                    evalue = hsp.evalue if hasattr(hsp, "evalue") else 0.0
+
                     # Calculate percent identity
-                    if hasattr(hsp, 'ident_num') and hsp.aln_span > 0:
+                    if hasattr(hsp, "ident_num") and hsp.aln_span > 0:
                         pident = (hsp.ident_num / hsp.aln_span) * 100
                     else:
-                        identical_count = sum(1 for q, h in zip(str(hsp.query), str(hsp.hit)) if q == h)
-                        pident = (identical_count / aln_length) * 100 if aln_length > 0 else 0
-                    
+                        identical_count = sum(
+                            1 for q, h in zip(str(hsp.query), str(hsp.hit)) if q == h
+                        )
+                        pident = (
+                            (identical_count / aln_length) * 100
+                            if aln_length > 0
+                            else 0
+                        )
+
                     # Quote string values and format numbers
                     line = f'"{record.id}"\t"{hit.id}"\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t"{query_seq}"\t"{subject_seq}"\t{evalue}\t{bitscore}\t{pident}\n'
                     tsv_file.write(line)
-                    
+
                     logger.debug(f"Writing line: {line.strip()}")
                 except Exception as e:
                     logger.error(f"Error processing HSP: {e}")
                     continue
     return parsed_file
+
 
 def extract_gene_from_hmmer(parsed_file):
     data = pd.read_csv(parsed_file, sep="\t")
@@ -327,20 +353,23 @@ def circos_prep(blast_output, links_output, layout_output):
 
 def blast_download_button():
     """Creates the download button for BLAST results."""
-    return html.Div([
-        dmc.Space(h="xl"),
-        dmc.Center(
-            dmc.Button(
-                "Download BLAST Results",
-                id="blast-dl-button",
-                variant="gradient",
-                gradient={"from": "indigo", "to": "cyan"},
-                size="lg",
-                leftSection=[html.I(className="bi bi-download")]
-            )
-        ),
-        dcc.Download(id="blast-dl")
-    ])
+    return html.Div(
+        [
+            dmc.Space(h="xl"),
+            dmc.Center(
+                dmc.Button(
+                    "Download BLAST Results",
+                    id="blast-dl-button",
+                    variant="gradient",
+                    gradient={"from": "indigo", "to": "cyan"},
+                    size="lg",
+                    leftSection=[html.I(className="bi bi-download")],
+                )
+            ),
+            dcc.Download(id="blast-dl"),
+        ]
+    )
+
 
 def select_ship_family(hmmer_results):
     hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
@@ -391,7 +420,6 @@ def run_diamond(
     query_fasta=None,
     threads=2,
 ):
-
     diamond_out = tempfile.NamedTemporaryFile(suffix=".fa").name
 
     header, seq = parse_fasta_from_text(query_fasta)
@@ -417,25 +445,26 @@ def run_diamond(
 
     return diamond_results.to_dict("records")
 
+
 def make_captain_alert(family, aln_length, evalue, search_type):
     try:
         # Validate inputs
         if family is None or (isinstance(family, str) and not family.strip()):
             logger.error(f"Invalid family parameter: {family}")
             return create_error_alert("Invalid family name")
-            
+
         # Convert pandas Series to scalar if needed
-        if hasattr(family, 'iloc'):
+        if hasattr(family, "iloc"):
             family = family.iloc[0]
-        if hasattr(aln_length, 'iloc'):
+        if hasattr(aln_length, "iloc"):
             aln_length = aln_length.iloc[0]
-        if hasattr(evalue, 'iloc'):
+        if hasattr(evalue, "iloc"):
             evalue = evalue.iloc[0]
-            
+
         if not aln_length:
             logger.error(f"Invalid alignment length: {aln_length}")
             return create_error_alert("Invalid alignment length")
-            
+
         try:
             evalue_num = float(evalue)
             if evalue_num == 0.0:
@@ -445,7 +474,7 @@ def make_captain_alert(family, aln_length, evalue, search_type):
         except (ValueError, TypeError) as e:
             logger.error(f"Error formatting e-value {evalue}: {e}")
             return create_error_alert("Invalid e-value format")
-            
+
         if search_type not in ["blast", "hmmsearch"]:
             logger.error(f"Invalid search type: {search_type}")
             return create_error_alert("Invalid search type")
@@ -458,48 +487,52 @@ def make_captain_alert(family, aln_length, evalue, search_type):
                 dmc.Text(
                     f"BLAST Search: Alignment length = {aln_length}, E-value = {formatted_evalue}",
                     size="sm",
-                    c="dimmed"
+                    c="dimmed",
                 ),
             ],
             color="blue",
             variant="light",
             withCloseButton=False,
             style={
-                "width": "100%", 
+                "width": "100%",
                 "margin": "0 auto",
-                "@media (min-width: 768px)": {
-                    "width": "50%"
-                }
-            }
+                "@media (min-width: 768px)": {"width": "50%"},
+            },
         )
-            
+
     except Exception as e:
         logger.error(f"Error in make_captain_alert: {e}")
         return create_error_alert(str(e))
+
 
 def process_captain_results(captain_results_dict):
     no_captain_alert = dmc.Alert(
         "No captain sequence found (e-value threshold 0.01).",
         color="warning",
         style={
-            "width": "100%", 
+            "width": "100%",
             "margin": "0 auto",
-            "@media (min-width: 768px)": {
-                "width": "50%"
-            }
-        }
+            "@media (min-width: 768px)": {"width": "50%"},
+        },
     )
 
     if not captain_results_dict:
         return no_captain_alert
-        
+
     try:
         captain_results_df = pd.DataFrame(captain_results_dict)
         if len(captain_results_df) > 0:
-            superfamily, family_aln_length, family_evalue = select_ship_family(captain_results_df)
+            superfamily, family_aln_length, family_evalue = select_ship_family(
+                captain_results_df
+            )
             if superfamily:
-                return make_captain_alert(superfamily, family_aln_length, family_evalue, search_type="hmmsearch")
-    
+                return make_captain_alert(
+                    superfamily,
+                    family_aln_length,
+                    family_evalue,
+                    search_type="hmmsearch",
+                )
+
         return no_captain_alert
     except Exception as e:
         logger.error(f"Error processing captain results: {str(e)}")
@@ -509,13 +542,12 @@ def process_captain_results(captain_results_dict):
             color="red",
             variant="light",
             style={
-                "width": "100%", 
+                "width": "100%",
                 "margin": "0 auto",
-                "@media (min-width: 768px)": {
-                    "width": "50%"
-                }
-            }
+                "@media (min-width: 768px)": {"width": "50%"},
+            },
         )
+
 
 def create_no_matches_alert():
     return dmc.Alert(
@@ -528,32 +560,28 @@ def create_no_matches_alert():
             dmc.List(
                 [
                     dmc.ListItem(
-                        "Check if your sequence is in the correct format",
-                        size="sm"
+                        "Check if your sequence is in the correct format", size="sm"
                     ),
                     dmc.ListItem(
                         "Try searching with a different region of your sequence",
-                        size="sm"
+                        size="sm",
                     ),
                     dmc.ListItem(
-                        "Consider using a less stringent E-value threshold",
-                        size="sm"
+                        "Consider using a less stringent E-value threshold", size="sm"
                     ),
                 ],
                 withPadding=True,
                 spacing="xs",
                 size="sm",
-                type="ordered"
+                type="ordered",
             ),
         ],
         color="yellow",
         variant="light",
         withCloseButton=False,
         style={
-            "width": "100%", 
+            "width": "100%",
             "margin": "0 auto",
-            "@media (min-width: 768px)": {
-                "width": "50%"
-            }
-        }
+            "@media (min-width: 768px)": {"width": "50%"},
+        },
     )

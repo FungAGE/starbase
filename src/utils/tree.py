@@ -1,7 +1,5 @@
 import warnings
 
-warnings.filterwarnings("ignore")
-
 from Bio import Phylo
 import plotly.graph_objs as go
 
@@ -12,7 +10,9 @@ import logging
 
 from src.utils.seq_utils import load_fasta_to_dict
 from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
-from src.config.cache import cache
+
+warnings.filterwarnings("ignore")
+
 logger = logging.getLogger(__name__)
 
 
@@ -314,7 +314,7 @@ def add_tip_labels(
         ]
 
         if x_coord_list and y_coord_list:
-            x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
+            # x_start, x_end = min(x_coord_list) - 1, max(x_coord_list)
             y_start, y_end = min(y_coord_list) - 0.5, max(y_coord_list) + 0.5
 
             text_label = get_text_label(
@@ -340,9 +340,8 @@ def plot_tree(highlight_families=None, tips=None):
 
     metadata = fetch_sf_data()
 
-    metadata['color'] = metadata['familyName'].map(rgb_colors)
+    metadata["color"] = metadata["familyName"].map(rgb_colors)
 
-    
     # Add debug logging
     logger.debug(f"Metadata columns: {metadata.columns.tolist()}")
     logger.debug(f"Metadata head: \n{metadata.head()}")
@@ -383,7 +382,9 @@ def plot_tree(highlight_families=None, tips=None):
         line_shapes.append(rectangle)
         centroids.append(scatter)
         # Only add text labels if highlight_families is specified
-        if highlight_families is not None and (highlight_families == "all" or highlight == highlight_families):
+        if highlight_families is not None and (
+            highlight_families == "all" or highlight == highlight_families
+        ):
             text_labels.append(text_label)
 
     if tips:
@@ -417,7 +418,7 @@ def plot_tree(highlight_families=None, tips=None):
     )
 
     if highlight_families is not None:
-        legend = {"x": 0, "y": 1}
+        # legend = {"x": 0, "y": 1}
         # Filter out None elements from text_labels
         annotations = [label for label in text_labels if label is not None]
         font = dict(family="Open Sans")
@@ -428,9 +429,10 @@ def plot_tree(highlight_families=None, tips=None):
 
     return fig
 
+
 def run_mafft(query, ref_msa):
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    MODEL = "PROTGTR+G+F"
+    # MODEL = "PROTGTR+G+F"
     fasta_dict = load_fasta_to_dict(query)
     tmp_headers = list(fasta_dict.keys())
 

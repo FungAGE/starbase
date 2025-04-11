@@ -17,7 +17,10 @@ root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
-sys.path.append(str(Path(__file__).parent.parent.parent))  # Add project root to Python path
+sys.path.append(
+    str(Path(__file__).parent.parent.parent)
+)  # Add project root to Python path
+
 
 def heavy_request(url, duration=1):
     """Simulate a heavy request that takes resources"""
@@ -33,12 +36,13 @@ def heavy_request(url, duration=1):
         time.sleep(0.1)
     return errors
 
+
 @pytest.mark.skip_browser
 def test_server_under_load(dash_duo: Browser):
     """Test how the application behaves under heavy load"""
     # Import the app using dash's import_app utility
     app = import_app("app")
-    
+
     # Start the server without threading parameter
     dash_duo.start_server(
         app,
@@ -48,139 +52,137 @@ def test_server_under_load(dash_duo: Browser):
         use_reloader=False,  # Keep this
         # Remove threaded=True as it's causing the conflict
     )
-    
+
     base_url = dash_duo.server_url
-    
+
     try:
         # Navigate to a specific page first
         dash_duo.driver.get(f"{base_url}/pgv")
-        
+
         # Create multiple processes to simulate load
         processes = []
         manager = multiprocessing.Manager()
         error_list = manager.list()
-        
+
         for _ in range(5):
             p = multiprocessing.Process(
                 target=lambda: error_list.extend(heavy_request(f"{base_url}/pgv")),
             )
             processes.append(p)
-        
+
         # Start load generation
         for p in processes:
             p.start()
-            
+
         # Try to load the page while under load
         dash_duo.wait_for_element("#pgv-table", timeout=10)
-        
+
         # Check for error handling
         error_elements = dash_duo.find_elements(".error-message")
         if error_elements:
             for elem in error_elements:
                 assert "Internal Server Error" not in elem.text
                 assert "try again" in elem.text.lower()
-            
+
     finally:
         # Clean up processes
         for p in processes:
             if p.is_alive():
                 p.terminate()
             p.join()
-        
+
         # Make sure to quit the browser
-        if hasattr(dash_duo, 'driver'):
+        if hasattr(dash_duo, "driver"):
             dash_duo.driver.quit()
+
 
 @pytest.mark.skip_browser
 def test_slow_database(dash_duo: Browser, monkeypatch):
     """Test how the application handles slow database responses"""
     app = import_app("app")
-    
+
     def slow_fetch(*args, **kwargs):
         time.sleep(2)  # Simulate slow DB response
         return original_fetch(*args, **kwargs)
-    
+
     from src.database.sql_manager import fetch_ship_table as original_fetch
+
     monkeypatch.setattr("src.database.sql_manager.fetch_ship_table", slow_fetch)
-    
+
     dash_duo.start_server(
-        app,
-        port=8051,
-        host="127.0.0.1",
-        debug=False,
-        use_reloader=False
+        app, port=8051, host="127.0.0.1", debug=False, use_reloader=False
     )
-    
+
     # Navigate explicitly to the PGV page
     dash_duo.driver.get(f"{dash_duo.server_url}/pgv")
-    
+
     # First verify loading overlay appears and is visible
     root = dash_duo.wait_for_element(".mantine-LoadingOverlay-root", timeout=5)
     assert root is not None, "Loading overlay root should exist"
-    
+
     overlay = dash_duo.wait_for_element(".mantine-LoadingOverlay-overlay", timeout=5)
     assert overlay is not None, "Loading overlay should appear during slow load"
     assert overlay.is_displayed(), "Loading overlay should be visible"
-    
+
     # Verify loader component is present
     loader = dash_duo.wait_for_element(".mantine-LoadingOverlay-loader", timeout=5)
     assert loader is not None, "Loading spinner should be visible"
-    
+
     # Then wait for table to appear
     table = dash_duo.wait_for_element("#pgv-table", timeout=20)
     assert table is not None, "Table should eventually load"
-    
+
     # Verify no error messages are present
     error_elements = dash_duo.find_elements(".error-message")
-    assert not error_elements, "No error messages should be shown for slow (but successful) loads"
+    assert not error_elements, (
+        "No error messages should be shown for slow (but successful) loads"
+    )
+
 
 @pytest.mark.skip_browser
 def test_timeout_handling(dash_duo: Browser):
     """Test that timeouts are handled gracefully"""
     app = import_app("app")
-    
+
     dash_duo.start_server(
-        app,
-        port=8052,
-        host="127.0.0.1",
-        debug=False,
-        use_reloader=False
+        app, port=8052, host="127.0.0.1", debug=False, use_reloader=False
     )
-    
+
     # Navigate to blast page
     dash_duo.driver.get(f"{dash_duo.server_url}/blast")
-    
+
     # Submit a large sequence
     large_sequence = "A" * 10000  # Reduced size for testing
     dash_duo.find_element("#query-text").send_keys(large_sequence)
     dash_duo.find_element("#submit-button").click()
-    
+
     # Wait for error message
     error_elem = dash_duo.wait_for_element(".error-message", timeout=10)
     assert error_elem is not None
     assert "try again" in error_elem.text.lower()
 
+
 def test_blast_submission(dash_duo: Browser):
     """Test submitting a BLAST search with a test file"""
     # Import the app
     app = import_app("app")
-    
+
     # Start the server
     dash_duo.start_server(
         app,
         port=8052,  # Use a different port
-        host="localhost"
+        host="localhost",
     )
-    
+
     # Read and encode the test file
     test_file_path = "tmp/aspfum3_s01168.fna"
     with open(test_file_path, "rb") as file:
         content = file.read()
         encoded = base64.b64encode(content).decode()
-    
+
     # Create the file content string that Dash expects
     file_contents = f"data:application/octet-stream;base64,{encoded}"
-    
+
     # Use JavaScript to set the file upload content
     dash_duo.driver.execute_script(
         """
@@ -189,7 +191,7 @@ def test_blast_submission(dash_duo: Browser):
         fileUpload.dispatchEvent(event);
         """
     )
-    
+
     # Set the file contents using JavaScript
     dash_duo.driver.execute_script(
         f"""
@@ -198,20 +200,20 @@ def test_blast_submission(dash_duo: Browser):
         window.dash_clientside.clientside.update_upload_status(contents, filename);
         """
     )
-    
+
     # Click the submit button
     dash_duo.find_element("#submit-button").click()
-    
+
     # Wait for results
     dash_duo.wait_for_element("#blast-table", timeout=30)
-    
+
     # Verify results appeared
     results_table = dash_duo.find_element("#blast-table")
     assert results_table is not None
-    
+
     # Check for specific content in results
     table_text = results_table.text
     assert "BLAST Results" in table_text
-    
+
     # Optional: Check for specific matches if expected
     # assert "Expected Gene Name" in table_text

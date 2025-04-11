@@ -1,7 +1,7 @@
 import dash_bootstrap_components as dbc
 from dash import html
 
-from src.pages import (
+from src.config.settings import (
     HOME_URL,
     DL_URL,
     WIKI_URL,
@@ -9,7 +9,6 @@ from src.pages import (
     BLAST_URL,
     SUBMIT_URL,
     ABOUT_URL,
-    METRICS_URL,
 )
 
 
@@ -70,8 +69,6 @@ def navmenu(buttons_disabled=False):
             )
         ),
     ]
-
-
 
     navbar = dbc.NavbarSimple(
         children=navbar_content,

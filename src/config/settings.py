@@ -5,13 +5,15 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 # Try potential database directories in order of preference
 potential_db_dirs = [
-    os.path.join(PROJECT_ROOT,"src","database", "db"),
-    os.path.join(PROJECT_ROOT,"database", "db"),
-    os.path.join(PROJECT_ROOT, "db")
+    os.path.join(PROJECT_ROOT, "src", "database", "db"),
+    os.path.join(PROJECT_ROOT, "database", "db"),
+    os.path.join(PROJECT_ROOT, "db"),
 ]
 
 # Use the first valid directory path, or default to the last option
-DATA_DIR = next((path for path in potential_db_dirs if path is not None), potential_db_dirs[-1])
+DATA_DIR = next(
+    (path for path in potential_db_dirs if path is not None), potential_db_dirs[-1]
+)
 
 # Create required directories
 REQUIRED_DIRS = [
@@ -29,9 +31,9 @@ for directory in REQUIRED_DIRS:
 
 # Database paths
 DB_PATHS = {
-    'starbase': os.path.join(DATA_DIR, 'starbase.sqlite'),
-    'submissions': os.path.join(DATA_DIR, 'submissions.sqlite'),
-    'telemetry': os.path.join(DATA_DIR, 'telemetry.sqlite')
+    "starbase": os.path.join(DATA_DIR, "starbase.sqlite"),
+    "submissions": os.path.join(DATA_DIR, "submissions.sqlite"),
+    "telemetry": os.path.join(DATA_DIR, "telemetry.sqlite"),
 }
 
 # BLAST database paths
@@ -39,11 +41,19 @@ BLAST_DB_PATHS = {
     "ship": {"nucl": os.path.join(DATA_DIR, "ships", "fna", "blastdb", "ships.fa")},
     "gene": {
         "tyr": {
-            "nucl": os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb", "captains.fna"),
-            "prot": os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb", "captains.faa"),
+            "nucl": os.path.join(
+                DATA_DIR, "captain", "tyr", "fna", "blastdb", "captains.fna"
+            ),
+            "prot": os.path.join(
+                DATA_DIR, "captain", "tyr", "faa", "blastdb", "captains.faa"
+            ),
             "hmm": {
-                "nucl": os.path.join(DATA_DIR, "captain", "tyr", "fna", "hmm", "combined.hmm"),
-                "prot": os.path.join(DATA_DIR, "captain", "tyr", "faa", "hmm", "combined.hmm"),
+                "nucl": os.path.join(
+                    DATA_DIR, "captain", "tyr", "fna", "hmm", "combined.hmm"
+                ),
+                "prot": os.path.join(
+                    DATA_DIR, "captain", "tyr", "faa", "hmm", "combined.hmm"
+                ),
             },
         },
     },
@@ -51,9 +61,25 @@ BLAST_DB_PATHS = {
 
 # Phylogeny paths
 PHYLOGENY_PATHS = {
-    "tree": os.path.join(DATA_DIR, "captain", "tyr", "faa", "tree", "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile"),
-    "msa": os.path.join(DATA_DIR, "captain", "tyr", "faa", "alignments", "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit"),
-    "clades": os.path.join(DATA_DIR, "captain", "tyr", "faa", "tree", "superfam-clades.tsv"),
+    "tree": os.path.join(
+        DATA_DIR,
+        "captain",
+        "tyr",
+        "faa",
+        "tree",
+        "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
+    ),
+    "msa": os.path.join(
+        DATA_DIR,
+        "captain",
+        "tyr",
+        "faa",
+        "alignments",
+        "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
+    ),
+    "clades": os.path.join(
+        DATA_DIR, "captain", "tyr", "faa", "tree", "superfam-clades.tsv"
+    ),
 }
 
 # URL routes
@@ -67,9 +93,11 @@ DL_URL = os.getenv("DL_URL", "/download")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 
 # API Keys
-IPSTACK_API_KEY = os.environ.get('IPSTACK_API_KEY')
-MAINTENANCE_TOKEN = os.environ.get('MAINTENANCE_TOKEN')
+IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
+MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")
 
 # Cache settings
-CACHE_TIMEOUT = None if os.getenv('CACHE_TIMEOUT') is None else int(os.getenv('CACHE_TIMEOUT'))
-CACHE_DIR = os.path.join(DATA_DIR, 'cache')
+CACHE_TIMEOUT = (
+    None if os.getenv("CACHE_TIMEOUT") is None else int(os.getenv("CACHE_TIMEOUT"))
+)
+CACHE_DIR = os.path.join(DATA_DIR, "cache")

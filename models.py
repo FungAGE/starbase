@@ -1,6 +1,5 @@
 # coding: utf-8
 from sqlalchemy import Column, Float, ForeignKey, Integer, Numeric, String, Table, Text
-from sqlalchemy.sql.sqltypes import NullType
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
