@@ -1,11 +1,11 @@
 from flask_caching import Cache
 import os
 import time
-import logging
 
 from src.config.settings import DATA_DIR
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+logger = get_logger(__name__)
 
 cache_dir = os.path.join(DATA_DIR, "cache")
 os.makedirs(cache_dir, exist_ok=True)
