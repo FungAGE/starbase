@@ -217,6 +217,12 @@ def make_alert_using_match(match_class=None, classification=None, type=None):
         Output("classification-exact-matches", "data"),
         Output("classification-contained-matches", "data", allow_duplicate=True),
         Output("classification-similar-matches", "data", allow_duplicate=True),
+        Output("classification-family-progress", "animated", allow_duplicate=True),
+        Output("classification-family-progress", "striped", allow_duplicate=True),
+        Output("classification-navis-progress", "animated", allow_duplicate=True),
+        Output("classification-navis-progress", "striped", allow_duplicate=True),
+        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
+        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
     ],
     [Input("classification-upload", "data")],
     prevent_initial_call=True
@@ -250,6 +256,12 @@ def check_exact_matches(data):
                 {"found": True, "match": result, "error": False},
                 None,  # Reset contained matches
                 None,  # Reset similar matches
+                False,  # family progress not animated
+                False,  # family progress not striped
+                False,  # navis progress not animated
+                False,  # navis progress not striped
+                False,  # haplotype progress not animated
+                False,  # haplotype progress not striped
             ]
         else:
             return [
@@ -258,8 +270,14 @@ def check_exact_matches(data):
                 None,
                 None,
                 {"found": False, "error": False},
-                None,  # Don't reset subsequent stores
                 None,
+                None,
+                True,   # family progress animated
+                True,   # family progress striped
+                False,  # navis progress not animated
+                False,  # navis progress not striped
+                False,  # haplotype progress not animated
+                False,  # haplotype progress not striped
             ]
             
     except Exception as e:
@@ -275,8 +293,14 @@ def check_exact_matches(data):
             None,
             None,
             {"found": False, "error": True},
-            None,  # Reset subsequent stores on error
             None,
+            None,
+            False,  # family progress not animated
+            False,  # family progress not striped
+            False,  # navis progress not animated
+            False,  # navis progress not striped
+            False,  # haplotype progress not animated
+            False,  # haplotype progress not striped
         ]
 
 # then, check for contained matches
@@ -288,6 +312,12 @@ def check_exact_matches(data):
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-contained-matches", "data"),
         Output("classification-similar-matches", "data", allow_duplicate=True),
+        Output("classification-family-progress", "animated", allow_duplicate=True),
+        Output("classification-family-progress", "striped", allow_duplicate=True),
+        Output("classification-navis-progress", "animated", allow_duplicate=True),
+        Output("classification-navis-progress", "striped", allow_duplicate=True),
+        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
+        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
     ],
     [Input("classification-exact-matches", "data")],
     [State("classification-upload", "data")],
@@ -297,7 +327,6 @@ def check_exact_matches(data):
 def check_contained_matches(exact_matches, data):
     from src.tasks import check_contained_matches_task
     
-    # Stop if there was an error in previous step or exact match was found
     if exact_matches is None or exact_matches.get("error", False) or exact_matches.get("found", False):
         logger.info("Skipping contained match check - previous error or exact match found")
         raise PreventUpdate
@@ -324,7 +353,13 @@ def check_contained_matches(exact_matches, data):
                 None,
                 None,
                 {"found": True, "match": result, "error": False},
-                None,  # Reset similar matches
+                None,
+                False,  # family progress not animated
+                False,  # family progress not striped
+                False,  # navis progress not animated
+                False,  # navis progress not striped
+                False,  # haplotype progress not animated
+                False,  # haplotype progress not striped
             ]
         else:
             return [
@@ -334,6 +369,12 @@ def check_contained_matches(exact_matches, data):
                 None,
                 {"found": False, "error": False},
                 None,
+                True,   # family progress animated
+                True,   # family progress striped
+                False,  # navis progress not animated
+                False,  # navis progress not striped
+                False,  # haplotype progress not animated
+                False,  # haplotype progress not striped
             ]
             
     except Exception as e:
@@ -349,7 +390,13 @@ def check_contained_matches(exact_matches, data):
             None,
             None,
             {"found": False, "error": True},
-            None,  # Reset similar matches on error
+            None,
+            False,  # family progress not animated
+            False,  # family progress not striped
+            False,  # navis progress not animated
+            False,  # navis progress not striped
+            False,  # haplotype progress not animated
+            False,  # haplotype progress not striped
         ]
 
 # then, check for similar matches
@@ -360,6 +407,12 @@ def check_contained_matches(exact_matches, data):
         Output("classification-navis-output", "children", allow_duplicate=True),
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-similar-matches", "data"),
+        Output("classification-family-progress", "animated", allow_duplicate=True),
+        Output("classification-family-progress", "striped", allow_duplicate=True),
+        Output("classification-navis-progress", "animated", allow_duplicate=True),
+        Output("classification-navis-progress", "striped", allow_duplicate=True),
+        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
+        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
     ],
     [Input("classification-contained-matches", "data")],
     [State("classification-upload", "data")],
@@ -369,7 +422,6 @@ def check_contained_matches(exact_matches, data):
 def check_similar_matches(contained_matches, data):
     from src.tasks import check_similar_matches_task
     
-    # Stop if data is None or there was an error/match in previous step
     if contained_matches is None or contained_matches.get("error", False) or contained_matches.get("found", False):
         logger.info("Skipping similar match check - previous error or contained match found")
         raise PreventUpdate
@@ -390,7 +442,13 @@ def check_similar_matches(contained_matches, data):
             make_alert_using_match(result, "Family", "similar"),
             make_alert_using_match(result, "Navis", "similar"),
             make_alert_using_match(result, "Haplotype", "similar"),
-            {"match": result, "error": False}
+            {"match": result, "error": False},
+            True,   # family progress animated
+            True,   # family progress striped
+            False,  # navis progress not animated
+            False,  # navis progress not striped
+            False,  # haplotype progress not animated
+            False,  # haplotype progress not striped
         ]
     except Exception as e:
         logger.error(f"Error in check_similar_matches: {str(e)}")
@@ -404,7 +462,13 @@ def check_similar_matches(contained_matches, data):
             ),
             None,
             None,
-            {"error": True}
+            {"error": True},
+            False,  # family progress not animated
+            False,  # family progress not striped
+            False,  # navis progress not animated
+            False,  # navis progress not striped
+            False,  # haplotype progress not animated
+            False,  # haplotype progress not striped
         ]
 
 # Run Family Classification
