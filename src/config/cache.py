@@ -5,6 +5,7 @@ import time
 from src.config.settings import DATA_DIR
 
 from src.config.logging import get_logger
+
 logger = get_logger(__name__)
 
 cache_dir = os.path.join(DATA_DIR, "cache")

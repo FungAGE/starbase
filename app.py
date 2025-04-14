@@ -16,6 +16,7 @@ from src.config.database import SubmissionsSession
 from src.config.settings import DB_PATHS
 
 from src.config.logging import get_logger
+
 logger = get_logger(__name__)
 
 server = Flask(__name__)
