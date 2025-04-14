@@ -9,13 +9,15 @@ from dash import html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 
+import os
 import logging
 import tempfile
 import pandas as pd
 
 from src.utils.seq_utils import guess_seq_type
 from src.config.settings import BLAST_DB_PATHS
-from src.utils.classification_utils import check_exact_match, check_contained_match, check_similar_match, metaeuk_easy_predict, classify_family, classify_navis, classify_haplotype
+from src.utils.classification_utils import create_classification_callback
+from src.tasks import check_contained_matches_task, check_similar_matches_task, check_exact_matches_task
 from src.components.callbacks import create_file_upload
 from src.components.error_boundary import handle_callback_error
 from src.utils.seq_utils import parse_fasta_from_file, write_fasta
@@ -208,268 +210,32 @@ def make_alert_using_match(match_class=None, classification=None, type=None):
         return None
 
 # First, check for exact matches
-@callback(
-    [
-        Output("classification-stage", "children", allow_duplicate=True),
-        Output("classification-family-output", "children", allow_duplicate=True),
-        Output("classification-navis-output", "children", allow_duplicate=True),
-        Output("classification-haplotype-output", "children", allow_duplicate=True),
-        Output("classification-exact-matches", "data"),
-        Output("classification-contained-matches", "data", allow_duplicate=True),
-        Output("classification-similar-matches", "data", allow_duplicate=True),
-        Output("classification-family-progress", "animated", allow_duplicate=True),
-        Output("classification-family-progress", "striped", allow_duplicate=True),
-        Output("classification-navis-progress", "animated", allow_duplicate=True),
-        Output("classification-navis-progress", "striped", allow_duplicate=True),
-        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
-        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
-    ],
-    [Input("classification-upload", "data")],
-    prevent_initial_call=True
+check_exact_matches = create_classification_callback(
+    task_name="Exact",
+    task_function=check_exact_matches_task,
+    input_store="classification-upload",
+    output_store="classification-exact-matches",
+    next_stage="Checking for Contained Matches",
+    active_progress="family"
 )
-@handle_callback_error
-def check_exact_matches(data):
-    from src.tasks import check_exact_matches_task
-    logger.info("Starting exact match check...")
-    if data is None:
-        logger.warning("No data provided for exact match check")
-        raise PreventUpdate
-        
-    try:
-        existing_ships = fetch_ships(**data["fetch_ship_params"])
-        ships_dict = existing_ships.to_dict('records')
-        
-        task = check_exact_matches_task.delay(data["fasta"], ships_dict)
-        result = task.get(timeout=300)
-        
-        if result:
-            return [
-                "Exact Match Found",
-                dmc.Alert(
-                    title="Exact Match",
-                    children=f"Found exact match: {result}",
-                    color="green",
-                    variant="light",
-                ),
-                None,
-                None,
-                {"found": True, "match": result, "error": False},
-                None,  # Reset contained matches
-                None,  # Reset similar matches
-                False,  # family progress not animated
-                False,  # family progress not striped
-                False,  # navis progress not animated
-                False,  # navis progress not striped
-                False,  # haplotype progress not animated
-                False,  # haplotype progress not striped
-            ]
-        else:
-            return [
-                "Checking for Contained Matches",
-                None,
-                None,
-                None,
-                {"found": False, "error": False},
-                None,
-                None,
-                True,   # family progress animated
-                True,   # family progress striped
-                False,  # navis progress not animated
-                False,  # navis progress not striped
-                False,  # haplotype progress not animated
-                False,  # haplotype progress not striped
-            ]
-            
-    except Exception as e:
-        logger.error(f"Error in check_exact_matches: {str(e)}")
-        return [
-            "Error in Exact Match Check",
-            dmc.Alert(
-                title="Error",
-                children=str(e),
-                color="red",
-                variant="light",
-            ),
-            None,
-            None,
-            {"found": False, "error": True},
-            None,
-            None,
-            False,  # family progress not animated
-            False,  # family progress not striped
-            False,  # navis progress not animated
-            False,  # navis progress not striped
-            False,  # haplotype progress not animated
-            False,  # haplotype progress not striped
-        ]
 
-# then, check for contained matches
-@callback(
-    [
-        Output("classification-stage", "children", allow_duplicate=True),
-        Output("classification-family-output", "children", allow_duplicate=True),
-        Output("classification-navis-output", "children", allow_duplicate=True),
-        Output("classification-haplotype-output", "children", allow_duplicate=True),
-        Output("classification-contained-matches", "data"),
-        Output("classification-similar-matches", "data", allow_duplicate=True),
-        Output("classification-family-progress", "animated", allow_duplicate=True),
-        Output("classification-family-progress", "striped", allow_duplicate=True),
-        Output("classification-navis-progress", "animated", allow_duplicate=True),
-        Output("classification-navis-progress", "striped", allow_duplicate=True),
-        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
-        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
-    ],
-    [Input("classification-exact-matches", "data")],
-    [State("classification-upload", "data")],
-    prevent_initial_call=True
+check_contained_matches = create_classification_callback(
+    task_name="Contained",
+    task_function=check_contained_matches_task,
+    input_store="classification-exact-matches",
+    output_store="classification-contained-matches",
+    next_stage="Checking for Similar Matches",
+    active_progress="family"
 )
-@handle_callback_error
-def check_contained_matches(exact_matches, data):
-    from src.tasks import check_contained_matches_task
-    
-    if exact_matches is None or exact_matches.get("error", False) or exact_matches.get("found", False):
-        logger.info("Skipping contained match check - previous error or exact match found")
-        raise PreventUpdate
-        
-    try:
-        existing_ships = fetch_ships(**data["fetch_ship_params"])
-        ships_dict = existing_ships.to_dict('records')
-        
-        task = check_contained_matches_task.delay(
-            fasta=data["fasta"],
-            ships_dict=ships_dict
-        )
-        result = task.get(timeout=300)
-        
-        if result:
-            return [
-                "Contained Match Found",
-                dmc.Alert(
-                    title="Contained Match",
-                    children=f"Found contained match: {result}",
-                    color="green",
-                    variant="light",
-                ),
-                None,
-                None,
-                {"found": True, "match": result, "error": False},
-                None,
-                False,  # family progress not animated
-                False,  # family progress not striped
-                False,  # navis progress not animated
-                False,  # navis progress not striped
-                False,  # haplotype progress not animated
-                False,  # haplotype progress not striped
-            ]
-        else:
-            return [
-                "Checking for Similar Matches",
-                None,
-                None,
-                None,
-                {"found": False, "error": False},
-                None,
-                True,   # family progress animated
-                True,   # family progress striped
-                False,  # navis progress not animated
-                False,  # navis progress not striped
-                False,  # haplotype progress not animated
-                False,  # haplotype progress not striped
-            ]
-            
-    except Exception as e:
-        logger.error(f"Error in check_contained_matches: {str(e)}")
-        return [
-            "Error in Contained Match Check",
-            dmc.Alert(
-                title="Error",
-                children=str(e),
-                color="red",
-                variant="light",
-            ),
-            None,
-            None,
-            {"found": False, "error": True},
-            None,
-            False,  # family progress not animated
-            False,  # family progress not striped
-            False,  # navis progress not animated
-            False,  # navis progress not striped
-            False,  # haplotype progress not animated
-            False,  # haplotype progress not striped
-        ]
 
-# then, check for similar matches
-@callback(
-    [
-        Output("classification-stage", "children", allow_duplicate=True),
-        Output("classification-family-output", "children", allow_duplicate=True),
-        Output("classification-navis-output", "children", allow_duplicate=True),
-        Output("classification-haplotype-output", "children", allow_duplicate=True),
-        Output("classification-similar-matches", "data"),
-        Output("classification-family-progress", "animated", allow_duplicate=True),
-        Output("classification-family-progress", "striped", allow_duplicate=True),
-        Output("classification-navis-progress", "animated", allow_duplicate=True),
-        Output("classification-navis-progress", "striped", allow_duplicate=True),
-        Output("classification-haplotype-progress", "animated", allow_duplicate=True),
-        Output("classification-haplotype-progress", "striped", allow_duplicate=True),
-    ],
-    [Input("classification-contained-matches", "data")],
-    [State("classification-upload", "data")],
-    prevent_initial_call=True
+check_similar_matches = create_classification_callback(
+    task_name="Similar",
+    task_function=check_similar_matches_task,
+    input_store="classification-contained-matches",
+    output_store="classification-similar-matches",
+    next_stage="Running Family Classification",
+    active_progress="family"
 )
-@handle_callback_error
-def check_similar_matches(contained_matches, data):
-    from src.tasks import check_similar_matches_task
-    
-    if contained_matches is None or contained_matches.get("error", False) or contained_matches.get("found", False):
-        logger.info("Skipping similar match check - previous error or contained match found")
-        raise PreventUpdate
-    
-    try:
-        existing_ships = fetch_ships(**data["fetch_ship_params"])
-        ships_dict = existing_ships.to_dict('records') if not existing_ships.empty else []
-        
-        similar_match = check_similar_matches_task.delay(
-            data["fasta"], 
-            ships_dict,
-            threshold=0.9
-        )
-        result = similar_match.get(timeout=300)
-        
-        return [
-            "Running Family Classification",
-            make_alert_using_match(result, "Family", "similar"),
-            make_alert_using_match(result, "Navis", "similar"),
-            make_alert_using_match(result, "Haplotype", "similar"),
-            {"match": result, "error": False},
-            True,   # family progress animated
-            True,   # family progress striped
-            False,  # navis progress not animated
-            False,  # navis progress not striped
-            False,  # haplotype progress not animated
-            False,  # haplotype progress not striped
-        ]
-    except Exception as e:
-        logger.error(f"Error in check_similar_matches: {str(e)}")
-        return [
-            "Error in Similar Match Check",
-            dmc.Alert(
-                title="Error",
-                children=str(e),
-                color="red",
-                variant="light",
-            ),
-            None,
-            None,
-            {"error": True},
-            False,  # family progress not animated
-            False,  # family progress not striped
-            False,  # navis progress not animated
-            False,  # navis progress not striped
-            False,  # haplotype progress not animated
-            False,  # haplotype progress not striped
-        ]
 
 # Run Family Classification
 # outputs will be return when work is complete
@@ -514,8 +280,8 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
     # TODO: decide if annotate should be run here or in a separate callback
     codon_fasta, pred_proteins, gff = run_metaeuk_easy_predict_task.delay(
         fasta=data["fasta"],
-        seq_type=data["seq_type"],
-        db_list=BLAST_DB_PATHS,
+        ref_db=BLAST_DB_PATHS,
+        output_prefix=os.path.join(os.path.dirname(data["fasta"]), "metaeuk_preds"),
         threads=1
     )
     codon_fasta, pred_proteins, gff = codon_fasta.get(timeout=300)

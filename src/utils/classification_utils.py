@@ -7,12 +7,15 @@ import os
 import tempfile
 import glob
 import signal
-from Bio import pairwise2
-from Bio.pairwise2 import format_alignment
+import dash_mantine_components as dmc
+from dash import callback, Input, Output, State
+from dash.exceptions import PreventUpdate
 
 from src.utils.seq_utils import write_combined_fasta, write_multi_fasta, write_fasta
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
+from src.components.error_boundary import handle_callback_error
+
 
 logger = logging.getLogger(__name__)
 
@@ -979,6 +982,8 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
             f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
 
 # denova annotation using metaeuk easy-predict
+# TODO: make sure `ref_db` is a fasta file (do we need to `createdb` for this fasta file?)
+# TODO: make sure that `output_prefix` is a temp directory
 def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
     query_db = os.path.join(output_prefix, "queryDB")
     # create db
@@ -1008,4 +1013,135 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
     gff = os.path.join(output_prefix, "predsResults.gff")
 
     return codon_fasta, fasta, gff
+
+def create_classification_response(
+    stage: str,
+    alert: Optional[dmc.Alert] = None,
+    data: Optional[dict] = None,
+    error: bool = False,
+    active_progress: str = None
+):
+    """
+    Create a standardized response for classification callbacks.
+    
+    Args:
+        stage: Current stage description
+        alert: Alert component to display (if any)
+        data: Data to store in the store component
+        error: Whether this response represents an error
+        active_progress: Which progress bar should be active
+    """
+    # Base response with stage and alert
+    response = [
+        stage,  # stage text
+        alert,  # family output
+        None,   # navis output
+        None,   # haplotype output
+        data if not error else {"error": True},  # current store
+        None,  # next store (reset)
+    ]
+    
+    # Add progress bar states
+    progress_states = {
+        "family": (False, False),
+        "navis": (False, False),
+        "haplotype": (False, False)
+    }
+    
+    if active_progress and not error:
+        progress_states[active_progress] = (True, True)
+    
+    # Add all progress states to response
+    for state in progress_states.values():
+        response.extend(state)
+    
+    return response
+
+def create_classification_callback(
+    task_name: str,
+    task_function: Callable,
+    input_store: str,
+    output_store: str,
+    next_stage: str,
+    active_progress: str = "family"
+):
+    """
+    Create a standardized classification callback.
+    
+    Args:
+        task_name: Name of the task for logging/display
+        task_function: Celery task function to execute
+        input_store: Name of the input data store
+        output_store: Name of the output data store
+        next_stage: Description of the next stage if no match found
+        active_progress: Which progress bar to activate
+    """
+    @callback(
+        [
+            Output("classification-stage", "children", allow_duplicate=True),
+            Output("classification-family-output", "children", allow_duplicate=True),
+            Output("classification-navis-output", "children", allow_duplicate=True),
+            Output("classification-haplotype-output", "children", allow_duplicate=True),
+            Output(output_store, "data"),
+            Output("classification-similar-matches", "data", allow_duplicate=True),
+            Output("classification-family-progress", "animated", allow_duplicate=True),
+            Output("classification-family-progress", "striped", allow_duplicate=True),
+            Output("classification-navis-progress", "animated", allow_duplicate=True),
+            Output("classification-navis-progress", "striped", allow_duplicate=True),
+            Output("classification-haplotype-progress", "animated", allow_duplicate=True),
+            Output("classification-haplotype-progress", "striped", allow_duplicate=True),
+        ],
+        [Input(input_store, "data")],
+        [State("classification-upload", "data")],
+        prevent_initial_call=True
+    )
+    @handle_callback_error
+    def classification_callback(input_data, upload_data):
+        logger.info(f"Starting {task_name} check...")
+        
+        if input_data is None or input_data.get("error", False) or input_data.get("found", False):
+            logger.info(f"Skipping {task_name} check - previous error or match found")
+            raise PreventUpdate
+            
+        try:
+            existing_ships = fetch_ships(**upload_data["fetch_ship_params"])
+            ships_dict = existing_ships.to_dict('records')
+            
+            task = task_function.delay(
+                fasta=upload_data["fasta"],
+                ships_dict=ships_dict
+            )
+            result = task.get(timeout=300)
+            
+            if result:
+                return create_classification_response(
+                    stage=f"{task_name} Match Found",
+                    alert=dmc.Alert(
+                        title=f"{task_name} Match",
+                        children=f"Found {task_name.lower()} match: {result}",
+                        color="green",
+                        variant="light",
+                    ),
+                    data={"found": True, "match": result, "error": False}
+                )
+            
+            return create_classification_response(
+                stage=next_stage,
+                data={"found": False, "error": False},
+                active_progress=active_progress
+            )
                 
+        except Exception as e:
+            logger.error(f"Error in {task_name} check: {str(e)}")
+            return create_classification_response(
+                stage=f"Error in {task_name} Check",
+                alert=dmc.Alert(
+                    title="Error",
+                    children=str(e),
+                    color="red",
+                    variant="light",
+                ),
+                error=True
+            )
+    
+    return classification_callback
