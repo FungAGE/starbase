@@ -11,6 +11,24 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Make sure this is at the top level of the module
+__all__ = [
+    'refresh_telemetry_task',
+    'cleanup_cache_task',
+    'run_blast_search_task',
+    'run_hmmer_search_task',
+    'check_exact_matches_task',
+    'check_contained_matches_task',
+    'check_similar_matches_task',
+    'check_exact_matches_task',
+    'run_family_classification_task',
+    'run_navis_classification_task',
+    'run_haplotype_classification_task',
+    'run_metaeuk_easy_predict_task',
+    'run_multi_pgv_task',
+    'run_single_pgv_task',
+]
+
 @celery.task(name='refresh_telemetry')
 def refresh_telemetry_task(ipstack_api_key):
     """Celery task to refresh telemetry data"""
@@ -112,12 +130,18 @@ def check_contained_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
         return None
 
 @celery.task(name='check_similar_matches_task')
-def check_similar_matches_task(fasta, ships_dict):
+def check_similar_matches_task(fasta: str, ships_dict: list, threshold: float = 0.9) -> Optional[str]:
     """Celery task to run `check_similar_match`"""
     from src.utils.classification_utils import check_similar_match
     try:
+        logger.info(f"Starting similar match task with {len(ships_dict)} ships")
+        # Convert list of dicts back to DataFrame
         existing_ships = pd.DataFrame.from_dict(ships_dict)
-        return check_similar_match(fasta, existing_ships)
+        logger.info(f"Converted to DataFrame with shape {existing_ships.shape}")
+        
+        result = check_similar_match(fasta, existing_ships, threshold)
+        logger.info(f"Similar match result: {result}")
+        return result
     except Exception as e:
         logger.error(f"Similar match check failed: {str(e)}")
         return None
@@ -153,11 +177,11 @@ def run_haplotype_classification_task(fasta, existing_ships):
         return None
 
 @celery.task(name="run_metaeuk_easy_predict_task")
-def run_metaeuk_easy_predict_task(fasta, existing_ships):
+def run_metaeuk_easy_predict_task(fasta, ref_db, output_prefix, threads):
     """Celery task to run `metaeuk`"""
     from src.utils.classification_utils import metaeuk_easy_predict
     try:
-        return metaeuk_easy_predict(fasta, existing_ships)
+        return metaeuk_easy_predict(query_fasta=fasta, ref_db=ref_db, output_prefix=output_prefix, threads=threads)
     except Exception as e:
         logger.error(f"Metaeuk failed: {str(e)}")
         return None
