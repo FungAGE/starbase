@@ -215,6 +215,8 @@ def make_alert_using_match(match_class=None, classification=None, type=None):
         Output("classification-navis-output", "children", allow_duplicate=True),
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-exact-matches", "data"),
+        Output("classification-contained-matches", "data", allow_duplicate=True),
+        Output("classification-similar-matches", "data", allow_duplicate=True),
     ],
     [Input("classification-upload", "data")],
     prevent_initial_call=True
@@ -228,13 +230,11 @@ def check_exact_matches(data):
         raise PreventUpdate
         
     try:
-        # Fetch ships and convert DataFrame to dictionary
         existing_ships = fetch_ships(**data["fetch_ship_params"])
         ships_dict = existing_ships.to_dict('records')
         
-        # Call the Celery task with the dictionary
         task = check_exact_matches_task.delay(data["fasta"], ships_dict)
-        result = task.get(timeout=300)  # 5 minute timeout
+        result = task.get(timeout=300)
         
         if result:
             return [
@@ -247,7 +247,9 @@ def check_exact_matches(data):
                 ),
                 None,
                 None,
-                {"found": True, "match": result}
+                {"found": True, "match": result, "error": False},
+                None,  # Reset contained matches
+                None,  # Reset similar matches
             ]
         else:
             return [
@@ -255,13 +257,15 @@ def check_exact_matches(data):
                 None,
                 None,
                 None,
-                {"found": False}
+                {"found": False, "error": False},
+                None,  # Don't reset subsequent stores
+                None,
             ]
             
     except Exception as e:
         logger.error(f"Error in check_exact_matches: {str(e)}")
         return [
-            "Error",
+            "Error in Exact Match Check",
             dmc.Alert(
                 title="Error",
                 children=str(e),
@@ -270,7 +274,9 @@ def check_exact_matches(data):
             ),
             None,
             None,
-            None
+            {"found": False, "error": True},
+            None,  # Reset subsequent stores on error
+            None,
         ]
 
 # then, check for contained matches
@@ -281,6 +287,7 @@ def check_exact_matches(data):
         Output("classification-navis-output", "children", allow_duplicate=True),
         Output("classification-haplotype-output", "children", allow_duplicate=True),
         Output("classification-contained-matches", "data"),
+        Output("classification-similar-matches", "data", allow_duplicate=True),
     ],
     [Input("classification-exact-matches", "data")],
     [State("classification-upload", "data")],
@@ -289,23 +296,21 @@ def check_exact_matches(data):
 @handle_callback_error
 def check_contained_matches(exact_matches, data):
     from src.tasks import check_contained_matches_task
-    logger.info("Starting contained match check...")
-    if exact_matches or data is None:
-        logger.info("Skipping contained match check - exact match was found or no data")
+    
+    # Stop if there was an error in previous step or exact match was found
+    if exact_matches is None or exact_matches.get("error", False) or exact_matches.get("found", False):
+        logger.info("Skipping contained match check - previous error or exact match found")
         raise PreventUpdate
         
     try:
-        # Fetch ships and convert DataFrame to dictionary
         existing_ships = fetch_ships(**data["fetch_ship_params"])
-        ships_dict = existing_ships.to_dict('records')  # Convert to list of dictionaries
+        ships_dict = existing_ships.to_dict('records')
         
-        # Call the Celery task with the dictionary
         task = check_contained_matches_task.delay(
             fasta=data["fasta"],
-            ships_dict=ships_dict  # Pass the dictionary instead of DataFrame
+            ships_dict=ships_dict
         )
-        
-        result = task.get(timeout=300)  # 5 minute timeout
+        result = task.get(timeout=300)
         
         if result:
             return [
@@ -318,21 +323,23 @@ def check_contained_matches(exact_matches, data):
                 ),
                 None,
                 None,
-                {"found": True, "match": result}
+                {"found": True, "match": result, "error": False},
+                None,  # Reset similar matches
             ]
         else:
             return [
-                "No Contained Matches Found",
+                "Checking for Similar Matches",
                 None,
                 None,
                 None,
-                {"found": False}
+                {"found": False, "error": False},
+                None,
             ]
             
     except Exception as e:
         logger.error(f"Error in check_contained_matches: {str(e)}")
         return [
-            "Error",
+            "Error in Contained Match Check",
             dmc.Alert(
                 title="Error",
                 children=str(e),
@@ -341,7 +348,8 @@ def check_contained_matches(exact_matches, data):
             ),
             None,
             None,
-            None
+            {"found": False, "error": True},
+            None,  # Reset similar matches on error
         ]
 
 # then, check for similar matches
@@ -360,34 +368,44 @@ def check_contained_matches(exact_matches, data):
 @handle_callback_error
 def check_similar_matches(contained_matches, data):
     from src.tasks import check_similar_matches_task
-    logger.info("Starting similar match check...")
-    if contained_matches or data is None:
-        logger.info("Skipping similar match check - contained match was found or no data")
+    
+    # Stop if data is None or there was an error/match in previous step
+    if contained_matches is None or contained_matches.get("error", False) or contained_matches.get("found", False):
+        logger.info("Skipping similar match check - previous error or contained match found")
         raise PreventUpdate
     
-    # Fetch ships data using query parameters
-    fetch_ship_params = data["fetch_ship_params"]
-    existing_ships = fetch_ships(**fetch_ship_params)
-    logger.info(f"Checking similar matches against {len(existing_ships)} existing ships")
-    
-    # Add threshold parameter (you may want to adjust this value)
-    similar_match = check_similar_matches_task.delay(data["fasta"], existing_ships, threshold=0.9)
-    similar_match = similar_match.get(timeout=300)
-    matches_found = similar_match is not None
-
-    if matches_found:
-        logger.info(f"Found similar match: {similar_match}")
-    else:
-        logger.warning("No similar matches found")
-
-    # Make sure to return a tuple matching the number of outputs
-    return (
-        "Running Family Classification",  # stage
-        make_alert_using_match(similar_match, "Family", "similar"),  # family output
-        make_alert_using_match(similar_match, "Navis", "similar"),  # navis output
-        make_alert_using_match(similar_match, "Haplotype", "similar"),  # haplotype output
-        {"found": matches_found} if matches_found else None  # similar matches data
-    )
+    try:
+        existing_ships = fetch_ships(**data["fetch_ship_params"])
+        ships_dict = existing_ships.to_dict('records') if not existing_ships.empty else []
+        
+        similar_match = check_similar_matches_task.delay(
+            data["fasta"], 
+            ships_dict,
+            threshold=0.9
+        )
+        result = similar_match.get(timeout=300)
+        
+        return [
+            "Running Family Classification",
+            make_alert_using_match(result, "Family", "similar"),
+            make_alert_using_match(result, "Navis", "similar"),
+            make_alert_using_match(result, "Haplotype", "similar"),
+            {"match": result, "error": False}
+        ]
+    except Exception as e:
+        logger.error(f"Error in check_similar_matches: {str(e)}")
+        return [
+            "Error in Similar Match Check",
+            dmc.Alert(
+                title="Error",
+                children=str(e),
+                color="red",
+                variant="light",
+            ),
+            None,
+            None,
+            {"error": True}
+        ]
 
 # Run Family Classification
 # outputs will be return when work is complete
