@@ -264,21 +264,20 @@ def create_hero_section():
 
 def create_features_section():
     return dmc.Container([
-        dmc.SimpleGrid([
-            working_features_card,
-            developing_features_card,
-            download_ships_card,
-            accession_card,
+        dmc.Grid([
+            dmc.GridCol([working_features_card], span={"base": 12, "sm": 6, "lg": 4}),
+            dmc.GridCol([developing_features_card], span={"base": 12, "sm": 6, "lg": 4}),
+            dmc.GridCol([download_ships_card], span={"base": 12, "sm": 6, "lg": 4}),
+            dmc.GridCol([create_stats_section()], span={"base": 12, "sm": 6, "lg": 4}),
+            dmc.GridCol([accession_card], span={"base": 12, "sm": 6, "lg": 4}),
         ],
-        cols={
-            "base": 1,
-            "sm": 2,
-            "lg": 3
-        },
-        spacing="xl",
+        grow=True,
+        gutter="xl",
         style={
             "minHeight": "100%",
-            "alignItems": "stretch"  # Makes all grid items stretch to match heights
+            "alignItems": "stretch",  # Makes all grid items stretch to match heights
+            "display": "grid",
+            "gridAutoFlow": "dense",  # Fills in gaps in the grid
         }),
     ], size="xl", py="xl", flex=True)
 
@@ -301,8 +300,7 @@ def create_stats_section():
         "family_count": "—"
     }
     
-    return dmc.Container([
-        dmc.Paper([
+    return dmc.Paper([
             dmc.Title(
                 "Database Statistics", 
                 order=2, 
@@ -437,16 +435,13 @@ def create_stats_section():
                 "alignItems": "center"
             }
             ),
-        ], p="xl", radius="md", shadow="sm", withBorder=True),
-    ], size="xl", py="xl")
+        ], p="xl", radius="md", shadow="sm", withBorder=True)
 
 layout = dmc.MantineProvider([
     dcc.Location(id="url", refresh=False),
     create_hero_section(),
     dmc.Space(h=40),
     create_features_section(),
-    dmc.Space(h=40),
-    create_stats_section(),
     dmc.Space(h=40),
     create_publications_section(),
     # Database warning if needed
