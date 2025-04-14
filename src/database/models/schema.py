@@ -4,11 +4,12 @@ from src.config.database import Base
 
 # Association tables for many-to-many relationships
 paper_family_association = Table(
-    'paper_family_association', 
+    "paper_family_association",
     Base.metadata,
-    Column('paper_id', Integer, ForeignKey('papers.id')),
-    Column('family_id', Integer, ForeignKey('family_names.id'))
+    Column("paper_id", Integer, ForeignKey("papers.id")),
+    Column("family_id", Integer, ForeignKey("family_names.id")),
 )
+
 
 class Accessions(Base):
     __tablename__ = "accessions"
@@ -24,6 +25,7 @@ class Accessions(Base):
     joined_ships = relationship("JoinedShips", back_populates="accession_obj")
     captains = relationship("Captains", back_populates="ship")
 
+
 class Ships(Base):
     __tablename__ = "ships"
     id = Column(Integer, primary_key=True)
@@ -33,6 +35,7 @@ class Ships(Base):
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="ships")
+
 
 class Captains(Base):
     __tablename__ = "captains"
@@ -45,6 +48,7 @@ class Captains(Base):
     # Relationships
     ship = relationship("Accessions", back_populates="captains")
     features = relationship("StarshipFeatures", back_populates="captain")
+
 
 class StarshipFeatures(Base):
     __tablename__ = "starship_features"
@@ -77,6 +81,7 @@ class StarshipFeatures(Base):
     accession = relationship("Accessions", back_populates="starship_features")
     captain = relationship("Captains", back_populates="features")
 
+
 class Papers(Base):
     __tablename__ = "papers"
     id = Column(Integer, primary_key=True)
@@ -95,7 +100,10 @@ class Papers(Base):
     shortCitation = Column(VARCHAR)
 
     # Relationships
-    family_names = relationship("FamilyNames", secondary=paper_family_association, back_populates="papers")
+    family_names = relationship(
+        "FamilyNames", secondary=paper_family_association, back_populates="papers"
+    )
+
 
 class FamilyNames(Base):
     __tablename__ = "family_names"
@@ -111,7 +119,10 @@ class FamilyNames(Base):
     paper_id = Column(Integer, ForeignKey("papers.id"))
 
     # Relationships
-    papers = relationship("Papers", secondary=paper_family_association, back_populates="family_names")
+    papers = relationship(
+        "Papers", secondary=paper_family_association, back_populates="family_names"
+    )
+
 
 class Taxonomy(Base):
     __tablename__ = "taxonomy"
@@ -124,7 +135,9 @@ class Taxonomy(Base):
     subkingdom = Column(VARCHAR)
     phylum = Column(VARCHAR)
     subphylum = Column(VARCHAR)
-    class_ = Column(VARCHAR, name="class")  # Using class_ as class is a reserved keyword
+    class_ = Column(
+        VARCHAR, name="class"
+    )  # Using class_ as class is a reserved keyword
     subclass = Column(VARCHAR)
     order = Column(VARCHAR)
     suborder = Column(VARCHAR)
@@ -132,6 +145,7 @@ class Taxonomy(Base):
     genus = Column(VARCHAR)
     species = Column(VARCHAR)
     section = Column(VARCHAR)
+
 
 class NavisHaplotype(Base):
     __tablename__ = "navis_haplotype"
@@ -142,6 +156,7 @@ class NavisHaplotype(Base):
 
     # Relationships
     family = relationship("FamilyNames")
+
 
 class JoinedShips(Base):
     __tablename__ = "joined_ships"
