@@ -985,34 +985,61 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
 # TODO: make sure `ref_db` is a fasta file (do we need to `createdb` for this fasta file?)
 # TODO: make sure that `output_prefix` is a temp directory
 def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
-    query_db = os.path.join(output_prefix, "queryDB")
-    # create db
-    try:
-        subprocess.run(["mmseqs", "createdb", query_fasta, query_db, "--dbtype", "2"], check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Metaeuk createdb failed: {e.stderr}")
-        raise
-    except Exception as e:
-        logger.error(f"Error during metaeuk createdb: {str(e)}")
-        logger.exception("Full traceback:")
-        raise
-    # run easy-predict
+    """Run MetaEuk easy-predict with proper directory handling.
+    
+    Args:
+        query_fasta: Path to input FASTA file
+        ref_db: Path to reference database
+        output_prefix: Prefix for output files
+        threads: Number of threads to use
+    """
+    
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            subprocess.run(["metaeuk", "easy-predict", query_db, ref_db, os.path.join(output_prefix, "predsResults"), tmp_dir, "--metaeuk-eval", "0.0001", "-e", "100", "--max-seqs", "1", "--min-length", "40", "--search-type", "3", "--threads", str(threads)], check=True)
+            # Run MetaEuk with explicit paths
+            cmd = [
+                "metaeuk",
+                "easy-predict",
+                os.path.abspath(query_fasta),  # Use absolute path
+                os.path.abspath(ref_db),       # Use absolute path
+                os.path.abspath(output_prefix), # Use absolute path
+                tmp_dir,
+                "--metaeuk-eval", "0.0001",
+                "-e", "100",
+                "--max-seqs", "1",
+                "--min-length", "40",
+                "--search-type", "3",
+                "--threads", str(threads)
+            ]
+            
+            # Run command and capture output
+            process = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            
+            # Check if output files were created
+            codon_fasta = f"{output_prefix}.codon.fas"
+            fasta = f"{output_prefix}.fas"
+            gff = f"{output_prefix}.gff"
+            
+            for file_path in [codon_fasta, fasta, gff]:
+                if not os.path.exists(file_path):
+                    raise FileNotFoundError(f"Expected output file not created: {file_path}")
+            
+            return codon_fasta, fasta, gff
+            
     except subprocess.CalledProcessError as e:
-        logger.error(f"Metaeuk easy-predict failed: {e.stderr}")
+        logger.error(f"MetaEuk easy-predict failed with return code {e.returncode}")
+        logger.error(f"stdout: {e.stdout}")
+        logger.error(f"stderr: {e.stderr}")
         raise
     except Exception as e:
-        logger.error(f"Error during metaeuk easy-predict: {str(e)}")
+        logger.error(f"Error during MetaEuk easy-predict: {str(e)}")
         logger.exception("Full traceback:")
         raise
-
-    codon_fasta = os.path.join(output_prefix, "predsResults.codon.fas")
-    fasta = os.path.join(output_prefix, "predsResults.fas")
-    gff = os.path.join(output_prefix, "predsResults.gff")
-
-    return codon_fasta, fasta, gff
 
 def create_classification_response(
     stage: str,

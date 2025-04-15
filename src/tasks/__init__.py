@@ -147,11 +147,16 @@ def check_similar_matches_task(fasta: str, ships_dict: list, threshold: float = 
         return None
 
 @celery.task(name='run_family_classification_task')
-def run_family_classification_task(fasta, existing_ships):
+def run_family_classification_task(fasta, seq_type, db_list=None):
     """Celery task to run `classify_family`"""
     from src.utils.classification_utils import classify_family
     try:
-        return classify_family(fasta, existing_ships)
+        return classify_family(
+            fasta=fasta,
+            seq_type=seq_type,
+            db_list=db_list,
+            threads=1  # Keep thread count low for Celery tasks
+        )
     except Exception as e:
         logger.error(f"Family classification failed: {str(e)}")
         return None

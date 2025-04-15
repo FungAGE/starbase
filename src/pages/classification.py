@@ -277,14 +277,16 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
        (similar_matches and similar_matches.get("found")):
         raise PreventUpdate
 
-    # TODO: decide if annotate should be run here or in a separate callback
+    # Create temporary directory for MetaEuk output
+    output_dir = tempfile.mkdtemp(prefix="metaeuk_predsResults")
+    tmp_dir = tempfile.mkdtemp(prefix="metaeuk_tmp")
+    # Run MetaEuk
     codon_fasta, pred_proteins, gff = run_metaeuk_easy_predict_task.delay(
         fasta=data["fasta"],
-        ref_db=BLAST_DB_PATHS,
-        output_prefix=os.path.join(os.path.dirname(data["fasta"]), "metaeuk_preds"),
+        ref_db=BLAST_DB_PATHS["gene"]["tyr"]["prot"],
+        output_prefix=output_dir,
         threads=1
-    )
-    codon_fasta, pred_proteins, gff = codon_fasta.get(timeout=300)
+    ).get(timeout=300)
 
     if not codon_fasta or not pred_proteins or not gff: 
         fasta = data["fasta"]
@@ -300,8 +302,7 @@ def run_family_classification(similar_matches, data, exact_matches, contained_ma
         family_dict, protein = run_family_classification_task.delay(
             fasta=fasta,
             seq_type=seq_type,
-            db_list=BLAST_DB_PATHS,
-            threads=1
+            db_list=BLAST_DB_PATHS
         )
         family_dict, protein = family_dict.get(timeout=300)
 
