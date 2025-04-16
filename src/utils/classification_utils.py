@@ -1090,7 +1090,13 @@ def create_classification_callback(
     input_store: str,
     output_store: str,
     next_stage: str,
-    active_progress: str = "family"
+    active_progress: str = "family",
+    progress_value: int = 100,
+    progress_color: str = "blue",
+    next_progress: str = None,
+    next_progress_value: int = 10,
+    next_progress_color: str = None,
+    custom_task_args: Callable = None
 ):
     """
     Create a standardized classification callback.
@@ -1102,73 +1108,124 @@ def create_classification_callback(
         output_store: Name of the output data store
         next_stage: Description of the next stage if no match found
         active_progress: Which progress bar to activate
+        progress_value: Value for the current progress bar
+        progress_color: Color for success state
+        next_progress: Next progress bar to activate
+        next_progress_value: Value for the next progress bar
+        next_progress_color: Color for next progress bar
+        custom_task_args: Function to prepare custom task arguments
     """
     @callback(
         [
             Output("classification-stage", "children", allow_duplicate=True),
+            Output(f"classification-{active_progress}-progress", "value", allow_duplicate=True),
+            Output(f"classification-{active_progress}-progress", "animated", allow_duplicate=True),
+            Output(f"classification-{active_progress}-progress", "striped", allow_duplicate=True),
+            Output(f"classification-{active_progress}-color", "color", allow_duplicate=True),
+            Output(f"classification-{active_progress}-name", "children", allow_duplicate=True),
             Output("classification-family-output", "children", allow_duplicate=True),
-            Output("classification-navis-output", "children", allow_duplicate=True),
-            Output("classification-haplotype-output", "children", allow_duplicate=True),
             Output(output_store, "data"),
-            Output("classification-similar-matches", "data", allow_duplicate=True),
-            Output("classification-family-progress", "animated", allow_duplicate=True),
-            Output("classification-family-progress", "striped", allow_duplicate=True),
-            Output("classification-navis-progress", "animated", allow_duplicate=True),
-            Output("classification-navis-progress", "striped", allow_duplicate=True),
-            Output("classification-haplotype-progress", "animated", allow_duplicate=True),
-            Output("classification-haplotype-progress", "striped", allow_duplicate=True),
-        ],
+        ] + ([
+            Output(f"classification-{next_progress}-progress", "value", allow_duplicate=True),
+            Output(f"classification-{next_progress}-progress", "animated", allow_duplicate=True),
+            Output(f"classification-{next_progress}-progress", "striped", allow_duplicate=True),
+            Output(f"classification-{next_progress}-color", "color", allow_duplicate=True),
+        ] if next_progress else []),
         [Input(input_store, "data")],
-        [State("classification-upload", "data")],
+        [
+            State("classification-upload", "data"),
+            State("classification-exact-matches", "data"),
+            State("classification-contained-matches", "data"),
+            State("classification-similar-matches", "data"),
+        ],
         prevent_initial_call=True
     )
     @handle_callback_error
-    def classification_callback(input_data, upload_data):
+    def classification_callback(input_data, upload_data, exact_matches, contained_matches, similar_matches):
         logger.info(f"Starting {task_name} check...")
         
-        if input_data is None or input_data.get("error", False) or input_data.get("found", False):
-            logger.info(f"Skipping {task_name} check - previous error or match found")
+        # Check for required data
+        if upload_data is None or input_data is None:
+            raise PreventUpdate
+            
+        # Check if any previous matches were found
+        if (exact_matches and exact_matches.get("found")) or \
+           (contained_matches and contained_matches.get("found")) or \
+           (similar_matches and similar_matches.get("found")):
             raise PreventUpdate
             
         try:
-            existing_ships = fetch_ships(**upload_data["fetch_ship_params"])
-            ships_dict = existing_ships.to_dict('records')
+            if not custom_task_args:
+                raise ValueError(f"No task arguments provided for {task_name}")
+                
+            task_args = custom_task_args(upload_data, input_data)
             
-            task = task_function.delay(
-                fasta=upload_data["fasta"],
-                ships_dict=ships_dict
-            )
-            result = task.get(timeout=300)
+            # Run the task
+            result = task_function.delay(**task_args).get(timeout=300)
             
-            if result:
-                return create_classification_response(
-                    stage=f"{task_name} Match Found",
-                    alert=dmc.Alert(
-                        title=f"{task_name} Match",
-                        children=f"Found {task_name.lower()} match: {result}",
-                        color="green",
-                        variant="light",
-                    ),
-                    data={"found": True, "match": result, "error": False}
-                )
+            if result is None:
+                # No match found - continue to next stage
+                return [
+                    next_stage,  # stage
+                    progress_value,  # progress complete
+                    False,  # not animated
+                    True,  # stays striped
+                    progress_color,  # success color
+                    None,  # no result name
+                    None,  # no output alert
+                    {"found": False, "error": False},  # data for next step
+                ] + ([
+                    next_progress_value,  # next progress starts
+                    True,  # next animated
+                    True,  # next striped
+                    next_progress_color,  # next color
+                ] if next_progress else [])
             
-            return create_classification_response(
-                stage=next_stage,
-                data={"found": False, "error": False},
-                active_progress=active_progress
-            )
+            # Match found
+            return [
+                f"{task_name} Match Found",  # stage
+                progress_value,  # progress complete
+                False,  # not animated
+                True,  # stays striped
+                progress_color,  # success color
+                result,  # result name
+                dmc.Alert(  # output alert
+                    title=f"{task_name} Match",
+                    children=f"Found {task_name.lower()} match: {result}",
+                    color=progress_color,
+                    variant="light",
+                    className="mb-3"
+                ),
+                {"found": True, "match": result, "error": False},  # data for next step
+            ] + ([
+                0,  # next progress reset
+                False,  # next not animated
+                False,  # next not striped
+                "gray",  # next disabled
+            ] if next_progress else [])
                 
         except Exception as e:
             logger.error(f"Error in {task_name} check: {str(e)}")
-            return create_classification_response(
-                stage=f"Error in {task_name} Check",
-                alert=dmc.Alert(
+            return [
+                f"Error in {task_name} Check",  # stage
+                progress_value,  # progress complete
+                False,  # not animated
+                False,  # not striped
+                "red",  # error color
+                "Error",  # error name
+                dmc.Alert(  # error alert
                     title="Error",
                     children=str(e),
                     color="red",
                     variant="light",
+                    className="mb-3"
                 ),
-                error=True
-            )
+                {"error": True},  # error data
+            ] + ([
+                0,  # next progress reset
+                False,  # next not animated
+                False,  # next not striped
+                "gray",  # next disabled
+            ] if next_progress else [])
     
     return classification_callback
