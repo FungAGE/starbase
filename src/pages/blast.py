@@ -126,55 +126,43 @@ layout = dmc.Container(
                                             ),
                                         ],
                                         gap="md",
-                                    ),
+                                    ),                                
                                     # Options Section
-                                    dmc.Stack(
-                                        [
-                                            dmc.Title("Search Options", order=3),
-                                            curated_switch(
-                                                text="Only search curated Starships",
-                                                size="sm",
-                                            ),
-                                        ],
-                                        gap="xs",
-                                    ),
-                                ], gap="md"),
-                                
-                                # Options Section
-                                dmc.Stack([
-                                    dmc.Title("Search Options", order=3),
-                                    dmc.Grid(
-                                        children=[
-                                            dmc.GridCol(
-                                                span={"xs": 12, "sm": 6},
-                                                children=[
-                                                    dmc.Stack([
-                                                        curated_switch(
-                                                            text="Only search curated Starships",
-                                                            size="sm"
+                                    dmc.Stack([
+                                        dmc.Title("Search Options", order=3),
+                                        dmc.Grid(
+                                            children=[
+                                                dmc.GridCol(
+                                                    span={"xs": 12, "sm": 6},
+                                                    children=[
+                                                        dmc.Stack([
+                                                            curated_switch(
+                                                                text="Only search curated Starships",
+                                                                size="sm"
+                                                            ),
+                                                        ], gap="xs"),
+                                                    ]
+                                                ),
+                                                dmc.GridCol(
+                                                    span={"xs": 12, "sm": 6},
+                                                    children=[
+                                                        dmc.NumberInput(
+                                                            id="evalue-threshold",
+                                                            label="E-value Threshold",
+                                                            value=0.001,
+                                                            min=0,
+                                                            max=1,
+                                                            step=0.005,
                                                         ),
-                                                    ], gap="xs"),
-                                                ]
-                                            ),
-                                            dmc.GridCol(
-                                                span={"xs": 12, "sm": 6},
-                                                children=[
-                                                    dmc.NumberInput(
-                                                        id="evalue-threshold",
-                                                        label="E-value Threshold",
-                                                        value=0.001,
-                                                        min=0,
-                                                        max=1,
-                                                        step=0.005,
-                                                    ),
-                                                ]
-                                            ),
-                                        ],
-                                        gutter="md",
-                                        align="center",
-                                    ),
-                                ], gap="xs"),
-                                
+                                                    ]
+                                                ),
+                                            ],
+                                            gutter="md",
+                                            align="center",
+                                        ),
+                                    ], gap="xs"),
+                                ], gap="md"),
+
                                 dmc.Space(h="md"),
 
                                 # Submit Section
