@@ -17,14 +17,14 @@ card_dict = {
     },
     "adrian": {
         "full_name": "Adrian Forsythe",
-        "img": "assets/images/adrian.png",
+        "img": "assets/images/adrian.jpg",
         "role": html.P(
             [
                 html.Span(
                     "starbase",
                     className="logo-text",
                 ),
-                " lead developer",
+                " developer",
             ],
         ),
         "email": "mailto:adrian.e.forsythe@gmail.com",
@@ -38,7 +38,7 @@ card_dict = {
                     "starfish",
                     className="logo-text",
                 ),
-                " lead developer",
+                " developer",
                 html.Br(),
                 "Gluck-Thaler lab group leader",
             ],
