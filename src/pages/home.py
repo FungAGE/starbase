@@ -117,58 +117,58 @@ not_working = [
     ),
 ]
 
-starship_card = dmc.Paper([
-    dmc.Title(html.Div(["What is a ",html.Span("Starship",style={"font-style": "italic"}),"?"]), order=2, mb="md"),
-    dmc.Grid([
-        dmc.GridCol([
-            dmc.Text([
-                html.Div(
-                    [
-                        html.Span("Starships",style={"font-style": "italic"})," are novel family of class II DNA transposons, endemic to Pezizomycotina. ",html.Span("Starships",style={"font-style": "italic"})," can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
-                        html.Span(
-                                                "Paecilomyces",
-                                                style={"font-style": "italic"},
-                                            ),
-                                            " cheese making in ",
-                                            html.Span(
-                                                "Penicillium",
-                                                style={
-                                                    "font-style": "italic",
-                                                },
-                                            ),
-                                            ", and enable the transfer of formaldehyde resistance in ",
-                                            html.Span(
-                                                "Aspergillus nidulans",
-                                                style={
-                                                    "font-style": "italic",
-                                                },
-                                            ),
-                                            " and ",
-                                            html.Span(
-                                                "Penicillium chrysogenum.",
-                                                style={
-                                                    "font-style": "italic",
-                                                },
-                                            ),
-                                            " Read more about ",html.Span("Starships",style={"font-style": "italic"})," ",
-                                            dmc.Anchor(
-                                                "here",
-                                                href="https://en.wikipedia.org/wiki/Starship_(genetics)",
-                                                style={"textDecoration": "none"},
-                                            ),
-                                            ".",
-                                        ],
-                                    ),
-            ], size="lg", c="dimmed"),
-        ], 
-        span={"sm": 12, "md": 7}
+starship_card = dmc.Paper(
+    [
+        dmc.Title(html.Div(["What is a ", html.Span("Starship", style={"font-style": "italic"}), "?"]), order=2, mb="md"),
+        dmc.Grid([
+            dmc.GridCol([
+                dmc.Text([
+                    html.Div(
+                        [
+                            html.Span("Starships",style={"font-style": "italic"})," are novel family of class II DNA transposons, endemic to Pezizomycotina. ",html.Span("Starships",style={"font-style": "italic"})," can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
+                            html.Span(
+                                            "Paecilomyces",
+                                            style={"font-style": "italic"},
+                                        ),
+                                        ", and enable the transfer of formaldehyde resistance in ",
+                                        html.Span(
+                                            "Aspergillus nidulans",
+                                            style={
+                                                "font-style": "italic",
+                                            },
+                                        ),
+                                        " and ",
+                                        html.Span(
+                                            "Penicillium chrysogenum.",
+                                            style={
+                                                "font-style": "italic",
+                                            },
+                                        ),
+                                        " Read more about ",html.Span("Starships",style={"font-style": "italic"})," ",
+                                        dmc.Anchor(
+                                            "here",
+                                            href="https://en.wikipedia.org/wiki/Starship_(genetics)",
+                                            style={"textDecoration": "none"},
+                                        ),
+                                        ".",
+                                    ],
+                                ),
+                ], size="lg", c="dimmed"),
+            ], 
+            span={"sm": 12, "md": 7}
+            ),
+            dmc.GridCol([
+                dmc.Image(
+                    src="assets/images/starship-model.png",
+                    fit="contain",
+                    radius="md",
+                    style={"maxWidth": "100%"}
+                )
+            ], 
+        span={"sm": 12, "md": 5}
         ),
-    ],
-    shadow="sm",
-    p="xl",
-    radius="md",
-    withBorder=True,
-)
+    ]),
+], shadow="sm", p="xl", radius="md", withBorder=True)
 
 
 working_features_card = dmc.Paper(
@@ -229,8 +229,8 @@ developing_features_card = dmc.Paper(
 )
 
 accession_card = dmc.Paper([
-    dmc.Title(html.Div([html.Span("S",style={"font-style":"bold"}),"tar",html.Span("b",style={"font-style":"bold"}),"ase ",html.Span("S",style={"font-style":"bold"}),"hip Accessions"])),
-    dmc.Text("To maintain data management and integrity, we employ an accessioning framework within Starbase. Starbase Ship Accessions (abbreviated as SBS) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",c="dimmed"),
+    dmc.Title(html.Div([html.Span("starbase",className="logo-text",)," Accessions"])),
+    dmc.Text(html.Div(["To maintain data management and integrity, we employ an accessioning framework within ",html.Span("Starbase",className="logo-text"),". ",html.Span("Starbase",className="logo-text")," Ship Accessions (abbreviated as SBS) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification."]),c="dimmed"),
     dmc.Space(h=20),
     dmc.Image(
         src="assets/images/accession_tag.svg",
@@ -288,10 +288,10 @@ def create_publications_section():
                 style={"width": "100%"}
             ),
         ],
-        size="xl",
         py="xl",
         flex=True,
     )
+    ], size="xl", py="xl", flex=True)
 
 
 def create_stats_section():
