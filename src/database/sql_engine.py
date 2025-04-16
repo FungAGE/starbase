@@ -1,12 +1,9 @@
 import logging
 from contextlib import contextmanager
-from src.config.database import (
-    StarbaseSession,
-    SubmissionsSession,
-    TelemetrySession
-)
+from src.config.database import StarbaseSession, SubmissionsSession, TelemetrySession
 
 logger = logging.getLogger(__name__)
+
 
 @contextmanager
 def get_starbase_session():
@@ -22,6 +19,7 @@ def get_starbase_session():
     finally:
         session.close()
 
+
 @contextmanager
 def get_submissions_session():
     """Context manager for submissions database sessions"""
@@ -36,6 +34,7 @@ def get_submissions_session():
     finally:
         session.close()
 
+
 @contextmanager
 def get_telemetry_session():
     """Context manager for telemetry database sessions"""
@@ -49,6 +48,7 @@ def get_telemetry_session():
         raise
     finally:
         session.close()
+
 
 def check_database_connection():
     """Check if database connections are working"""

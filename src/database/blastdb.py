@@ -54,8 +54,11 @@ def blast_db_exists(blastdb):
 
 
 def create_dbs():
-    
-    from src.database.sql_manager import fetch_all_captains, fetch_ships, fetch_meta_data
+    from src.database.sql_manager import (
+        fetch_all_captains,
+        fetch_ships,
+        fetch_meta_data,
+    )
 
     # TODO: add filter to sql queries so "None" entries are not included
     ship_fasta_path = BLAST_DB_PATHS["ship"]
@@ -84,9 +87,7 @@ def create_dbs():
 
     captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]
     captain_fasta_dir = os.path.dirname(captain_fasta_path)
-    os.makedirs(
-        captain_fasta_dir, exist_ok=True
-    )
+    os.makedirs(captain_fasta_dir, exist_ok=True)
 
     captain_sequences_list = []
     captain_sequences = cache.get("all_captains")

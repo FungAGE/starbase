@@ -46,6 +46,22 @@ Contributions to the development of `starbase` are welcome! If you have suggesti
 
 - **Note:** Currently, `starbase` will not run without database files (`src/database/db/`), which need to be mounted into the container. We will provide a link to an archive of the database files, when available.
 
-1. Find the most recent version under the "Packages" tab in this repository: `docker pull ghcr.io/fungage/starbase:[tag]`
-2. Run `docker build -t starbase .` then `docker run --rm -p 8000:8000 starbase`
-3. Launch the app by visiting `localhost:8000` in your browser.
+## Local development
+
+* Find the most recent version under the "Packages" tab: `docker pull ghcr.io/fungage/starbase:[tag]`
+
+* Run locally with Docker
+```Bash
+docker build -t starbase .
+docker run -it --rm -p 8000:8000 starbase ./start-script.sh
+```
+
+* You can also run Starbase locally using Docker Compose:
+```Bash
+docker compose up --build
+
+## Tear down
+docker compose down --volumes
+```
+
+You can reach the app in your local browser by visiting `localhost:8000`.

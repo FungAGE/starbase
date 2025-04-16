@@ -1,19 +1,19 @@
 import warnings
 
-warnings.filterwarnings("ignore")
 import io
 import os
 import base64
 import tempfile
 import matplotlib.pyplot as plt
 import plotly.express as px
-import pickle
 
 from Bio.Seq import Seq
 import logomaker as lm
 from Bio.Align.Applications import ClustalwCommandline
 
 from src.utils.seq_utils import clean_sequence
+
+warnings.filterwarnings("ignore")
 
 
 def agg_df(df, groups):
@@ -38,22 +38,22 @@ def create_sunburst_plot(df, type, title_switch=True, cache_bust=None):
             "groups": ["familyName"],
             "title": "Starships by Family/Navis",
             "color_sequence": px.colors.qualitative.Set3,  # Discrete colors for families
-            "hover_data": ["count", "nunique", "duplicates"]
+            "hover_data": ["count", "nunique", "duplicates"],
         },
         "tax": {
             "groups": ["order", "family"],
             "title": "Starships by Order/Family",
             "color_sequence": px.colors.qualitative.Pastel,  # Discrete colors for taxonomy
-            "hover_data": ["count", "nunique"]
-        }
+            "hover_data": ["count", "nunique"],
+        },
     }
-    
+
     if type not in settings:
         raise ValueError(f"Unknown plot type: {type}")
-        
+
     config = settings[type]
     selection = agg_df(df, config["groups"])
-    
+
     # Create enhanced sunburst plot
     fig = px.sunburst(
         selection,
@@ -65,7 +65,7 @@ def create_sunburst_plot(df, type, title_switch=True, cache_bust=None):
         branchvalues="total",
         maxdepth=2,
     )
-    
+
     # Enhanced styling
     fig.update_layout(
         template="plotly_white",
@@ -78,55 +78,40 @@ def create_sunburst_plot(df, type, title_switch=True, cache_bust=None):
             "x": 0.5,
             "xanchor": "center",
             "yanchor": "top",
-            "font": {"size": 24}
+            "font": {"size": 24},
         },
-        margin=dict(
-            t=30,
-            l=10,
-            r=10,
-            b=10,
-            pad=4
-        ),
-        transition={
-            "duration": 500,
-            "easing": "cubic-in-out"
-        },
-        hoverlabel=dict(
-            bgcolor="white",
-            font_size=14,
-            font_family="Arial, sans-serif"
-        ),
+        margin=dict(t=30, l=10, r=10, b=10, pad=4),
+        transition={"duration": 500, "easing": "cubic-in-out"},
+        hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif"),
         # Add uirevision to control caching behavior
-        uirevision=str(cache_bust) if cache_bust is not None else True
+        uirevision=str(cache_bust) if cache_bust is not None else True,
     )
-    
+
     # Customize hover information
     hover_template = (
-        "<b>%{label}</b><br><br>" +
-        "Count: %{value}<br>" +  # Changed from customdata to value
-        "Percentage: %{percentParent:.1%}<br>" +
-        "<extra></extra>"
+        "<b>%{label}</b><br><br>"
+        + "Count: %{value}<br>"  # Changed from customdata to value
+        + "Percentage: %{percentParent:.1%}<br>"
+        + "<extra></extra>"
     )
-    
+
     fig.update_traces(
         hovertemplate=hover_template,
         textinfo="label+percent parent",
         insidetextorientation="radial",
         selector=dict(type="sunburst"),
-        marker=dict(
-            line=dict(color="white", width=1)
-        ),
+        marker=dict(line=dict(color="white", width=1)),
         # Configure text display
         textfont=dict(
             size=14,  # Base font size
-            family="Arial, sans-serif"
+            family="Arial, sans-serif",
         ),
         insidetextfont=dict(
             size=14,  # Base font size for inside text
-            family="Arial, sans-serif"
-        )
+            family="Arial, sans-serif",
+        ),
     )
-    
+
     return fig
 
 
@@ -135,7 +120,6 @@ def are_all_strings_same_length(strings):
 
 
 def make_logo(seqs, fig_name=None, type=None):
-
     if not seqs:  # If all sequences are empty, return None
         return None
 
@@ -152,7 +136,6 @@ def make_logo(seqs, fig_name=None, type=None):
                 file.write(f"{header}\n{cs}\n")
 
     if os.path.exists(temp_in_file.name) and os.path.getsize(temp_in_file.name) > 0:
-
         # Run ClustalW for alignment
         clustalw_cline = ClustalwCommandline(
             "clustalw",

@@ -1,24 +1,28 @@
 from flask_caching import Cache
 import os
 import time
-import logging
 
 from src.config.settings import DATA_DIR
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 cache_dir = os.path.join(DATA_DIR, "cache")
 os.makedirs(cache_dir, exist_ok=True)
 
 CACHE_TIMESTAMP = str(int(time.time()))
 
-cache = Cache(config={
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': cache_dir,
-    'CACHE_DEFAULT_TIMEOUT': 0,  # cache indefinitely
-    'CACHE_THRESHOLD': 1000,
-    'CACHE_KEY_PREFIX': CACHE_TIMESTAMP
-})
+cache = Cache(
+    config={
+        "CACHE_TYPE": "filesystem",
+        "CACHE_DIR": cache_dir,
+        "CACHE_DEFAULT_TIMEOUT": 0,  # cache indefinitely
+        "CACHE_THRESHOLD": 1000,
+        "CACHE_KEY_PREFIX": CACHE_TIMESTAMP,
+    }
+)
+
 
 def cleanup_old_cache():
     """Remove all cache files"""

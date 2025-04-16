@@ -1,5 +1,4 @@
 import dash
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import dcc, html, callback, no_update
 
@@ -7,19 +6,16 @@ from dash.dependencies import Output, Input, State
 
 import os
 import tempfile
-import pandas as pd
 import logging
-import traceback
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
 from matplotlib.lines import Line2D
 from pygenomeviz.utils import ColorCycler
-from pygenomeviz.align import Blast, AlignCoord, MMseqs, MUMmer
+from pygenomeviz.align import Blast, AlignCoord
 
 from src.components.callbacks import create_modal_callback
-from src.components.error_boundary import handle_callback_error, create_error_boundary
-
+from src.components.error_boundary import handle_callback_error
 
 
 logger = logging.getLogger(__name__)
@@ -60,10 +56,9 @@ modal = dmc.Modal(
 )
 
 layout = dmc.Container(
-        fluid=True,
-        children=[
-            dcc.Location(id="url", refresh=False),
-        
+    fluid=True,
+    children=[
+        dcc.Location(id="url", refresh=False),
         # Header Section
         dmc.Paper(
             children=[
@@ -79,7 +74,6 @@ layout = dmc.Container(
             withBorder=False,
             mb="xl",
         ),
-        
         # Main content
         dmc.Grid(
             children=[
@@ -98,7 +92,7 @@ layout = dmc.Container(
                                         zIndex=10,
                                     ),
                                     html.Div(id="pgv-table"),
-                                ]
+                                ],
                             ),
                             dmc.Grid(
                                 children=[
@@ -128,7 +122,7 @@ layout = dmc.Container(
                             ),
                             dmc.Space(h="md"),
                             dmc.Button(
-                                dmc.Text("Show Selected Starship(s)",size="lg"),
+                                dmc.Text("Show Selected Starship(s)", size="lg"),
                                 id="update-button",
                                 variant="gradient",
                                 gradient={"from": "indigo", "to": "cyan"},
@@ -138,38 +132,43 @@ layout = dmc.Container(
                         p="xl",
                         radius="md",
                         withBorder=True,
-                        style={"position": "relative"}
+                        style={"position": "relative"},
                     ),
                 ),
-                
                 # Right Column - Visualization Section
                 dmc.GridCol(
-                    span={"base": 12, "md": 6},  # Full width on mobile, half on medium+ screens
+                    span={
+                        "base": 12,
+                        "md": 6,
+                    },  # Full width on mobile, half on medium+ screens
                     children=[
                         dmc.Paper(
-                            children=dmc.Stack([
-                                # Message Area
-                                html.Div(
-                                    id="pgv-message",
-                                    style={"textAlign": "center"},
-                                ),
-                                # Visualization Area
-                                dcc.Loading(
-                                    id="loading-1",
-                                    type="circle",
-                                    children=html.Div(
-                                        id="pgv-figure",
-                                        style={
-                                            "height": "800px",
-                                            "width": "100%",
-                                            "overflow": "auto",
-                                            "backgroundColor": "#f8f9fa",
-                                            "border": "1px solid #dee2e6",
-                                            "borderRadius": "4px",
-                                        },
+                            children=dmc.Stack(
+                                [
+                                    # Message Area
+                                    html.Div(
+                                        id="pgv-message",
+                                        style={"textAlign": "center"},
                                     ),
-                                ),
-                            ], gap="md"),
+                                    # Visualization Area
+                                    dcc.Loading(
+                                        id="loading-1",
+                                        type="circle",
+                                        children=html.Div(
+                                            id="pgv-figure",
+                                            style={
+                                                "height": "800px",
+                                                "width": "100%",
+                                                "overflow": "auto",
+                                                "backgroundColor": "#f8f9fa",
+                                                "border": "1px solid #dee2e6",
+                                                "borderRadius": "4px",
+                                            },
+                                        ),
+                                    ),
+                                ],
+                                gap="md",
+                            ),
                             p="xl",
                             radius="md",
                             withBorder=True,
@@ -181,13 +180,11 @@ layout = dmc.Container(
             gutter="xl",
         ),
         modal,
-        dcc.Store(
-            id={"type": "page-loading", "index": "pgv"},
-            data=False
-        ),
+        dcc.Store(id={"type": "page-loading", "index": "pgv"}, data=False),
     ],
     py="xl",
 )
+
 
 def plot_legend(gv):
     fig = gv.plotfig(fast_render=False)
@@ -222,7 +219,6 @@ def plot_legend(gv):
 
 
 def add_gene_feature(gene, track, idx=None):
-
     start = int(gene.location.start)
     end = int(gene.location.end)
     strand = gene.location.strand
@@ -256,7 +252,7 @@ def add_gene_feature(gene, track, idx=None):
 
 def write_tmp(data, seqid, file_type, temp_dir):
     """Write sequence or GFF data to temporary files.
-    
+
     Args:
         data: String for sequence data, DataFrame for GFF data
         seqid: Accession ID for the file name
@@ -383,7 +379,9 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 
                 # Validate coordinates
                 if start < 0 or end > seg_size:
-                    logger.error(f"Invalid coordinates: start={start}, end={end}, seg_size={seg_size}")
+                    logger.error(
+                        f"Invalid coordinates: start={start}, end={end}, seg_size={seg_size}"
+                    )
                     continue
 
                 add_gene_feature(gene, segment, idx)
@@ -420,20 +418,24 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
             # Validate coordinates before adding link
             query_start, query_end = ac.query_link[2], ac.query_link[3]
             ref_start, ref_end = ac.ref_link[2], ac.ref_link[3]
-            
+
             query_seqid = ac.query_link[1]
             ref_seqid = ac.ref_link[1]
-            
+
             # Skip if coordinates are out of bounds
-            if (query_start < 0 or query_end > seq_sizes[query_seqid] or 
-                ref_start < 0 or ref_end > seq_sizes[ref_seqid]):
+            if (
+                query_start < 0
+                or query_end > seq_sizes[query_seqid]
+                or ref_start < 0
+                or ref_end > seq_sizes[ref_seqid]
+            ):
                 logger.warning(
                     f"Skipping alignment with invalid coordinates: "
                     f"Query({query_start}, {query_end}) vs size {seq_sizes[query_seqid]}, "
                     f"Ref({ref_start}, {ref_end}) vs size {seq_sizes[ref_seqid]}"
                 )
                 continue
-                
+
             logger.info(f"Adding link between {ac.query_link} and {ac.ref_link}")
             gv.add_link(
                 ac.query_link,
@@ -457,43 +459,48 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 
 
 @callback(
-    [Output("pgv-table", "children"),
-     Output("pgv-table-loading", "visible")],
+    [Output("pgv-table", "children"), Output("pgv-table-loading", "visible")],
     Input("url", "href"),
-    prevent_initial_call=False
+    prevent_initial_call=False,
 )
 @handle_callback_error
 def load_ship_table(href):
     from src.database.sql_manager import fetch_ship_table
-    from src.components.tables import make_pgv_table, table_loading_alert, table_no_results_alert, table_error
-    
+    from src.components.tables import (
+        make_pgv_table,
+        table_loading_alert,
+        table_no_results_alert,
+        table_error,
+    )
+
     # Show loading state initially
     if href is None:
         return table_loading_alert(), True
-    
+
     try:
         table_df = fetch_ship_table(curated=True)
-        
+
         if table_df is None or table_df.empty:
             logger.warning("fetch_ship_table returned None or empty DataFrame")
             return table_no_results_alert(), False
-            
-        if 'id' not in table_df.columns:
-            table_df['id'] = table_df.index.astype(str)
-            
+
+        if "id" not in table_df.columns:
+            table_df["id"] = table_df.index.astype(str)
+
         table = make_pgv_table(
             df=table_df,
             columns=table_columns,
             id="pgv-table",
             select_rows=True,
-            pg_sz=10
+            pg_sz=10,
         )
         logger.info("Table created successfully")
         return table, False
-        
+
     except Exception as e:
         logger.error(f"Failed to create PGV table. Details: {e}")
         return table_error(e), False
+
 
 @callback(
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
@@ -508,9 +515,13 @@ def load_ship_table(href):
 @handle_callback_error
 def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
     from src.database.sql_manager import fetch_accession_ship
+
     message = None
     if not n_clicks:
-        return no_update, "Select Starships from the table and click 'Show Selected Starships'"
+        return (
+            no_update,
+            "Select Starships from the table and click 'Show Selected Starships'",
+        )
 
     if n_clicks > 0:
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
@@ -533,7 +544,9 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
                             tmp_gffs.append(tmp_gff)
 
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = multi_pgv(tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr)
+                            message = multi_pgv(
+                                tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr
+                            )
                         elif len(selected_rows) == 1:
                             single_pgv(tmp_gffs[0], tmp_pgv)
                         else:
@@ -576,8 +589,5 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
 
 
 toggle_modal = create_modal_callback(
-    "pgv-table",
-    "pgv-modal",
-    "pgv-modal-content",
-    "pgv-modal-title"
+    "pgv-table", "pgv-modal", "pgv-modal-content", "pgv-modal-title"
 )

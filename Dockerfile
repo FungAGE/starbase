@@ -66,9 +66,3 @@ RUN chmod +x start-script.sh && \
 
 # Switch to user
 USER $USER
-
-# Expose the application port
-EXPOSE 8000
-
-# Start the container
-ENTRYPOINT ["./start-script.sh"]
