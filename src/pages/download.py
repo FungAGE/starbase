@@ -242,6 +242,11 @@ def generate_download_helper(rows, curated, dereplicate):
             else:
                 # Full header for single entries
                 header = create_ncbi_style_header(row)
+            if header is None or header == "None":
+                header = (
+                    f">{row['accession_tag']}"
+                    + (f" [family={row['familyName']}]" if row.get('familyName') else "")
+                )
             fasta_content.append(f"{header}\n{row['sequence']}")
             
         fasta_str = "\n".join(fasta_content)
