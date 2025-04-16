@@ -7,8 +7,8 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 # Create Blueprints for different route groups
-blast_routes = Blueprint("blast", __name__)
-accession_routes = Blueprint("accession", __name__)
+blast_routes = Blueprint("blast", __name__, url_prefix="/api/blast")
+accession_routes = Blueprint("accession", __name__, url_prefix="/api/accession")
 error_handlers = Blueprint("errors", __name__)
 
 
@@ -18,10 +18,10 @@ def check_blast_limit():
     """Check BLAST submission limit."""
     remote_addr = request.remote_addr
     logger.info(f"BLAST submission from IP: {remote_addr}")
-    return {"allowed": True}
+    return jsonify({"allowed": True})
 
 
-@accession_routes.route("/accession/<accession_id>", methods=["GET"])
+@accession_routes.route("/<accession_id>", methods=["GET"])
 def get_accession_details(accession_id):
     """Get details for a specific accession."""
     try:

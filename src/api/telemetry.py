@@ -7,7 +7,7 @@ from src.config.cache import cache
 
 from src.config.logging import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, url_prefix="/api/telemetry")
 
 # Create a Blueprint for telemetry routes
 telemetry_routes = Blueprint("telemetry", __name__)
