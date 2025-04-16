@@ -20,7 +20,6 @@ __all__ = [
     'check_exact_matches_task',
     'check_contained_matches_task',
     'check_similar_matches_task',
-    'check_exact_matches_task',
     'run_family_classification_task',
     'run_navis_classification_task',
     'run_haplotype_classification_task',
@@ -102,27 +101,25 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
         return None 
 
 @celery.task(name='check_exact_matches_task')
-def check_exact_matches_task(fasta, ships_dict):
-    """Celery task to run `check_exact_match`"""
+def check_exact_matches_task(sequence: str, ships_dict: list) -> Optional[str]:
     from src.utils.classification_utils import check_exact_match
     try:
         # Convert the list of dictionaries back to DataFrame
-        existing_ships = pd.DataFrame(ships_dict)
-        return check_exact_match(fasta, existing_ships)
+        existing_ships = pd.DataFrame.from_dict(ships_dict)
+        return check_exact_match(sequence, existing_ships)
     except Exception as e:
         logger.error(f"Exact match check failed: {str(e)}")
         return None
 
 @celery.task(name='check_contained_matches_task')
-def check_contained_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
-    """Celery task to run `check_contained_match`"""
+def check_contained_matches_task(sequence: str, ships_dict: list) -> Optional[str]:
     from src.utils.classification_utils import check_contained_match
     try:
         # Convert the list of dictionaries back to DataFrame
         existing_ships = pd.DataFrame.from_dict(ships_dict)
         
         # Run the check
-        result = check_contained_match(fasta, existing_ships)
+        result = check_contained_match(sequence, existing_ships=existing_ships)
         return result
         
     except Exception as e:
@@ -130,8 +127,7 @@ def check_contained_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
         return None
 
 @celery.task(name='check_similar_matches_task')
-def check_similar_matches_task(fasta: str, ships_dict: list, threshold: float = 0.9) -> Optional[str]:
-    """Celery task to run `check_similar_match`"""
+def check_similar_matches_task(sequence: str, ships_dict: list, threshold: float = 0.9) -> Optional[str]:
     from src.utils.classification_utils import check_similar_match
     try:
         logger.info(f"Starting similar match task with {len(ships_dict)} ships")
@@ -139,7 +135,7 @@ def check_similar_matches_task(fasta: str, ships_dict: list, threshold: float = 
         existing_ships = pd.DataFrame.from_dict(ships_dict)
         logger.info(f"Converted to DataFrame with shape {existing_ships.shape}")
         
-        result = check_similar_match(fasta, existing_ships, threshold)
+        result = check_similar_match(sequence, existing_ships, threshold)
         logger.info(f"Similar match result: {result}")
         return result
     except Exception as e:
@@ -148,42 +144,49 @@ def check_similar_matches_task(fasta: str, ships_dict: list, threshold: float = 
 
 @celery.task(name='run_family_classification_task')
 def run_family_classification_task(fasta, seq_type, db_list=None):
-    """Celery task to run `classify_family`"""
     from src.utils.classification_utils import classify_family
     try:
-        return classify_family(
+        family_dict, protein_file = classify_family(
             fasta=fasta,
             seq_type=seq_type,
             db_list=db_list,
-            threads=1  # Keep thread count low for Celery tasks
+            threads=1
         )
+        
+        if family_dict:
+            # Convert numpy types to Python native types
+            family_dict = {
+                "family": family_dict["family"],
+                "aln_length": int(family_dict["aln_length"]),  # Convert np.int64 to int
+                "evalue": float(family_dict["evalue"]),  # Convert np.float64 to float
+                "protein": protein_file  # Add protein file path if needed
+            }
+            
+        return family_dict
     except Exception as e:
         logger.error(f"Family classification failed: {str(e)}")
         return None
 
 @celery.task(name='run_navis_classification_task')
-def run_navis_classification_task(fasta, existing_ships):
-    """Celery task to run `classify_navis`"""
+def run_navis_classification_task(protein, existing_ships):
     from src.utils.classification_utils import classify_navis
     try:
-        return classify_navis(fasta, existing_ships)
+        return classify_navis(protein, existing_ships)
     except Exception as e:
         logger.error(f"Navis classification failed: {str(e)}")
         return None
 
 @celery.task(name='run_haplotype_classification_task')
-def run_haplotype_classification_task(fasta, existing_ships):
-    """Celery task to run `classify_haplotype`"""
+def run_haplotype_classification_task(fasta, existing_ships, navis):
     from src.utils.classification_utils import classify_haplotype
     try:
-        return classify_haplotype(fasta, existing_ships)
+        return classify_haplotype(fasta, existing_ships, navis)
     except Exception as e:
         logger.error(f"Haplotype classification failed: {str(e)}")
         return None
 
 @celery.task(name="run_metaeuk_easy_predict_task")
 def run_metaeuk_easy_predict_task(fasta, ref_db, output_prefix, threads):
-    """Celery task to run `metaeuk`"""
     from src.utils.classification_utils import metaeuk_easy_predict
     try:
         return metaeuk_easy_predict(query_fasta=fasta, ref_db=ref_db, output_prefix=output_prefix, threads=threads)
@@ -193,7 +196,6 @@ def run_metaeuk_easy_predict_task(fasta, ref_db, output_prefix, threads):
 
 @celery.task(name="run_multi_pgv_task")
 def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
-    """Celery task to run `multi_pgv`"""
     from src.pages.pgv import multi_pgv
     try:
         return multi_pgv(gff_files, seqs, tmp_file, len_thr, id_thr)
