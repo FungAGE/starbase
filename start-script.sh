@@ -6,14 +6,25 @@ redis-server --daemonize yes
 # Start cron in the background using supercronic
 supercronic $HOME/cron/crontab &
 
-# Start Celery worker in the background
-celery -A src.config.celery_config:celery worker \
-    --loglevel=info \
-    --concurrency=4 \
-    --max-tasks-per-child=1000 \
-    --max-memory-per-child=1024000 \
-    --pidfile=/tmp/celery.pid \
-    &
+restart_celery() {
+    # Kill existing Celery worker if it exists
+    if [ -f /tmp/celery.pid ]; then
+        kill $(cat /tmp/celery.pid) 2>/dev/null || true
+        rm /tmp/celery.pid
+    fi
+
+    # Start new Celery worker
+    celery -A src.config.celery_config:celery worker \
+        --loglevel=info \
+        --concurrency=4 \
+        --max-tasks-per-child=1000 \
+        --max-memory-per-child=1024000 \
+        --pidfile=/tmp/celery.pid \
+        &
+}
+
+# Start Celery initially
+restart_celery
 
 # Wait a moment for Redis and Celery to initialize
 sleep 3
