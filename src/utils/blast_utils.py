@@ -560,14 +560,13 @@ def create_no_matches_alert():
             dmc.List(
                 [
                     dmc.ListItem(
-                        "Check if your sequence is in the correct format", size="sm"
+                        "Check if your sequence is in the correct format",
                     ),
                     dmc.ListItem(
                         "Try searching with a different region of your sequence",
-                        size="sm",
                     ),
                     dmc.ListItem(
-                        "Consider using a less stringent E-value threshold", size="sm"
+                        "Consider using a less stringent E-value threshold",
                     ),
                 ],
                 withPadding=True,
