@@ -431,6 +431,8 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
         return None, None, None
 
     try:
+        captain_results_dict = None
+        
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
         
@@ -586,7 +588,8 @@ def process_blast_results(blast_results_file):
         Output("phylogeny-plot", "children"),
     ],
     [Input("blast-results-store", "data"), Input("captain-results-store", "data")],
-    State("submit-button", "n_clicks"),
+    [State("submit-button", "n_clicks"),
+    State("evalue-threshold", "value")],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -594,7 +597,7 @@ def process_blast_results(blast_results_file):
     prevent_initial_call=True,
 )
 @handle_callback_error
-def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
+def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalue):
     if not n_clicks or blast_results_file is None:
         return None, None, None
 
@@ -625,8 +628,8 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
 
             if top_pident >= 90:
                 # look up family name from accession tag
-                query_accession = top_hit["query_id"]
-                meta_data = fetch_meta_data(accession_tag=query_accession)
+                hit_IDs = top_hit["hit_IDs"]
+                meta_data = fetch_meta_data(accession_tag=hit_IDs)
                 if not meta_data.empty:
                     top_family = meta_data["familyName"].iloc[
                         0
@@ -637,12 +640,12 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
                 else:
                     # Handle case where no metadata is found
                     logger.warning(
-                        f"No metadata found for accession: {query_accession}"
+                        f"No metadata found for accession: {hit_IDs}"
                     )
-                    ship_family = process_captain_results(captain_results_dict)
+                    ship_family = process_captain_results(captain_results_dict,evalue)
             else:
                 # Process captain results
-                ship_family = process_captain_results(captain_results_dict)
+                ship_family = process_captain_results(captain_results_dict,evalue)
         else:
             return html.Div(create_no_matches_alert()), None, None
 

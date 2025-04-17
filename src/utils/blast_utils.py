@@ -389,7 +389,7 @@ def select_ship_family(hmmer_results):
         logger.error(f"Unexpected error: {e}")
         return None, None, None
 
-
+# TODO: add qseq_translated to the output``
 def run_diamond(
     db_list=None,
     query_type=None,
@@ -412,37 +412,25 @@ def run_diamond(
         List of dictionaries containing DIAMOND results
     """
     try:
-        # Create temporary output file
         diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
         
-        # Get correct database path
         try:
             diamond_db = db_list["gene"][input_genes]["prot"]
         except KeyError:
             raise ValueError(f"Database path not found for gene type: {input_genes}")
             
-        # Verify database exists
         if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
             raise ValueError(f"DIAMOND database {diamond_db} not found or is empty")
             
-        # Set search parameters based on query type
-        if query_type == "nucl":
-            blast_type = "blastx"
-            out_fmt = "6 qseqid sseqid length qstart qend gaps qseq_translated sseq evalue bitscore"
-        else:
-            blast_type = "blastp" 
-            out_fmt = "6 qseqid sseqid length qstart qend gaps qseq sseq evalue bitscore"
-            
-        # Set e-value threshold
+        blast_type = "blastx" if query_type == "nucl" else "blastp"
         evalue = input_eval if input_eval else 0.001
         
-        # Build DIAMOND command
         diamond_cmd = [
             "diamond",
             blast_type,
             "--db", diamond_db,
             "-q", query_fasta,
-            "-f", out_fmt,
+            "--outfmt", "6",
             "-e", str(evalue),
             "--strand", "both",
             "-p", str(threads),
@@ -451,16 +439,15 @@ def run_diamond(
             "-o", diamond_out
         ]
         
-        # Run DIAMOND
         try:
             subprocess.run(diamond_cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
             logger.error(f"DIAMOND error: {e.stderr}")
             raise
             
-        # Parse results
         if os.path.getsize(diamond_out) > 0:
-            column_names = out_fmt.split()[1:]
+            column_names = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", 
+                          "qstart", "qend", "sstart", "send", "evalue", "bitscore"]
             diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
             return diamond_results.to_dict("records")
         else:
@@ -472,7 +459,6 @@ def run_diamond(
         raise
         
     finally:
-        # Cleanup
         if 'diamond_out' in locals() and os.path.exists(diamond_out):
             os.unlink(diamond_out)
 
@@ -536,9 +522,9 @@ def make_captain_alert(family, aln_length, evalue, search_type):
         return create_error_alert(str(e))
 
 
-def process_captain_results(captain_results_dict):
+def process_captain_results(captain_results_dict=None,evalue=None):
     no_captain_alert = dmc.Alert(
-        "No captain sequence found (e-value threshold 0.01).",
+        f"No captain sequence found (e-value threshold {evalue}).",
         color="warning",
         style={
             "width": "100%",
@@ -547,7 +533,8 @@ def process_captain_results(captain_results_dict):
         },
     )
 
-    if not captain_results_dict:
+    if captain_results_dict is None or not captain_results_dict:
+        logger.warning("No captain results provided")
         return no_captain_alert
 
     try:
