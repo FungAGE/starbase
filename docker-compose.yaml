@@ -15,3 +15,14 @@ services:
       - ./src/database/db:/app/src/database/db
     restart: always
     command: ["./start-script.sh"]
+  unit-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: starbase_app
+    environment:
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+    volumes:
+      - .:/app
+      - ./src/database/db:/app/src/database/db
+    command: ["pytest", "-v"]

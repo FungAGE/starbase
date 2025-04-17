@@ -33,3 +33,5 @@ tenacity==8.2.3
 urllib3==1.26.9
 webdriver_manager==4.0.2
 Werkzeug<=3.1
+psutil==5.9.5
+multiprocess==0.70.14
