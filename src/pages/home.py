@@ -233,10 +233,7 @@ developing_features_card = dmc.Paper(
             mb="md",
         ),
         dmc.List(
-            [
-                dmc.ListItem(dmc.Text(item, c="dimmed"))
-                for item in not_working
-            ],
+            [dmc.ListItem(dmc.Text(item, c="dimmed")) for item in not_working],
             size="lg",
             spacing="sm",
         ),
