@@ -320,22 +320,57 @@ def fetch_accession_ship(accession_tag):
 
 
 @db_retry_decorator()
-def fetch_all_captains():
+def fetch_captains(accession_tags=None, curated=False, dereplicate=True):
+    """
+    Fetch captain data for specified accession tags.
+
+    Args:
+        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
+        curated (bool, optional): If True, only fetch curated ships.
+        dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
+
+    Returns:
+        pd.DataFrame: DataFrame containing ship data
+    """
     session = StarbaseSession()
 
     query = """
-    SELECT c.*
-    FROM captains c
+    WITH valid_ships AS (
+        SELECT DISTINCT 
+            c.*
+        FROM captains c
+        INNER JOIN joined_ships j ON c.id = j.captainID_new
+        INNER JOIN accessions a ON j.ship_id = a.id
+        WHERE 1=1
+    """
+
+    if accession_tags:
+        query += " AND a.accession_tag IN ({})".format(
+            ",".join(f"'{tag}'" for tag in accession_tags)
+        )
+    if curated:
+        query += " AND j.curated_status = 'curated'"
+
+    query += """
+    )
+    SELECT 
+        v.*,
+        s.sequence
+    FROM valid_captains v
+    LEFT JOIN ships s ON s.accession = v.accession_id
     """
 
     try:
         df = pd.read_sql_query(query, session.bind)
 
+        if dereplicate:
+            df = df.drop_duplicates(subset="accession_tag")
+
         if df.empty:
-            logger.warning("Fetched captain DataFrame is empty.")
+            logger.warning("Fetched ships DataFrame is empty.")
         return df
     except Exception as e:
-        logger.error(f"Error fetching captain data: {str(e)}")
+        logger.error(f"Error fetching ships data: {str(e)}")
         raise
     finally:
         session.close()
