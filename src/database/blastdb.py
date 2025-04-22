@@ -73,8 +73,7 @@ def create_dbs():
 
     ship_metadata = cache.get("ship_metadata")
     if ship_metadata is None:
-        ship_metadata_dict = fetch_meta_data(accession_tag=ship_sequences["accession_tag"])
-        ship_metadata = pd.DataFrame(ship_metadata_dict)
+        ship_metadata = fetch_meta_data(accession_tag=ship_sequences["accession_tag"])
 
     for index, row in ship_sequences.iterrows():
         name = row["accession_tag"]

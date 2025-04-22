@@ -37,11 +37,15 @@ def db_retry_decorator(additional_retry_exceptions=()):
 
 @cache.memoize()
 def fetch_meta_data(curated=False, accession_tag=None):
-    """Fetch metadata from the database with caching.
+    """
+    Fetch metadata from the database with caching.
 
     Args:
         curated (bool): If True, only return curated entries
         accession_tag (str or list): Single accession tag or list of accession tags
+    
+    Returns:
+        pd.DataFrame: Metadata for the specified accession tags
     """
     session = StarbaseSession()
 
@@ -79,9 +83,6 @@ def fetch_meta_data(curated=False, accession_tag=None):
         else:
             meta_df = pd.read_sql_query(meta_query, session.bind)
 
-        # Convert to dict if single row
-        if len(meta_df) == 1:
-            return meta_df.iloc[0].to_dict()
         return meta_df
     except Exception as e:
         logger.error(f"Error fetching meta data: {str(e)}")

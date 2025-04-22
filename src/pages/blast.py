@@ -526,7 +526,6 @@ def subject_seq_download(n_clicks, filename):
 
 
 # 1. Metadata Processing Callback
-@cache.memoize()
 @callback(
     Output("processed-metadata-store", "data"),
     Input("curated-input", "value"),
@@ -536,8 +535,7 @@ def process_metadata(curated):
     try:
         initial_df = cache.get("meta_data")
         if initial_df is None:
-            initial_dict = fetch_meta_data(curated)
-            initial_df = pd.DataFrame(initial_dict)
+            initial_df = fetch_meta_data(curated=curated)
 
         return (
             initial_df[["accession_tag", "familyName"]]
@@ -628,10 +626,8 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalu
         if top_pident >= 90:
             # look up family name from accession tag
             hit_IDs = top_hit["hit_IDs"]
-            meta_dict = fetch_meta_data(accession_tag=hit_IDs)
-            
-            meta_df = pd.DataFrame([meta_dict])
-           
+            meta_df = fetch_meta_data(accession_tag=hit_IDs)
+                       
             if not meta_df.empty:
                 top_family = meta_df["familyName"].iloc[0]
                 ship_family = make_captain_alert(
