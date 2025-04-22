@@ -197,7 +197,6 @@ layout = dmc.Container(
                         dmc.Stack(
                             children=[
                                 html.Div(id="ship-family"),
-                                html.Div(id="phylogeny-plot"),
                                 html.Div(
                                     [
                                         html.Div(id="blast-multiple-alignments"),
@@ -588,7 +587,6 @@ def process_blast_results(blast_results_file):
     [
         Output("ship-family", "children"),
         Output("blast-download", "children"),
-        Output("phylogeny-plot", "children"),
     ],
     [Input("blast-results-store", "data"), Input("captain-results-store", "data")],
     [State("submit-button", "n_clicks"),
@@ -648,51 +646,7 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalu
         # Create download button
         download_button = blast_download_button()
 
-        # Create phylogeny plot if captain results are available
-        phylogeny_plot = None
-        if captain_results_dict:
-            try:
-                # Handle case where captain_results_dict is a list of results
-                if isinstance(captain_results_dict, list):
-                    family_name = captain_results_dict[0].get("family_name") if captain_results_dict else None
-                else:
-                    family_name = captain_results_dict.get("family_name")
-
-                if family_name:
-                    fig = plot_tree(
-                        highlight_families=family_name,
-                        tips=None,
-                    )
-
-                    phylogeny_plot = html.Div(
-                        [
-                            dbc.Accordion(
-                                children=[
-                                    dbc.AccordionItem(
-                                        children=[
-                                            dcc.Graph(
-                                                id="phylogeny-graph",
-                                                figure=fig,
-                                                style={"height": "800px"},
-                                            )
-                                        ],
-                                        title="Captain Phylogeny",
-                                        item_id="phylogeny",
-                                    )
-                                ],
-                                always_open=False,
-                                active_item=None,
-                                id="phylogeny-accordion",
-                            )
-                        ]
-                    )
-            except Exception as e:
-                logger.error(f"Error creating phylogeny plot: {e}")
-                phylogeny_plot = html.Div(
-                    create_error_alert("Could not create phylogeny plot")
-                )
-
-        return ship_family, download_button, phylogeny_plot
+        return ship_family, download_button
 
     except Exception as e:
         logger.error(f"Error in update_ui_elements: {e}")
