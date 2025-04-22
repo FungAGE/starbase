@@ -99,7 +99,16 @@ def create_feature_button(label, href, icon):
 working_buttons = [
     create_feature_button("BLAST Search", "/blast", "mdi:dna"),
     create_feature_button("Browse Wiki", "/wiki", "mdi:book-open-variant"),
-    create_feature_button("Submit to Starbase", "/submit", "mdi:database-plus"),
+    create_feature_button(
+        html.Div(
+            [
+                "Submit to ",
+                html.Span("Starbase", className="logo-text"),
+            ]
+        ),
+        "/submit",
+        "mdi:database-plus",
+    ),
 ]
 
 not_working = [
