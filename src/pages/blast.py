@@ -11,9 +11,6 @@ import tempfile
 import base64
 import pandas as pd
 import logging
-import subprocess
-import json
-import traceback
 
 
 from src.config.cache import cache
@@ -41,7 +38,6 @@ from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
-from src.utils.tree import plot_tree
 
 dash.register_page(__name__)
 
@@ -81,107 +77,134 @@ layout = dmc.Container(
                     span={"sm": 12, "lg": 4},
                     children=[
                         dmc.Paper(
-                            children=dmc.Stack([
-                                dmc.Title("BLAST Search", order=1),
-                                dmc.Text(
-                                    "Search protein/nucleotide sequences for Starships and Starship-associated genes",
-                                    c="dimmed",
-                                    size="lg",
-                                ),
-                                # Input Section
-                                dmc.Stack([
-                                    dmc.Title("Input Sequence", order=3),
-                                    dmc.Textarea(
-                                        id="query-text",
-                                        placeholder="Paste FASTA sequence here...",
-                                        autosize=True,
-                                        minRows=5,
-                                        maxRows=15,
-                                        style={"width": "100%"},
+                            children=dmc.Stack(
+                                [
+                                    dmc.Title("BLAST Search", order=1),
+                                    dmc.Text(
+                                        "Search protein/nucleotide sequences for Starships and Starship-associated genes",
+                                        c="dimmed",
+                                        size="lg",
                                     ),
-                                    # Upload Section
+                                    # Input Section
                                     dmc.Stack(
                                         [
-                                            dmc.Center(
-                                                dmc.Text("Or", size="lg"),
+                                            dmc.Title("Input Sequence", order=3),
+                                            dmc.Textarea(
+                                                id="query-text",
+                                                placeholder="Paste FASTA sequence here...",
+                                                autosize=True,
+                                                minRows=5,
+                                                maxRows=15,
+                                                style={"width": "100%"},
                                             ),
-                                            dmc.Paper(
-                                                children=create_file_upload(
-                                                    upload_id="blast-fasta-upload",
-                                                    output_id="blast-fasta-sequence-upload",
-                                                    accept_types=[
-                                                        ".fa",
-                                                        ".fas",
-                                                        ".fasta",
-                                                        ".fna",
-                                                    ],
-                                                    placeholder_text="Drag and drop or click to select a FASTA file",
-                                                ),
-                                                withBorder=False,
-                                                shadow="sm",
-                                                radius="md",
-                                                style={"cursor": "pointer"},
+                                            # Upload Section
+                                            dmc.Stack(
+                                                [
+                                                    dmc.Center(
+                                                        dmc.Text("Or", size="lg"),
+                                                    ),
+                                                    dmc.Paper(
+                                                        children=create_file_upload(
+                                                            upload_id="blast-fasta-upload",
+                                                            output_id="blast-fasta-sequence-upload",
+                                                            accept_types=[
+                                                                ".fa",
+                                                                ".fas",
+                                                                ".fasta",
+                                                                ".fna",
+                                                            ],
+                                                            placeholder_text="Drag and drop or click to select a FASTA file",
+                                                        ),
+                                                        withBorder=False,
+                                                        shadow="sm",
+                                                        radius="md",
+                                                        style={"cursor": "pointer"},
+                                                    ),
+                                                    html.Div(
+                                                        id="upload-error-message",
+                                                        style={"color": "red"},
+                                                    ),
+                                                ],
+                                                gap="md",
                                             ),
-                                            html.Div(
-                                                id="upload-error-message",
-                                                style={"color": "red"},
+                                            # Options Section
+                                            dmc.Stack(
+                                                [
+                                                    dmc.Title(
+                                                        "Search Options", order=3
+                                                    ),
+                                                    dmc.Grid(
+                                                        children=[
+                                                            dmc.GridCol(
+                                                                span={
+                                                                    "xs": 12,
+                                                                    "sm": 6,
+                                                                },
+                                                                children=[
+                                                                    dmc.Stack(
+                                                                        [
+                                                                            curated_switch(
+                                                                                text="Only search curated Starships",
+                                                                                size="sm",
+                                                                            ),
+                                                                        ],
+                                                                        gap="xs",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            dmc.GridCol(
+                                                                span={
+                                                                    "xs": 12,
+                                                                    "sm": 6,
+                                                                },
+                                                                children=[
+                                                                    dmc.NumberInput(
+                                                                        id="evalue-threshold",
+                                                                        label="E-value Threshold",
+                                                                        value=0.001,
+                                                                        min=0,
+                                                                        max=1,
+                                                                        step=0.005,
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                        ],
+                                                        gutter="md",
+                                                        align="center",
+                                                    ),
+                                                ],
+                                                gap="xs",
                                             ),
                                         ],
                                         gap="md",
-                                    ),                                
-                                    # Options Section
-                                    dmc.Stack([
-                                        dmc.Title("Search Options", order=3),
-                                        dmc.Grid(
-                                            children=[
-                                                dmc.GridCol(
-                                                    span={"xs": 12, "sm": 6},
-                                                    children=[
-                                                        dmc.Stack([
-                                                            curated_switch(
-                                                                text="Only search curated Starships",
-                                                                size="sm"
-                                                            ),
-                                                        ], gap="xs"),
-                                                    ]
-                                                ),
-                                                dmc.GridCol(
-                                                    span={"xs": 12, "sm": 6},
-                                                    children=[
-                                                        dmc.NumberInput(
-                                                            id="evalue-threshold",
-                                                            label="E-value Threshold",
-                                                            value=0.001,
-                                                            min=0,
-                                                            max=1,
-                                                            step=0.005,
-                                                        ),
-                                                    ]
-                                                ),
-                                            ],
-                                            gutter="md",
-                                            align="center",
-                                        ),
-                                    ], gap="xs"),
-                                ], gap="md"),
-
-                                dmc.Space(h="md"),
-
-                                # Submit Section
-                                dmc.Stack([
-                                    dmc.Center(
-                                        dmc.Button(
-                                            "Submit BLAST",
-                                            id="submit-button",
-                                            variant="gradient",
-                                            gradient={"from": "indigo", "to": "cyan"},
-                                            size="lg",
-                                            loading=False,
-                                            loaderProps={"variant": "dots", "color": "white"},
-                                        ),
                                     ),
-                                ], gap="xs"),                                
-                            ], gap="md"),
+                                    dmc.Space(h="md"),
+                                    # Submit Section
+                                    dmc.Stack(
+                                        [
+                                            dmc.Center(
+                                                dmc.Button(
+                                                    "Submit BLAST",
+                                                    id="submit-button",
+                                                    variant="gradient",
+                                                    gradient={
+                                                        "from": "indigo",
+                                                        "to": "cyan",
+                                                    },
+                                                    size="lg",
+                                                    loading=False,
+                                                    loaderProps={
+                                                        "variant": "dots",
+                                                        "color": "white",
+                                                    },
+                                                ),
+                                            ),
+                                        ],
+                                        gap="xs",
+                                    ),
+                                ],
+                                gap="md",
+                            ),
                             p="xl",
                             radius="md",
                             shadow="sm",
@@ -427,19 +450,26 @@ def update_submission_id(n_clicks):
     prevent_initial_call=True,
 )
 @handle_callback_error
-def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_threshold, search_type="hmmsearch"):
+def fetch_captain(
+    query_header,
+    query_seq,
+    query_type,
+    submission_id,
+    evalue_threshold,
+    search_type="hmmsearch",
+):
     if not all([query_header, query_seq, query_type, submission_id]):
         return None, None, None
 
     try:
         captain_results_dict = None
-        
+
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        
+
         # Get the appropriate database configuration
         db = get_blast_db(query_type)
-        
+
         if query_type == "nucl":
             # For nucleotide sequences, run diamond blastx first
             diamond_results = run_diamond(
@@ -448,16 +478,16 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
                 input_genes="tyr",
                 input_eval=evalue_threshold,
                 query_fasta=tmp_query_fasta,
-                threads=2
+                threads=2,
             )
-            
+
             if diamond_results:
                 # Extract protein sequence from diamond results
-                protein_seq = diamond_results[0].get('qseq_translated')
+                protein_seq = diamond_results[0].get("qseq_translated")
                 if protein_seq:
                     # Write protein sequence to temp file
                     tmp_protein_fasta = write_temp_fasta(query_header, protein_seq)
-                    
+
                     # Run hmmsearch with protein sequence
                     captain_results_dict = run_hmmer(
                         db_list=BLAST_DB_PATHS,  # Pass full paths dict
@@ -465,19 +495,19 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
                         input_genes="tyr",
                         input_eval=evalue_threshold,
                         query_fasta=tmp_protein_fasta,
-                        threads=2
+                        threads=2,
                     )
         else:
             # For protein sequences, run diamond blastp
             diamond_results = run_diamond(
                 db_list=BLAST_DB_PATHS,
                 query_type="prot",
-                input_genes="tyr", 
+                input_genes="tyr",
                 input_eval=evalue_threshold,
                 query_fasta=tmp_query_fasta,
-                threads=2
+                threads=2,
             )
-            
+
             if diamond_results:
                 captain_results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
@@ -485,7 +515,7 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
                     input_genes="tyr",
                     input_eval=evalue_threshold,
                     query_fasta=tmp_query_fasta,
-                    threads=2
+                    threads=2,
                 )
 
         # Run BLAST search for visualization
@@ -495,12 +525,12 @@ def fetch_captain(query_header, query_seq, query_type, submission_id, evalue_thr
             query_fasta=tmp_query_fasta,
             tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
             input_eval=evalue_threshold,
-            threads=2
+            threads=2,
         )
 
         if blast_results_file is None:
             return None, None, create_error_alert("No BLAST results were returned")
-            
+
         return blast_results_file, captain_results_dict, None
 
     except Exception as e:
@@ -587,8 +617,7 @@ def process_blast_results(blast_results_file):
         Output("blast-download", "children"),
     ],
     [Input("blast-results-store", "data"), Input("captain-results-store", "data")],
-    [State("submit-button", "n_clicks"),
-    State("evalue-threshold", "value")],
+    [State("submit-button", "n_clicks"), State("evalue-threshold", "value")],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -613,9 +642,7 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalu
             return html.Div(create_no_matches_alert()), None, None
 
         # Sort by evalue (ascending) and pident (descending) to get best hits
-        blast_df = blast_df.sort_values(
-            ["evalue", "pident"], ascending=[True, False]
-        )
+        blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
         top_hit = blast_df.iloc[0]
         logger.info(f"Top hit: {top_hit}")
 
@@ -627,7 +654,7 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalu
             # look up family name from accession tag
             hit_IDs = top_hit["hit_IDs"]
             meta_df = fetch_meta_data(accession_tag=hit_IDs)
-                       
+
             if not meta_df.empty:
                 top_family = meta_df["familyName"].iloc[0]
                 ship_family = make_captain_alert(
@@ -673,7 +700,6 @@ def check_timeout(
         )
         return not has_output
     return False
-
 
 
 clientside_callback(

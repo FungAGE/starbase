@@ -54,7 +54,6 @@ def blast_db_exists(blastdb):
 
 
 def create_dbs():
-    import pandas as pd
     from src.database.sql_manager import (
         fetch_captains,
         fetch_ships,

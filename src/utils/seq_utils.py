@@ -99,7 +99,7 @@ def check_input(query_text_input, query_file_contents):
             if error:  # If there's an error, return None values
                 logger.error(f"Error parsing file contents: {error}")
                 return None, None, None
-                
+
         logger.debug(
             f"Input type: {input_type}, Header: {header}, Query Length: {len(query) if query else 'None'}"
         )
@@ -543,15 +543,21 @@ def clean_contigIDs(string):
 
 def create_ncbi_style_header(row):
     try:
-        clean_contig = clean_contigIDs(row['contigID'])
+        clean_contig = clean_contigIDs(row["contigID"])
         return (
             f">{row['accession_tag']} "
             f"[organism={row['name']}] "
             f"[lineage=Fungi; {row['order']}; {row['family']}] "
             f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
-            + (f"[assembly={row['assembly_accession']}] " if row['assembly_accession'] else "")
+            + (
+                f"[assembly={row['assembly_accession']}] "
+                if row["assembly_accession"]
+                else ""
+            )
             + f"[family={row['familyName']}]"
         )
     except Exception as e:
-        logger.warning(f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}")
+        logger.warning(
+            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
+        )
         return None

@@ -43,7 +43,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     Args:
         curated (bool): If True, only return curated entries
         accession_tag (str or list): Single accession tag or list of accession tags
-    
+
     Returns:
         pd.DataFrame: Metadata for the specified accession tags
     """

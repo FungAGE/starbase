@@ -11,7 +11,6 @@ from Bio import SearchIO
 
 from src.utils.seq_utils import (
     get_protein_sequence,
-    parse_fasta_from_text,
     clean_shipID,
 )
 from src.database.blastdb import blast_db_exists, create_dbs
@@ -30,32 +29,40 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
                 f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes"
             )
             return None
-        
+
         # db_list should now be a direct path string
         if not isinstance(db_list, (str, bytes, os.PathLike)):
             logger.error(f"db_list must be a path-like object, got {type(db_list)}")
             raise ValueError("Invalid database path")
-            
+
         logger.debug(f"Using database path: {db_list}")
-        
+
         if not blast_db_exists(db_list):
             logger.info("BLAST database not found. Creating new database...")
             create_dbs()
-            
+
             if not blast_db_exists(db_list):
                 logger.error("Failed to create BLAST database")
                 raise ValueError("Failed to create BLAST database")
-        
+
         blast_cmd = [
             "blastn" if query_type == "nucl" else "blastp",
-            "-query", str(query_fasta),
-            "-db", str(db_list),
-            "-out", str(tmp_blast),
-            "-evalue", str(input_eval),
-            "-num_threads", str(threads),
-            "-max_target_seqs", "10",
-            "-max_hsps", "1",
-            "-outfmt", "5"  # Changed to default BLAST output format
+            "-query",
+            str(query_fasta),
+            "-db",
+            str(db_list),
+            "-out",
+            str(tmp_blast),
+            "-evalue",
+            str(input_eval),
+            "-num_threads",
+            str(threads),
+            "-max_target_seqs",
+            "10",
+            "-max_hsps",
+            "1",
+            "-outfmt",
+            "5",  # Changed to default BLAST output format
         ]
 
         subprocess.run(blast_cmd, check=True, timeout=300)
@@ -353,14 +360,16 @@ def select_ship_family(hmmer_results):
     if isinstance(hmmer_results, dict):
         # Handle dictionary input
         return (
-            hmmer_results.get('hit_IDs'),
-            hmmer_results.get('aln_length'),
-            hmmer_results.get('evalue')
+            hmmer_results.get("hit_IDs"),
+            hmmer_results.get("aln_length"),
+            hmmer_results.get("evalue"),
         )
-    
+
     # Handle DataFrame input
     try:
-        hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
+        hmmer_results["evalue"] = pd.to_numeric(
+            hmmer_results["evalue"], errors="coerce"
+        )
         hmmer_results.dropna(subset=["evalue"], inplace=True)
 
         if len(hmmer_results) == 0:
@@ -392,6 +401,7 @@ def select_ship_family(hmmer_results):
         logger.error(f"Error processing HMMER results: {e}")
         return None, None, None
 
+
 # TODO: add qseq_translated to the output``
 def run_diamond(
     db_list=None,
@@ -402,7 +412,7 @@ def run_diamond(
     threads=2,
 ):
     """Run DIAMOND search against protein database.
-    
+
     Args:
         db_list: Dictionary containing database paths
         query_type: Type of query sequence ('nucl' or 'prot')
@@ -410,59 +420,79 @@ def run_diamond(
         input_eval: E-value threshold
         query_fasta: Path to query FASTA file
         threads: Number of threads to use
-        
+
     Returns:
         List of dictionaries containing DIAMOND results
     """
     try:
         diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
-        
+
         try:
             diamond_db = db_list["gene"][input_genes]["prot"]
         except KeyError:
             raise ValueError(f"Database path not found for gene type: {input_genes}")
-            
+
         if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
             raise ValueError(f"DIAMOND database {diamond_db} not found or is empty")
-            
+
         blast_type = "blastx" if query_type == "nucl" else "blastp"
         evalue = input_eval if input_eval else 0.001
-        
+
         diamond_cmd = [
             "diamond",
             blast_type,
-            "--db", diamond_db,
-            "-q", query_fasta,
-            "--outfmt", "6",
-            "-e", str(evalue),
-            "--strand", "both",
-            "-p", str(threads),
-            "-k", "1",
+            "--db",
+            diamond_db,
+            "-q",
+            query_fasta,
+            "--outfmt",
+            "6",
+            "-e",
+            str(evalue),
+            "--strand",
+            "both",
+            "-p",
+            str(threads),
+            "-k",
+            "1",
             "--skip-missing-seqids",
-            "-o", diamond_out
+            "-o",
+            diamond_out,
         ]
-        
+
         try:
             subprocess.run(diamond_cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
             logger.error(f"DIAMOND error: {e.stderr}")
             raise
-            
+
         if os.path.getsize(diamond_out) > 0:
-            column_names = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", 
-                          "qstart", "qend", "sstart", "send", "evalue", "bitscore"]
+            column_names = [
+                "qseqid",
+                "sseqid",
+                "pident",
+                "length",
+                "mismatch",
+                "gapopen",
+                "qstart",
+                "qend",
+                "sstart",
+                "send",
+                "evalue",
+                "bitscore",
+            ]
             diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
             return diamond_results.to_dict("records")
         else:
             logger.warning("No DIAMOND hits found")
             return []
-            
+
     except Exception as e:
         logger.error(f"Error running DIAMOND: {str(e)}")
         raise
-        
+
     finally:
-        if 'diamond_out' in locals() and os.path.exists(diamond_out):
+        if "diamond_out" in locals() and os.path.exists(diamond_out):
             os.unlink(diamond_out)
 
 
@@ -542,20 +572,17 @@ def process_captain_results(captain_results_dict=None, evalue=None):
             result = captain_results_dict
 
         # Extract relevant information directly from the result
-        superfamily = result.get('hit_IDs')
-        family_aln_length = result.get('aln_length')
-        family_evalue = result.get('evalue', evalue)  # Use provided evalue as fallback
+        superfamily = result.get("hit_IDs")
+        family_aln_length = result.get("aln_length")
+        family_evalue = result.get("evalue", evalue)  # Use provided evalue as fallback
 
         if superfamily:
             return make_captain_alert(
-                superfamily,
-                family_aln_length,
-                family_evalue,
-                search_type="hmmsearch"
+                superfamily, family_aln_length, family_evalue, search_type="hmmsearch"
             )
 
         return html.Div(create_no_matches_alert())
-        
+
     except Exception as e:
         logger.error(f"Error processing captain results: {str(e)}")
         return html.Div(create_error_alert("Failed to process captain results"))
@@ -572,13 +599,22 @@ def create_no_matches_alert():
             dmc.List(
                 [
                     dmc.ListItem(
-                        dmc.Text("Try searching the full database (including un-curated sequences)",size="sm")
+                        dmc.Text(
+                            "Try searching the full database (including un-curated sequences)",
+                            size="sm",
+                        )
                     ),
                     dmc.ListItem(
-                        dmc.Text("Try searching with a different region of your sequence",size="sm")
+                        dmc.Text(
+                            "Try searching with a different region of your sequence",
+                            size="sm",
+                        )
                     ),
                     dmc.ListItem(
-                        dmc.Text("Consider using a less stringent E-value threshold",size="sm")
+                        dmc.Text(
+                            "Consider using a less stringent E-value threshold",
+                            size="sm",
+                        )
                     ),
                 ],
                 withPadding=True,
@@ -593,15 +629,15 @@ def create_no_matches_alert():
         style={
             "width": "100%",
             "margin": "0 auto",
-            "@media (min-width: 768px)": {
-                "width": "50%"
-            }
-        }
+            "@media (min-width: 768px)": {"width": "50%"},
+        },
     )
+
 
 def get_blast_db(query_type):
     """Get the appropriate BLAST database configuration based on query type."""
     from src.config.settings import BLAST_DB_PATHS
+
     if query_type == "nucl":
         return BLAST_DB_PATHS["ship"]["nucl"]
     elif query_type == "prot":
