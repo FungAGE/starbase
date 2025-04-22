@@ -37,6 +37,13 @@ RUN apt-get update && apt-get upgrade -y && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# install diamond
+RUN wget http://github.com/bbuchfink/diamond/releases/download/v2.1.11/diamond-linux64.tar.gz && \
+    tar xzf diamond-linux64.tar.gz && \
+    chown -R $USER:$USER diamond && \
+    mv diamond /usr/local/bin/diamond && \
+    rm diamond-linux64.tar.gz
+
 # Install Node.js, npm, and blasterjs
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
