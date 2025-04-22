@@ -50,7 +50,7 @@ Contributions to the development of `starbase` are welcome! If you have suggesti
 
 * Find the most recent version under the "Packages" tab: `docker pull ghcr.io/fungage/starbase:[tag]`
 
-* Run locally with Docker
+* Run Starbase locally with Docker
 ```Bash
 docker build -t starbase .
 docker run -it --rm -p 8000:8000 starbase ./start-script.sh
@@ -58,10 +58,18 @@ docker run -it --rm -p 8000:8000 starbase ./start-script.sh
 
 * You can also run Starbase locally using Docker Compose:
 ```Bash
-docker compose up --build
+docker compose up app --build
 
 ## Tear down
 docker compose down --volumes
 ```
 
 You can reach the app in your local browser by visiting `localhost:8000`.
+
+## Unit tests
+
+Run Pytest in a Docker container as follows:
+
+```Bash
+docker compose run unit-tests
+```

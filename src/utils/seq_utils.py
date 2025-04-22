@@ -295,7 +295,7 @@ def parse_fasta_from_text(text, format="fasta"):
             )
 
         logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
-        return header, seq, None
+        return header, seq
 
     except ValueError as ve:
         logger.error(f"Value error in parse_fasta_from_text: {ve}")
