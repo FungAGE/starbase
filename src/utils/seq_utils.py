@@ -89,10 +89,17 @@ def check_input(query_text_input, query_file_contents):
             return "both", None, None
         elif query_text_input:
             input_type = "text"
-            header, query = parse_fasta_from_text(query_text_input)
+            header, query, error = parse_fasta_from_text(query_text_input)
+            if error:  # If there's an error, return None values
+                logger.error(f"Error parsing text input: {error}")
+                return None, None, None
         elif query_file_contents:
             input_type = "file"
-            header, query, error_message = parse_fasta_from_file(query_file_contents)
+            header, query, error = parse_fasta_from_file(query_file_contents)
+            if error:  # If there's an error, return None values
+                logger.error(f"Error parsing file contents: {error}")
+                return None, None, None
+
         logger.debug(
             f"Input type: {input_type}, Header: {header}, Query Length: {len(query) if query else 'None'}"
         )
@@ -535,16 +542,22 @@ def clean_contigIDs(string):
 
 
 def create_ncbi_style_header(row):
-    clean_contig = clean_contigIDs(row["contigID"])
-    (
-        f">{row['accession_tag']} "
-        f"[organism={row['name']}] "
-        f"[lineage=Fungi; {row['order']}; {row['family']}] "
-        f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
-        + (
-            f"[assembly={row['assembly_accession']}] "
-            if row["assembly_accession"]
-            else ""
+    try:
+        clean_contig = clean_contigIDs(row["contigID"])
+        return (
+            f">{row['accession_tag']} "
+            f"[organism={row['name']}] "
+            f"[lineage=Fungi; {row['order']}; {row['family']}] "
+            f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
+            + (
+                f"[assembly={row['assembly_accession']}] "
+                if row["assembly_accession"]
+                else ""
+            )
+            + f"[family={row['familyName']}]"
         )
-        + f"[family={row['familyName']}]"
-    )
+    except Exception as e:
+        logger.warning(
+            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
+        )
+        return None

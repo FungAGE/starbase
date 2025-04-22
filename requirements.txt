@@ -13,7 +13,7 @@ Flask==2.2.5
 Flask_Caching==2.3.0
 Flask_Compress==1.15
 Flask_Limiter==3.8.0
-gunicorn==20.1.0
+uvicorn==0.33.0
 ip2geotools==0.1.6
 Jinja2==3.0.3
 logomaker==0.8

@@ -55,7 +55,7 @@ def blast_db_exists(blastdb):
 
 def create_dbs():
     from src.database.sql_manager import (
-        fetch_all_captains,
+        fetch_captains,
         fetch_ships,
         fetch_meta_data,
     )
@@ -68,7 +68,7 @@ def create_dbs():
     ship_sequences_list = []
     ship_sequences = cache.get("all_ships")
     if ship_sequences is None:
-        ship_sequences = fetch_ships()
+        ship_sequences = fetch_ships(dereplicate=True)
 
     ship_metadata = cache.get("ship_metadata")
     if ship_metadata is None:
@@ -92,7 +92,7 @@ def create_dbs():
     captain_sequences_list = []
     captain_sequences = cache.get("all_captains")
     if captain_sequences is None:
-        captain_sequences = fetch_all_captains()
+        captain_sequences = fetch_captains(dereplicate=True)
 
     for index, row in captain_sequences.iterrows():
         name = row["captainID"]

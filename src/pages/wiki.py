@@ -348,7 +348,6 @@ layout = create_error_boundary(
 )
 
 
-@cache.memoize()
 @callback(Output("meta-data", "data"), Input("url", "href"))
 @handle_callback_error
 def load_meta_data(url):
@@ -359,6 +358,7 @@ def load_meta_data(url):
         meta_data = cache.get("meta_data")
         if meta_data is None:
             meta_data = fetch_meta_data()
+
             if meta_data is not None:
                 cache.set("meta_data", meta_data)
 
@@ -376,7 +376,6 @@ def load_meta_data(url):
 
 
 # Callback to load paper data
-@cache.memoize()
 @callback(Output("paper-data", "data"), Input("url", "href"))
 @handle_callback_error
 def load_paper_data(url):
@@ -562,22 +561,20 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
         if meta_data is None:
             meta_data = fetch_meta_data()
 
-        df = pd.DataFrame(meta_data)
-
         if taxonomy:
-            df = df[df["name"].isin(taxonomy)]
+            meta_data = meta_data[meta_data["name"].isin(taxonomy)]
         if family:
-            df = df[df["familyName"].isin(family)]
+            meta_data = meta_data[meta_data["familyName"].isin(family)]
         if navis:
-            df = df[df["starship_navis"].isin(navis)]
+            meta_data = meta_data[meta_data["starship_navis"].isin(navis)]
         if haplotype:
-            df = df[df["starship_haplotype"].isin(haplotype)]
+            meta_data = meta_data[meta_data["starship_haplotype"].isin(haplotype)]
 
         return {
-            "taxonomy": sorted(df["name"].dropna().unique()),
-            "family": sorted(df["familyName"].dropna().unique()),
-            "navis": sorted(df["starship_navis"].dropna().unique()),
-            "haplotype": sorted(df["starship_haplotype"].dropna().unique()),
+            "taxonomy": sorted(meta_data["name"].dropna().unique()),
+            "family": sorted(meta_data["familyName"].dropna().unique()),
+            "navis": sorted(meta_data["starship_navis"].dropna().unique()),
+            "haplotype": sorted(meta_data["starship_haplotype"].dropna().unique()),
         }
     except Exception as e:
         logger.error(f"Error in get_filtered_options: {str(e)}")

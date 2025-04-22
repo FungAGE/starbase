@@ -11,7 +11,6 @@ import tempfile
 import base64
 import pandas as pd
 import logging
-import subprocess
 
 
 from src.config.cache import cache
@@ -31,6 +30,7 @@ from src.utils.blast_utils import (
     create_no_matches_alert,
     parse_blast_xml,
     blast_download_button,
+    get_blast_db,
 )
 
 from src.components.callbacks import curated_switch, create_file_upload
@@ -38,7 +38,6 @@ from src.database.sql_manager import fetch_meta_data
 from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
-from src.utils.tree import plot_tree
 
 dash.register_page(__name__)
 
@@ -93,53 +92,93 @@ layout = dmc.Container(
                                             dmc.Textarea(
                                                 id="query-text",
                                                 placeholder="Paste FASTA sequence here...",
+                                                autosize=True,
                                                 minRows=5,
+                                                maxRows=15,
                                                 style={"width": "100%"},
                                             ),
-                                        ],
-                                        gap="xs",
-                                    ),
-                                    # Upload Section
-                                    dmc.Stack(
-                                        [
-                                            dmc.Center(
-                                                dmc.Text("Or", size="lg"),
+                                            # Upload Section
+                                            dmc.Stack(
+                                                [
+                                                    dmc.Center(
+                                                        dmc.Text("Or", size="lg"),
+                                                    ),
+                                                    dmc.Paper(
+                                                        children=create_file_upload(
+                                                            upload_id="blast-fasta-upload",
+                                                            output_id="blast-fasta-sequence-upload",
+                                                            accept_types=[
+                                                                ".fa",
+                                                                ".fas",
+                                                                ".fasta",
+                                                                ".fna",
+                                                            ],
+                                                            placeholder_text="Drag and drop or click to select a FASTA file",
+                                                        ),
+                                                        withBorder=False,
+                                                        shadow="sm",
+                                                        radius="md",
+                                                        style={"cursor": "pointer"},
+                                                    ),
+                                                    html.Div(
+                                                        id="upload-error-message",
+                                                        style={"color": "red"},
+                                                    ),
+                                                ],
+                                                gap="md",
                                             ),
-                                            dmc.Paper(
-                                                children=create_file_upload(
-                                                    upload_id="blast-fasta-upload",
-                                                    output_id="blast-fasta-sequence-upload",
-                                                    accept_types=[
-                                                        ".fa",
-                                                        ".fas",
-                                                        ".fasta",
-                                                        ".fna",
-                                                    ],
-                                                    placeholder_text="Drag and drop or click to select a FASTA file",
-                                                ),
-                                                withBorder=False,
-                                                shadow="sm",
-                                                radius="md",
-                                                style={"cursor": "pointer"},
-                                            ),
-                                            html.Div(
-                                                id="upload-error-message",
-                                                style={"color": "red"},
+                                            # Options Section
+                                            dmc.Stack(
+                                                [
+                                                    dmc.Title(
+                                                        "Search Options", order=3
+                                                    ),
+                                                    dmc.Grid(
+                                                        children=[
+                                                            dmc.GridCol(
+                                                                span={
+                                                                    "xs": 12,
+                                                                    "sm": 6,
+                                                                },
+                                                                children=[
+                                                                    dmc.Stack(
+                                                                        [
+                                                                            curated_switch(
+                                                                                text="Only search curated Starships",
+                                                                                size="sm",
+                                                                            ),
+                                                                        ],
+                                                                        gap="xs",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                            dmc.GridCol(
+                                                                span={
+                                                                    "xs": 12,
+                                                                    "sm": 6,
+                                                                },
+                                                                children=[
+                                                                    dmc.NumberInput(
+                                                                        id="evalue-threshold",
+                                                                        label="E-value Threshold",
+                                                                        value=0.001,
+                                                                        min=0,
+                                                                        max=1,
+                                                                        step=0.005,
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                        ],
+                                                        gutter="md",
+                                                        align="center",
+                                                    ),
+                                                ],
+                                                gap="xs",
                                             ),
                                         ],
                                         gap="md",
                                     ),
-                                    # Options Section
-                                    dmc.Stack(
-                                        [
-                                            dmc.Title("Search Options", order=3),
-                                            curated_switch(
-                                                text="Only search curated Starships",
-                                                size="sm",
-                                            ),
-                                        ],
-                                        gap="xs",
-                                    ),
+                                    dmc.Space(h="md"),
                                     # Submit Section
                                     dmc.Stack(
                                         [
@@ -181,7 +220,6 @@ layout = dmc.Container(
                         dmc.Stack(
                             children=[
                                 html.Div(id="ship-family"),
-                                html.Div(id="phylogeny-plot"),
                                 html.Div(
                                     [
                                         html.Div(id="blast-multiple-alignments"),
@@ -404,6 +442,7 @@ def update_submission_id(n_clicks):
         Input("query-type-store", "data"),
         Input("submission-id-store", "data"),
     ],
+    State("evalue-threshold", "value"),
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -412,83 +451,91 @@ def update_submission_id(n_clicks):
 )
 @handle_callback_error
 def fetch_captain(
-    query_header, query_seq, query_type, submission_id, search_type="hmmsearch"
+    query_header,
+    query_seq,
+    query_type,
+    submission_id,
+    evalue_threshold,
+    search_type="hmmsearch",
 ):
     if not all([query_header, query_seq, query_type, submission_id]):
         return None, None, None
 
     try:
+        captain_results_dict = None
+
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
-        # Instead of using timeout context manager, we'll rely on subprocess timeout
-        try:
-            blast_results_file = run_blast(
-                db_list=BLAST_DB_PATHS,
+        # Get the appropriate database configuration
+        db = get_blast_db(query_type)
+
+        if query_type == "nucl":
+            # For nucleotide sequences, run diamond blastx first
+            diamond_results = run_diamond(
+                db_list=BLAST_DB_PATHS,  # Pass full paths dict
                 query_type=query_type,
+                input_genes="tyr",
+                input_eval=evalue_threshold,
                 query_fasta=tmp_query_fasta,
-                tmp_blast=tempfile.NamedTemporaryFile(
-                    suffix=".blast", delete=True
-                ).name,
-                input_eval=0.01,
                 threads=2,
             )
 
-            if blast_results_file is None:
-                error_div = html.Div(
-                    [
-                        dmc.Alert(
-                            title="BLAST Error",
-                            color="red",
-                            children="No BLAST results were returned. Please try again with a different sequence.",
-                        )
-                    ]
-                )
-                return None, None, error_div
+            if diamond_results:
+                # Extract protein sequence from diamond results
+                protein_seq = diamond_results[0].get("qseq_translated")
+                if protein_seq:
+                    # Write protein sequence to temp file
+                    tmp_protein_fasta = write_temp_fasta(query_header, protein_seq)
 
-            if search_type == "diamond":
-                captain_results_dict = run_diamond(
-                    db_list=BLAST_DB_PATHS,
-                    query_type=query_type,
-                    input_genes="tyr",
-                    input_eval=0.01,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-            else:
+                    # Run hmmsearch with protein sequence
+                    captain_results_dict = run_hmmer(
+                        db_list=BLAST_DB_PATHS,  # Pass full paths dict
+                        query_type="prot",
+                        input_genes="tyr",
+                        input_eval=evalue_threshold,
+                        query_fasta=tmp_protein_fasta,
+                        threads=2,
+                    )
+        else:
+            # For protein sequences, run diamond blastp
+            diamond_results = run_diamond(
+                db_list=BLAST_DB_PATHS,
+                query_type="prot",
+                input_genes="tyr",
+                input_eval=evalue_threshold,
+                query_fasta=tmp_query_fasta,
+                threads=2,
+            )
+
+            if diamond_results:
                 captain_results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
-                    query_type=query_type,
+                    query_type="prot",
                     input_genes="tyr",
-                    input_eval=0.01,
+                    input_eval=evalue_threshold,
                     query_fasta=tmp_query_fasta,
                     threads=2,
                 )
 
-            return blast_results_file, captain_results_dict, None
+        # Run BLAST search for visualization
+        blast_results_file = run_blast(
+            db_list=db,  # Pass string path
+            query_type=query_type,
+            query_fasta=tmp_query_fasta,
+            tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
+            input_eval=evalue_threshold,
+            threads=2,
+        )
 
-        except subprocess.TimeoutExpired:
-            error_div = html.Div(
-                [
-                    dmc.Alert(
-                        title="Operation Timeout",
-                        color="red",
-                        children="The BLAST search took too long to complete. Please try with a shorter sequence or try again later.",
-                    )
-                ]
-            )
-            return None, None, error_div
+        if blast_results_file is None:
+            return None, None, create_error_alert("No BLAST results were returned")
+
+        return blast_results_file, captain_results_dict, None
 
     except Exception as e:
         logger.error(f"Error in fetch_captain: {str(e)}")
-        error_div = html.Div(
-            [
-                dmc.Alert(
-                    title="Error", color="red", children=f"An error occurred: {str(e)}"
-                )
-            ]
-        )
-        return None, None, error_div
+        return None, None, create_error_alert(str(e))
 
 
 @callback(
@@ -509,7 +556,6 @@ def subject_seq_download(n_clicks, filename):
 
 
 # 1. Metadata Processing Callback
-@cache.memoize()
 @callback(
     Output("processed-metadata-store", "data"),
     Input("curated-input", "value"),
@@ -519,7 +565,7 @@ def process_metadata(curated):
     try:
         initial_df = cache.get("meta_data")
         if initial_df is None:
-            initial_df = fetch_meta_data(curated)
+            initial_df = fetch_meta_data(curated=curated)
 
         return (
             initial_df[["accession_tag", "familyName"]]
@@ -534,7 +580,7 @@ def process_metadata(curated):
 # 2. BLAST Results Processing Callback
 @callback(
     Output("processed-blast-store", "data"),
-    [Input("blast-results-store", "data")],
+    Input("blast-results-store", "data"),
 )
 @handle_callback_error
 def process_blast_results(blast_results_file):
@@ -569,10 +615,9 @@ def process_blast_results(blast_results_file):
     [
         Output("ship-family", "children"),
         Output("blast-download", "children"),
-        Output("phylogeny-plot", "children"),
     ],
     [Input("blast-results-store", "data"), Input("captain-results-store", "data")],
-    State("submit-button", "n_clicks"),
+    [State("submit-button", "n_clicks"), State("evalue-threshold", "value")],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -580,7 +625,7 @@ def process_blast_results(blast_results_file):
     prevent_initial_call=True,
 )
 @handle_callback_error
-def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
+def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalue):
     if not n_clicks or blast_results_file is None:
         return None, None, None
 
@@ -593,99 +638,38 @@ def update_ui_elements(blast_results_file, captain_results_dict, n_clicks):
         blast_df = pd.read_csv(blast_tsv, sep="\t")
 
         # Check if dataframe is empty
-        if blast_df.empty:
+        if len(blast_df) == 0:
             return html.Div(create_no_matches_alert()), None, None
 
-        # Simple selection of top hit
-        if len(blast_df) > 0:
-            # Sort by evalue (ascending) and pident (descending) to get best hits
-            blast_df = blast_df.sort_values(
-                ["evalue", "pident"], ascending=[True, False]
-            )
-            top_hit = blast_df.iloc[0]
-            logger.info(f"Top hit: {top_hit}")
+        # Sort by evalue (ascending) and pident (descending) to get best hits
+        blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
+        top_hit = blast_df.iloc[0]
+        logger.info(f"Top hit: {top_hit}")
 
-            top_evalue = float(top_hit["evalue"])
-            top_aln_length = int(top_hit["aln_length"])
-            top_pident = float(top_hit["pident"])
+        top_evalue = float(top_hit["evalue"])
+        top_aln_length = int(top_hit["aln_length"])
+        top_pident = float(top_hit["pident"])
 
-            if top_pident >= 90:
-                # look up family name from accession tag
-                query_accession = top_hit["query_id"]
-                meta_data = fetch_meta_data(accession_tag=query_accession)
-                if not meta_data.empty:
-                    top_family = meta_data["familyName"].iloc[
-                        0
-                    ]  # Safely get first value
-                    ship_family = make_captain_alert(
-                        top_family, top_aln_length, top_evalue, "blast"
-                    )
-                else:
-                    # Handle case where no metadata is found
-                    logger.warning(
-                        f"No metadata found for accession: {query_accession}"
-                    )
-                    ship_family = process_captain_results(captain_results_dict)
+        if top_pident >= 90:
+            # look up family name from accession tag
+            hit_IDs = top_hit["hit_IDs"]
+            meta_df = fetch_meta_data(accession_tag=hit_IDs)
+
+            if not meta_df.empty:
+                top_family = meta_df["familyName"].iloc[0]
+                ship_family = make_captain_alert(
+                    top_family, top_aln_length, top_evalue, "blast"
+                )
             else:
-                # Process captain results
-                ship_family = process_captain_results(captain_results_dict)
+                logger.warning(f"No metadata found for accession: {hit_IDs}")
+                ship_family = process_captain_results(captain_results_dict, evalue)
         else:
-            return html.Div(create_no_matches_alert()), None, None
+            ship_family = process_captain_results(captain_results_dict, evalue)
 
         # Create download button
         download_button = blast_download_button()
 
-        # Create phylogeny plot if captain results are available
-        phylogeny_plot = None
-        if captain_results_dict:
-            try:
-                # Handle case where captain_results_dict is a list of results
-                if isinstance(captain_results_dict, list):
-                    # Get the first result if available
-                    family_name = (
-                        captain_results_dict[0].get("family_name")
-                        if captain_results_dict
-                        else None
-                    )
-                else:
-                    # Original behavior for dict
-                    family_name = captain_results_dict.get("family_name")
-
-                if family_name:
-                    fig = plot_tree(
-                        highlight_families=family_name,
-                        tips=None,  # We don't have specific tips to highlight
-                    )
-
-                    phylogeny_plot = html.Div(
-                        [
-                            dbc.Accordion(
-                                children=[
-                                    dbc.AccordionItem(
-                                        children=[
-                                            dcc.Graph(
-                                                id="phylogeny-graph",
-                                                figure=fig,
-                                                style={"height": "800px"},
-                                            )
-                                        ],
-                                        title="Captain Phylogeny",
-                                        item_id="phylogeny",
-                                    )
-                                ],
-                                always_open=False,
-                                active_item=None,
-                                id="phylogeny-accordion",
-                            )
-                        ]
-                    )
-            except Exception as e:
-                logger.error(f"Error creating phylogeny plot: {e}")
-                phylogeny_plot = html.Div(
-                    create_error_alert("Could not create phylogeny plot")
-                )
-
-        return ship_family, download_button, phylogeny_plot
+        return ship_family, download_button
 
     except Exception as e:
         logger.error(f"Error in update_ui_elements: {e}")
@@ -724,7 +708,7 @@ clientside_callback(
         window.addEventListener('blastAccessionClick', function(event) {
             if (event.detail && event.detail.accession) {
                 // Find the store and update it
-                var store = document.getElementById('blast-modal-data');
+                var store = document.getElementById('blast-modal-accession');
                 if (store) {
                     store.setAttribute('data-dash-store', JSON.stringify(event.detail.accession));
                 }
@@ -740,7 +724,7 @@ clientside_callback(
 
 @callback(
     Output("blast-modal-content", "children"),
-    Input("blast-modal-data", "data"),
+    Input("blast-modal-accession", "data"),
     prevent_initial_call=True,
 )
 def update_modal_content(accession):

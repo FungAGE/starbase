@@ -37,11 +37,15 @@ def db_retry_decorator(additional_retry_exceptions=()):
 
 @cache.memoize()
 def fetch_meta_data(curated=False, accession_tag=None):
-    """Fetch metadata from the database with caching.
+    """
+    Fetch metadata from the database with caching.
 
     Args:
         curated (bool): If True, only return curated entries
         accession_tag (str or list): Single accession tag or list of accession tags
+
+    Returns:
+        pd.DataFrame: Metadata for the specified accession tags
     """
     session = StarbaseSession()
 
@@ -79,9 +83,6 @@ def fetch_meta_data(curated=False, accession_tag=None):
         else:
             meta_df = pd.read_sql_query(meta_query, session.bind)
 
-        # Convert to dict if single row
-        if len(meta_df) == 1:
-            return meta_df.iloc[0].to_dict()
         return meta_df
     except Exception as e:
         logger.error(f"Error fetching meta data: {str(e)}")
@@ -320,22 +321,57 @@ def fetch_accession_ship(accession_tag):
 
 
 @db_retry_decorator()
-def fetch_all_captains():
+def fetch_captains(accession_tags=None, curated=False, dereplicate=True):
+    """
+    Fetch captain data for specified accession tags.
+
+    Args:
+        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
+        curated (bool, optional): If True, only fetch curated ships.
+        dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
+
+    Returns:
+        pd.DataFrame: DataFrame containing ship data
+    """
     session = StarbaseSession()
 
     query = """
-    SELECT c.*
-    FROM captains c
+    WITH valid_ships AS (
+        SELECT DISTINCT 
+            c.*
+        FROM captains c
+        INNER JOIN joined_ships j ON c.id = j.captainID_new
+        INNER JOIN accessions a ON j.ship_id = a.id
+        WHERE 1=1
+    """
+
+    if accession_tags:
+        query += " AND a.accession_tag IN ({})".format(
+            ",".join(f"'{tag}'" for tag in accession_tags)
+        )
+    if curated:
+        query += " AND j.curated_status = 'curated'"
+
+    query += """
+    )
+    SELECT 
+        v.*,
+        s.sequence
+    FROM valid_captains v
+    LEFT JOIN ships s ON s.accession = v.accession_id
     """
 
     try:
         df = pd.read_sql_query(query, session.bind)
 
+        if dereplicate:
+            df = df.drop_duplicates(subset="accession_tag")
+
         if df.empty:
-            logger.warning("Fetched captain DataFrame is empty.")
+            logger.warning("Fetched ships DataFrame is empty.")
         return df
     except Exception as e:
-        logger.error(f"Error fetching captain data: {str(e)}")
+        logger.error(f"Error fetching ships data: {str(e)}")
         raise
     finally:
         session.close()

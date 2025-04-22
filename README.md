@@ -14,13 +14,13 @@
 
 ## Overview
 
-`starbase` is a web-based application that provides various analytical and visualization tools for exploring large eukaryotic transposable elements known as Starships.
+`starbase` is a web-based application that provides various analytical and visualization tools for exploring large eukaryotic transposable elements known as _Starships_.
 
 Access `starbase` [here](https://starbase.serve.scilifelab.se/).
 
-## What is a Starship?
+## What is a _Starship_?
 
-Starships are extremely large (~20-700 kb) DNA transposons that can constitute up to 2% of fungal genomes. These novel class II DNA transposons are endemic to _Pezizomycotina_ and can significantly impact the architecture of fungal genomes. They replicate within the host genome via tyrosine recombinases (captain genes) and can carry significant genetic 'cargo', such as:
+_Starships_ are extremely large (~20-700 kb) DNA transposons that can constitute up to 2% of fungal genomes. These novel class II DNA transposons are endemic to _Pezizomycotina_ and can significantly impact the architecture of fungal genomes. They replicate within the host genome via tyrosine recombinases (captain genes) and can carry significant genetic 'cargo', such as:
 
 - Genes for metal resistance in _Paecilomyces_
 - Cheese-making genes in _Penicillium_
@@ -28,18 +28,23 @@ Starships are extremely large (~20-700 kb) DNA transposons that can constitute u
 
 ## Usage
 
-- Access the Wiki: View detailed information about Starship Families and their general characteristics.
-- Submit a Sequence: Use the submission tab to upload new Starship sequences for curation and inclusion in the database.
-- Search for Starships: Utilize the BLAST/HMMER search functions to analyze sequences against the existing database.
+- [Download _Starship_ sequences](https://starbase.serve.scilifelab.se/download): Browse and select individual or collections of _Starship_ sequences for download.
+- [Access the Wiki](https://starbase.serve.scilifelab.se/wiki): View detailed information about _Starship_ Families and their general characteristics.
+- [Search for _Starships_](https://starbase.serve.scilifelab.se/blast): Utilize the BLAST/HMMER search functions to analyze sequences against the existing database.
+- [Submit a Sequence](https://starbase.serve.scilifelab.se/submit): Use the submission tab to upload new _Starship_ sequences for curation and inclusion in the database.
 
 ### Features Under Development
 
 - `starfish` webserver
-- Synteny/Genome Browser
+- [_Starship_ Browser/Comparison](https://starbase.serve.scilifelab.se/pgv): Visualize and compare _Starships_ and their gene annotations.
 
 ## Contributions
 
 Contributions to the development of `starbase` are welcome! If you have suggestions or improvements, please feel free to submit an issue or pull request.
+
+### Building and running from the Docker image
+
+- **Note:** Currently, `starbase` will not run without database files (`src/database/db/`), which need to be mounted into the container. We will provide a link to an archive of the database files, when available.
 
 ## Local development
 
