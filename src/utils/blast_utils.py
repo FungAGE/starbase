@@ -218,7 +218,6 @@ def parse_blast_xml(xml):
                     line = f'"{record.id}"\t"{hit.id}"\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t"{query_seq}"\t"{subject_seq}"\t{evalue}\t{bitscore}\t{pident}\n'
                     tsv_file.write(line)
 
-                    logger.debug(f"Writing line: {line.strip()}")
                 except Exception as e:
                     logger.error(f"Error processing HSP: {e}")
                     continue
@@ -350,20 +349,30 @@ def blast_download_button():
 
 
 def select_ship_family(hmmer_results):
-    hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
-    hmmer_results.dropna(subset=["evalue"], inplace=True)
-
-    if hmmer_results.empty:
-        logger.warning("HMMER results DataFrame is empty after dropping NaNs.")
-        return None, None, None
-
+    """Process HMMER results and return family information."""
+    if isinstance(hmmer_results, dict):
+        # Handle dictionary input
+        return (
+            hmmer_results.get('hit_IDs'),
+            hmmer_results.get('aln_length'),
+            hmmer_results.get('evalue')
+        )
+    
+    # Handle DataFrame input
     try:
+        hmmer_results["evalue"] = pd.to_numeric(hmmer_results["evalue"], errors="coerce")
+        hmmer_results.dropna(subset=["evalue"], inplace=True)
+
+        if len(hmmer_results) == 0:
+            logger.warning("HMMER results DataFrame is empty after dropping NaNs.")
+            return None, None, None
+
         hmmer_results_sorted = hmmer_results.sort_values(by=["query_id", "evalue"])
         best_matches = hmmer_results_sorted.drop_duplicates(
             subset="query_id", keep="first"
         )
 
-        if not best_matches.empty:
+        if len(best_matches) > 0:
             best_match = best_matches.iloc[0]
             superfamily = best_match["hit_IDs"]
             aln_length = best_match["aln_length"]
@@ -379,14 +388,8 @@ def select_ship_family(hmmer_results):
         logger.warning("No valid rows found in hmmer_results DataFrame.")
         return None, None, None
 
-    except KeyError as e:
-        logger.error(f"KeyError encountered: {e}")
-        return None, None, None
-    except IndexError as e:
-        logger.error(f"IndexError encountered: {e}")
-        return None, None, None
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Error processing HMMER results: {e}")
         return None, None, None
 
 # TODO: add qseq_translated to the output``
@@ -497,7 +500,7 @@ def make_captain_alert(family, aln_length, evalue, search_type):
             return create_error_alert("Invalid search type")
 
         return dmc.Alert(
-            title=f"Family Classification via {search_type} Search",
+            title=f"Family Classification via {search_type.upper()} Search",
             children=[
                 f"Your sequence is likely in Starship family: {family}",
                 dmc.Space(h=5),
@@ -522,49 +525,40 @@ def make_captain_alert(family, aln_length, evalue, search_type):
         return create_error_alert(str(e))
 
 
-def process_captain_results(captain_results_dict=None,evalue=None):
-    no_captain_alert = dmc.Alert(
-        f"No captain sequence found (e-value threshold {evalue}).",
-        color="warning",
-        style={
-            "width": "100%",
-            "margin": "0 auto",
-            "@media (min-width: 768px)": {"width": "50%"},
-        },
-    )
-
+def process_captain_results(captain_results_dict=None, evalue=None):
+    """Process captain results and return appropriate alert component."""
     if captain_results_dict is None or not captain_results_dict:
         logger.warning("No captain results provided")
-        return no_captain_alert
+        return html.Div(create_no_matches_alert())
 
     try:
-        captain_results_df = pd.DataFrame(captain_results_dict)
-        if len(captain_results_df) > 0:
-            superfamily, family_aln_length, family_evalue = select_ship_family(
-                captain_results_df
-            )
-            if superfamily:
-                return make_captain_alert(
-                    superfamily,
-                    family_aln_length,
-                    family_evalue,
-                    search_type="hmmsearch",
-                )
+        # Handle case where captain_results_dict is a list
+        if isinstance(captain_results_dict, list):
+            if not captain_results_dict:  # Empty list
+                return html.Div(create_no_matches_alert())
+            result = captain_results_dict[0]  # Use first result
+        else:
+            # Handle single dictionary case
+            result = captain_results_dict
 
-        return no_captain_alert
+        # Extract relevant information directly from the result
+        superfamily = result.get('hit_IDs')
+        family_aln_length = result.get('aln_length')
+        family_evalue = result.get('evalue', evalue)  # Use provided evalue as fallback
+
+        if superfamily:
+            return make_captain_alert(
+                superfamily,
+                family_aln_length,
+                family_evalue,
+                search_type="hmmsearch"
+            )
+
+        return html.Div(create_no_matches_alert())
+        
     except Exception as e:
         logger.error(f"Error processing captain results: {str(e)}")
-        return dmc.Alert(
-            title="Error",
-            children="Failed to process captain results",
-            color="red",
-            variant="light",
-            style={
-                "width": "100%",
-                "margin": "0 auto",
-                "@media (min-width: 768px)": {"width": "50%"},
-            },
-        )
+        return html.Div(create_error_alert("Failed to process captain results"))
 
 
 def create_no_matches_alert():
