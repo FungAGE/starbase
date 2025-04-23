@@ -1,7 +1,7 @@
 import warnings
 import logging
 
-from dash import dash_table, html
+from dash import html
 import pandas as pd
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
@@ -223,8 +223,9 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
 
 def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
-    Specific table constructor for ship data using DataTable.
+    Specific table constructor for ship data using AG Grid.
     """
+    # Handle empty or None DataFrame
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         if columns:
             # Handle both "field" and "id" column formats
@@ -234,45 +235,66 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
         else:
             df = pd.DataFrame()
 
-    # Convert AG Grid column format to DataTable format
+    # Convert column format to AG Grid format
     if columns:
-        data_columns = [
-            {
-                "name": col.get("name")
+        grid_columns = []
+        for col in columns:
+            col_def = {
+                "field": col.get("id") or col.get("field"),
+                "headerName": col.get("name")
                 or col.get("headerName")
                 or col.get("field", "").replace("_", " ").title(),
-                "id": col.get("id") or col.get("field"),
-                "selectable": True,
+                "flex": 1,
             }
-            for col in columns
-        ]
+
+            # Add checkboxes for the first column if selection is enabled
+            if select_rows and col == columns[0]:
+                col_def.update(
+                    {
+                        "checkboxSelection": True,
+                        "headerCheckboxSelection": True,
+                    }
+                )
+
+            # Add special styling for accession_tag
+            if col.get("id") == "accession_tag" or col.get("field") == "accession_tag":
+                col_def.update(
+                    {
+                        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                        "cellClass": "clickable-cell",
+                    }
+                )
+
+            grid_columns.append(col_def)
     else:
-        data_columns = [
-            {"name": col.replace("_", " ").title(), "id": col} for col in df.columns
+        grid_columns = [
+            {"field": col, "headerName": col.replace("_", " ").title()}
+            for col in df.columns
         ]
 
-    return dash_table.DataTable(
+    grid_options = {
+        **DEFAULT_GRID_OPTIONS,
+        "rowSelection": "multiple" if select_rows else None,
+        "suppressRowClickSelection": True,  # Don't select rows when clicking cells
+        "rowMultiSelectWithClick": False,  # Don't allow multi-select with clicks
+        "paginationPageSize": pg_sz or 10,
+        "sortable": True,
+        "sort": [{"colId": "familyName", "sort": "asc"}],
+    }
+
+    return dag.AgGrid(
         id=id,
-        columns=data_columns,
-        data=df.to_dict("records"),
-        page_size=pg_sz or 10,
-        page_current=0,
-        page_action="native",
-        sort_action="native",
-        sort_mode="multi",
-        sort_by=[{"column_id": "familyName", "direction": "asc"}],
-        row_selectable="multi" if select_rows else None,
-        selected_rows=[],
-        style_table={"overflowX": "auto"},
-        style_cell={"padding": "10px", "textAlign": "left"},
-        style_header={"backgroundColor": "rgb(230, 230, 230)", "fontWeight": "bold"},
-        style_data_conditional=[
-            {
-                "if": {"column_id": "accession_tag"},
-                "color": "#1976d2",
-                "cursor": "pointer",
-            }
-        ],
+        columnDefs=grid_columns,
+        rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
+        defaultColDef=DEFAULT_COL_DEF,
+        dashGridOptions=grid_options,
+        className="ag-theme-alpine",
+        style={"width": "100%", "height": "100%"},
+        rowSelection="multiple"
+        if select_rows
+        else None,  # Add this property at component level
+        persistence=True,
+        persistence_type="memory",
     )
 
 
