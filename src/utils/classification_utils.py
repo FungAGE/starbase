@@ -90,8 +90,20 @@ def assign_accession(sequence: str,
 
 def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
-    sequence_hash = hashlib.md5(sequence.encode()).hexdigest()
-    logger.debug(f"Query sequence hash: {sequence_hash}")
+    # If sequence is a file path, load it
+    if os.path.exists(sequence):
+        logger.info(f"Loading sequence from file: {sequence}")
+        from src.utils.seq_utils import load_fasta_to_dict
+        sequences = load_fasta_to_dict(sequence)
+        if not sequences:
+            logger.error("No sequences found in FASTA file")
+            return None
+        sequence = list(sequences.values())[0]
+    
+    # Normalize sequence by removing whitespace and making uppercase
+    clean_sequence = ''.join(sequence.upper().split())
+    sequence_hash = hashlib.md5(clean_sequence.encode()).hexdigest()
+    logger.debug(f"Query sequence hash: {sequence_hash} (sequence length: {len(clean_sequence)})")
     
     # Calculate hashes for existing sequences, skipping None values
     existing_hashes = {}
@@ -101,7 +113,10 @@ def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[s
             skipped_count += 1
             logger.warning(f"Skipping null sequence for accession {acc}")
             continue
-        existing_hashes[hashlib.md5(seq.encode()).hexdigest()] = acc
+            
+        # Normalize sequence the same way
+        clean_db_seq = ''.join(seq.upper().split())
+        existing_hashes[hashlib.md5(clean_db_seq.encode()).hexdigest()] = acc
     
     if skipped_count > 0:
         logger.warning(f"Skipped {skipped_count} sequences due to null values")
@@ -110,6 +125,8 @@ def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[s
     match = existing_hashes.get(sequence_hash)
     if match:
         logger.info(f"Found exact hash match: {match}")
+    else:
+        logger.info("No exact match found")
     return match
 
 def check_contained_match(sequence: str, existing_ships: pd.DataFrame, 
