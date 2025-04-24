@@ -30,14 +30,14 @@ logger = logging.getLogger(__name__)
 
 def make_progress_bar(message, id, color):
     return dmc.Group([
-        dmc.Text(message, size="sm", w=100),
+        dmc.Text(message, size="sm"),
         dbc.Progress(
             id=id,
             value=0,
             color=color,
             animated=False,
             striped=False,
-            style={"width": "100%", "marginBottom": "10px"}
+            style={"width": "100%", "marginBottom": "5px"}
         ),
         html.Div(id=id)
     ])
@@ -46,61 +46,37 @@ def make_progress_bar(message, id, color):
 layout = dmc.Container(
     size="md",
     children=[
-        html.H1("Classification Workflow"),
+        dmc.Space(h=20),
+        dmc.Title("Classification Workflow"),
 
         # Stores
-        # file upload
-        dcc.Store(id="classification-upload"),
+        dcc.Store(id="classification-upload"), # file upload
+        dcc.Store(id="progress-stage"), # text for stage
 
-        # text for stage
-        dcc.Store(id="classification-stage"),
-
-        # matches store
-        dcc.Store(id="check-exact-matches"),
-        dcc.Store(id="check-exact-matches-progress"),
-        dcc.Store(id="check-exact-matches-color"),
-        dcc.Store(id="check-contained-matches"),
-        dcc.Store(id="check-contained-matches-progress"),
-        dcc.Store(id="check-contained-matches-color"),
-        dcc.Store(id="check-similar-matches"),
-        dcc.Store(id="check-similar-matches-progress"),
-        dcc.Store(id="check-similar-matches"),
-        dcc.Store(id="check-similar-matches"),
+        *[
+            dcc.Store(id=f"check-{match_type}-matches{'-' + suffix if suffix else ''}")
+            for match_type in ["exact", "contained", "similar"]
+            for suffix in ["data", "progress", "color"]
+        ],
 
         # denovo annotation store
-        dcc.Store(id="classification-denovo-annotation-progress"),
-        dcc.Store(id="classification-denovo-annotation-color"),
-        dcc.Store(id="classification-denovo-annotation-name"),
-        dcc.Store(id="classification-denovo-annotation-output"),
-        dcc.Store(id="classification-denovo-annotation-data"),
+        *[
+            dcc.Store(id=f"classification-denovo-annotation-{suffix}")
+            for suffix in ["progress", "color", "name", "output", "data"]
+        ],
 
         # annotate store
-        dcc.Store(id="classification-annotate-progress"),
-        dcc.Store(id="classification-annotate-color"),
-        dcc.Store(id="classification-codon-fasta"),
-        dcc.Store(id="classification-fasta"),
-        dcc.Store(id="classification-gff"),
+        *[
+            dcc.Store(id=f"classification-{suffix}")
+            for suffix in ["annotate-progress", "annotate-color", "codon-fasta", "fasta", "gff"]
+        ],
 
-        # progress for family classification
-        dcc.Store(id="classification-family-progress"),
-        dcc.Store(id="classification-family-color"),
-        dcc.Store(id="classification-family-name"),
-        dcc.Store(id="classification-family-output"),
-        dcc.Store(id="classification-family-data"),
-
-        # progress for navis classification
-        dcc.Store(id="classification-navis-progress"),
-        dcc.Store(id="classification-navis-color"),
-        dcc.Store(id="classification-navis-name"),
-        dcc.Store(id="classification-navis-output"),
-        dcc.Store(id="classification-navis-data"),
-
-        # progress for haplotype classification
-        dcc.Store(id="classification-haplotype-progress"),
-        dcc.Store(id="classification-haplotype-color"),
-        dcc.Store(id="classification-haplotype-name"),
-        dcc.Store(id="classification-haplotype-output"),
-        dcc.Store(id="classification-haplotype-data"),
+        # progress stores for different classification types
+        *[
+            dcc.Store(id=f"classification-{class_type}-{suffix}")
+            for class_type in ["family", "navis", "haplotype"]
+            for suffix in ["progress", "color", "name", "output", "data"]
+        ],
 
         dmc.Stack([
             dmc.Paper(
@@ -127,7 +103,7 @@ layout = dmc.Container(
                     make_progress_bar("Running family classification", "run-family-classification-progress", "green"),
                     make_progress_bar("Running navis classification", "run-navis-classification-progress", "blue"),
                     make_progress_bar("Running haplotype classification", "run-haplotype-classification-progress", "violet"),
-                ]),
+                ])
             ]),
         ], gap="md"),
         html.Div(id='classification-output', className="mt-4"),
@@ -139,11 +115,7 @@ layout = dmc.Container(
 @callback(
     [
         Output("classification-upload", "data"),
-        Output("classification-stage", "children", allow_duplicate=True),
-        Output("classification-family-progress", "value", allow_duplicate=True),
-        Output("classification-family-progress", "animated", allow_duplicate=True),
-        Output("classification-family-progress", "striped", allow_duplicate=True),
-        Output("classification-family-color", "color", allow_duplicate=True),
+        Output("progress-stage", "children", allow_duplicate=True),
     ],
     Input("classification-fasta-upload", "contents"),
     prevent_initial_call=True
@@ -182,32 +154,7 @@ def setup_classification(seq_content):
 
         },
         "Checking for exact matches",
-        10,
-        True,
-        True,
-        "green",
     )
-
-def make_alert_using_match(match_class=None, classification=None, type=None):    
-    if match_class:
-        if classification == "Family":
-            color = "green"
-        elif classification == "Navis":
-            color = "blue"
-        elif classification == "Haplotype":
-            color = "violet"
-
-        return (
-            dmc.Alert(
-                title=f"{classification} found using {type} match",
-                children=f"{classification}: {match_class}",
-                color=color,
-                variant="light",
-                className="mb-3"
-            )
-        )
-    else:
-        return None
 
 create_classification_callback(
     task_name="Exact",
