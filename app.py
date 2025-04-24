@@ -14,7 +14,8 @@ from src.utils.telemetry import log_request, get_client_ip, maintain_ip_location
 from src.config.cache import cache, cleanup_old_cache
 from src.config.database import SubmissionsSession
 from src.config.settings import DB_PATHS
-
+from src.api import register_routes
+from src.config.limiter import limiter
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +36,8 @@ server.config.update(
 
 cache.init_app(server)
 cleanup_old_cache()
-
+limiter.init_app(server)
+register_routes(server, limiter)
 _dash_renderer._set_react_version("18.2.0")
 
 

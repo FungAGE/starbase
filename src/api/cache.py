@@ -1,13 +1,12 @@
 from flask import Blueprint, jsonify
 from src.config.cache import cache, cleanup_old_cache, cache_dir
-from src.config.limiter import limiter
-
 from src.config.logging import get_logger
+from src.config.limiter import limiter
 
 logger = get_logger(__name__)
 
 # Create a Blueprint for cache routes
-cache_routes = Blueprint("cache", __name__)
+cache_routes = Blueprint("cache", __name__, url_prefix="/api/cache")
 
 
 @cache_routes.route("/status", methods=["GET"])
