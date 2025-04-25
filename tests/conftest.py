@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from models import Base
+from src.database.models import Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from flask import jsonify

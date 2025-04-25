@@ -5,8 +5,7 @@ import pandas as pd
 import logging
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -14,15 +13,16 @@ logger = logging.getLogger(__name__)
 fasta_file = "/home/adrian/Downloads/Hephaestus_all.fasta"
 fasta_dict = load_fasta_to_dict(fasta_file)
 
+
 def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
     """
     Fetch ship data for specified accession tags.
-    
+
     Args:
         accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
-    
+
     Returns:
         pd.DataFrame: DataFrame containing ship data
     """
@@ -50,14 +50,14 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
         LEFT JOIN genomes g ON j.genome_id = g.id
         WHERE 1=1
     """
-    
+
     if accession_tags:
         query += " AND a.accession_tag IN ({})".format(
-            ','.join(f"'{tag}'" for tag in accession_tags)
+            ",".join(f"'{tag}'" for tag in accession_tags)
         )
     if curated:
         query += " AND j.curated_status = 'curated'"
-    
+
     query += """
     )
     SELECT 
@@ -69,10 +69,10 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
 
     try:
         df = pd.read_sql_query(query, session.bind)
-        
+
         if dereplicate:
-            df = df.drop_duplicates(subset='accession_tag')
-        
+            df = df.drop_duplicates(subset="accession_tag")
+
         if df.empty:
             logger.warning("Fetched ships DataFrame is empty.")
         return df
@@ -81,6 +81,7 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
         raise
     finally:
         session.close()
+
 
 existing_ships = fetch_ships(curated=False, dereplicate=True)
 

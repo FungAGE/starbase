@@ -1,16 +1,16 @@
-import pytest
 from datetime import datetime
-from models import Submission
-from src.config.database import StarbaseSession, SubmissionsSession
+from src.database.models import Submission
+from src.config.database import SubmissionsSession
 import os
 from src.utils.classification_utils import assign_accession
 from src.database.sql_manager import fetch_ships
+
 
 def test_create_new_submission():
     """Test creating and saving a new submission record"""
     # Create a session from the sessionmaker
     session = SubmissionsSession()
-    
+
     try:
         # Load test sequence from file
         test_data_path = "/home/adrian/Downloads/Hephaestus_all.fasta.split/Hephaestus_all.part_Aspfis_NFIA_048490.fasta"
@@ -24,12 +24,12 @@ def test_create_new_submission():
 
         # Get accession and review status
         accession, needs_review = assign_accession(sequence_content, existing_ships)
-        
-        assert accession.startswith('SBS')
+
+        assert accession.startswith("SBS")
         assert needs_review is True
 
         today = datetime.now().strftime("%Y-%m-%d")
-        
+
         # Create a new submission record
         new_submission = Submission(
             seq_contents=sequence_content,
@@ -53,11 +53,9 @@ def test_create_new_submission():
 
         # Verify the submission was created
         saved_submission = (
-            session.query(Submission)
-            .filter_by(seq_filename=sequence_filename)
-            .first()
+            session.query(Submission).filter_by(seq_filename=sequence_filename).first()
         )
-        
+
         assert saved_submission is not None
         assert saved_submission.seq_contents == sequence_content
         assert saved_submission.seq_filename == sequence_filename

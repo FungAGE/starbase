@@ -68,7 +68,34 @@ DEFAULT_GRID_OPTIONS = {
     "ensureDomOrder": True,
     "suppressRowClickSelection": True,
     "rowMultiSelectWithClick": False,
-    "onFirstDataRendered": "function(params) { if(params.api) { params.api.sizeColumnsToFit(); }}",
+    "onFirstDataRendered": """function(params) { 
+        try { 
+            if(params.api && !params.api.isDestroyed()) { 
+                setTimeout(function() { 
+                    if(params.api && !params.api.isDestroyed()) { 
+                        params.api.sizeColumnsToFit(); 
+                    }
+                }, 50); 
+            }
+        } catch(e) { 
+            console.log('Grid sizing warning:', e); 
+        }
+    }""",
+    "onGridReady": """function(params) {
+        try {
+            if (!window.gridApis) window.gridApis = {};
+            window.gridApis[params.api.gridOptionsWrapper.gridOptions.domLayoutAutoHeight] = params.api;
+            
+            // Initialize grid with safer timing
+            setTimeout(function() {
+                if(params.api && !params.api.isDestroyed()) {
+                    params.api.sizeColumnsToFit();
+                }
+            }, 100);
+        } catch(e) {
+            console.log('Grid ready warning:', e);
+        }
+    }""",
     "rowHeight": 48,
     "headerHeight": 48,
     "suppressRowHoverHighlight": False,
@@ -85,78 +112,6 @@ DEFAULT_COL_DEF = {
     "filter": True,
     "minWidth": 100,
 }
-
-
-def create_ag_grid(df, id, columns=None, select_rows=False, pg_sz=10):
-    """
-    Creates an AG Grid component with consistent styling.
-
-    Args:
-        df (pd.DataFrame or list): Data to display
-        id (str): Unique identifier for the grid
-        columns (list): Column definitions
-        select_rows (bool): Enable row selection
-        pg_sz (int): Number of rows per page
-    """
-    # Convert DataFrame to row data
-    if isinstance(df, pd.DataFrame):
-        row_data = df.to_dict("records")
-    else:
-        row_data = df  # Assume it's already in records format
-
-    # Default column definitions if none provided
-    if not columns:
-        grid_columns = [{"field": col} for col in df.columns]
-    else:
-        grid_columns = columns
-
-    # Default column properties
-    defaultColDef = {
-        "resizable": True,
-        "sortable": True,
-        "filter": True,
-        "minWidth": 100,
-    }
-
-    # Simplified getRowId function with proper JavaScript syntax
-    get_row_id = "function getRowId(params) { return params.data.accession_tag ? params.data.accession_tag + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) : Date.now() + '_' + Math.random().toString(36).substr(2, 9); }"
-
-    # Create grid component with updated configuration
-    grid = dag.AgGrid(
-        id=id,
-        columnDefs=grid_columns,
-        rowData=row_data,
-        defaultColDef=defaultColDef,
-        dashGridOptions={
-            "pagination": True,
-            "paginationPageSize": pg_sz,
-            "rowSelection": "multiple" if select_rows else None,
-            "domLayout": "autoHeight",
-            "tooltipShowDelay": 0,
-            "tooltipHideDelay": 1000,
-            "enableCellTextSelection": True,
-            "ensureDomOrder": True,
-            "suppressRowClickSelection": True,
-            "rowMultiSelectWithClick": False,
-            "onFirstDataRendered": "function(params) { if(params.api) { params.api.sizeColumnsToFit(); }}",
-            "rowHeight": 48,
-            "headerHeight": 48,
-            "suppressRowHoverHighlight": False,
-            "suppressHorizontalScroll": False,
-            "suppressPropertyNamesCheck": True,
-            "suppressReactUi": False,
-            "suppressLoadingOverlay": True,
-            "suppressNoRowsOverlay": True,
-        },
-        className="ag-theme-alpine",
-        style={"width": "100%", "height": "100%"},
-        getRowId=get_row_id,
-        persistence=True,
-        persistence_type="memory",
-    )
-
-    logger.info(f"Successfully created grid {id}")
-    return grid
 
 
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):

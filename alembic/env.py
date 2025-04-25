@@ -7,7 +7,7 @@ from alembic import context
 
 
 # Import your models and Base metadata
-from models import Base
+from src.database.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
