@@ -25,9 +25,6 @@ from src.components.error_boundary import handle_callback_error
 from src.utils.seq_utils import parse_fasta_from_file, write_fasta
 from src.database.sql_manager import fetch_captains, fetch_ships
 
-
-dash.register_page(__name__)
-
 logger = logging.getLogger(__name__)
 
 def make_progress_bar(message, id_prefix, color):
