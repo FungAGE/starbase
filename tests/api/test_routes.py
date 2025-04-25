@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch
 
+
 def test_get_accession_details(test_client):
     """Test the /api/accession/<accession_id> route."""
     accession_id = "ABC123"
@@ -28,5 +29,5 @@ def test_handle_429(test_client, endpoint):
     assert response.status_code == 429
     assert response.json == {
         "error": "Too Many Requests",
-        "message": "Please wait before making more requests."
+        "message": "Please wait before making more requests.",
     }

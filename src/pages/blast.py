@@ -39,6 +39,7 @@ from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
 
+
 dash.register_page(__name__)
 
 logger = logging.getLogger(__name__)
@@ -475,7 +476,7 @@ def fetch_captain(
             diamond_results = run_diamond(
                 db_list=BLAST_DB_PATHS,  # Pass full paths dict
                 query_type=query_type,
-                input_genes="tyr",
+                input_gene="tyr",
                 input_eval=evalue_threshold,
                 query_fasta=tmp_query_fasta,
                 threads=2,
@@ -492,7 +493,7 @@ def fetch_captain(
                     captain_results_dict = run_hmmer(
                         db_list=BLAST_DB_PATHS,  # Pass full paths dict
                         query_type="prot",
-                        input_genes="tyr",
+                        input_gene="tyr",
                         input_eval=evalue_threshold,
                         query_fasta=tmp_protein_fasta,
                         threads=2,
@@ -502,7 +503,7 @@ def fetch_captain(
             diamond_results = run_diamond(
                 db_list=BLAST_DB_PATHS,
                 query_type="prot",
-                input_genes="tyr",
+                input_gene="tyr",
                 input_eval=evalue_threshold,
                 query_fasta=tmp_query_fasta,
                 threads=2,
@@ -512,7 +513,7 @@ def fetch_captain(
                 captain_results_dict = run_hmmer(
                     db_list=BLAST_DB_PATHS,
                     query_type="prot",
-                    input_genes="tyr",
+                    input_gene="tyr",
                     input_eval=evalue_threshold,
                     query_fasta=tmp_query_fasta,
                     threads=2,

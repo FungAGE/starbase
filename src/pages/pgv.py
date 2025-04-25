@@ -515,6 +515,7 @@ def load_ship_table(href):
 @handle_callback_error
 def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
     from src.database.sql_manager import fetch_accession_ship
+    from src.tasks import run_multi_pgv_task, run_single_pgv_task
 
     message = None
     if not n_clicks:
@@ -543,11 +544,13 @@ def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
                             tmp_gffs.append(tmp_gff)
 
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = multi_pgv(
+                            message = run_multi_pgv_task.delay(
                                 tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr
                             )
+                            message = message.get(timeout=300)
                         elif len(selected_rows) == 1:
-                            single_pgv(tmp_gffs[0], tmp_pgv)
+                            message = run_single_pgv_task.delay(tmp_gffs[0], tmp_pgv)
+                            message = message.get(timeout=300)
                         else:
                             output = html.P("Please select between 1 and 4 Starships.")
                             return output, None

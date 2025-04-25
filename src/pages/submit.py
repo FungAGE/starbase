@@ -14,6 +14,8 @@ from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
 from src.components.callbacks import create_file_upload
+from src.utils.classification_utils import assign_accession
+from src.database.sql_manager import fetch_ships
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +286,8 @@ def insert_submission(
     shipend,
     shipstrand,
     comment,
+    accession=None,
+    needs_review=False,
 ):
     try:
         content_type, content_string = seq_contents.split(",")
@@ -308,13 +312,13 @@ def insert_submission(
                     seq_contents, seq_filename, seq_date, anno_contents,
                     anno_filename, anno_date, uploader, evidence,
                     genus, species, hostchr, shipstart, shipend,
-                    shipstrand, comment
+                    shipstrand, comment, accession_tag, needs_review
                 )
                 VALUES (
                     :seq_contents, :seq_filename, :seq_date, :anno_contents, 
                     :anno_filename, :anno_date, :uploader, :evidence, 
                     :genus, :species, :hostchr, :shipstart, :shipend, 
-                    :shipstrand, :comment
+                    :shipstrand, :comment, :accession_tag, :needs_review
                 )
             """
             session.execute(
@@ -335,6 +339,8 @@ def insert_submission(
                     "shipend": shipend,
                     "shipstrand": shipstrand,
                     "comment": comment,
+                    "accession_tag": accession,
+                    "needs_review": needs_review,
                 },
             )
             session.commit()
@@ -347,6 +353,16 @@ def insert_submission(
     except Exception as e:
         logger.error(f"Error processing submission: {str(e)}")
         raise
+
+
+def create_fasta_display(records, filename):
+    """Create HTML components to display FASTA file info."""
+    return html.Div(
+        [
+            html.H6(f"File name: {filename}"),
+            html.H6(f"Number of sequences: {len(records)}"),
+        ]
+    )
 
 
 @callback(
@@ -399,6 +415,8 @@ def submit_ship(
     modal = is_open
     message = ""
     loading = False
+    accession = None
+    needs_review = True
 
     if n_clicks and n_clicks > 0:
         loading = True
@@ -412,6 +430,20 @@ def submit_ship(
                 "No fasta file uploaded",
                 loading,
             )  # Return the error message if no file
+        else:
+            # Decode sequence content
+            content_type, content_string = seq_contents.split(",")
+            seq_decoded = base64.b64decode(content_string).decode("utf-8")
+
+            # Parse FASTA to get sequence
+            # Assuming single sequence in FASTA
+            sequence = parse_fasta(seq_decoded, seq_filename)[0]["sequence"]
+
+            # Get existing ships for comparison
+            existing_ships = fetch_ships(curated=True, with_sequence=True)
+
+            # Assign accession and check if review needed
+            accession, needs_review = assign_accession(sequence, existing_ships)
 
         insert_submission(
             seq_contents,
@@ -429,16 +461,24 @@ def submit_ship(
             shipend,
             shipstrand,
             comment,
+            accession=accession,
+            needs_review=needs_review,
         )
 
         modal = not is_open if not close_modal else False
         message = html.Div(
             [
                 html.H4("Successfully submitted!", className="mb-3"),
+                dmc.Text(f"Assigned accession: {accession}", className="text-muted"),
+                dmc.Text(
+                    f"Review status: {'Needs review' if needs_review else 'Auto-approved'}",
+                    className="text-muted",
+                ),
                 dmc.Text(f"Filename: {seq_filename}", className="text-muted"),
                 dmc.Text(f"Uploaded by: {uploader}", className="text-muted"),
             ]
         )
+
         loading = False
 
     return modal, message, loading
@@ -453,24 +493,16 @@ def submit_ship(
 )
 def update_fasta_details(seq_contents, seq_filename):
     if seq_contents is None:
-        return [
-            html.Div(
-                html.P(
-                    ["Select a FASTA file to upload"],
-                )
-            )
-        ]
-    else:
-        try:
-            # "," is the delimeter for splitting content_type from content_string
-            content_type, content_string = seq_contents.split(",")
-            query_string = base64.b64decode(content_string).decode("utf-8")
-            children = parse_fasta(query_string, seq_filename)
-            return children
+        return html.Div(html.P(["Select a FASTA file to upload"]))
 
-        except Exception as e:
-            logger.error(e)
-            return html.Div(["There was an error processing this file."])
+    try:
+        content_type, content_string = seq_contents.split(",")
+        query_string = base64.b64decode(content_string).decode("utf-8")
+        records = parse_fasta(query_string, seq_filename)
+        return create_fasta_display(records, seq_filename)
+    except Exception as e:
+        logger.error(e)
+        return html.Div(["There was an error processing this file."])
 
 
 @callback(

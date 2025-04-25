@@ -11,6 +11,7 @@ from Bio.SeqUtils import nt_search
 from Bio import SeqIO
 from dash import html
 import dash_mantine_components as dmc
+from typing import Dict
 
 warnings.filterwarnings("ignore")
 
@@ -61,18 +62,6 @@ def guess_seq_type(query_seq):
         return query_type
     except Exception as e:
         logger.error(f"Error in guessing sequence type: {e}")
-        return None
-
-
-def write_temp_fasta(header, sequence):
-    try:
-        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
-        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
-        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
-        return tmp_query_fasta
-    except Exception as e:
-        logger.error(f"Error writing temporary FASTA: {e}")
         return None
 
 
@@ -327,6 +316,7 @@ def parse_fasta_from_text(text, format="fasta"):
 def parse_fasta_from_file(contents):
     header = None
     seq = None
+    fasta_error = None
     try:
         if not contents:
             logger.warning("No file contents provided")
@@ -427,7 +417,7 @@ def parse_fasta_from_file(contents):
         query = sequences[0]
         header, seq = str(query.id), str(query.seq)
         logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
-        return header, seq, None
+        return header, seq, fasta_error
 
     except Exception as e:
         logger.error(f"Unexpected error in parse_fasta_from_file: {str(e)}")
@@ -561,3 +551,102 @@ def create_ncbi_style_header(row):
             f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
         )
         return None
+
+
+def write_temp_fasta(header, sequence):
+    try:
+        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
+        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
+        return tmp_query_fasta
+    except Exception as e:
+        logger.error(f"Error writing temporary FASTA: {e}")
+        return None
+
+
+def write_fasta(sequences: Dict[str, str], fasta_path: str):
+    """Write a FASTA file from a dictionary of sequences.
+
+    Args:
+        sequences: Dictionary mapping sequence names to sequences
+        fasta_path: Path to output FASTA file
+    """
+    with open(fasta_path, "w") as fasta_file:
+        for name, sequence in sequences.items():
+            fasta_file.write(f">{name}\n{sequence}\n")
+
+
+def write_multi_fasta(sequences, fasta_path, sequence_col, id_col):
+    records = []
+    for idx, row in sequences.iterrows():
+        name = row[id_col] if id_col else str(idx)
+        sequence = row[sequence_col]
+        records.append(
+            SeqRecord(
+                Seq(sequence),
+                id=str(name),  # ensure ID is string
+                description="",
+            )
+        )
+
+    # Write to temporary file
+    SeqIO.write(records, fasta_path, "fasta")
+    logger.debug(f"Combined FASTA file written: {fasta_path}")
+
+
+def write_combined_fasta(
+    new_sequence: str,
+    existing_sequences: pd.DataFrame,
+    fasta_path: str,
+    sequence_col: str = "sequence",
+    id_col: str = None,
+) -> str:
+    """Write a temporary FASTA file combining new sequence with existing sequences.
+
+    Args:
+        new_sequence: New sequence to classify
+        existing_sequences: DataFrame containing existing sequences
+        sequence_col: Name of column containing sequences
+        id_col: Name of column to use as sequence IDs. If None, uses DataFrame index
+
+    Returns:
+        str: Path to temporary FASTA file
+    """
+    try:
+        records = []
+
+        records.append(
+            SeqRecord(Seq(new_sequence), id="query_sequence", description="")
+        )
+
+        write_multi_fasta(existing_sequences, fasta_path, sequence_col, id_col)
+
+    except Exception as e:
+        logger.error(f"Error writing combined FASTA: {e}")
+        return None
+
+
+def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
+    """Create a temporary directory for FASTA files."""
+    import os
+
+    # load sequence from fasta file
+    fasta_sequences = load_fasta_to_dict(fasta)
+
+    # append existing sequences to dict
+    if existing_ships is not None and not existing_ships.empty:
+        sequences = {
+            **fasta_sequences,
+            **dict(zip(existing_ships["accession_tag"], existing_ships["sequence"])),
+        }
+    else:
+        sequences = fasta_sequences
+
+    # save each as a fasta file in a temporary directory
+    tmp_fasta_dir = tempfile.mkdtemp()
+    for seq_id, seq in sequences.items():
+        tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
+        write_fasta({seq_id: seq}, tmp_fasta)
+    logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
+    return tmp_fasta_dir
