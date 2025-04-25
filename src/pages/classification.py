@@ -304,19 +304,32 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
             elif stage_id == "family":
                 workflow_tracker.stage_progress = 30
                 workflow_tracker.stage_values[i] = 30
-                result = run_family_classification_task.delay(
+                family_result = run_family_classification_task.delay(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
                     db_list=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records')
                 ).get(timeout=180)
+                
+                # Store family result for use in subsequent stages
+                if family_result and "protein" in family_result:
+                    upload_data["protein_file"] = family_result["protein"]
+                
+                result = family_result
             
             elif stage_id == "navis":
                 workflow_tracker.stage_progress = 30
                 workflow_tracker.stage_values[i] = 30
-                fasta = upload_data.get("protein")
+                
+                # Check if we have a protein file from the family stage
+                if "protein_file" not in upload_data or not upload_data["protein_file"]:
+                    logger.error("No protein file available for navis classification")
+                    workflow_tracker.error = "Missing protein file required for navis classification"
+                    workflow_tracker.complete = True
+                    break
+                
                 result = run_navis_classification_task.delay(
-                    fasta=fasta,
-                    existing_ships=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records')
+                    fasta=upload_data["protein_file"],
+                    existing_ships=fetch_captains(**upload_data["fetch_captain_params"]).to_dict('records')
                 ).get(timeout=180)
             
             elif stage_id == "haplotype":
