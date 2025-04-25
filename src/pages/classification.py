@@ -245,16 +245,14 @@ workflow_tracker = None
     [
         Output("classification-workflow-state", "data"),
         Output("classification-progress-section", "style"),
-        Output("classification-workflow-interval", "disabled"),
     ],
     Input("classification-submit-button", "n_clicks"),
     [
         State("classification-upload", "data"),
-        State("classification-workflow-interval", "disabled"),
     ],
     prevent_initial_call=True
 )
-def run_workflow_background(n_clicks, upload_data, interval_disabled):
+def run_workflow_background(n_clicks, upload_data):
     if n_clicks is None or upload_data is None:
         raise PreventUpdate
     
@@ -421,8 +419,20 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
             workflow_tracker.stage_animated[i] = False
             workflow_tracker.stage_striped[i] = False
     
-    # Return the final state
-    return workflow_tracker.to_dict(), {"display": "block"}, False
+    # Return the final state - no longer controlling the interval here
+    return workflow_tracker.to_dict(), {"display": "block"}
+
+# Add a separate callback just to enable the interval when workflow starts
+@callback(
+    Output("classification-workflow-interval", "disabled"),
+    Input("classification-submit-button", "n_clicks"),
+    prevent_initial_call=True
+)
+def enable_interval(n_clicks):
+    """Enable the interval when the workflow starts"""
+    if n_clicks is None:
+        raise PreventUpdate
+    return False
 
 # Third callback: Update UI periodically based on current status
 @callback(
@@ -431,11 +441,12 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
         Output("classification-stage-display", "children", allow_duplicate=True),
         Output("classification-progress", "value", allow_duplicate=True),
         Output("classification-progress", "animated", allow_duplicate=True),
-        Output("classification-progress", "striped"),
-        *[Output(f"classification-{stage['id']}-progress", "value") for stage in WORKFLOW_STAGES],
-        *[Output(f"classification-{stage['id']}-progress", "animated") for stage in WORKFLOW_STAGES],
-        *[Output(f"classification-{stage['id']}-progress", "striped") for stage in WORKFLOW_STAGES],
-        Output("classification-output", "children"),
+        Output("classification-progress", "striped", allow_duplicate=True),
+        *[Output(f"classification-{stage['id']}-progress", "value", allow_duplicate=True) for stage in WORKFLOW_STAGES],
+        *[Output(f"classification-{stage['id']}-progress", "animated", allow_duplicate=True) for stage in WORKFLOW_STAGES],
+        *[Output(f"classification-{stage['id']}-progress", "striped", allow_duplicate=True) for stage in WORKFLOW_STAGES],
+        Output("classification-output", "children", allow_duplicate=True),
+        Output("classification-workflow-interval", "disabled", allow_duplicate=True),
     ],
     Input("classification-workflow-interval", "n_intervals"),
     prevent_initial_call=True
@@ -450,11 +461,18 @@ def update_ui_from_status(n_intervals):
     # Get current status
     status = workflow_tracker
     
-    # Calculate stage display message
+    # Default values
     stage_message = "Starting classification..."
     result_display = None
     
+    # Determine if we should disable the interval after this update
+    # Only disable after we've shown the final result
+    disable_interval = False
+    
     if status.complete:
+        # Disable interval after this update since workflow is complete
+        disable_interval = True
+        
         if status.error:
             # True error condition
             stage_message = "Error occurred during classification"
@@ -523,6 +541,13 @@ def update_ui_from_status(n_intervals):
         else:
             overall_progress = 0
             overall_animated = True
+    else:
+        overall_progress = 0
+        overall_animated = True
+    
+    # Log the final result for debugging
+    if status.complete and result_display is not None:
+        logger.info(f"Classification complete: {stage_message}")
     
     return (
         stage_message,  # classification-stage data
@@ -534,4 +559,5 @@ def update_ui_from_status(n_intervals):
         *status.stage_animated,  # Individual stage animated states
         *status.stage_striped,  # Individual stage striped states
         result_display,  # Final result display
+        disable_interval,  # Whether to disable the interval
     )
