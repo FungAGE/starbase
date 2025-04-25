@@ -15,7 +15,7 @@ restart_celery() {
 
     # Start new Celery worker
     celery -A src.config.celery_config:celery worker \
-        --loglevel=info \
+        --loglevel=DEBUG \
         --concurrency=4 \
         --max-tasks-per-child=1000 \
         --max-memory-per-child=1024000 \

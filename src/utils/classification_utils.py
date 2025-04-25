@@ -11,11 +11,10 @@ import dash_mantine_components as dmc
 from dash import callback, Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from src.utils.seq_utils import write_combined_fasta, write_multi_fasta, write_fasta
+from src.utils.seq_utils import write_combined_fasta, write_multi_fasta, create_tmp_fasta_dir, load_fasta_to_dict
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 from src.components.error_boundary import handle_callback_error
-
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +43,17 @@ classifcation pipeline that should be used:
 - classify query sequences for blast page, display results
 - classify submitted sequences from submission page, assign an accession, and input into submissionsdatabase
 """
+
+# Define our workflow stages with their colors
+WORKFLOW_STAGES = [
+    {"id": "exact", "label": "Checks for exact matches", "color": "green"},
+    {"id": "contained", "label": "Checks for contained matches", "color": "blue"},
+    {"id": "similar", "label": "Checks for similar matches", "color": "violet"},
+    # {"id": "denovo", "label": "Running denovo annotation", "color": "orange"},
+    {"id": "family", "label": "Running family classification", "color": "green"},
+    {"id": "navis", "label": "Running navis classification", "color": "blue"},
+    {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
+]
 
 def assign_accession(sequence: str, 
                     existing_ships: pd.DataFrame = None,
@@ -88,13 +98,38 @@ def assign_accession(sequence: str,
     logger.info(f"Generated new accession: {new_accession}")
     return new_accession, False
 
-def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[str]:
+def generate_new_accession(existing_ships: pd.DataFrame) -> str:
+    """Generate a new unique accession number."""
+    # Extract existing accession numbers
+    existing_nums = [
+        int(acc.replace('SBS', '').split('.')[0])
+        for acc in existing_ships['accession_tag']
+        if acc.startswith('SBS')
+    ]
+    
+    # Check if we have existing accessions
+    if not existing_nums:
+        error_msg = "Problem with loading existing ships. No existing SBS accessions found in database."
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    # Find next available number
+    next_num = max(existing_nums) + 1
+    logger.info(f"Last used accession number: SBS{max(existing_nums):06d}")
+    logger.info(f"Assigning new accession number: SBS{next_num:06d}")
+        
+    return f"SBS{next_num:06d}"
+
+########################################################
+# sequence matching functions
+########################################################
+
+def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
-    # If sequence is a file path, load it
-    if os.path.exists(sequence):
-        logger.info(f"Loading sequence from file: {sequence}")
-        from src.utils.seq_utils import load_fasta_to_dict
-        sequences = load_fasta_to_dict(sequence)
+    # fasta should be a file path
+    if os.path.exists(fasta):
+        logger.info(f"Loading sequence from file: {fasta}")
+        sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None
@@ -129,7 +164,7 @@ def check_exact_match(sequence: str, existing_ships: pd.DataFrame) -> Optional[s
         logger.info("No exact match found")
     return match
 
-def check_contained_match(sequence: str, existing_ships: pd.DataFrame, 
+def check_contained_match(fasta: str, existing_ships: pd.DataFrame, 
                          min_coverage: float = 0.95, min_identity: float = 0.95) -> Optional[str]:
     """Check if sequence is contained within any existing sequences.
     
@@ -143,11 +178,19 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame,
         accession_tag of the best containing match, or None if no match found
     """
     containing_matches = []
+
+    if os.path.exists(fasta):
+        logger.info(f"Loading sequence from file: {fasta}")
+        sequences = load_fasta_to_dict(fasta)
+        if not sequences:
+            logger.error("No sequences found in FASTA file")
+            return None
+        sequence = list(sequences.values())[0]
+
     query_len = len(sequence)
     
     logger.info(f"Checking for contained matches (query length: {query_len})")
     
-    # Create temporary files for minimap2
     with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as query_file, \
          tempfile.NamedTemporaryFile(mode='w', suffix='.fasta') as ref_file:
         
@@ -155,7 +198,6 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame,
         query_file.write(f">query\n{sequence}\n")
         query_file.flush()
         
-        # Write reference sequences
         ref_count = 0
         logger.debug("Writing reference sequences to temporary file")
         for _, row in existing_ships.iterrows():
@@ -165,7 +207,6 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame,
         ref_file.flush()
         logger.info(f"Written {ref_count} reference sequences for comparison")
         
-        # Run minimap2
         logger.info("Running minimap2 alignment")
         cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -214,34 +255,7 @@ def check_contained_match(sequence: str, existing_ships: pd.DataFrame,
     logger.info("No containing matches found")
     return None
 
-def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
-    """Create a temporary directory for FASTA files."""
-    from src.utils.seq_utils import load_fasta_to_dict
-    
-    # load sequence from fasta file
-    fasta_sequences = load_fasta_to_dict(fasta)
-    
-    # append existing sequences to dict
-    if existing_ships is not None and not existing_ships.empty:
-        sequences = {
-            **fasta_sequences,
-            **dict(zip(existing_ships['accession_tag'], existing_ships['sequence']))
-        }
-    else:
-        sequences = fasta_sequences
-
-    # save each as a fasta file in a temporary directory
-    tmp_fasta_dir = tempfile.mkdtemp()
-    for seq_id, seq in sequences.items():
-        tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
-        write_fasta(
-            {seq_id: seq},
-            tmp_fasta
-        )
-    logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
-    return tmp_fasta_dir
-
-def check_similar_match(sequence: str, 
+def check_similar_match(fasta: str, 
                        existing_ships: pd.DataFrame,
                        threshold: float) -> Optional[str]:
     """Check for sequences with similarity above threshold using k-mer comparison."""
@@ -251,6 +265,14 @@ def check_similar_match(sequence: str,
     write_multi_fasta(existing_ships, tmp_fasta_all_ships, sequence_col='sequence', id_col='accession_tag')
 
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+
+    if os.path.exists(fasta):
+        logger.info(f"Loading sequence from file: {fasta}")
+        sequences = load_fasta_to_dict(fasta)
+        if not sequences:
+            logger.error("No sequences found in FASTA file")
+            return None
+        sequence = list(sequences.values())[0]
 
     # Create temporary FASTA with new and existing sequences
     write_combined_fasta(
@@ -268,19 +290,7 @@ def check_similar_match(sequence: str,
         new_sequence_file=tmp_fasta_all_ships,
         seq_type='nucl'
     )
-    
-    # # Find best match above threshold
-    # best_match = None
-    # best_sim = 0
-    
-    # for seq_id, sim_dict in similarities.items():
-    #     if seq_id == 'query_sequence':  # Skip self comparison
-    #         continue
-    #     sim = sim_dict.get('query_sequence', 0)
-    #     if sim > threshold and sim > best_sim:
-    #         best_match = seq_id
-    #         best_sim = sim
-            
+               
     # return best_match
     logger.debug(f"Calculated similarities for {len(similarities)} sequences")
 
@@ -295,28 +305,6 @@ def check_similar_match(sequence: str,
                 
     logger.info("No similar matches found above threshold")
     return None
-
-def generate_new_accession(existing_ships: pd.DataFrame) -> str:
-    """Generate a new unique accession number."""
-    # Extract existing accession numbers
-    existing_nums = [
-        int(acc.replace('SBS', '').split('.')[0])
-        for acc in existing_ships['accession_tag']
-        if acc.startswith('SBS')
-    ]
-    
-    # Check if we have existing accessions
-    if not existing_nums:
-        error_msg = "Problem with loading existing ships. No existing SBS accessions found in database."
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-    
-    # Find next available number
-    next_num = max(existing_nums) + 1
-    logger.info(f"Last used accession number: SBS{max(existing_nums):06d}")
-    logger.info(f"Assigning new accession number: SBS{next_num:06d}")
-        
-    return f"SBS{next_num:06d}"
 
 ########################################################
 # classification pipeline
@@ -439,10 +427,16 @@ def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, d
         - For protein input (seq_type=="prot"): (family_dict, None)
     """
     from src.utils.blast_utils import run_hmmer, select_ship_family
-    from src.utils.seq_utils import load_fasta_to_dict
     
     family_dict = None
     tmp_protein_filename = None
+
+    if os.path.exists(fasta):
+        logger.info(f"Loading sequence from file: {fasta}")
+        sequences = load_fasta_to_dict(fasta)
+        if not sequences:
+            logger.error("No sequences found in FASTA file")
+            return None
 
     # Simple selection of top hit using blast or hmmer results
     if blast_df is not None and len(blast_df) > 0:
@@ -460,13 +454,6 @@ def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, d
             query_accession = top_hit['query_id']
             top_family = fetch_meta_data(accession_tag=query_accession)['familyName']
             family_dict = {"family": top_family, "aln_length": top_aln_length, "evalue": top_evalue}
-
-    if fasta:
-        # Load sequence from FASTA file
-        sequences = load_fasta_to_dict(fasta)
-        if not sequences:
-            logger.error("No sequences found in FASTA file")
-            return None, None
             
         hmmer_dict, tmp_protein_filename = run_hmmer(
             db_list=db_list,
@@ -490,7 +477,7 @@ def classify_family(fasta=None, seq_type=None, blast_df=None, hmmer_dict=None, d
     else:
         return family_dict, None
 
-def classify_navis(protein: str,
+def classify_navis(fasta: str,
                   existing_captains: pd.DataFrame, 
                   threads: int = 1) -> str:
     """Assign navis based on captain sequence clustering."""
@@ -501,6 +488,8 @@ def classify_navis(protein: str,
     # Create temporary dir with FASTAs from:
     # - Captain sequence from new sequence
     # - All existing classified captain sequences
+
+    protein = list(load_fasta_to_dict(fasta).values())[0]
 
     logger.debug("Starting navis classification")
     tmp_fasta_dir = create_tmp_fasta_dir(protein, existing_captains)
@@ -1101,148 +1090,260 @@ def create_classification_response(
     
     return response
 
-def create_classification_callback(
-    task_name: str,
+def create_workflow_stage_callback(
+    stage_id: str,
+    next_stage_id: str,
     task_function: Callable,
-    input_store: str,
-    output_store: str,
-    next_stage: str,
-    active_progress: str = "family",
-    progress_value: int = 100,
-    progress_color: str = "blue",
-    next_progress: str = None,
-    next_progress_value: int = 10,
-    next_progress_color: str = None,
+    success_message: str = None,
     custom_task_args: Callable = None
 ):
     """
-    Create a standardized classification callback.
-    
-    Args:
-        task_name: Name of the task for logging/display
-        task_function: Celery task function to execute
-        input_store: Name of the input data store
-        output_store: Name of the output data store
-        next_stage: Description of the next stage if no match found
-        active_progress: Which progress bar to activate
-        progress_value: Value for the current progress bar
-        progress_color: Color for success state
-        next_progress: Next progress bar to activate
-        next_progress_value: Value for the next progress bar
-        next_progress_color: Color for next progress bar
-        custom_task_args: Function to prepare custom task arguments
+    Create a callback for a workflow stage that updates progress bars and navigates to next stage.
     """
+    stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == stage_id), None)
+    next_stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == next_stage_id), None)
+    
+    if not stage_info or not next_stage_info:
+        raise ValueError(f"Invalid stage IDs: {stage_id}, {next_stage_id}")
+    
+    # Create a unique pattern match ID for this callback
+    callback_id = f"{stage_id}_to_{next_stage_id}"
+    
     @callback(
         [
-            Output("classification-stage", "children", allow_duplicate=True),
-            Output(f"classification-{active_progress}-progress", "value", allow_duplicate=True),
-            Output(f"classification-{active_progress}-progress", "animated", allow_duplicate=True),
-            Output(f"classification-{active_progress}-progress", "striped", allow_duplicate=True),
-            Output(f"classification-{active_progress}-color", "color", allow_duplicate=True),
-            Output(f"classification-{active_progress}-name", "children", allow_duplicate=True),
-            Output("classification-family-output", "children", allow_duplicate=True),
-            Output(output_store, "data"),
-        ] + ([
-            Output(f"classification-{next_progress}-progress", "value", allow_duplicate=True),
-            Output(f"classification-{next_progress}-progress", "animated", allow_duplicate=True),
-            Output(f"classification-{next_progress}-progress", "striped", allow_duplicate=True),
-            Output(f"classification-{next_progress}-color", "color", allow_duplicate=True),
-        ] if next_progress else []),
-        [Input(input_store, "data")],
+            Output("classification-stage", "data", allow_duplicate=True),
+            Output(f"classification-{stage_id}-progress", "value"),
+            Output(f"classification-{stage_id}-progress", "animated"),
+            Output(f"classification-{stage_id}-progress", "striped"),
+            Output({"type": "classification-stage-data", "index": stage_id}, "data"),
+            Output("classification-workflow-state", "data", allow_duplicate=True),
+            # Next stage progress
+            Output(f"classification-{next_stage_id}-progress", "value"),
+            Output(f"classification-{next_stage_id}-progress", "animated"),
+            Output(f"classification-{next_stage_id}-progress", "striped"),
+        ],
+        [
+            Input("classification-workflow-state", "data"),
+        ],
         [
             State("classification-upload", "data"),
-            State("classification-exact-matches", "data"),
-            State("classification-contained-matches", "data"),
-            State("classification-similar-matches", "data"),
+            State({"type": "classification-stage-data", "index": stage_id}, "data"),
         ],
         prevent_initial_call=True
     )
     @handle_callback_error
-    def classification_callback(input_data, upload_data, exact_matches, contained_matches, similar_matches):
-        logger.info(f"Starting {task_name} check...")
+    def stage_callback(workflow_state, upload_data, current_stage_data):
+        # Only process if this is the current stage in the workflow
+        if not workflow_state or workflow_state.get("current_stage") != stage_id:
+            raise PreventUpdate
+            
+        # Skip if already processed
+        if current_stage_data and current_stage_data.get("processed"):
+            raise PreventUpdate
         
-        # Check for required data
-        if upload_data is None or input_data is None:
+        # Skip if workflow is already complete
+        if workflow_state.get("complete", False):
             raise PreventUpdate
+        
+        if not custom_task_args:
+            raise ValueError(f"No task arguments provided for {stage_id}")
             
-        # Check if any previous matches were found
-        if (exact_matches and exact_matches.get("found")) or \
-           (contained_matches and contained_matches.get("found")) or \
-           (similar_matches and similar_matches.get("found")):
-            raise PreventUpdate
-            
+        # Prepare args and run task
+        logger.info(f"Running task for stage {stage_id}...")
+        task_args = custom_task_args(upload_data)
+        
         try:
-            if not custom_task_args:
-                raise ValueError(f"No task arguments provided for {task_name}")
-                
-            task_args = custom_task_args(upload_data, input_data)
-            
-            # Run the task
             result = task_function.delay(**task_args).get(timeout=300)
+            logger.info(f"Stage {stage_id} result: {result}")
             
-            if result is None:
-                # No match found - continue to next stage
-                return [
-                    next_stage,  # stage
-                    progress_value,  # progress complete
+            # Update workflow state
+            new_workflow_state = workflow_state.copy()
+            new_workflow_state["progress"] = workflow_state.get("progress", 0) + 1
+            
+            if result:
+                # Match found - no need to continue
+                message = success_message or f"{stage_info['label']} found: {result}"
+                new_workflow_state["found_match"] = True
+                new_workflow_state["match_stage"] = stage_id
+                new_workflow_state["match_result"] = result
+                new_workflow_state["complete"] = True
+                
+                return (
+                    message,  # stage message
+                    100,  # progress complete
                     False,  # not animated
-                    True,  # stays striped
-                    progress_color,  # success color
-                    None,  # no result name
-                    None,  # no output alert
-                    {"found": False, "error": False},  # data for next step
-                ] + ([
-                    next_progress_value,  # next progress starts
+                    True,  # striped
+                    {"found": True, "match": result, "processed": True},  # data
+                    new_workflow_state,  # updated workflow state
+                    0,  # next progress - not started
+                    False,  # next not animated
+                    False,  # next not striped
+                )
+            else:
+                # No match found - continue to next stage
+                new_workflow_state["current_stage"] = next_stage_id
+                
+                return (
+                    next_stage_info["label"],  # next stage
+                    100,  # this stage complete
+                    False,  # not animated 
+                    True,  # striped
+                    {"found": False, "processed": True},  # data
+                    new_workflow_state,  # updated workflow state
+                    10,  # next progress starts
                     True,  # next animated
                     True,  # next striped
-                    next_progress_color,  # next color
-                ] if next_progress else [])
-            
-            # Match found
-            return [
-                f"{task_name} Match Found",  # stage
-                progress_value,  # progress complete
-                False,  # not animated
-                True,  # stays striped
-                progress_color,  # success color
-                result,  # result name
-                dmc.Alert(  # output alert
-                    title=f"{task_name} Match",
-                    children=f"Found {task_name.lower()} match: {result}",
-                    color=progress_color,
-                    variant="light",
-                    className="mb-3"
-                ),
-                {"found": True, "match": result, "error": False},  # data for next step
-            ] + ([
-                0,  # next progress reset
-                False,  # next not animated
-                False,  # next not striped
-                "gray",  # next disabled
-            ] if next_progress else [])
-                
+                )
         except Exception as e:
-            logger.error(f"Error in {task_name} check: {str(e)}")
-            return [
-                f"Error in {task_name} Check",  # stage
-                progress_value,  # progress complete
+            logger.error(f"Error in {stage_id} stage: {str(e)}")
+            error_message = f"Error in {stage_info['label']}: {str(e)}"
+            
+            # Update workflow state with error
+            new_workflow_state = workflow_state.copy()
+            new_workflow_state["error"] = True
+            new_workflow_state["error_message"] = error_message
+            new_workflow_state["complete"] = True
+            
+            return (
+                error_message,  # error message
+                100,  # progress complete
                 False,  # not animated
-                False,  # not striped
-                "red",  # error color
-                "Error",  # error name
-                dmc.Alert(  # error alert
-                    title="Error",
-                    children=str(e),
-                    color="red",
-                    variant="light",
-                    className="mb-3"
-                ),
-                {"error": True},  # error data
-            ] + ([
-                0,  # next progress reset
+                False,  # not striped (error)
+                {"found": False, "error": str(e), "processed": True},  # data
+                new_workflow_state,  # updated workflow state
+                0,  # next progress - not started
                 False,  # next not animated
                 False,  # next not striped
-                "gray",  # next disabled
-            ] if next_progress else [])
+            )
+            
+    return stage_callback
+
+def create_workflow_stage_callback_old(
+    stage_id: str,
+    next_stage_id: str,
+    task_function: Callable,
+    success_message: str = None,
+    custom_task_args: Callable = None
+):
+    """
+    Create a callback for a workflow stage that updates progress bars and navigates to next stage.
     
-    return classification_callback
+    Args:
+        stage_id: ID of the current stage (e.g., "exact")
+        next_stage_id: ID of the next stage (e.g., "contained")
+        task_function: The Celery task to execute
+        success_message: Message to display on success (or None to use default)
+        custom_task_args: Function to prepare arguments for the task
+    """
+    stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == stage_id), None)
+    next_stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == next_stage_id), None)
+    
+    if not stage_info or not next_stage_info:
+        raise ValueError(f"Invalid stage IDs: {stage_id}, {next_stage_id}")
+    
+    # Create a unique pattern match ID for this callback
+    callback_id = f"{stage_id}_to_{next_stage_id}"
+    
+    @callback(
+        [
+            Output("classification-stage", "data", allow_duplicate=True),
+            Output(f"classification-{stage_id}-progress", "value", 
+                  allow_duplicate=True, pattern_match_operator='equals', pattern_match=callback_id),
+            Output(f"classification-{stage_id}-progress", "animated", 
+                  allow_duplicate=True, pattern_match_operator='equals', pattern_match=callback_id),
+            Output(f"classification-{stage_id}-progress", "striped", 
+                  allow_duplicate=True, pattern_match_operator='equals', pattern_match=callback_id),
+            Output(f"classification-{stage_id}-data", "data"),
+            # Next stage progress
+            Output(f"classification-{next_stage_id}-progress", "value", 
+                  allow_duplicate=True, pattern_match_operator='equals', pattern_match=callback_id),
+            Output(f"classification-{next_stage_id}-progress", "animated", 
+                  allow_duplicate=True, pattern_match_operator='equals', pattern_match=callback_id),
+            Output(f"classification-{next_stage_id}-progress", "striped", 
+                  allow_duplicate=True, pattern_match_operator='equals', pattern_match=callback_id),
+        ],
+        Input("classification-upload", "data"),
+        State(f"classification-{stage_id}-data", "data"),
+        prevent_initial_call=True
+    )
+    @handle_callback_error
+    def stage_callback(upload_data, current_stage_data):
+        if upload_data is None:
+            raise PreventUpdate
+            
+        # Skip if already processed
+        if current_stage_data and current_stage_data.get("processed"):
+            raise PreventUpdate
+        
+        # Skip if previous stage found a match and we should skip later stages
+        import dash
+        if hasattr(dash.callback_context, 'inputs'):
+            for prev_stage in WORKFLOW_STAGES:
+                if prev_stage["id"] == stage_id:
+                    break
+                    
+                prev_data_id = f"classification-{prev_stage['id']}-data.data"
+                if prev_data_id in dash.callback_context.inputs:
+                    prev_stage_data = dash.callback_context.inputs[prev_data_id]
+                    if prev_stage_data and prev_stage_data.get("found"):
+                        logger.info(f"Skipping {stage_id} because {prev_stage['id']} found a match")
+                        raise PreventUpdate
+                
+        if not custom_task_args:
+            raise ValueError(f"No task arguments provided for {stage_id}")
+            
+        # Prepare args and run task
+        task_args = custom_task_args(upload_data)
+        logger.info(f"Running {stage_id} task with arguments: {task_args.keys()}")
+        result = task_function.delay(**task_args).get(timeout=300)
+        
+        logger.info(f"{stage_id} task result: {result}")
+        
+        if result:
+            # Match found - no need to continue
+            message = success_message or f"{stage_info['label']} found: {result}"
+            return (
+                message,  # stage message
+                100,  # progress complete
+                False,  # not animated
+                True,  # striped
+                {"found": True, "match": result, "processed": True},  # data
+                0,  # next progress - not started
+                False,  # next not animated
+                False,  # next not striped
+            )
+        else:
+            # No match found - continue to next stage
+            return (
+                next_stage_info["label"],  # next stage
+                100,  # this stage complete
+                False,  # not animated 
+                True,  # striped
+                {"found": False, "processed": True},  # data
+                10,  # next progress starts
+                True,  # next animated
+                True,  # next striped
+            )
+            
+    return stage_callback
+
+def make_alert_using_match(match_class=None, classification=None, type=None):    
+    if match_class:
+        if classification == "Family":
+            color = "green"
+        elif classification == "Navis":
+            color = "blue"
+        elif classification == "Haplotype":
+            color = "violet"
+
+        return (
+            dmc.Alert(
+                title=f"{classification} found using {type} match",
+                children=f"{classification}: {match_class}",
+                color=color,
+                variant="light",
+                className="mb-3"
+            )
+        )
+    else:
+        return None

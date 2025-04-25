@@ -101,25 +101,25 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
         return None 
 
 @celery.task(name='check_exact_matches_task')
-def check_exact_matches_task(sequence: str, ships_dict: list) -> Optional[str]:
+def check_exact_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
     from src.utils.classification_utils import check_exact_match
     try:
         # Convert the list of dictionaries back to DataFrame
         existing_ships = pd.DataFrame.from_dict(ships_dict)
-        return check_exact_match(sequence, existing_ships)
+        return check_exact_match(fasta, existing_ships)
     except Exception as e:
         logger.error(f"Exact match check failed: {str(e)}")
         return None
 
 @celery.task(name='check_contained_matches_task')
-def check_contained_matches_task(sequence: str, ships_dict: list) -> Optional[str]:
+def check_contained_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
     from src.utils.classification_utils import check_contained_match
     try:
         # Convert the list of dictionaries back to DataFrame
         existing_ships = pd.DataFrame.from_dict(ships_dict)
         
         # Run the check
-        result = check_contained_match(sequence, existing_ships=existing_ships)
+        result = check_contained_match(fasta, existing_ships=existing_ships)
         return result
         
     except Exception as e:
@@ -127,7 +127,7 @@ def check_contained_matches_task(sequence: str, ships_dict: list) -> Optional[st
         return None
 
 @celery.task(name='check_similar_matches_task')
-def check_similar_matches_task(sequence: str, ships_dict: list, threshold: float = 0.9) -> Optional[str]:
+def check_similar_matches_task(fasta: str, ships_dict: list, threshold: float = 0.9) -> Optional[str]:
     from src.utils.classification_utils import check_similar_match
     try:
         logger.info(f"Starting similar match task with {len(ships_dict)} ships")
@@ -135,7 +135,7 @@ def check_similar_matches_task(sequence: str, ships_dict: list, threshold: float
         existing_ships = pd.DataFrame.from_dict(ships_dict)
         logger.info(f"Converted to DataFrame with shape {existing_ships.shape}")
         
-        result = check_similar_match(sequence, existing_ships, threshold)
+        result = check_similar_match(fasta, existing_ships, threshold)
         logger.info(f"Similar match result: {result}")
         return result
     except Exception as e:
@@ -168,10 +168,10 @@ def run_family_classification_task(fasta, seq_type, db_list=None):
         return None
 
 @celery.task(name='run_navis_classification_task')
-def run_navis_classification_task(protein, existing_ships):
+def run_navis_classification_task(fasta, existing_ships):
     from src.utils.classification_utils import classify_navis
     try:
-        return classify_navis(protein, existing_ships)
+        return classify_navis(fasta, existing_ships)
     except Exception as e:
         logger.error(f"Navis classification failed: {str(e)}")
         return None

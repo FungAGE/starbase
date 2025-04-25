@@ -527,3 +527,30 @@ def write_combined_fasta(new_sequence: str,
     except Exception as e:
         logger.error(f"Error writing combined FASTA: {e}")
         return None
+
+def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
+    """Create a temporary directory for FASTA files."""
+    import os
+    
+    # load sequence from fasta file
+    fasta_sequences = load_fasta_to_dict(fasta)
+    
+    # append existing sequences to dict
+    if existing_ships is not None and not existing_ships.empty:
+        sequences = {
+            **fasta_sequences,
+            **dict(zip(existing_ships['accession_tag'], existing_ships['sequence']))
+        }
+    else:
+        sequences = fasta_sequences
+
+    # save each as a fasta file in a temporary directory
+    tmp_fasta_dir = tempfile.mkdtemp()
+    for seq_id, seq in sequences.items():
+        tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
+        write_fasta(
+            {seq_id: seq},
+            tmp_fasta
+        )
+    logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
+    return tmp_fasta_dir
