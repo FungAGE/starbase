@@ -20,8 +20,8 @@ celery.conf.update(
         'src.tasks',  # Make sure this is included
     ],
     worker_prefetch_multiplier=1,  # Disable prefetching for more predictable behavior
-    task_time_limit=3600,  # 1 hour timeout
-    task_soft_time_limit=3000,  # Soft timeout of 50 minutes
+    task_time_limit=300,  # 5 minute timeout
+    task_soft_time_limit=90,  # Soft timeout of 1.5 minutes
     task_track_started=True,
     timezone='UTC',
     enable_utc=True,
