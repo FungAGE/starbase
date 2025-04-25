@@ -279,11 +279,14 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
             logger.info(f"Processing stage {i+1}/{len(WORKFLOW_STAGES)}: {stage_id}")
             
             # Define task functions based on stage
+            result = None
+            
             if stage_id == "exact":
                 result = check_exact_matches_task.delay(
                     fasta=upload_data["fasta"],
                     ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records')
                 ).get(timeout=180)
+                logger.debug(f"Exact match result: {result}")
             
             elif stage_id == "contained":
                 workflow_tracker.stage_progress = 30
@@ -292,6 +295,7 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
                     fasta=upload_data["fasta"],
                     ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records')
                 ).get(timeout=180)
+                logger.debug(f"Contained match result: {result}")
             
             elif stage_id == "similar":
                 workflow_tracker.stage_progress = 30
@@ -300,21 +304,32 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
                     fasta=upload_data["fasta"],
                     ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records')
                 ).get(timeout=180)
+                logger.debug(f"Similar match result: {result}")
             
             elif stage_id == "family":
                 workflow_tracker.stage_progress = 30
                 workflow_tracker.stage_values[i] = 30
-                family_result = run_family_classification_task.delay(
+                result = run_family_classification_task.delay(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
                     db_list=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records')
                 ).get(timeout=180)
+                logger.debug(f"Family classification result: {result}")
+                
+                # For family stage, if result is None, stop the pipeline with appropriate message
+                if result is None:
+                    logger.info("Family classification did not find a match, stopping pipeline")
+                    workflow_tracker.stage_values[i] = 100  # Mark this stage as completed
+                    workflow_tracker.stage_animated[i] = False
+                    workflow_tracker.complete = True
+                    workflow_tracker.match_stage = "family"  # Not really a match but for display purposes
+                    workflow_tracker.match_result = "No family match found"
+                    # Not setting error as this is an expected outcome
+                    break
                 
                 # Store family result for use in subsequent stages
-                if family_result and "protein" in family_result:
-                    upload_data["protein_file"] = family_result["protein"]
-                
-                result = family_result
+                if isinstance(result, dict) and "protein" in result:
+                    upload_data["protein_file"] = result["protein"]
             
             elif stage_id == "navis":
                 workflow_tracker.stage_progress = 30
@@ -322,15 +337,29 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
                 
                 # Check if we have a protein file from the family stage
                 if "protein_file" not in upload_data or not upload_data["protein_file"]:
-                    logger.error("No protein file available for navis classification")
-                    workflow_tracker.error = "Missing protein file required for navis classification"
+                    logger.warning("No protein file available for navis classification")
+                    workflow_tracker.stage_values[i] = 100
+                    workflow_tracker.stage_animated[i] = False
                     workflow_tracker.complete = True
+                    workflow_tracker.match_stage = "navis"
+                    workflow_tracker.match_result = "No protein data available for navis"
                     break
                 
                 result = run_navis_classification_task.delay(
                     fasta=upload_data["protein_file"],
                     existing_ships=fetch_captains(**upload_data["fetch_captain_params"]).to_dict('records')
                 ).get(timeout=180)
+                logger.debug(f"Navis classification result: {result}")
+                
+                # For navis stage, if result is None, stop the pipeline with appropriate message
+                if result is None:
+                    logger.info("Navis classification did not find a match, stopping pipeline")
+                    workflow_tracker.stage_values[i] = 100
+                    workflow_tracker.stage_animated[i] = False
+                    workflow_tracker.complete = True
+                    workflow_tracker.match_stage = "navis"
+                    workflow_tracker.match_result = "No navis match found"
+                    break
             
             elif stage_id == "haplotype":
                 workflow_tracker.stage_progress = 30
@@ -340,6 +369,17 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
                     existing_ships=fetch_ships(**upload_data["fetch_ship_params"]).to_dict('records'),
                     navis=fetch_captains(**upload_data["fetch_captain_params"]).to_dict('records')
                 ).get(timeout=180)
+                logger.debug(f"Haplotype classification result: {result}")
+                
+                # For haplotype stage, if result is None, stop the pipeline with appropriate message
+                if result is None:
+                    logger.info("Haplotype classification did not find a match, stopping pipeline")
+                    workflow_tracker.stage_values[i] = 100
+                    workflow_tracker.stage_animated[i] = False
+                    workflow_tracker.complete = True
+                    workflow_tracker.match_stage = "haplotype"
+                    workflow_tracker.match_result = "No haplotype match found"
+                    break
             
             else:
                 logger.warning(f"No task defined for stage {stage_id}, skipping")
@@ -352,21 +392,25 @@ def run_workflow_background(n_clicks, upload_data, interval_disabled):
             workflow_tracker.stage_values[i] = 100
             workflow_tracker.stage_animated[i] = False
             
+            # For the exact, contained, and similar stages, continue to next stage even if result is None
+            # For other stages, if we got a result, we found a match
             if result:
-                # Match found - no need to continue
-                logger.info(f"Match found in stage {stage_id}: {result}")
-                workflow_tracker.found_match = True
-                workflow_tracker.match_stage = stage_id
-                workflow_tracker.match_result = result
-                break
+                if stage_id in ["family", "navis", "haplotype"]:
+                    # Match found for one of the classification stages
+                    logger.info(f"Match found in stage {stage_id}: {result}")
+                    workflow_tracker.found_match = True
+                    workflow_tracker.match_stage = stage_id
+                    workflow_tracker.match_result = result
+                    break
                 
-        # Mark as complete
+        # Mark as complete if we haven't already done so
         workflow_tracker.complete = True
     
     except Exception as e:
-        # Handle errors
+        # Handle errors - only unexpected errors
         error_message = f"Error during classification: {str(e)}"
         logger.error(error_message)
+        logger.exception("Full traceback:")  # Log full traceback for debugging
         workflow_tracker.error = error_message
         workflow_tracker.complete = True
         
@@ -412,6 +456,7 @@ def update_ui_from_status(n_intervals):
     
     if status.complete:
         if status.error:
+            # True error condition
             stage_message = "Error occurred during classification"
             result_display = dmc.Alert(
                 title="Classification Error",
@@ -421,6 +466,7 @@ def update_ui_from_status(n_intervals):
                 className="mb-3"
             )
         elif status.found_match:
+            # Successful match
             stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == status.match_stage), {})
             stage_message = f"{stage_info.get('label', 'Match')} found: {status.match_result}"
             result_display = dmc.Alert(
@@ -430,16 +476,34 @@ def update_ui_from_status(n_intervals):
                 variant="light",
                 className="mb-3"
             )
+        elif status.match_stage:
+            # No match found, but we know which stage stopped the pipeline
+            stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == status.match_stage), {})
+            no_match_message = f"No {status.match_stage} match found"
+            
+            if status.match_result and "No" in status.match_result:
+                no_match_message = status.match_result
+                
+            stage_message = f"Classification stopped: {no_match_message}"
+            result_display = dmc.Alert(
+                title=f"Classification Result",
+                children=no_match_message,
+                color="yellow",
+                variant="light",
+                className="mb-3"
+            )
         else:
+            # Generic no match case (all stages completed)
             stage_message = "Classification complete - No matches found"
             result_display = dmc.Alert(
                 title="Classification Complete",
                 children="No matches were found for this sequence",
                 color="yellow",
-                    variant="light",
-                    className="mb-3"
-                )
+                variant="light",
+                className="mb-3"
+            )
     elif status.current_stage:
+        # Still processing a stage
         stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == status.current_stage), {})
         stage_message = f"Processing: {stage_info.get('label', status.current_stage)}"
     
