@@ -1,5 +1,6 @@
 from dash import html, Output, Input, State, callback, no_update, dcc, callback_context
 import dash_mantine_components as dmc
+import dash_bootstrap_components as dbc
 from dash_iconify import DashIconify
 from typing import List
 
@@ -543,4 +544,22 @@ def create_feedback_button():
             "width": "250px",
             "backgroundColor": "var(--mantine-color-gray-1)",
         },
+    )
+
+
+def make_progress_bar(message, id_prefix, color):
+    """Create a progress bar with given prefix and color"""
+    return dmc.Group(
+        [
+            dmc.Text(message, size="sm"),
+            dbc.Progress(
+                id=f"{id_prefix}-progress",
+                value=0,
+                color=color,
+                animated=False,
+                striped=False,
+                style={"width": "100%", "marginBottom": "5px"},
+            ),
+            html.Div(id=f"{id_prefix}-progress-spacer"),  # Spacer div
+        ]
     )
