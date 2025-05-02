@@ -25,8 +25,6 @@ from src.utils.seq_utils import (
 )
 from src.utils.blast_utils import (
     run_blast,
-    run_hmmer,
-    run_diamond,
     process_captain_results,
     create_no_matches_alert,
     parse_blast_xml,
@@ -40,7 +38,6 @@ from src.components.callbacks import (
     create_accession_modal,
 )
 from src.database.sql_manager import fetch_meta_data, fetch_captains, fetch_ships
-from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
 from src.utils.classification_utils import WORKFLOW_STAGES
@@ -52,6 +49,8 @@ from src.tasks import (
     run_family_classification_task,
     run_navis_classification_task,
     run_haplotype_classification_task,
+    run_blast_search_task,
+    run_hmmer_search_task,
 )
 
 dash.register_page(__name__)
@@ -913,66 +912,43 @@ def fetch_captain(
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
-        # Get the appropriate database configuration
-        db = get_blast_db(query_type)
-
-        if query_type == "nucl":
-            # For nucleotide sequences, run diamond blastx first
-            diamond_results = run_diamond(
-                db_list=BLAST_DB_PATHS,  # Pass full paths dict
-                query_type=query_type,
-                input_gene="tyr",
-                input_eval=evalue_threshold,
-                query_fasta=tmp_query_fasta,
-                threads=2,
-            )
-
-            if diamond_results:
-                # Extract protein sequence from diamond results
-                protein_seq = diamond_results[0].get("qseq_translated")
-                if protein_seq:
-                    # Write protein sequence to temp file
-                    tmp_protein_fasta = write_temp_fasta(query_header, protein_seq)
-
-                    # Run hmmsearch with protein sequence
-                    captain_results_dict = run_hmmer(
-                        db_list=BLAST_DB_PATHS,  # Pass full paths dict
-                        query_type="prot",
-                        input_gene="tyr",
-                        input_eval=evalue_threshold,
-                        query_fasta=tmp_protein_fasta,
-                        threads=2,
-                    )
-        else:
-            # For protein sequences, run diamond blastp
-            diamond_results = run_diamond(
-                db_list=BLAST_DB_PATHS,
-                query_type="prot",
-                input_gene="tyr",
-                input_eval=evalue_threshold,
-                query_fasta=tmp_query_fasta,
-                threads=2,
-            )
-
-            if diamond_results:
-                captain_results_dict = run_hmmer(
-                    db_list=BLAST_DB_PATHS,
-                    query_type="prot",
-                    input_gene="tyr",
-                    input_eval=evalue_threshold,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-
-        # Run BLAST search for visualization
-        blast_results_file = run_blast(
-            db_list=db,  # Pass string path
+        # Start task for BLAST search - Now using celery task
+        blast_task = run_blast_search_task.delay(
+            query_header=query_header,
+            query_seq=query_seq,
             query_type=query_type,
-            query_fasta=tmp_query_fasta,
-            tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
-            input_eval=evalue_threshold,
-            threads=2,
+            eval_threshold=evalue_threshold,
         )
+
+        blast_results_file = blast_task.get(timeout=300)  # 5 minute timeout
+
+        # Run Diamond and HMMER using celery tasks
+        if query_type == "nucl":
+            # For nucleotide sequences, use the HMMER task
+            hmmer_task = run_hmmer_search_task.delay(
+                query_header=query_header,
+                query_seq=query_seq,
+                query_type=query_type,
+                eval_threshold=evalue_threshold,
+            )
+
+            hmmer_results = hmmer_task.get(timeout=300)
+
+            if hmmer_results:
+                captain_results_dict = hmmer_results.get("results")
+        else:
+            # For protein sequences, directly run HMMER task
+            hmmer_task = run_hmmer_search_task.delay(
+                query_header=query_header,
+                query_seq=query_seq,
+                query_type=query_type,
+                eval_threshold=evalue_threshold,
+            )
+
+            hmmer_results = hmmer_task.get(timeout=300)
+
+            if hmmer_results:
+                captain_results_dict = hmmer_results.get("results")
 
         if blast_results_file is None:
             return (
