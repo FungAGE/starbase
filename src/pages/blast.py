@@ -20,6 +20,7 @@ from src.utils.seq_utils import (
     write_temp_fasta,
     parse_fasta,
     parse_fasta_from_file,
+    parse_multifasta_from_file,
     write_fasta,
 )
 from src.utils.blast_utils import (
@@ -83,6 +84,12 @@ layout = dmc.Container(
         # Processed data stores
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
+        # Multifasta stores
+        dcc.Store(id="multifasta-sequences-store"),  # Store list of sequences
+        dcc.Store(id="multifasta-active-tab", data=0),  # Store active tab index
+        dcc.Store(
+            id="multifasta-processed-tabs", data=[0]
+        ),  # Store which tabs have been processed
         # Single data store with all workflow state
         dcc.Store(id="classification-stage", data="Upload a sequence"),
         dcc.Store(
@@ -253,62 +260,75 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"sm": 12, "lg": 8},
                     children=[
-                        dmc.Stack(
+                        html.Div(
+                            id="right-column-content",
                             children=[
-                                # Progress section - initially hidden
-                                html.Div(id="classification-output", className="mt-4"),
+                                # This div will be replaced with tabs when multifasta is detected
                                 dmc.Stack(
-                                    [
-                                        dmc.Group(
+                                    children=[
+                                        # Progress section - initially hidden
+                                        html.Div(
+                                            id="classification-output", className="mt-4"
+                                        ),
+                                        dmc.Stack(
                                             [
-                                                dbc.Progress(
-                                                    id="classification-progress",
-                                                    value=0,
-                                                    color="blue",
-                                                    animated=True,
-                                                    striped=True,
+                                                dmc.Group(
+                                                    [
+                                                        dbc.Progress(
+                                                            id="classification-progress",
+                                                            value=0,
+                                                            color="blue",
+                                                            animated=True,
+                                                            striped=True,
+                                                            style={
+                                                                "width": "100%",
+                                                                "marginBottom": "5px",
+                                                            },
+                                                        ),
+                                                    ]
+                                                ),
+                                                dmc.Group(
+                                                    [
+                                                        dmc.Text(
+                                                            "Classification Status:",
+                                                            size="lg",
+                                                            fw=500,
+                                                        ),
+                                                        dmc.Text(
+                                                            id="classification-stage-display",
+                                                            size="lg",
+                                                            c="blue",
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
+                                            gap="md",
+                                            id="classification-progress-section",
+                                            style={"display": "none"},
+                                        ),
+                                        # BLAST results section
+                                        dmc.Stack(
+                                            [
+                                                html.Div(
+                                                    id="blast-container",
                                                     style={
                                                         "width": "100%",
-                                                        "marginBottom": "5px",
+                                                        "display": "flex",
+                                                        "flexDirection": "column",
                                                     },
                                                 ),
-                                            ]
-                                        ),
-                                        dmc.Group(
-                                            [
-                                                dmc.Text(
-                                                    "Classification Status:",
-                                                    size="lg",
-                                                    fw=500,
-                                                ),
-                                                dmc.Text(
-                                                    id="classification-stage-display",
-                                                    size="lg",
-                                                    c="blue",
-                                                ),
+                                                html.Div(id="blast-download"),
+                                                html.Div(id="subject-seq-button"),
                                             ]
                                         ),
                                     ],
-                                    gap="md",
-                                    id="classification-progress-section",
-                                    style={"display": "none"},
-                                ),
-                                # BLAST results section
-                                dmc.Stack(
-                                    [
-                                        html.Div(
-                                            id="blast-container",
-                                            style={
-                                                "width": "100%",
-                                                "display": "flex",
-                                                "flexDirection": "column",
-                                            },
-                                        ),
-                                        html.Div(id="blast-download"),
-                                        html.Div(id="subject-seq-button"),
-                                    ]
                                 ),
                             ],
+                        ),
+                        # Debug output (will be hidden in production)
+                        html.Div(
+                            id="right-column-content-debug",
+                            style={"margin-top": "10px", "color": "red"},
                         ),
                     ],
                     style={"justify-content": "flex-start"},
@@ -522,8 +542,48 @@ def update_fasta_details(seq_content, seq_filename):
             # "," is the delimeter for splitting content_type from content_string
             content_type, content_string = seq_content.split(",")
             query_string = base64.b64decode(content_string).decode("utf-8")
-            children = parse_fasta(query_string, seq_filename)
-            return children
+
+            # Try to parse as multifasta
+            sequences, seq_count, error = parse_multifasta_from_file(seq_content)
+
+            if error and not sequences:
+                # If parse as multifasta failed, show the error
+                return html.Div([error])
+
+            if seq_count > 1:
+                # Multiple sequences found - display count and first few
+                return html.Div(
+                    [
+                        html.P(f"File name: {seq_filename}"),
+                        html.P(
+                            [
+                                f"Found {seq_count} sequences in the file",
+                                html.Span(
+                                    " (maximum of 10 will be processed)",
+                                    style={"color": "orange", "fontStyle": "italic"}
+                                    if seq_count > 10
+                                    else {"display": "none"},
+                                ),
+                            ]
+                        ),
+                        html.Ul(
+                            [
+                                html.Li(f"{seq[0]} ({len(seq[1])} bp)")
+                                for seq in sequences[:3]
+                            ]
+                            + ([html.Li("...")] if seq_count > 3 else [])
+                        ),
+                        html.P(
+                            "Only the first 10 sequences will be processed."
+                            if seq_count > 10
+                            else "All sequences will be processed when you submit."
+                        ),
+                    ]
+                )
+            else:
+                # Single sequence (backward compatible)
+                children = parse_fasta(query_string, seq_filename)
+                return children
 
         except Exception as e:
             logger.error(e)
@@ -594,6 +654,7 @@ def handle_submission_and_upload(
         Output("query-header-store", "data"),
         Output("query-seq-store", "data"),
         Output("query-type-store", "data"),
+        Output("multifasta-sequences-store", "data"),
     ],
     [
         Input("submit-button", "n_clicks"),
@@ -611,19 +672,86 @@ def preprocess(n_clicks, query_text_input, query_file_contents):
         raise PreventUpdate
 
     try:
-        input_type, query_header, query_seq = check_input(
-            query_text_input, query_file_contents
-        )
+        # Check if we have a multifasta file
+        multifasta_data = None
 
-        if input_type in ("none", "both"):
-            return None, None, None
+        if query_file_contents:
+            logger.info("Processing file contents in preprocess")
+            sequences, seq_count, error = parse_multifasta_from_file(
+                query_file_contents
+            )
+            logger.info(
+                f"Multifasta parsing result: {seq_count} sequences, error: {error}"
+            )
 
-        query_type = guess_seq_type(query_seq)
-        return query_header, query_seq, query_type
+            if seq_count > 1:
+                # We have a valid multifasta file
+                logger.info(f"Processing multifasta with {seq_count} sequences")
+                multifasta_data = []
+
+                # Store all sequences
+                for idx, (header, seq) in enumerate(sequences):
+                    seq_type = guess_seq_type(seq)
+                    multifasta_data.append(
+                        {
+                            "index": idx,
+                            "header": header,
+                            "sequence": seq,
+                            "type": seq_type,
+                            "processed": False,
+                        }
+                    )
+                logger.info(
+                    f"Created multifasta_data list with {len(multifasta_data)} entries"
+                )
+
+                # For initial processing, return the first sequence
+                first_seq = multifasta_data[0]
+                logger.info(
+                    f"Using first sequence for initial processing: {first_seq['header'][:30]}..."
+                )
+                return (
+                    first_seq["header"],
+                    first_seq["sequence"],
+                    first_seq["type"],
+                    multifasta_data,
+                )
+            else:
+                # Only one sequence, process as single sequence
+                logger.info("Only one sequence detected, processing as single sequence")
+                input_type, query_header, query_seq = check_input(
+                    query_text_input, query_file_contents
+                )
+
+                if input_type in ("none", "both"):
+                    logger.info("Invalid input: none or both")
+                    return None, None, None, None
+
+                query_type = guess_seq_type(query_seq)
+                logger.info(
+                    f"Single sequence processed: {query_header[:30]}... of type {query_type}"
+                )
+                return query_header, query_seq, query_type, None
+        else:
+            # No file contents, process text input
+            logger.info("No file contents, checking text input")
+            input_type, query_header, query_seq = check_input(
+                query_text_input, query_file_contents
+            )
+
+            if input_type in ("none", "both"):
+                logger.info("Invalid input: none or both")
+                return None, None, None, None
+
+            query_type = guess_seq_type(query_seq)
+            logger.info(
+                f"Single sequence processed: {query_header[:30]}... of type {query_type}"
+            )
+            return query_header, query_seq, query_type, None
 
     except Exception as e:
         logger.error(f"Error in preprocess: {str(e)}")
-        return None, None, None
+        return None, None, None, None
 
 
 @callback(
@@ -721,8 +849,12 @@ def process_blast_results(blast_results_file):
         Input("query-seq-store", "data"),
         Input("query-type-store", "data"),
         Input("submission-id-store", "data"),
+        Input("multifasta-active-tab", "data"),
     ],
-    State("evalue-threshold", "value"),
+    [
+        State("evalue-threshold", "value"),
+        State("multifasta-sequences-store", "data"),
+    ],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -735,11 +867,37 @@ def fetch_captain(
     query_seq,
     query_type,
     submission_id,
+    active_tab,
     evalue_threshold,
+    multifasta_data,
     search_type="hmmsearch",
 ):
+    # First, check if we have a valid submission
     if not all([query_header, query_seq, query_type, submission_id]):
         return None, None, None, True, {"display": "none"}
+
+    # Check if we're dealing with multifasta data and need to switch to a different sequence
+    if (
+        multifasta_data
+        and len(multifasta_data) > 1
+        and active_tab is not None
+        and active_tab > 0
+    ):
+        # Get the sequence for the active tab
+        if active_tab < len(multifasta_data):
+            tab_data = multifasta_data[active_tab]
+
+            # If this tab hasn't been processed yet, use its sequence data
+            if not tab_data.get("processed", False):
+                logger.info(
+                    f"Processing sequence for tab {active_tab}: {tab_data['header']}"
+                )
+                query_header = tab_data["header"]
+                query_seq = tab_data["sequence"]
+                query_type = tab_data["type"]
+
+                # Mark this tab as processed in our local copy
+                multifasta_data[active_tab]["processed"] = True
 
     try:
         captain_results_dict = None
@@ -1117,7 +1275,7 @@ def fetch_captain(
 # 3. UI Update Callback - Modified to use classification results
 @callback(
     [
-        Output("classification-output", "children"),
+        Output("classification-output", "children", allow_duplicate=True),
         Output("blast-download", "children"),
     ],
     [
@@ -1125,8 +1283,13 @@ def fetch_captain(
         Input("captain-results-store", "data"),
         Input("classification-workflow-state", "data"),
         Input("classification-result-store", "data"),
+        Input("multifasta-sequences-store", "data"),
     ],
-    [State("submit-button", "n_clicks"), State("evalue-threshold", "value")],
+    [
+        State("submit-button", "n_clicks"),
+        State("evalue-threshold", "value"),
+        State("multifasta-active-tab", "data"),
+    ],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
@@ -1139,11 +1302,16 @@ def update_ui_elements(
     captain_results_dict,
     classification_state,
     classification_result,
+    multifasta_data,
     n_clicks,
     evalue,
+    active_tab,
 ):
     if not n_clicks or blast_results_file is None:
         return None, None
+
+    # Check if we're working with multifasta
+    is_multifasta = multifasta_data and len(multifasta_data) > 1
 
     try:
         if not blast_results_file:
@@ -1408,6 +1576,18 @@ def update_ui_elements(
         # Create download button
         download_button = blast_download_button()
 
+        # If we're working with multifasta, we may need to handle tabs
+        if is_multifasta:
+            # Check if we've already created tabs
+            ctx = dash.callback_context
+            triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+            # Return the outputs to be rendered in the appropriate tab
+            if triggered_id == "multifasta-sequences-store":
+                # Initial load - create the tab structure first
+                return None, download_button
+
+        # Return regular output for single sequence or active tab
         return classification_output, download_button
 
     except Exception as e:
@@ -1759,26 +1939,6 @@ def run_workflow_background(n_clicks, upload_data):
                     ].match_result = "No protein data available for navis"
                     break
 
-                result = run_navis_classification_task.delay(
-                    fasta=upload_data["protein_file"],
-                    existing_ships=fetch_captains(
-                        **upload_data["fetch_captain_params"]
-                    ).to_dict("records"),
-                ).get(timeout=180)
-                logger.debug(f"Navis classification result: {result}")
-
-                # For navis stage, if result is None, stop the pipeline with appropriate message
-                if result is None:
-                    logger.info(
-                        "Navis classification did not find a match, stopping pipeline"
-                    )
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()["workflow_tracker"].match_stage = "navis"
-                    globals()["workflow_tracker"].match_result = "No navis match found"
-                    break
-
             elif stage_id == "haplotype":
                 workflow_tracker.stage_progress = 30
                 workflow_tracker.stage_values[i] = 30
@@ -2092,3 +2252,472 @@ def create_classification_card(classification_data):
         radius="md",
         style={"marginBottom": "1rem"},
     )
+
+
+# Add a new callback to generate tabs based on multifasta data
+@callback(
+    Output("right-column-content", "children"),
+    [
+        Input("multifasta-sequences-store", "data"),
+        Input("blast-results-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def update_tabs_for_multifasta(multifasta_data, blast_results):
+    # Add debug logging
+    logger.info(
+        f"update_tabs_for_multifasta called with multifasta_data: {type(multifasta_data)}, blast_results: {type(blast_results)}"
+    )
+
+    # If there's no multifasta data or blast results, don't update
+    if not multifasta_data:
+        logger.info("No multifasta_data, preventing update")
+        raise PreventUpdate
+
+    if not blast_results:
+        logger.info("No blast_results, preventing update")
+        raise PreventUpdate
+
+    # If we have multifasta data (more than one sequence)
+    if isinstance(multifasta_data, list) and len(multifasta_data) > 1:
+        logger.info(f"Creating tabs for {len(multifasta_data)} sequences")
+
+        # Create tabs for each sequence
+        tabs = []
+        for idx, seq in enumerate(multifasta_data[:10]):  # Limit to 10 sequences
+            logger.info(f"Creating tab {idx}: {seq['header'][:20]}")
+            tabs.append(
+                dbc.Tab(
+                    label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
+                    tab_id=f"tab-{idx}",
+                )
+            )
+
+        logger.info(f"Created {len(tabs)} tab objects")
+
+        # Create a simple Card with Tabs in the header
+        card = dbc.Card(
+            [
+                dbc.CardHeader(
+                    dbc.Tabs(id="multifasta-tabs", active_tab="tab-0", children=tabs)
+                ),
+                dbc.CardBody(
+                    [
+                        # This div will contain the content for the active tab
+                        html.Div(
+                            id="tab-content",
+                            children=[
+                                # Initial content is for the first tab
+                                html.Div(id="classification-output", className="mt-4"),
+                                dmc.Stack(
+                                    [
+                                        dmc.Group(
+                                            [
+                                                dbc.Progress(
+                                                    id="classification-progress",
+                                                    value=0,
+                                                    color="blue",
+                                                    animated=True,
+                                                    striped=True,
+                                                    style={
+                                                        "width": "100%",
+                                                        "marginBottom": "5px",
+                                                    },
+                                                ),
+                                            ]
+                                        ),
+                                        dmc.Group(
+                                            [
+                                                dmc.Text(
+                                                    "Classification Status:",
+                                                    size="lg",
+                                                    fw=500,
+                                                ),
+                                                dmc.Text(
+                                                    id="classification-stage-display",
+                                                    size="lg",
+                                                    c="blue",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    gap="md",
+                                    id="classification-progress-section",
+                                    style={"display": "none"},
+                                ),
+                                # BLAST results section
+                                dmc.Stack(
+                                    [
+                                        html.Div(
+                                            id="blast-container",
+                                            style={
+                                                "width": "100%",
+                                                "display": "flex",
+                                                "flexDirection": "column",
+                                            },
+                                        ),
+                                        html.Div(id="blast-download"),
+                                        html.Div(id="subject-seq-button"),
+                                    ]
+                                ),
+                            ],
+                        )
+                    ]
+                ),
+            ]
+        )
+
+        logger.info("Successfully created card with tabs")
+        return card
+
+    # If there's only one sequence, return the default layout
+    logger.info("No multifasta data or only one sequence, returning default layout")
+    return dmc.Stack(
+        children=[
+            # Progress section - initially hidden
+            html.Div(id="classification-output", className="mt-4"),
+            dmc.Stack(
+                [
+                    dmc.Group(
+                        [
+                            dbc.Progress(
+                                id="classification-progress",
+                                value=0,
+                                color="blue",
+                                animated=True,
+                                striped=True,
+                                style={
+                                    "width": "100%",
+                                    "marginBottom": "5px",
+                                },
+                            ),
+                        ]
+                    ),
+                    dmc.Group(
+                        [
+                            dmc.Text(
+                                "Classification Status:",
+                                size="lg",
+                                fw=500,
+                            ),
+                            dmc.Text(
+                                id="classification-stage-display",
+                                size="lg",
+                                c="blue",
+                            ),
+                        ]
+                    ),
+                ],
+                gap="md",
+                id="classification-progress-section",
+                style={"display": "none"},
+            ),
+            # BLAST results section
+            dmc.Stack(
+                [
+                    html.Div(
+                        id="blast-container",
+                        style={
+                            "width": "100%",
+                            "display": "flex",
+                            "flexDirection": "column",
+                        },
+                    ),
+                    html.Div(id="blast-download"),
+                    html.Div(id="subject-seq-button"),
+                ]
+            ),
+        ],
+    )
+
+
+@callback(
+    [
+        Output("multifasta-active-tab", "data"),
+        Output("multifasta-processed-tabs", "data"),
+        Output("tab-content", "children"),
+    ],
+    [Input("multifasta-tabs", "active_tab")],
+    [
+        State("multifasta-processed-tabs", "data"),
+        State("multifasta-sequences-store", "data"),
+        State("blast-results-store", "data"),
+        State("captain-results-store", "data"),
+        State("evalue-threshold", "value"),
+    ],
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def handle_tab_switch(
+    active_tab,
+    processed_tabs,
+    multifasta_data,
+    blast_results,
+    captain_results,
+    evalue_threshold,
+):
+    """Track which tab is active and update processed tabs list"""
+    logger.info(f"handle_tab_switch called with active_tab: {active_tab}")
+
+    if active_tab is None or not multifasta_data:
+        logger.info("No active_tab or multifasta_data, preventing update")
+        raise PreventUpdate
+
+    # Extract the numeric part from the tab ID (e.g., "tab-2" -> 2)
+    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+    logger.info(f"Extracted tab index: {tab_idx}")
+
+    # Add this tab to processed tabs list if not already there
+    if processed_tabs is None:
+        processed_tabs = []
+
+    if tab_idx not in processed_tabs:
+        logger.info(f"Adding tab {tab_idx} to processed tabs list")
+        processed_tabs.append(tab_idx)
+
+    # Get the sequence data for this tab
+    if tab_idx >= len(multifasta_data):
+        logger.error(
+            f"Tab index {tab_idx} is out of range for multifasta_data length {len(multifasta_data)}"
+        )
+        raise PreventUpdate
+
+    seq_data = multifasta_data[tab_idx]
+    header = seq_data["header"]
+    sequence = seq_data["sequence"]
+    seq_type = seq_data["type"]
+    logger.info(f"Processing sequence for tab {tab_idx}: {header[:30]}...")
+
+    # Process this sequence for the tab
+    # First write sequence to temporary FASTA file
+    tmp_query_fasta = write_temp_fasta(header, sequence)
+    logger.info(f"Wrote sequence to temporary file: {tmp_query_fasta}")
+
+    # Get the appropriate database configuration
+    db = get_blast_db(seq_type)
+    logger.info(f"Using database for {seq_type} sequence type")
+
+    # Run BLAST search for this sequence
+    logger.info(f"Running BLAST search for tab {tab_idx}")
+    blast_results_file = run_blast(
+        db_list=db,
+        query_type=seq_type,
+        query_fasta=tmp_query_fasta,
+        tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
+        input_eval=evalue_threshold,
+        threads=2,
+    )
+
+    if blast_results_file is None:
+        # Handle error case
+        logger.error(f"No BLAST results were returned for tab {tab_idx}")
+        classification_output = html.Div(
+            create_error_alert("No BLAST results were returned")
+        )
+        blast_container = html.Div(
+            [
+                html.H2(
+                    "BLAST Results",
+                    style={
+                        "marginTop": "15px",
+                        "marginBottom": "20px",
+                        "fontWeight": "500",
+                        "textAlign": "left",
+                    },
+                ),
+                create_error_alert("No BLAST results were returned"),
+            ]
+        )
+        download_button = None
+    else:
+        logger.info(f"BLAST results returned: {blast_results_file}")
+        # Process BLAST results for classification
+        blast_tsv = parse_blast_xml(blast_results_file)
+        blast_df = pd.read_csv(blast_tsv, sep="\t")
+        logger.info(f"Parsed BLAST results with {len(blast_df)} hits")
+
+        # Create classification output
+        classification_data = None
+
+        # Check if dataframe is empty
+        if len(blast_df) == 0:
+            logger.info("No BLAST hits for classification")
+            classification_output = html.Div([create_no_matches_alert()])
+        else:
+            # Sort by evalue (ascending) and pident (descending) to get best hits
+            blast_df = blast_df.sort_values(
+                ["evalue", "pident"], ascending=[True, False]
+            )
+            top_hit = blast_df.iloc[0]
+            logger.info(
+                f"Top hit: {top_hit['hit_IDs']} with e-value {top_hit['evalue']}"
+            )
+
+            top_evalue = float(top_hit["evalue"])
+            top_aln_length = int(top_hit["aln_length"])
+            top_pident = float(top_hit["pident"])
+
+            if top_pident >= 90:
+                # look up family name from accession tag
+                hit_IDs = top_hit["hit_IDs"]
+                logger.info(f"Looking up metadata for hit ID: {hit_IDs}")
+                meta_df = fetch_meta_data(accession_tag=hit_IDs)
+
+                if not meta_df.empty:
+                    logger.info(f"Metadata found for {hit_IDs}")
+                    top_family = meta_df["familyName"].iloc[0]
+                    navis = (
+                        meta_df["starship_navis"].iloc[0]
+                        if "starship_navis" in meta_df.columns
+                        else None
+                    )
+                    haplotype = (
+                        meta_df["starship_haplotype"].iloc[0]
+                        if "starship_haplotype" in meta_df.columns
+                        else None
+                    )
+
+                    classification_data = {
+                        "title": "Classification from BLAST",
+                        "source": "blast_hit",
+                        "family": top_family,
+                        "navis": navis,
+                        "haplotype": haplotype,
+                        "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                        "confidence": "Medium" if top_pident >= 95 else "Low",
+                    }
+                    logger.info(f"Created classification data: {classification_data}")
+                else:
+                    logger.info(f"No metadata found for hit ID: {hit_IDs}")
+
+            # Create the classification card with title
+            if classification_data:
+                logger.info("Creating classification card")
+                classification_output = html.Div(
+                    [
+                        dmc.Title(
+                            "Classification Results",
+                            order=2,
+                            style={"marginBottom": "20px"},
+                        ),
+                        create_classification_card(classification_data),
+                    ]
+                )
+            else:
+                logger.info("No classification data available")
+                # No classification available
+                classification_output = html.Div(
+                    [
+                        dmc.Title(
+                            "Classification Results",
+                            order=2,
+                            style={"marginBottom": "20px"},
+                        ),
+                        dmc.Alert(
+                            title="No Classification Available",
+                            children="Could not classify this sequence with any available method.",
+                            color="yellow",
+                            variant="light",
+                        ),
+                    ]
+                )
+
+        # Read BLAST output for visualization
+        with open(blast_results_file, "r") as f:
+            blast_results_text = f.read()
+        logger.info(f"Read BLAST results file with {len(blast_results_text)} bytes")
+
+        # Create the BlasterJS container (will be filled by clientside callback)
+        blast_container = html.Div(
+            id="blast-container",
+            style={
+                "width": "100%",
+                "display": "flex",
+                "flexDirection": "column",
+            },
+        )
+
+        # Store the BLAST results for BlasterJS
+        blast_data_store = dcc.Store(
+            id="processed-blast-store", data={"blast_text": blast_results_text}
+        )
+        logger.info("Created BLAST data store")
+
+        # Create download button
+        download_button = blast_download_button()
+
+    # Put together the tab content
+    logger.info("Assembling complete tab content")
+    tab_content = [
+        # Classification output
+        classification_output,
+        # Progress section (hidden initially)
+        dmc.Stack(
+            [
+                dmc.Group(
+                    [
+                        dbc.Progress(
+                            id="classification-progress",
+                            value=0,
+                            color="blue",
+                            animated=True,
+                            striped=True,
+                            style={
+                                "width": "100%",
+                                "marginBottom": "5px",
+                            },
+                        ),
+                    ]
+                ),
+                dmc.Group(
+                    [
+                        dmc.Text(
+                            "Classification Status:",
+                            size="lg",
+                            fw=500,
+                        ),
+                        dmc.Text(
+                            id="classification-stage-display",
+                            size="lg",
+                            c="blue",
+                        ),
+                    ]
+                ),
+            ],
+            gap="md",
+            id="classification-progress-section",
+            style={"display": "none"},
+        ),
+        # BLAST results section
+        dmc.Stack(
+            [
+                blast_container,
+                html.Div(id="blast-download", children=download_button),
+                html.Div(id="subject-seq-button"),
+                # Add the blast data store to trigger BlasterJS
+                blast_data_store if blast_results_file is not None else None,
+            ]
+        ),
+    ]
+
+    logger.info(
+        f"Returning data for tab {tab_idx} with content length {len(tab_content)}"
+    )
+    return tab_idx, processed_tabs, tab_content
+
+
+@callback(
+    Output("right-column-content-debug", "children"),
+    Input("multifasta-sequences-store", "data"),
+    prevent_initial_call=True,
+)
+def debug_multifasta_data(multifasta_data):
+    """Debug callback to check if multifasta data is being correctly stored"""
+    if not multifasta_data:
+        logger.info("No multifasta data")
+
+    if isinstance(multifasta_data, list):
+        logger.info(f"Multifasta data contains {len(multifasta_data)} sequences")
+    else:
+        logger.info(f"Multifasta data is not a list: {type(multifasta_data)}")
