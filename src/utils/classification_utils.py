@@ -203,63 +203,61 @@ def check_contained_match(
     logger.info(f"Checking for contained matches (query length: {query_len})")
 
     # ruff: noqa
-    with (
-        tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as ref_file,
-    ):
-        logger.debug("Writing query sequence to temporary file")
-        query_file.write(f">query\n{sequence}\n")
-        query_file.flush()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as ref_file:
+            logger.debug("Writing query sequence to temporary file")
+            query_file.write(f">query\n{sequence}\n")
+            query_file.flush()
 
-        ref_count = 0
-        logger.debug("Writing reference sequences to temporary file")
-        for _, row in existing_ships.iterrows():
-            if row["sequence"] is not None and len(row["sequence"]) >= query_len:
-                ref_file.write(f">{row['accession_tag']}\n{row['sequence']}\n")
-                ref_count += 1
-        ref_file.flush()
-        logger.info(f"Written {ref_count} reference sequences for comparison")
+            ref_count = 0
+            logger.debug("Writing reference sequences to temporary file")
+            for _, row in existing_ships.iterrows():
+                if row["sequence"] is not None and len(row["sequence"]) >= query_len:
+                    ref_file.write(f">{row['accession_tag']}\n{row['sequence']}\n")
+                    ref_count += 1
+            ref_file.flush()
+            logger.info(f"Written {ref_count} reference sequences for comparison")
 
-        logger.info("Running minimap2 alignment")
-        cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            logger.info("Running minimap2 alignment")
+            cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
-        if result.returncode != 0:
-            logger.error(f"minimap2 failed with error: {result.stderr}")
-            return None
+            if result.returncode != 0:
+                logger.error(f"minimap2 failed with error: {result.stderr}")
+                return None
 
-        alignment_count = 0
-        for line in result.stdout.splitlines():
-            alignment_count += 1
-            fields = line.split("\t")
-            if len(fields) < 10:
-                continue
+            alignment_count = 0
+            for line in result.stdout.splitlines():
+                alignment_count += 1
+                fields = line.split("\t")
+                if len(fields) < 10:
+                    continue
 
-            ref_name = fields[5]
-            matches = int(fields[9])
-            align_length = int(fields[10])
+                ref_name = fields[5]
+                matches = int(fields[9])
+                align_length = int(fields[10])
 
-            coverage = align_length / query_len
-            identity = matches / align_length
+                coverage = align_length / query_len
+                identity = matches / align_length
 
-            if coverage >= min_coverage and identity >= min_identity:
-                logger.info(
-                    f"Found containing match: {ref_name} "
-                    f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
-                )
-                containing_matches.append(
-                    (
-                        identity * coverage,  # score for sorting
-                        len(
-                            existing_ships[existing_ships["accession_tag"] == ref_name][
-                                "sequence"
-                            ].iloc[0]
-                        ),  # length for tiebreaking
-                        ref_name,
+                if coverage >= min_coverage and identity >= min_identity:
+                    logger.info(
+                        f"Found containing match: {ref_name} "
+                        f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
                     )
-                )
+                    containing_matches.append(
+                        (
+                            identity * coverage,  # score for sorting
+                            len(
+                                existing_ships[
+                                    existing_ships["accession_tag"] == ref_name
+                                ]["sequence"].iloc[0]
+                            ),  # length for tiebreaking
+                            ref_name,
+                        )
+                    )
 
-        logger.info(f"Processed {alignment_count} alignments from minimap2")
+            logger.info(f"Processed {alignment_count} alignments from minimap2")
 
     # Sort by score descending, then by length descending
     if containing_matches:
