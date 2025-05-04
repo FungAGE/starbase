@@ -52,21 +52,19 @@ def cleanup_cache_task():
 
 
 @celery.task(name="run_blast_search")
-def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+def run_blast_search_task(
+    query_header, query_seq, query_type, eval_threshold=0.01, db=None
+):
     """Celery task to run BLAST search"""
-    from src.utils.blast_utils import get_blast_db
 
     try:
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
         tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
 
-        # Get the appropriate database configuration
-        db = get_blast_db(query_type)
-
         # Run BLAST
         blast_results_file = run_blast(
-            db_list=db,  # Use the string path not the full BLAST_DB_PATHS dict
+            db=db,  # Use the string path not the full BLAST_DB_PATHS dict
             query_type=query_type,
             query_fasta=tmp_query_fasta,
             tmp_blast=tmp_blast,
@@ -85,18 +83,22 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
 
 @celery.task(name="run_hmmer_search")
-def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+def run_hmmer_search_task(
+    query_header,
+    query_seq,
+    query_type,
+    eval_threshold=0.01,
+    hmmer_db=None,
+    blast_db=None,
+):
     """Celery task to run HMMER search"""
-    from src.utils.blast_utils import get_blast_db
 
     try:
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
-        # Get the appropriate database
-        db = get_blast_db(query_type)
-
         results_dict, protein_filename = run_hmmer(
-            db_list=db,
+            hmmer_db=hmmer_db,
+            diamond_db=blast_db,
             query_type=query_type,
             input_gene="tyr",
             input_eval=eval_threshold,
@@ -162,12 +164,19 @@ def check_similar_matches_task(
 
 
 @celery.task(name="run_family_classification_task")
-def run_family_classification_task(fasta, seq_type, db_list=None):
+def run_family_classification_task(
+    fasta, seq_type, db=None, hmmer_db=None, blast_db=None
+):
     from src.utils.classification_utils import classify_family
 
     try:
         family_dict, protein_file = classify_family(
-            fasta=fasta, seq_type=seq_type, db_list=db_list, threads=1
+            fasta=fasta,
+            seq_type=seq_type,
+            db=db,
+            hmmer_db=hmmer_db,
+            blast_db=blast_db,
+            threads=1,
         )
 
         if family_dict:

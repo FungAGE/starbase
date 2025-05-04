@@ -334,118 +334,12 @@ def check_similar_match(
 ########################################################
 
 
-def classify_sequence(
-    fasta: str,
-    seq_type: str,
-    blast_df: pd.DataFrame,
-    hmmer_dict: Dict[str, Any],
-    pident_thresh: float = 90,
-    db_list: Dict[str, Any] = None,
-    threads: int = 1,
-    progress_callback: Callable[[str, int], None] = None,
-) -> Tuple[Dict[str, str], str, str]:
-    """Classify a new sequence/ship from BLAST results based on comparison to existing classified sequences.
-
-    1. Family assignment via BLAST/HMMER results or run hmmsearch/diamond on new sequence
-    2. Navis assignment via captain sequence clustering
-    3. Haplotype assignment via full sequence similarity
-
-    Args:
-        fasta: The new sequence to classify
-        seq_type: The type of sequence to classify
-        blast_df: The BLAST results dataframe to use for family assignment
-        hmmer_dict: The HMMER results dict to use for family assignment
-        pident_thresh: Minimum percentage identity for captain gene
-        db_list: Database configuration and paths
-        threads: Number of CPU threads to use
-        progress_callback: Optional callback function to report progress
-
-    Returns:
-        Tuple[Dict[str, str], str, str]: (family_dict, navis_dict, haplotype_dict)
-    """
-
-    def update_progress(stage: str, percent: int):
-        if progress_callback:
-            progress_callback(stage, percent)
-            logger.debug(f"Progress update - {stage}: {percent}%")
-
-    logger.info("Starting sequence classification pipeline...")
-    update_progress("family", 0)
-    update_progress("navis", 0)
-    update_progress("haplotype", 0)
-
-    # make sure that inputs are valid
-    inputs_provided = sum(x is not None for x in [fasta, blast_df, hmmer_dict])
-
-    if inputs_provided == 0:
-        raise ValueError("Must provide one of: fasta, blast_df, or hmmer_dict")
-    if inputs_provided > 1:
-        raise ValueError("Can only provide one of: fasta, blast_df, or hmmer_dict")
-
-    # Get existing classified sequences from database
-    logger.info("Fetching existing sequences from database...")
-    existing_ships = fetch_ships(curated=True, dereplicate=False, with_sequence=True)
-    existing_captains = fetch_captains(curated=True, with_sequence=True)
-
-    logger.info("Successfully loaded existing sequences")
-    update_progress("family", 20)
-
-    logger.info("Starting family classification...")
-    family_dict, tmp_protein_filename = classify_family(
-        fasta=fasta,
-        seq_type=seq_type,
-        blast_df=blast_df,
-        hmmer_dict=hmmer_dict,
-        db_list=db_list,
-        pident_thresh=pident_thresh,
-        threads=threads,
-    )
-
-    if family_dict is None:
-        logger.warning("No family assignment possible")
-        update_progress("family", 0)
-        return family_dict, None, None
-    else:
-        logger.info(f"Family assigned: {family_dict}")
-        update_progress("family", 100)
-        update_progress("navis", 20)
-        logger.info("Starting navis classification...")
-
-        navis_name = classify_navis(
-            fasta=tmp_protein_filename,
-            existing_captains=existing_captains,
-            threads=threads,
-        )
-        if navis_name is None:
-            logger.warning("No navis assignment possible")
-            update_progress("navis", 0)
-            return family_dict, None, None
-        else:
-            logger.info(f"Navis assigned: {navis_name}")
-            update_progress("navis", 100)
-            update_progress("haplotype", 20)
-            logger.info("Starting haplotype classification...")
-
-            haplotype_dict = classify_haplotype(
-                fasta=fasta, existing_ships=existing_ships
-            )
-            if haplotype_dict is None:
-                logger.warning("No haplotype assignment possible")
-                update_progress("haplotype", 0)
-                return family_dict, navis_name, None
-            else:
-                logger.info(f"Haplotype assigned: {haplotype_dict}")
-                update_progress("haplotype", 100)
-                logger.info("Classification pipeline completed successfully")
-                return family_dict, navis_name, haplotype_dict
-
-
 def classify_family(
     fasta=None,
     seq_type=None,
     blast_df=None,
     hmmer_dict=None,
-    db_list=None,
+    db=None,
     pident_thresh=90,
     input_eval=0.001,
     threads=1,
@@ -494,7 +388,8 @@ def classify_family(
             }
 
         hmmer_dict, tmp_protein_filename = run_hmmer(
-            db_list=db_list,
+            hmmer_db=db,
+            diamond_db=db,
             query_type=seq_type,
             input_gene="tyr",
             input_eval=0.01,

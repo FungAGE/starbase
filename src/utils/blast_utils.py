@@ -12,14 +12,13 @@ from Bio import SearchIO
 from src.utils.seq_utils import (
     clean_shipID,
 )
-from src.database.blastdb import blast_db_exists, create_dbs
 from src.components.error_boundary import create_error_alert
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
+def run_blast(db, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
     try:
         # Add input size check
         max_input_size = 10 * 1024 * 1024  # 10MB
@@ -29,27 +28,12 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             )
             return None
 
-        # db_list should now be a direct path string
-        if not isinstance(db_list, (str, bytes, os.PathLike)):
-            logger.error(f"db_list must be a path-like object, got {type(db_list)}")
-            raise ValueError("Invalid database path")
-
-        logger.debug(f"Using database path: {db_list}")
-
-        if not blast_db_exists(db_list):
-            logger.info("BLAST database not found. Creating new database...")
-            create_dbs()
-
-            if not blast_db_exists(db_list):
-                logger.error("Failed to create BLAST database")
-                raise ValueError("Failed to create BLAST database")
-
         blast_cmd = [
             "blastn" if query_type == "nucl" else "blastp",
             "-query",
             str(query_fasta),
             "-db",
-            str(db_list),
+            str(db),
             "-out",
             str(tmp_blast),
             "-evalue",
@@ -77,7 +61,7 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
 
 
 def hmmsearch(
-    db_list=None,
+    hmmer_db=None,
     query_type=None,
     input_gene="tyr",
     input_eval=None,
@@ -92,17 +76,6 @@ def hmmsearch(
 
         tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
         logger.debug(f"Created temporary output file: {tmp_hmmer}")
-
-        hmmer_db = db_list["gene"][input_gene]["hmm"][query_type]
-        logger.debug(f"Using HMMER database: {hmmer_db}")
-
-        if not os.path.exists(hmmer_db):
-            logger.error(f"HMMER database not found: {hmmer_db}")
-            raise ValueError(f"HMMER database {hmmer_db} not found.")
-
-        if os.path.getsize(hmmer_db) == 0:
-            logger.error(f"HMMER database is empty: {hmmer_db}")
-            raise ValueError(f"HMMER database {hmmer_db} is empty.")
 
         # Calculate optimal thread count
         if threads is None:
@@ -130,7 +103,8 @@ def hmmsearch(
 
 
 def run_hmmer(
-    db_list=None,
+    hmmer_db=None,
+    diamond_db=None,
     query_type=None,
     input_gene="tyr",
     input_eval=0.01,
@@ -140,7 +114,8 @@ def run_hmmer(
     """Run HMMER search on input sequence.
 
     Args:
-        db_list: Dictionary containing database paths
+        hmmer_db: Path to HMMER database
+        diamond_db: Path to Diamond database
         query_type: Type of sequence ('nucl' or 'prot')
         input_gene: Gene to search for (default: 'tyr')
         input_eval: E-value threshold
@@ -165,7 +140,7 @@ def run_hmmer(
         if query_type == "nucl":
             logger.debug("Input is nucleotide sequence, running Diamond first")
             protein_filename = run_diamond(
-                db_list=db_list,
+                diamond_db=diamond_db,
                 query_type=query_type,
                 input_gene=input_gene,
                 input_eval=input_eval,
@@ -176,7 +151,7 @@ def run_hmmer(
 
         logger.debug(f"Running HMMER search on protein sequence: {protein_filename}")
         tmp_hmmer = hmmsearch(
-            db_list=db_list,
+            hmmer_db=hmmer_db,
             query_type="prot",  # Always use protein HMM
             input_gene=input_gene,
             input_eval=input_eval,
@@ -437,7 +412,7 @@ def select_ship_family(hmmer_results):
 
 # TODO: add qseq_translated to the output
 def run_diamond(
-    db_list=None,
+    diamond_db=None,
     query_type=None,
     input_gene=None,
     input_eval=0.01,
@@ -447,7 +422,7 @@ def run_diamond(
     """Run DIAMOND search against protein database.
 
     Args:
-        db_list: Dictionary containing database paths
+        diamond_db: Path to Diamond-formatted BLAST database
         query_type: Type of query sequence ('nucl' or 'prot')
         input_gene: Gene type to search against (default: 'tyr')
         input_eval: E-value threshold
@@ -459,14 +434,6 @@ def run_diamond(
     """
     try:
         diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
-
-        try:
-            diamond_db = db_list["gene"][input_gene]["prot"]
-        except KeyError:
-            raise ValueError(f"Database path not found for gene type: {input_gene}")
-
-        if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
-            raise ValueError(f"DIAMOND database {diamond_db} not found or is empty")
 
         blast_type = "blastx" if query_type == "nucl" else "blastp"
         evalue = input_eval if input_eval else 0.001
@@ -667,13 +634,35 @@ def create_no_matches_alert():
     )
 
 
-def get_blast_db(query_type):
+def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
     """Get the appropriate BLAST database configuration based on query type."""
     from src.config.settings import BLAST_DB_PATHS
 
-    if query_type == "nucl":
-        return BLAST_DB_PATHS["ship"]["nucl"]
-    elif query_type == "prot":
-        return BLAST_DB_PATHS["gene"]["tyr"]["prot"]
+    if db_type == "blast":
+        if query_type == "nucl":
+            db = BLAST_DB_PATHS["ship"][query_type]
+        elif query_type == "prot":
+            db = BLAST_DB_PATHS["gene"][gene_type][query_type]
+        else:
+            raise ValueError(f"Invalid query type: {query_type}")
+
+    elif db_type == "hmm":
+        if query_type == "nucl":
+            db = BLAST_DB_PATHS["gene"][gene_type]["hmm"]["nucl"]
+        elif query_type == "prot":
+            db = BLAST_DB_PATHS["gene"][gene_type]["hmm"]["prot"]
+        else:
+            raise ValueError(f"Invalid query type: {query_type}")
+
     else:
-        raise ValueError(f"Invalid query type: {query_type}")
+        raise ValueError(f"Invalid database type: {db_type}")
+
+    if not os.path.exists(db):
+        logger.error(f"BLAST database not found: {db}")
+        raise ValueError(f"BLAST database {db} not found.")
+
+    if os.path.getsize(db) == 0:
+        logger.error(f"BLAST database is empty: {db}")
+        raise ValueError(f"BLAST database {db} is empty.")
+
+    return db

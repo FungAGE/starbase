@@ -41,7 +41,6 @@ from src.database.sql_manager import fetch_meta_data, fetch_captains, fetch_ship
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
 from src.utils.classification_utils import WORKFLOW_STAGES
-
 from src.tasks import (
     check_exact_matches_task,
     check_contained_matches_task,
@@ -895,6 +894,10 @@ def fetch_captain(
                 query_seq = tab_data["sequence"]
                 query_type = tab_data["type"]
 
+                # make sure the query type is string, if not, then convert it to string
+                if not isinstance(query_type, str):
+                    query_type = str(query_type)
+
                 # Mark this tab as processed in our local copy
                 multifasta_data[active_tab]["processed"] = True
 
@@ -912,12 +915,17 @@ def fetch_captain(
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
+        # Get the appropriate database configuration
+        blast_db = get_blast_db(db_type="blast", query_type=query_type)
+        hmmer_db = get_blast_db(db_type="hmm", query_type=query_type)
+
         # Start task for BLAST search - Now using celery task
         blast_task = run_blast_search_task.delay(
             query_header=query_header,
             query_seq=query_seq,
             query_type=query_type,
             eval_threshold=evalue_threshold,
+            db=blast_db,
         )
 
         blast_results_file = blast_task.get(timeout=300)  # 5 minute timeout
@@ -930,6 +938,8 @@ def fetch_captain(
                 query_seq=query_seq,
                 query_type=query_type,
                 eval_threshold=evalue_threshold,
+                hmmer_db=hmmer_db,
+                blast_db=blast_db,
             )
 
             hmmer_results = hmmer_task.get(timeout=300)
@@ -943,6 +953,8 @@ def fetch_captain(
                 query_seq=query_seq,
                 query_type=query_type,
                 eval_threshold=evalue_threshold,
+                hmmer_db=hmmer_db,
+                blast_db=blast_db,
             )
 
             hmmer_results = hmmer_task.get(timeout=300)
@@ -1098,9 +1110,12 @@ def fetch_captain(
                         result = run_family_classification_task.delay(
                             fasta=upload_data["fasta"],
                             seq_type=upload_data["seq_type"],
-                            db_list=fetch_ships(
-                                **upload_data["fetch_ship_params"]
-                            ).to_dict("records"),
+                            hmmer_db=get_blast_db(
+                                db_type="hmm", query_type=upload_data["seq_type"]
+                            ),
+                            blast_db=get_blast_db(
+                                db_type="blast", query_type=upload_data["seq_type"]
+                            ),
                         ).get(timeout=180)
                         logger.debug(f"Family classification result: {result}")
 
@@ -1871,8 +1886,11 @@ def run_workflow_background(n_clicks, upload_data):
                 result = run_family_classification_task.delay(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
-                    db_list=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
+                    hmmer_db=get_blast_db(
+                        db_type="hmm", query_type=upload_data["seq_type"]
+                    ),
+                    blast_db=get_blast_db(
+                        db_type="blast", query_type=upload_data["seq_type"]
                     ),
                 ).get(timeout=180)
                 logger.debug(f"Family classification result: {result}")
@@ -2470,14 +2488,10 @@ def handle_tab_switch(
     tmp_query_fasta = write_temp_fasta(header, sequence)
     logger.info(f"Wrote sequence to temporary file: {tmp_query_fasta}")
 
-    # Get the appropriate database configuration
-    db = get_blast_db(seq_type)
-    logger.info(f"Using database for {seq_type} sequence type")
-
     # Run BLAST search for this sequence
     logger.info(f"Running BLAST search for tab {tab_idx}")
     blast_results_file = run_blast(
-        db_list=db,
+        db=get_blast_db(db_type="blast", query_type=seq_type),
         query_type=seq_type,
         query_fasta=tmp_query_fasta,
         tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
