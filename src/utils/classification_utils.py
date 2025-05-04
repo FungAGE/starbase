@@ -338,8 +338,6 @@ def classify_family(
     fasta=None,
     seq_type=None,
     blast_df=None,
-    hmmer_dict=None,
-    db=None,
     pident_thresh=90,
     input_eval=0.001,
     threads=1,
@@ -388,8 +386,6 @@ def classify_family(
             }
 
         hmmer_dict, tmp_protein_filename = run_hmmer(
-            hmmer_db=db,
-            diamond_db=db,
             query_type=seq_type,
             input_gene="tyr",
             input_eval=0.01,

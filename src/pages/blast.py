@@ -29,7 +29,6 @@ from src.utils.blast_utils import (
     create_no_matches_alert,
     parse_blast_xml,
     blast_download_button,
-    get_blast_db,
 )
 
 from src.components.callbacks import (
@@ -915,17 +914,12 @@ def fetch_captain(
         # Write sequence to temporary FASTA file
         tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
-        # Get the appropriate database configuration
-        blast_db = get_blast_db(db_type="blast", query_type=query_type)
-        hmmer_db = get_blast_db(db_type="hmm", query_type=query_type)
-
         # Start task for BLAST search - Now using celery task
         blast_task = run_blast_search_task.delay(
             query_header=query_header,
             query_seq=query_seq,
             query_type=query_type,
             eval_threshold=evalue_threshold,
-            db=blast_db,
         )
 
         blast_results_file = blast_task.get(timeout=300)  # 5 minute timeout
@@ -938,8 +932,6 @@ def fetch_captain(
                 query_seq=query_seq,
                 query_type=query_type,
                 eval_threshold=evalue_threshold,
-                hmmer_db=hmmer_db,
-                blast_db=blast_db,
             )
 
             hmmer_results = hmmer_task.get(timeout=300)
@@ -953,8 +945,6 @@ def fetch_captain(
                 query_seq=query_seq,
                 query_type=query_type,
                 eval_threshold=evalue_threshold,
-                hmmer_db=hmmer_db,
-                blast_db=blast_db,
             )
 
             hmmer_results = hmmer_task.get(timeout=300)
@@ -1110,12 +1100,6 @@ def fetch_captain(
                         result = run_family_classification_task.delay(
                             fasta=upload_data["fasta"],
                             seq_type=upload_data["seq_type"],
-                            hmmer_db=get_blast_db(
-                                db_type="hmm", query_type=upload_data["seq_type"]
-                            ),
-                            blast_db=get_blast_db(
-                                db_type="blast", query_type=upload_data["seq_type"]
-                            ),
                         ).get(timeout=180)
                         logger.debug(f"Family classification result: {result}")
 
@@ -1886,12 +1870,6 @@ def run_workflow_background(n_clicks, upload_data):
                 result = run_family_classification_task.delay(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
-                    hmmer_db=get_blast_db(
-                        db_type="hmm", query_type=upload_data["seq_type"]
-                    ),
-                    blast_db=get_blast_db(
-                        db_type="blast", query_type=upload_data["seq_type"]
-                    ),
                 ).get(timeout=180)
                 logger.debug(f"Family classification result: {result}")
 
@@ -2491,7 +2469,6 @@ def handle_tab_switch(
     # Run BLAST search for this sequence
     logger.info(f"Running BLAST search for tab {tab_idx}")
     blast_results_file = run_blast(
-        db=get_blast_db(db_type="blast", query_type=seq_type),
         query_type=seq_type,
         query_fasta=tmp_query_fasta,
         tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,

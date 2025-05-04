@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def run_blast(db, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
+def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
     try:
         # Add input size check
         max_input_size = 10 * 1024 * 1024  # 10MB
@@ -28,12 +28,15 @@ def run_blast(db, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2
             )
             return None
 
+        blast_db = get_blast_db(db_type="blast", query_type="nucl")
+        blast_type = "blastn" if query_type == "nucl" else "tblastn"
+
         blast_cmd = [
-            "blastn" if query_type == "nucl" else "blastp",
+            blast_type,
             "-query",
             str(query_fasta),
             "-db",
-            str(db),
+            str(blast_db),
             "-out",
             str(tmp_blast),
             "-evalue",
@@ -61,8 +64,7 @@ def run_blast(db, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2
 
 
 def hmmsearch(
-    hmmer_db=None,
-    query_type=None,
+    query_type="prot",
     input_gene="tyr",
     input_eval=None,
     query_fasta=None,
@@ -76,6 +78,8 @@ def hmmsearch(
 
         tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
         logger.debug(f"Created temporary output file: {tmp_hmmer}")
+
+        hmmer_db = get_blast_db(db_type="hmm", query_type=query_type)
 
         # Calculate optimal thread count
         if threads is None:
@@ -103,8 +107,6 @@ def hmmsearch(
 
 
 def run_hmmer(
-    hmmer_db=None,
-    diamond_db=None,
     query_type=None,
     input_gene="tyr",
     input_eval=0.01,
@@ -114,8 +116,6 @@ def run_hmmer(
     """Run HMMER search on input sequence.
 
     Args:
-        hmmer_db: Path to HMMER database
-        diamond_db: Path to Diamond database
         query_type: Type of sequence ('nucl' or 'prot')
         input_gene: Gene to search for (default: 'tyr')
         input_eval: E-value threshold
@@ -140,7 +140,6 @@ def run_hmmer(
         if query_type == "nucl":
             logger.debug("Input is nucleotide sequence, running Diamond first")
             protein_filename = run_diamond(
-                diamond_db=diamond_db,
                 query_type=query_type,
                 input_gene=input_gene,
                 input_eval=input_eval,
@@ -151,7 +150,6 @@ def run_hmmer(
 
         logger.debug(f"Running HMMER search on protein sequence: {protein_filename}")
         tmp_hmmer = hmmsearch(
-            hmmer_db=hmmer_db,
             query_type="prot",  # Always use protein HMM
             input_gene=input_gene,
             input_eval=input_eval,
@@ -412,17 +410,15 @@ def select_ship_family(hmmer_results):
 
 # TODO: add qseq_translated to the output
 def run_diamond(
-    diamond_db=None,
-    query_type=None,
-    input_gene=None,
+    input_gene="tyr",
     input_eval=0.01,
+    query_type=None,
     query_fasta=None,
     threads=2,
 ):
     """Run DIAMOND search against protein database.
 
     Args:
-        diamond_db: Path to Diamond-formatted BLAST database
         query_type: Type of query sequence ('nucl' or 'prot')
         input_gene: Gene type to search against (default: 'tyr')
         input_eval: E-value threshold
@@ -434,6 +430,10 @@ def run_diamond(
     """
     try:
         diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
+
+        diamond_db = get_blast_db(
+            db_type="blast", query_type="prot", gene_type=input_gene
+        )
 
         blast_type = "blastx" if query_type == "nucl" else "blastp"
         evalue = input_eval if input_eval else 0.001
