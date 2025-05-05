@@ -20,7 +20,6 @@ from src.utils.seq_utils import (
 from src.utils.blast_utils import (
     create_no_matches_alert,
     parse_blast_xml,
-    blast_download_button,
     select_ship_family,
 )
 
@@ -298,7 +297,6 @@ layout = dmc.Container(
                                                         "flexDirection": "column",
                                                     },
                                                 ),
-                                                html.Div(id="blast-download"),
                                             ]
                                         ),
                                     ],
@@ -1176,7 +1174,6 @@ def create_tabs_structure(seq_list):
                 dmc.Stack(
                     [
                         html.Div(id="blast-container"),
-                        html.Div(id="blast-download"),
                     ]
                 ),
             ],
@@ -1246,11 +1243,6 @@ def render_tab_content(active_tab, results_store):
     # Render BLAST results
     blast_container = create_blast_container(sequence_results)
 
-    # Render download button
-    download_button = (
-        blast_download_button() if sequence_results.get("blast_file") else None
-    )
-
     return [
         classification_output,
         # Progress section (hidden initially)
@@ -1273,7 +1265,6 @@ def render_tab_content(active_tab, results_store):
         dmc.Stack(
             [
                 blast_container,
-                html.Div(id="blast-download", children=download_button),
             ]
         ),
     ]
@@ -1501,25 +1492,3 @@ def update_single_sequence_classification(blast_results_store):
 
     # Create the classification output using the existing function
     return create_classification_output(sequence_results)
-
-
-@callback(
-    Output("blast-download", "children"),
-    Input("blast-results-store", "data"),
-    prevent_initial_call=True,
-)
-def update_blast_download(blast_results_store):
-    """Create download button for single sequence submissions"""
-    if not blast_results_store:
-        return None
-
-    # Get the results for sequence 0
-    sequence_results = blast_results_store.get("sequence_results", {}).get("0")
-    if not sequence_results:
-        return None
-
-    blast_file = sequence_results.get("blast_file")
-    if not blast_file:
-        return None
-
-    return html.Div(id="blast-download", children=blast_download_button())

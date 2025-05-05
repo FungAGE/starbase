@@ -343,7 +343,7 @@ def circos_prep(blast_output, links_output, layout_output):
         json.dump(layout, json_file, indent=4)
 
 
-def blast_download_button():
+def blast_download_button(blast_file=None):
     """Creates the download button for BLAST results."""
     return html.Div(
         [
@@ -356,6 +356,8 @@ def blast_download_button():
                     gradient={"from": "indigo", "to": "cyan"},
                     size="lg",
                     leftSection=[html.I(className="bi bi-download")],
+                    # Store the file path in a data attribute if needed
+                    **{"data-blast-file": blast_file} if blast_file else {},
                 )
             ),
             dcc.Download(id="blast-dl"),
