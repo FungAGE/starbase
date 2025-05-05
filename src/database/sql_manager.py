@@ -151,7 +151,6 @@ def fetch_download_data(curated=True, dereplicate=False):
         session.close()
 
 
-@cache.memoize()
 @db_retry_decorator()
 def fetch_ships(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False

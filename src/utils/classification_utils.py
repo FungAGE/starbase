@@ -1075,12 +1075,13 @@ def run_classification_workflow(upload_data):
             logger.info(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
-                result = check_exact_matches_task.delay(
-                    fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
+                from src.utils.classification_utils import check_exact_match
+                from src.database.sql_manager import fetch_ships
+
+                ships_df = fetch_ships(**upload_data["fetch_ship_params"])
+                result = check_exact_match(
+                    fasta=upload_data["fasta"], existing_ships=ships_df
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 100
