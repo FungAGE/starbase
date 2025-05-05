@@ -323,10 +323,25 @@ layout = dmc.Container(
 clientside_callback(
     """
     function(data) {
+        console.log("BlasterJS callback triggered", data);
         if (data && data.blast_text) {
             try {
-                // Get the blast container
+                console.log("Initializing BlasterJS with text length:", data.blast_text.length);
+                
+                // Use standard ID selector
                 const container = document.getElementById('blast-container');
+                
+                if (!container) {
+                    console.error("No blast container found in the DOM");
+                    console.log("Available IDs:", 
+                        Array.from(document.querySelectorAll('[id]'))
+                            .map(el => el.id)
+                            .join(', ')
+                    );
+                    return window.dash_clientside.no_update;
+                }
+                
+                console.log("Found container:", container);
                 
                 // Clear existing content first
                 container.innerHTML = '';
@@ -336,165 +351,45 @@ clientside_callback(
                 titleElement.innerHTML = 'BLAST Results';
                 titleElement.style.marginTop = '15px';
                 titleElement.style.marginBottom = '20px';
-                titleElement.style.fontWeight = '500';
-                titleElement.style.textAlign = 'left';
                 
-                // Create divs for BlasterJS to use - in vertical stack
+                // Create simple divs for BlasterJS
                 const alignmentsDiv = document.createElement('div');
                 alignmentsDiv.id = 'blast-multiple-alignments';
-                alignmentsDiv.style.marginBottom = '30px';
                 
                 const tableDiv = document.createElement('div');
                 tableDiv.id = 'blast-alignments-table';
                 
-                // Add elements to the container in order (vertically stacked)
+                // Add elements to the container
                 container.appendChild(titleElement);
                 container.appendChild(alignmentsDiv);
                 container.appendChild(tableDiv);
                 
-                // Initialize BlasterJS
-                var blasterjs = require("biojs-vis-blasterjs");
-                var instance = new blasterjs({
-                    string: data.blast_text,
-                    multipleAlignments: "blast-multiple-alignments",
-                    alignmentsTable: "blast-alignments-table"
-                });
-                
-                // Add CSS to control width and alignment
-                var style = document.createElement('style');
-                style.textContent = `
-                    #blast-container {
-                        width: 100%;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                    }
-                    
-                    /* For the title - ensure it's left-aligned */
-                    #blast-container > h2 {
-                        align-self: flex-start;
-                        width: 100%;
-                        text-align: left;
-                    }
-                    
-                    /* For alignment visualization section */
-                    #blast-multiple-alignments {
-                        width: auto !important;
-                        display: inline-block !important;
-                        margin: 0 auto !important;
-                        text-align: center;
-                        margin-bottom: 30px !important;
-                    }
-                    
-                    /* Center the title and buttons */
-                    #blast-multiple-alignments > div:first-child {
-                        text-align: center !important;
-                    }
-                    
-                    /* Make the color key centered */
-                    #blast-multiple-alignments div[style*="color: #EEE"] {
-                        margin: 0 auto !important;
-                        text-align: center !important;
-                        display: table !important;
-                    }
-                    
-                    /* Make QUERY and numerical scale centered */
-                    #blast-multiple-alignments div[style*="color: #5C6D7E"] {
-                        margin: 0 auto !important;
-                        display: table !important;
-                    }
-                    
-                    /* Center the buttons area */
-                    #blast-multiple-alignments-buttons {
-                        text-align: center !important;
-                    }
-                    
-                    /* But left-align the actual alignments */
-                    #alignments-container > div:last-child {
-                        text-align: left !important;
-                    }
-                    
-                    /* For table section - center the container */
-                    #blast-alignments-table {
-                        display: inline-block !important;
-                        width: auto !important;
-                        text-align: center;
-                        margin: 0 auto !important;
-                    }
-                    
-                    /* But left-align the actual table content */
-                    #blast-alignments-table-img {
-                        text-align: left !important;
-                        margin: 0 auto !important;
-                    }
-                    
-                    #blast-alignments-table table {
-                        width: 100%;
-                        table-layout: fixed;
-                        margin: 0;
-                        text-align: left;
-                    }
-                    
-                    #blast-alignments-table td {
-                        max-width: 200px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                        text-align: left;
-                    }
-                    
-                    /* Make the table buttons centered */
-                    #blast-alignments-table > div:last-child {
-                        text-align: center !important;
-                        margin: 15px auto !important;
-                    }
-                    
-                    /* Handle overflow for the table */
-                    #blast-alignments-table-img {
-                        max-width: 100% !important;
-                        overflow-x: auto;
-                    }
-                `;
-                document.head.appendChild(style);
-                
-                // Add a setTimeout to fix any alignment issues after rendering
-                setTimeout(() => {
-                    // Handle the alignments container
-                    const alignmentsContainer = document.getElementById('alignments-container');
-                    if (alignmentsContainer) {
-                        // Ensure buttons are centered
-                        const buttonsDiv = document.getElementById('blast-multiple-alignments-buttons');
-                        if (buttonsDiv) {
-                            buttonsDiv.style.textAlign = 'center';
-                        }
-                    }
-                    
-                    // Handle the table container
-                    const tableImgDiv = document.getElementById('blast-alignments-table-img');
-                    if (tableImgDiv) {
-                        // Make sure table is left-aligned inside its container
-                        tableImgDiv.style.textAlign = 'left';
-                        
-                        // Handle the download buttons div
-                        const buttonsDiv = tableImgDiv.nextElementSibling;
-                        if (buttonsDiv) {
-                            buttonsDiv.style.textAlign = 'center';
-                            buttonsDiv.style.width = '100%';
-                            buttonsDiv.style.margin = '15px auto';
-                        }
-                    }
-                }, 500);
+                // Basic BlasterJS initialization
+                try {
+                    var blasterjs = require("biojs-vis-blasterjs");
+                    console.log("BlasterJS loaded successfully");
+                    var instance = new blasterjs({
+                        string: data.blast_text,
+                        multipleAlignments: "blast-multiple-alignments",
+                        alignmentsTable: "blast-alignments-table"
+                    });
+                    console.log("BlasterJS initialized successfully");
+                } catch (blasterError) {
+                    console.error("Error initializing BlasterJS library:", blasterError);
+                    container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
+                }
                 
                 return window.dash_clientside.no_update;
             } catch (error) {
-                console.error('Error initializing BlasterJS:', error);
+                console.error('Overall error in callback:', error);
                 return error.toString();
             }
         }
+        console.log("No BLAST data available");
         return window.dash_clientside.no_update;
     }
     """,
-    Output("blast-container", "children"),
+    Output("blast-container", "children"),  # Use standard ID here
     Input("processed-blast-store", "data"),
     prevent_initial_call=True,
 )
@@ -808,27 +703,38 @@ def process_metadata(curated):
 )
 def process_blast_results(blast_results_store, active_tab_idx):
     if not blast_results_store:
+        logger.warning("No blast_results_store data")
         return None
 
     # Convert active_tab_idx to string (since keys in sequence_results are strings)
     tab_idx = str(active_tab_idx or 0)
+    logger.info(f"Processing BLAST results for tab index: {tab_idx}")
 
     # Get the correct sequence results based on active tab
     sequence_results = blast_results_store.get("sequence_results", {}).get(tab_idx)
     if not sequence_results:
+        logger.warning(f"No sequence results for tab index {tab_idx}")
         return None
 
     blast_results_file = sequence_results.get("blast_file")
     if not blast_results_file:
+        logger.warning(f"No blast file in sequence results for tab {tab_idx}")
         return None
 
+    logger.info(f"Reading BLAST file: {blast_results_file}")
     try:
+        # Check if file exists
+        if not os.path.exists(blast_results_file):
+            logger.error(f"BLAST file does not exist: {blast_results_file}")
+            return None
+
         # Read the BLAST output as text
         with open(blast_results_file, "r") as f:
             blast_results = f.read()
 
         # Add size limit check
         results_size = len(blast_results)
+        logger.info(f"Read BLAST results, size: {results_size} bytes")
         if results_size > 5 * 1024 * 1024:  # 5MB limit
             logger.warning(f"BLAST results too large: {results_size} bytes")
             return None
@@ -936,78 +842,28 @@ def process_single_sequence(seq_data, evalue_threshold):
         "fetch_captain_params": {"curated": True, "with_sequence": True},
     }
 
-    # run classification workflow
+    # Run classification workflow
     classification_task = run_classification_workflow_task.delay(
         upload_data=upload_data,
     )
 
     # Initialize classification data
-    classification_data = classification_task.get(timeout=300)
+    classification_data = None
+    try:
+        workflow_result = classification_task.get(timeout=300)
 
-    # Check for classification result data first
-    if classification_data is not None:
-        result_type = classification_data.get("type")
+        # Check for classification result data first
+        if workflow_result is not None:
+            result_type = workflow_result.get("type")
 
-        if result_type == "match" and classification_data.get("match_stage") in [
-            "exact",
-            "contained",
-            "similar",
-        ]:
-            # Handle exact/contained/similar matches
-            match_stage = classification_data.get("match_stage")
-            match_result = classification_data.get("match_result")
-
-            if match_result:
-                # Get metadata for the matched ship
-                meta_df = fetch_meta_data(accession_tag=match_result)
-
-                if not meta_df.empty:
-                    # We found metadata for this match
-                    family = (
-                        meta_df["familyName"].iloc[0]
-                        if "familyName" in meta_df.columns
-                        else None
-                    )
-                    navis = (
-                        meta_df["starship_navis"].iloc[0]
-                        if "starship_navis" in meta_df.columns
-                        else None
-                    )
-                    haplotype = (
-                        meta_df["starship_haplotype"].iloc[0]
-                        if "starship_haplotype" in meta_df.columns
-                        else None
-                    )
-
-                    # Set confidence based on match type
-                    confidence = (
-                        "High"
-                        if match_stage == "exact"
-                        else ("Medium" if match_stage == "contained" else "Low")
-                    )
-
-                    classification_data = {
-                        "title": "Classification based on",
-                        "source": f"{match_stage}_match",
-                        "family": family,
-                        "navis": navis,
-                        "haplotype": haplotype,
-                        "match_type": f"Matched to {match_result}",
-                        "confidence": confidence,
-                    }
-
-        # Alternatively if classification state is available and shows a completed process
-        elif classification_data and classification_data.get("complete", False):
-            # Process based on classification state (existing logic)
-
-            # Check for workflow-based classification (highest priority)
-            if classification_data.get("match_stage") in [
+            if result_type == "match" and workflow_result.get("match_stage") in [
                 "exact",
                 "contained",
                 "similar",
             ]:
-                match_stage = classification_data.get("match_stage")
-                match_result = classification_data.get("match_result")
+                # Handle exact/contained/similar matches
+                match_stage = workflow_result.get("match_stage")
+                match_result = workflow_result.get("match_result")
 
                 if match_result:
                     # Get metadata for the matched ship
@@ -1048,111 +904,168 @@ def process_single_sequence(seq_data, evalue_threshold):
                             "confidence": confidence,
                         }
 
-            # Check for family/navis/haplotype classification from workflow
-            elif classification_data.get("found_match", False):
-                match_stage = classification_data.get("match_stage")
-                match_result = classification_data.get("match_result")
+            # Alternatively if classification state is available and shows a completed process
+            elif workflow_result and workflow_result.get("complete", False):
+                # Process based on classification state (existing logic)
 
-                if match_stage == "family" and match_result:
-                    # Family classification found
-                    if isinstance(match_result, dict) and "family" in match_result:
-                        family_name = match_result["family"]
-                    else:
-                        family_name = match_result
+                # Check for workflow-based classification (highest priority)
+                if workflow_result.get("match_stage") in [
+                    "exact",
+                    "contained",
+                    "similar",
+                ]:
+                    match_stage = workflow_result.get("match_stage")
+                    match_result = workflow_result.get("match_result")
 
-                    classification_data = {
-                        "title": "Family Classification",
-                        "source": "classification",
-                        "family": family_name,
-                        "match_type": "Direct classification",
-                        "confidence": "Medium",
-                    }
-                elif match_stage == "navis" and match_result:
-                    # Navis classification found
-                    classification_data = {
-                        "title": "Navis Classification",
-                        "source": "classification",
-                        "navis": match_result,
-                        "match_type": "Direct classification",
-                        "confidence": "Medium",
-                    }
-                elif match_stage == "haplotype" and match_result:
-                    # Haplotype classification found
-                    classification_data = {
-                        "title": "Haplotype Classification",
-                        "source": "classification",
-                        "haplotype": match_result,
-                        "match_type": "Direct classification",
-                        "confidence": "Medium",
-                    }
+                    if match_result:
+                        # Get metadata for the matched ship
+                        meta_df = fetch_meta_data(accession_tag=match_result)
+
+                        if not meta_df.empty:
+                            # We found metadata for this match
+                            family = (
+                                meta_df["familyName"].iloc[0]
+                                if "familyName" in meta_df.columns
+                                else None
+                            )
+                            navis = (
+                                meta_df["starship_navis"].iloc[0]
+                                if "starship_navis" in meta_df.columns
+                                else None
+                            )
+                            haplotype = (
+                                meta_df["starship_haplotype"].iloc[0]
+                                if "starship_haplotype" in meta_df.columns
+                                else None
+                            )
+
+                            # Set confidence based on match type
+                            confidence = (
+                                "High"
+                                if match_stage == "exact"
+                                else ("Medium" if match_stage == "contained" else "Low")
+                            )
+
+                            classification_data = {
+                                "title": "Classification based on",
+                                "source": f"{match_stage}_match",
+                                "family": family,
+                                "navis": navis,
+                                "haplotype": haplotype,
+                                "match_type": f"Matched to {match_result}",
+                                "confidence": confidence,
+                            }
+
+                # Check for family/navis/haplotype classification from workflow
+                elif workflow_result.get("found_match", False):
+                    match_stage = workflow_result.get("match_stage")
+                    match_result = workflow_result.get("match_result")
+
+                    if match_stage == "family" and match_result:
+                        # Family classification found
+                        if isinstance(match_result, dict) and "family" in match_result:
+                            family_name = match_result["family"]
+                        else:
+                            family_name = match_result
+
+                        classification_data = {
+                            "title": "Family Classification",
+                            "source": "classification",
+                            "family": family_name,
+                            "match_type": "Direct classification",
+                            "confidence": "Medium",
+                        }
+                    elif match_stage == "navis" and match_result:
+                        # Navis classification found
+                        classification_data = {
+                            "title": "Navis Classification",
+                            "source": "classification",
+                            "navis": match_result,
+                            "match_type": "Direct classification",
+                            "confidence": "Medium",
+                        }
+                    elif match_stage == "haplotype" and match_result:
+                        # Haplotype classification found
+                        classification_data = {
+                            "title": "Haplotype Classification",
+                            "source": "classification",
+                            "haplotype": match_result,
+                            "match_type": "Direct classification",
+                            "confidence": "Medium",
+                        }
+    except Exception as e:
+        logger.error(f"Error in classification workflow: {e}")
 
     # If no classification from workflow, fall back to BLAST results
     if classification_data is None:
         # Process the BLAST results
-        blast_tsv = parse_blast_xml(blast_results_file)
-        blast_df = pd.read_csv(blast_tsv, sep="\t")
+        try:
+            blast_tsv = parse_blast_xml(blast_results_file)
+            blast_df = pd.read_csv(blast_tsv, sep="\t")
 
-        # Check if dataframe is empty
-        if len(blast_df) == 0:
-            classification_output = html.Div([create_no_matches_alert()])
-            return classification_output, None
-
-        # Sort by evalue (ascending) and pident (descending) to get best hits
-        blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
-        top_hit = blast_df.iloc[0]
-        logger.info(f"Top hit: {top_hit}")
-
-        top_evalue = float(top_hit["evalue"])
-        top_aln_length = int(top_hit["aln_length"])
-        top_pident = float(top_hit["pident"])
-
-        if top_pident >= 90:
-            # look up family name from accession tag
-            hit_IDs = top_hit["hit_IDs"]
-            meta_df = fetch_meta_data(accession_tag=hit_IDs)
-
-            if not meta_df.empty:
-                top_family = meta_df["familyName"].iloc[0]
-                navis = (
-                    meta_df["starship_navis"].iloc[0]
-                    if "starship_navis" in meta_df.columns
-                    else None
-                )
-                haplotype = (
-                    meta_df["starship_haplotype"].iloc[0]
-                    if "starship_haplotype" in meta_df.columns
-                    else None
-                )
-
-                classification_data = {
-                    "title": "Classification from BLAST",
-                    "source": "blast_hit",
-                    "family": top_family,
-                    "navis": navis,
-                    "haplotype": haplotype,
-                    "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
-                    "confidence": "Medium" if top_pident >= 95 else "Low",
-                }
+            # Check if dataframe is empty
+            if len(blast_df) == 0:
+                logger.info("No BLAST hits found")
             else:
-                # No metadata for this hit, fall back to captain results
-                hmmer_task = run_hmmer_search_task.delay(
-                    query_header=query_header,
-                    query_seq=query_seq,
-                    query_type=query_type,
-                    eval_threshold=evalue_threshold,
+                # Sort by evalue (ascending) and pident (descending) to get best hits
+                blast_df = blast_df.sort_values(
+                    ["evalue", "pident"], ascending=[True, False]
                 )
-                hmmer_results = hmmer_task.get(timeout=300)
-                captain_results = (
-                    hmmer_results.get("results") if hmmer_results else None
-                )
+                top_hit = blast_df.iloc[0]
+                logger.info(f"Top hit: {top_hit}")
+
+                top_evalue = float(top_hit["evalue"])
+                top_aln_length = int(top_hit["aln_length"])
+                top_pident = float(top_hit["pident"])
+
+                if top_pident >= 90:
+                    # look up family name from accession tag
+                    hit_IDs = top_hit["hit_IDs"]
+                    meta_df = fetch_meta_data(accession_tag=hit_IDs)
+
+                    if not meta_df.empty:
+                        top_family = meta_df["familyName"].iloc[0]
+                        navis = (
+                            meta_df["starship_navis"].iloc[0]
+                            if "starship_navis" in meta_df.columns
+                            else None
+                        )
+                        haplotype = (
+                            meta_df["starship_haplotype"].iloc[0]
+                            if "starship_haplotype" in meta_df.columns
+                            else None
+                        )
+
+                        classification_data = {
+                            "title": "Classification from BLAST",
+                            "source": "blast_hit",
+                            "family": top_family,
+                            "navis": navis,
+                            "haplotype": haplotype,
+                            "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                            "confidence": "Medium" if top_pident >= 95 else "Low",
+                        }
+        except Exception as e:
+            logger.error(f"Error processing BLAST results: {e}")
+
+    # If still no classification, try HMMER
+    if classification_data is None:
+        try:
+            hmmer_task = run_hmmer_search_task.delay(
+                query_header=query_header,
+                query_seq=query_seq,
+                query_type=query_type,
+                eval_threshold=evalue_threshold,
+            )
+            hmmer_results = hmmer_task.get(timeout=300)
+            captain_results = hmmer_results.get("results") if hmmer_results else None
+
+            if captain_results and len(captain_results) > 0:
                 first_result = captain_results[0]  # Get just the first dictionary
                 captain_family, aln_length, evalue = select_ship_family(first_result)
 
                 if captain_family:
-                    if aln_length > 80 and evalue < 0.001:
-                        confidence = "High"
-                    else:
-                        confidence = "Low"
+                    confidence = "High" if aln_length > 80 and evalue < 0.001 else "Low"
 
                     classification_data = {
                         "title": "Captain Gene Classification",
@@ -1161,6 +1074,8 @@ def process_single_sequence(seq_data, evalue_threshold):
                         "match_type": f"Captain gene match with length {aln_length}, Evalue: {evalue}",
                         "confidence": confidence,
                     }
+        except Exception as e:
+            logger.error(f"Error processing HMMER results: {e}")
 
     # Return structured results
     return {
@@ -1398,8 +1313,9 @@ def create_blast_container(sequence_results):
             ]
         )
 
+    # Create with a regular string ID
     return html.Div(
-        id="blast-container",
+        id="blast-container",  # Use regular string ID
         style={
             "width": "100%",
             "display": "flex",
@@ -1545,3 +1461,19 @@ def update_active_tab(active_tab):
     # Extract tab index from tab id (e.g., "tab-2" -> 2)
     tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
     return tab_idx
+
+
+@callback(
+    Output("right-column-content-debug", "children"),
+    Input("processed-blast-store", "data"),
+    prevent_initial_call=True,
+)
+def debug_blast_container(processed_blast_data):
+    if processed_blast_data:
+        blast_text_size = (
+            len(processed_blast_data.get("blast_text", ""))
+            if processed_blast_data.get("blast_text")
+            else 0
+        )
+        return f"BLAST data size: {blast_text_size} bytes"
+    return "No BLAST data"
