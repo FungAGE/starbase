@@ -25,7 +25,7 @@ WORKDIR $HOME/
 
 # System dependencies, conda, and supercronic installation (combined to reduce layers)
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw wget redis-server diamond && \
+    apt-get install -y curl iptables wget redis-server && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     # Install supercronic
     curl -fsSLO "$SUPERCRONIC_URL" && \
@@ -33,16 +33,23 @@ RUN apt-get update && apt-get upgrade -y && \
     chmod +x "$SUPERCRONIC" && \
     mv "$SUPERCRONIC" "/usr/local/bin/supercronic"
 
-# Python dependencies (copied and installed first as they change less frequently)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Miniconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
+    bash miniconda.sh -b -p $HOME/miniconda && \
+    rm miniconda.sh && \
+    echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
+    echo "conda activate starbase" >> $HOME/.bashrc
 
-# install diamond
-RUN wget http://github.com/bbuchfink/diamond/releases/download/v2.1.11/diamond-linux64.tar.gz && \
-    tar xzf diamond-linux64.tar.gz && \
-    chown -R $USER:$USER diamond && \
-    mv diamond /usr/local/bin/diamond && \
-    rm diamond-linux64.tar.gz
+ENV PATH=$HOME/miniconda/bin:$PATH
+
+# Copy environment file and create conda environment 
+COPY environment.yaml .
+RUN conda env create -f environment.yaml && \
+    conda clean -afy
+
+# Set conda environment to activate by default
+ENV PATH=$HOME/miniconda/envs/starbase/bin:$PATH
+ENV CONDA_DEFAULT_ENV=starbase
 
 # Install Node.js, npm, and blasterjs
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
