@@ -532,15 +532,16 @@ def update_fasta_details(seq_content, seq_filename):
     button_disabled = False
     button_text = "Submit BLAST"
     seq_list = None
-    upload_details = None
     error_alert = None
 
-    if seq_content is None:
-        upload_details = html.Div(
-            html.P(
-                ["Select a FASTA file to upload"],
-            )
+    # Default upload details - maintain this if there's an error
+    upload_details = html.Div(
+        html.P(
+            ["Select a FASTA file to upload"],
         )
+    )
+
+    if seq_content is None:
         return button_disabled, button_text, seq_list, upload_details, error_alert
 
     try:
@@ -558,7 +559,7 @@ def update_fasta_details(seq_content, seq_filename):
                 color="red",
                 variant="filled",
             )
-            return True, "Error", None, None, error_alert
+            return True, "Error", None, upload_details, error_alert
 
         # Check file size constraint
         if file_size > max_size:
@@ -569,7 +570,7 @@ def update_fasta_details(seq_content, seq_filename):
                 color="red",
                 variant="filled",
             )
-            return True, "Error", None, None, error_alert
+            return True, "Error", None, upload_details, error_alert
 
         # Parse the file contents using check_input
         input_type, seq_list, n_seqs, error = check_input(
@@ -589,7 +590,7 @@ def update_fasta_details(seq_content, seq_filename):
                     variant="filled",
                 )
             )
-            return True, "Error", None, None, error_alert
+            return True, "Error", None, upload_details, error_alert
 
         # Check if seq_list is None
         if seq_list is None:
@@ -599,7 +600,7 @@ def update_fasta_details(seq_content, seq_filename):
                 color="red",
                 variant="filled",
             )
-            return True, "Error", None, None, error_alert
+            return True, "Error", None, upload_details, error_alert
 
         # Process valid sequences - create a summary for display
         if n_seqs > 1:
@@ -649,7 +650,7 @@ def update_fasta_details(seq_content, seq_filename):
             color="red",
             variant="filled",
         )
-        return True, "Error", None, None, error_alert
+        return True, "Error", None, upload_details, error_alert
 
 
 @callback(
@@ -692,8 +693,6 @@ def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
     return [button_disabled, button_text, error_message, error_store]
 
 
-@blast_limit_decorator
-@blast_limit_decorator
 @callback(
     [
         Output("blast-sequences-store", "data", allow_duplicate=True),
@@ -864,6 +863,7 @@ def process_blast_results(blast_results_file):
         return None
 
 
+@blast_limit_decorator
 @callback(
     [
         Output("blast-results-store", "data"),
@@ -2231,7 +2231,7 @@ def update_tabs_for_multifasta(multifasta_data, blast_results):
         logger.info(f"Created {len(tabs)} tab objects")
 
         # Create a simple Card with Tabs in the header
-        card = dbc.Card(
+        output = dbc.Card(
             [
                 dbc.CardHeader(
                     dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
@@ -2303,67 +2303,67 @@ def update_tabs_for_multifasta(multifasta_data, blast_results):
         )
 
         logger.info("Successfully created card with tabs")
-        return card
-
-    # If there's only one sequence, return the default layout
-    logger.info("No multifasta data or only one sequence, returning default layout")
-    return dmc.Stack(
-        children=[
-            # Progress section - initially hidden
-            html.Div(id="classification-output", className="mt-4"),
-            dmc.Stack(
-                [
-                    dmc.Group(
-                        [
-                            dbc.Progress(
-                                id="classification-progress",
-                                value=0,
-                                color="blue",
-                                animated=True,
-                                striped=True,
-                                style={
-                                    "width": "100%",
-                                    "marginBottom": "5px",
-                                },
-                            ),
-                        ]
-                    ),
-                    dmc.Group(
-                        [
-                            dmc.Text(
-                                "Classification Status:",
-                                size="lg",
-                                fw=500,
-                            ),
-                            dmc.Text(
-                                id="classification-stage-display",
-                                size="lg",
-                                c="blue",
-                            ),
-                        ]
-                    ),
-                ],
-                gap="md",
-                id="classification-progress-section",
-                style={"display": "none"},
-            ),
-            # BLAST results section
-            dmc.Stack(
-                [
-                    html.Div(
-                        id="blast-container",
-                        style={
-                            "width": "100%",
-                            "display": "flex",
-                            "flexDirection": "column",
-                        },
-                    ),
-                    html.Div(id="blast-download"),
-                    html.Div(id="subject-seq-button"),
-                ]
-            ),
-        ],
-    )
+    else:
+        # If there's only one sequence, return the default layout
+        logger.info("No multifasta data or only one sequence, returning default layout")
+        output = dmc.Stack(
+            children=[
+                # Progress section - initially hidden
+                html.Div(id="classification-output", className="mt-4"),
+                dmc.Stack(
+                    [
+                        dmc.Group(
+                            [
+                                dbc.Progress(
+                                    id="classification-progress",
+                                    value=0,
+                                    color="blue",
+                                    animated=True,
+                                    striped=True,
+                                    style={
+                                        "width": "100%",
+                                        "marginBottom": "5px",
+                                    },
+                                ),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text(
+                                    "Classification Status:",
+                                    size="lg",
+                                    fw=500,
+                                ),
+                                dmc.Text(
+                                    id="classification-stage-display",
+                                    size="lg",
+                                    c="blue",
+                                ),
+                            ]
+                        ),
+                    ],
+                    gap="md",
+                    id="classification-progress-section",
+                    style={"display": "none"},
+                ),
+                # BLAST results section
+                dmc.Stack(
+                    [
+                        html.Div(
+                            id="blast-container",
+                            style={
+                                "width": "100%",
+                                "display": "flex",
+                                "flexDirection": "column",
+                            },
+                        ),
+                        html.Div(id="blast-download"),
+                        html.Div(id="subject-seq-button"),
+                    ]
+                ),
+            ],
+        )
+    return output
 
 
 @callback(

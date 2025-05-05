@@ -508,8 +508,18 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 }
             )
 
-        # Return the list of sequences even if we have a warning
-        return seq_list, n_seqs, warning
+        # If we reach this point with sequences processed successfully, return them
+        # Make sure to use a yellow alert for warnings so they aren't treated as errors
+        if warning:
+            warning_alert = dmc.Alert(
+                title="Sequence Limit Applied",
+                color="yellow",
+                variant="light",
+                children=warning,
+            )
+            return seq_list, n_seqs, warning_alert
+
+        return seq_list, n_seqs, None
 
     except Exception as e:
         logger.error(f"Unexpected error in parse_fasta_from_file: {str(e)}")
