@@ -295,6 +295,8 @@ layout = dmc.Container(
                                                         "width": "100%",
                                                         "display": "flex",
                                                         "flexDirection": "column",
+                                                        "alignItems": "flex-start",
+                                                        "textAlign": "left",
                                                     },
                                                 ),
                                             ]
@@ -345,18 +347,43 @@ clientside_callback(
                 titleElement.innerHTML = 'BLAST Results';
                 titleElement.style.marginTop = '15px';
                 titleElement.style.marginBottom = '20px';
+                titleElement.style.textAlign = 'left';
+                titleElement.style.width = '100%';
                 
-                // Create simple divs for BlasterJS
+                // Create simple divs for BlasterJS with explicit left alignment
                 const alignmentsDiv = document.createElement('div');
                 alignmentsDiv.id = 'blast-multiple-alignments';
+                alignmentsDiv.style.textAlign = 'left';
+                alignmentsDiv.style.width = '100%';
                 
                 const tableDiv = document.createElement('div');
                 tableDiv.id = 'blast-alignments-table';
+                tableDiv.style.textAlign = 'left';
+                tableDiv.style.width = '100%';
                 
                 // Add elements to the container
                 container.appendChild(titleElement);
                 container.appendChild(alignmentsDiv);
                 container.appendChild(tableDiv);
+                
+                // Add a style element to ensure BlasterJS output is properly aligned
+                const styleEl = document.createElement('style');
+                styleEl.textContent = `
+                    #blast-multiple-alignments, #blast-alignments-table {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                        padding-left: 0 !important;
+                    }
+                    #blast-multiple-alignments div, #blast-alignments-table div,
+                    #blast-multiple-alignments table, #blast-alignments-table table {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                    }
+                    .alignment-viewer {
+                        text-align: left !important;
+                    }
+                `;
+                container.appendChild(styleEl);
                 
                 // Basic BlasterJS initialization
                 try {
@@ -368,6 +395,15 @@ clientside_callback(
                         alignmentsTable: "blast-alignments-table"
                     });
                     console.log("BlasterJS initialized successfully");
+                    
+                    // Additional styling fix after BlasterJS renders
+                    setTimeout(function() {
+                        const tables = container.querySelectorAll('table');
+                        tables.forEach(function(table) {
+                            table.style.marginLeft = '0';
+                            table.style.textAlign = 'left';
+                        });
+                    }, 100);
                     
                     // Hide the loader after successful initialization
                     if (loader) {
@@ -1325,6 +1361,8 @@ def create_blast_container(sequence_results):
                         "display": "flex",
                         "flexDirection": "column",
                         "minHeight": "300px",  # Increased height to make spinner more visible
+                        "alignItems": "flex-start",  # Left align the content
+                        "textAlign": "left",  # Ensure text is left-aligned
                     },
                 ),
                 color="primary",
