@@ -282,7 +282,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
     Ensures a valid FASTA header is present.
     Returns a list of dictionaries with sequence metadata, number of sequences parsed, and error message if any.
     """
-    seq_list = None
+    seq_list = []
     try:
         if not text or not isinstance(text, str):
             logger.error("Input text is empty or invalid type")
