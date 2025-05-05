@@ -15,13 +15,8 @@ from threading import Thread
 
 from src.config.cache import cache
 from src.utils.seq_utils import (
-    guess_seq_type,
     check_input,
     write_temp_fasta,
-    parse_fasta,
-    parse_fasta_from_file,
-    parse_multifasta_from_file,
-    write_fasta,
 )
 from src.utils.blast_utils import (
     run_blast,
@@ -70,9 +65,7 @@ layout = dmc.Container(
     children=[
         dcc.Location(id="url", refresh=False),
         # Upload stores
-        dcc.Store(id="query-header-store"),
-        dcc.Store(id="query-seq-store"),
-        dcc.Store(id="query-type-store"),
+        dcc.Store(id="blast-sequences-store"),
         dcc.Store(id="upload-error-store"),
         # Results stores
         dcc.Store(id="blast-results-store"),
@@ -81,11 +74,10 @@ layout = dmc.Container(
         # Processed data stores
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
-        # Multifasta stores
-        dcc.Store(id="multifasta-sequences-store"),  # Store list of sequences
-        dcc.Store(id="multifasta-active-tab", data=0),  # Store active tab index
+        # Tab stores
+        dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
         dcc.Store(
-            id="multifasta-processed-tabs", data=[0]
+            id="blast-processed-tabs", data=[0]
         ),  # Store which tabs have been processed
         # Single data store with all workflow state
         dcc.Store(id="classification-stage", data="Upload a sequence"),
@@ -146,7 +138,7 @@ layout = dmc.Container(
                                                     dmc.Paper(
                                                         children=create_file_upload(
                                                             upload_id="blast-fasta-upload",
-                                                            output_id="blast-fasta-sequence-upload",
+                                                            output_id="upload-details",
                                                             accept_types=[
                                                                 ".fa",
                                                                 ".fas",
@@ -518,99 +510,169 @@ clientside_callback(
 
 
 @callback(
-    Output("blast-fasta-sequence-upload", "children"),
+    [
+        Output("submit-button", "disabled", allow_duplicate=True),
+        Output("submit-button", "children", allow_duplicate=True),
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("upload-details", "children", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
+    ],
     [
         Input("blast-fasta-upload", "contents"),
         Input("blast-fasta-upload", "filename"),
     ],
+    prevent_initial_call=True,
 )
 @handle_callback_error
 def update_fasta_details(seq_content, seq_filename):
+    """
+    Handle file uploads only - immediately process the file to show a summary
+    but don't display errors in the main interface - just in the upload area.
+    """
+    button_disabled = False
+    button_text = "Submit BLAST"
+    seq_list = None
+    upload_details = None
+    error_alert = None
+
     if seq_content is None:
-        return [
-            html.Div(
-                html.P(
-                    ["Select a FASTA file to upload"],
+        upload_details = html.Div(
+            html.P(
+                ["Select a FASTA file to upload"],
+            )
+        )
+        return button_disabled, button_text, seq_list, upload_details, error_alert
+
+    try:
+        # Check for file size and prevent upload if too large
+        try:
+            max_size = 10 * 1024 * 1024  # 10 MB
+            content_type, content_string = seq_content.split(",")
+            decoded = base64.b64decode(content_string)
+            file_size = len(decoded)
+        except Exception as e:
+            logger.error(f"Error decoding file contents: {e}")
+            error_alert = dmc.Alert(
+                title="Invalid File Format",
+                children="The file appears to be corrupted or in an unsupported format.",
+                color="red",
+                variant="filled",
+            )
+            return True, "Error", None, None, error_alert
+
+        # Check file size constraint
+        if file_size > max_size:
+            error_msg = f"The file '{seq_filename}' exceeds the 10 MB limit."
+            error_alert = dmc.Alert(
+                title="File Too Large",
+                children=error_msg,
+                color="red",
+                variant="filled",
+            )
+            return True, "Error", None, None, error_alert
+
+        # Parse the file contents using check_input
+        input_type, seq_list, n_seqs, error = check_input(
+            query_text_input=None, query_file_contents=seq_content
+        )
+        logger.info(f"Input type: {input_type}, Number of sequences: {n_seqs}")
+
+        # Handle parsing errors
+        if error:
+            error_alert = (
+                error
+                if not isinstance(error, str)
+                else dmc.Alert(
+                    title="Error Processing File",
+                    children=error,
+                    color="red",
+                    variant="filled",
                 )
             )
-        ]
-    else:
-        try:
-            # "," is the delimeter for splitting content_type from content_string
-            content_type, content_string = seq_content.split(",")
-            query_string = base64.b64decode(content_string).decode("utf-8")
+            return True, "Error", None, None, error_alert
 
-            # Try to parse as multifasta
-            sequences, seq_count, error = parse_multifasta_from_file(seq_content)
+        # Check if seq_list is None
+        if seq_list is None:
+            error_alert = dmc.Alert(
+                title="Parsing Error",
+                children="Failed to parse sequences from the file.",
+                color="red",
+                variant="filled",
+            )
+            return True, "Error", None, None, error_alert
 
-            if error and not sequences:
-                # If parse as multifasta failed, show the error
-                return html.Div([error])
+        # Process valid sequences - create a summary for display
+        if n_seqs > 1:
+            upload_details = html.Div(
+                [
+                    html.P(f"File name: {seq_filename}"),
+                    html.P(
+                        [
+                            f"Found {n_seqs} sequences in the file",
+                            html.Span(
+                                " (maximum of 10 will be processed)",
+                                style={"color": "orange", "fontStyle": "italic"}
+                                if n_seqs > 10
+                                else {"display": "none"},
+                            ),
+                        ]
+                    ),
+                    html.Ul(
+                        [
+                            html.Li(f"{seq['header']} ({len(seq['sequence'])} bp)")
+                            for seq in seq_list[:3]
+                        ]
+                        + ([html.Li("...")] if n_seqs > 3 else [])
+                    ),
+                    html.P(
+                        "Only the first 10 sequences will be processed."
+                        if n_seqs > 10
+                        else "All sequences will be processed when you submit."
+                    ),
+                ]
+            )
+        else:
+            upload_details = html.Div(
+                [
+                    html.H6(f"File name: {seq_filename}"),
+                    html.H6(f"Number of sequences: {n_seqs}"),
+                ]
+            )
 
-            if seq_count > 1:
-                # Multiple sequences found - display count and first few
-                return html.Div(
-                    [
-                        html.P(f"File name: {seq_filename}"),
-                        html.P(
-                            [
-                                f"Found {seq_count} sequences in the file",
-                                html.Span(
-                                    " (maximum of 10 will be processed)",
-                                    style={"color": "orange", "fontStyle": "italic"}
-                                    if seq_count > 10
-                                    else {"display": "none"},
-                                ),
-                            ]
-                        ),
-                        html.Ul(
-                            [
-                                html.Li(f"{seq[0]} ({len(seq[1])} bp)")
-                                for seq in sequences[:3]
-                            ]
-                            + ([html.Li("...")] if seq_count > 3 else [])
-                        ),
-                        html.P(
-                            "Only the first 10 sequences will be processed."
-                            if seq_count > 10
-                            else "All sequences will be processed when you submit."
-                        ),
-                    ]
-                )
-            else:
-                # Single sequence (backward compatible)
-                children = parse_fasta(query_string, seq_filename)
-                return children
+        return button_disabled, button_text, seq_list, upload_details, error_alert
 
-        except Exception as e:
-            logger.error(e)
-            return html.Div(["There was an error processing this file."])
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        error_alert = dmc.Alert(
+            title="Error Processing File",
+            children=f"An unexpected error occurred: {str(e)}",
+            color="red",
+            variant="filled",
+        )
+        return True, "Error", None, None, error_alert
 
 
 @callback(
     [
-        Output("submit-button", "disabled"),
-        Output("submit-button", "children"),
-        Output("upload-error-message", "children"),
-        Output("upload-error-store", "data"),
+        Output("submit-button", "disabled", allow_duplicate=True),
+        Output("submit-button", "children", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
+        Output("upload-error-store", "data", allow_duplicate=True),
     ],
     [
         Input("submit-button", "n_clicks"),
-        Input("blast-fasta-upload", "contents"),
         Input("blast-timeout-interval", "n_intervals"),
     ],
-    [State("blast-fasta-upload", "filename"), State("blast-timeout-store", "data")],
+    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
     prevent_initial_call=True,
 )
 @handle_callback_error
-def handle_submission_and_upload(
-    n_clicks, contents, n_intervals, filename, timeout_triggered
-):
+def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
     triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
     # Default return values
     button_disabled = False
-    button_text = "Submit BLAST"
+    button_text = "Submit BLAST"  # Set default button text
     error_message = ""
     error_store = None
 
@@ -619,136 +681,105 @@ def handle_submission_and_upload(
         if n_clicks and timeout_triggered:
             button_disabled = True
             button_text = "Server timeout"
-            error_message = "The server is taking longer than expected to respond. Please try again later."
-            error_store = error_message
-
-    # Handle file upload
-    if triggered_id == "blast-fasta-upload" and contents is not None:
-        max_size = 10 * 1024 * 1024  # 10 MB
-        content_type, content_string = contents.split(",")
-
-        # Use our updated parse_fasta_from_file function
-        header, seq, fasta_error = parse_fasta_from_file(contents)
-
-        decoded = base64.b64decode(content_string)
-        file_size = len(decoded)
-
-        if fasta_error:
-            error_message = fasta_error
-            error_store = error_message
-            button_disabled = True
-        elif file_size > max_size:
-            error_message = f"Error: The file '{filename}' exceeds the 10 MB limit."
-            error_store = error_message
-            button_disabled = True
+            error_message = dmc.Alert(
+                title="Request Timeout",
+                children="The server is taking longer than expected to respond. Please try again later.",
+                color="yellow",
+                variant="filled",
+            )
+            error_store = "The server is taking longer than expected to respond. Please try again later."
 
     return [button_disabled, button_text, error_message, error_store]
 
 
 @blast_limit_decorator
+@blast_limit_decorator
 @callback(
     [
-        Output("query-header-store", "data"),
-        Output("query-seq-store", "data"),
-        Output("query-type-store", "data"),
-        Output("multifasta-sequences-store", "data"),
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("upload-error-store", "data", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
     ],
     [
         Input("submit-button", "n_clicks"),
-        Input("query-text", "value"),
-        Input("blast-fasta-upload", "contents"),
+    ],
+    [
+        State("query-text", "value"),
+        State("blast-fasta-upload", "contents"),
+        State("blast-sequences-store", "data"),
     ],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
     ],
+    prevent_initial_call=True,
 )
 @handle_callback_error
-def preprocess(n_clicks, query_text_input, query_file_contents):
+def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
+    """
+    Process input when the submit button is pressed.
+    For file uploads: Use the already parsed sequences from blast-sequences-store
+    For text input: Parse the input text now
+    """
     if not n_clicks:
         raise PreventUpdate
 
+    error_alert = None
+
     try:
-        # Check if we have a multifasta file
-        multifasta_data = None
-
-        if query_file_contents:
-            logger.info("Processing file contents in preprocess")
-            sequences, seq_count, error = parse_multifasta_from_file(
-                query_file_contents
-            )
+        # If we have parsed sequences from a file upload, use those
+        if seq_list is not None:
             logger.info(
-                f"Multifasta parsing result: {seq_count} sequences, error: {error}"
+                f"Using pre-parsed sequences from file upload: {len(seq_list)} sequences"
+            )
+            return seq_list, None, None
+
+        # Otherwise, parse the text input
+        if query_text_input:
+            logger.info("Processing text input")
+            input_type, seq_list, n_seqs, error = check_input(
+                query_text_input=query_text_input, query_file_contents=None
             )
 
-            if seq_count > 1:
-                # We have a valid multifasta file
-                logger.info(f"Processing multifasta with {seq_count} sequences")
-                multifasta_data = []
-
-                # Store all sequences
-                for idx, (header, seq) in enumerate(sequences):
-                    seq_type = guess_seq_type(seq)
-                    multifasta_data.append(
-                        {
-                            "index": idx,
-                            "header": header,
-                            "sequence": seq,
-                            "type": seq_type,
-                            "processed": False,
-                        }
+            if error:
+                logger.error(f"Error parsing text input: {error}")
+                error_alert = (
+                    error
+                    if not isinstance(error, str)
+                    else dmc.Alert(
+                        title="Error Processing Sequence",
+                        children=error,
+                        color="red",
+                        variant="filled",
                     )
-                logger.info(
-                    f"Created multifasta_data list with {len(multifasta_data)} entries"
-                )
-
-                # For initial processing, return the first sequence
-                first_seq = multifasta_data[0]
-                logger.info(
-                    f"Using first sequence for initial processing: {first_seq['header'][:30]}..."
                 )
                 return (
-                    first_seq["header"],
-                    first_seq["sequence"],
-                    first_seq["type"],
-                    multifasta_data,
-                )
-            else:
-                # Only one sequence, process as single sequence
-                logger.info("Only one sequence detected, processing as single sequence")
-                input_type, query_header, query_seq = check_input(
-                    query_text_input, query_file_contents
+                    None,
+                    str(error) if isinstance(error, str) else "Parsing error",
+                    error_alert,
                 )
 
-                if input_type in ("none", "both"):
-                    logger.info("Invalid input: none or both")
-                    return None, None, None, None
+            logger.info(f"Text input processed: {input_type}, {n_seqs} sequences")
+            return seq_list, None, None
 
-                query_type = guess_seq_type(query_seq)
-                logger.info(
-                    f"Single sequence processed: {query_header[:30]}... of type {query_type}"
-                )
-                return query_header, query_seq, query_type, None
-        else:
-            # No file contents, process text input
-            logger.info("No file contents, checking text input")
-            input_type, query_header, query_seq = check_input(
-                query_text_input, query_file_contents
-            )
-
-            if input_type in ("none", "both"):
-                logger.info("Invalid input: none or both")
-                return None, None, None, None
-
-            query_type = guess_seq_type(query_seq)
-            logger.info(
-                f"Single sequence processed: {query_header[:30]}... of type {query_type}"
-            )
-            return query_header, query_seq, query_type, None
+        # If we have neither text input nor uploaded sequences, show an error
+        error_alert = dmc.Alert(
+            title="No Input Provided",
+            children="Please enter a sequence or upload a FASTA file.",
+            color="yellow",
+            variant="filled",
+        )
+        return None, "No input provided", error_alert
 
     except Exception as e:
         logger.error(f"Error in preprocess: {str(e)}")
-        return None, None, None, None
+        error_alert = dmc.Alert(
+            title="Error Processing Input",
+            children=f"An unexpected error occurred: {str(e)}",
+            color="red",
+            variant="filled",
+        )
+        return None, str(e), error_alert
 
 
 @callback(
@@ -840,17 +871,16 @@ def process_blast_results(blast_results_file):
         Output("subject-seq-button", "children"),
         Output("classification-interval", "disabled"),
         Output("classification-progress-section", "style", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
     ],
     [
-        Input("query-header-store", "data"),
-        Input("query-seq-store", "data"),
-        Input("query-type-store", "data"),
+        Input("blast-sequences-store", "data"),
         Input("submission-id-store", "data"),
-        Input("multifasta-active-tab", "data"),
+        Input("blast-active-tab", "data"),
     ],
     [
         State("evalue-threshold", "value"),
-        State("multifasta-sequences-store", "data"),
+        State("blast-sequences-store", "data"),
     ],
     running=[
         (Output("submit-button", "loading"), True, False),
@@ -859,50 +889,49 @@ def process_blast_results(blast_results_file):
     prevent_initial_call=True,
 )
 @handle_callback_error
-def fetch_captain(
-    query_header,
-    query_seq,
-    query_type,
+def blast_callback(
+    seq_list,
     submission_id,
     active_tab,
     evalue_threshold,
-    multifasta_data,
     search_type="hmmsearch",
 ):
-    # First, check if we have a valid submission
-    if not all([query_header, query_seq, query_type, submission_id]):
-        return None, None, None, True, {"display": "none"}
-
-    # Check if we're dealing with multifasta data and need to switch to a different sequence
-    if (
-        multifasta_data
-        and len(multifasta_data) > 1
-        and active_tab is not None
-        and active_tab > 0
-    ):
-        # Get the sequence for the active tab
-        if active_tab < len(multifasta_data):
-            tab_data = multifasta_data[active_tab]
-
-            # If this tab hasn't been processed yet, use its sequence data
-            if not tab_data.get("processed", False):
-                logger.info(
-                    f"Processing sequence for tab {active_tab}: {tab_data['header']}"
-                )
-                query_header = tab_data["header"]
-                query_seq = tab_data["sequence"]
-                query_type = tab_data["type"]
-
-                # make sure the query type is string, if not, then convert it to string
-                if not isinstance(query_type, str):
-                    query_type = str(query_type)
-
-                # Mark this tab as processed in our local copy
-                multifasta_data[active_tab]["processed"] = True
+    if not all([seq_list, submission_id]):
+        return None, None, None, True, {"display": "none"}, None
 
     try:
-        captain_results_dict = None
+        # Handle single sequence or tab selection
+        if isinstance(seq_list, list) and len(seq_list) > 0:
+            if active_tab is not None and len(seq_list) > active_tab:
+                # Use the active tab's sequence data
+                seq_data = seq_list[active_tab]
+                query_header = seq_data.get("header", "query")
+                query_seq = seq_data.get("sequence", "")
+                query_type = seq_data.get("type", "nucl")
+                # Mark as processed
+                seq_list[active_tab]["processed"] = True
+            else:
+                # Use the first sequence by default
+                seq_data = seq_list[0]
+                query_header = seq_data.get("header", "query")
+                query_seq = seq_data.get("sequence", "")
+                query_type = seq_data.get("type", "nucl")
+        else:
+            # Handle case where seq_list isn't a list (shouldn't happen but just in case)
+            error_alert = dmc.Alert(
+                title="Invalid Sequence Data",
+                children="There was a problem with the sequence data. Please try again.",
+                color="red",
+                variant="filled",
+            )
+            return None, None, None, True, {"display": "none"}, error_alert
 
+        # Ensure query_type is a string
+        if not isinstance(query_type, str):
+            query_type = str(query_type)
+
+        # Continue with your existing code for BLAST search
+        captain_results_dict = None
         # Check sequence length - skip detailed classification for short sequences
         skip_classification = False
         if query_seq and len(query_seq) < 5000:  # 5kb threshold
@@ -959,8 +988,10 @@ def fetch_captain(
                 create_error_alert("No BLAST results were returned"),
                 True,
                 {"display": "none"},
+                None,  # No error
             )
 
+        # Rest of your existing code...
         # Create a new workflow tracker - even if we're skipping classification
         # so we have the proper state in the UI
         globals()["workflow_tracker"] = WorkflowStatus()
@@ -986,6 +1017,7 @@ def fetch_captain(
                 {
                     "display": "none"
                 },  # Hide progress since we're not doing classification
+                None,  # No error
             )
 
         # For sequences >= 5kb, continue with the regular classification workflow
@@ -1240,11 +1272,13 @@ def fetch_captain(
             None,
             False,
             {"display": "block"},
+            None,  # No error
         )
 
     except Exception as e:
-        logger.error(f"Error in fetch_captain: {str(e)}")
-        return None, None, create_error_alert(str(e)), True, {"display": "none"}
+        logger.error(f"Error in blast_callback: {str(e)}")
+        error_alert = create_error_alert(str(e))
+        return None, None, None, True, {"display": "none"}, error_alert
 
 
 # 3. UI Update Callback - Modified to use classification results
@@ -1258,12 +1292,12 @@ def fetch_captain(
         Input("captain-results-store", "data"),
         Input("classification-workflow-state", "data"),
         Input("classification-result-store", "data"),
-        Input("multifasta-sequences-store", "data"),
+        Input("blast-sequences-store", "data"),
     ],
     [
         State("submit-button", "n_clicks"),
         State("evalue-threshold", "value"),
-        State("multifasta-active-tab", "data"),
+        State("blast-active-tab", "data"),
     ],
     running=[
         (Output("submit-button", "loading"), True, False),
@@ -1277,7 +1311,7 @@ def update_ui_elements(
     captain_results_dict,
     classification_state,
     classification_result,
-    multifasta_data,
+    seq_list,
     n_clicks,
     evalue,
     active_tab,
@@ -1286,7 +1320,7 @@ def update_ui_elements(
         return None, None
 
     # Check if we're working with multifasta
-    is_multifasta = multifasta_data and len(multifasta_data) > 1
+    is_multifasta = seq_list and len(seq_list) > 1
 
     try:
         if not blast_results_file:
@@ -1558,7 +1592,7 @@ def update_ui_elements(
             triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
             # Return the outputs to be rendered in the appropriate tab
-            if triggered_id == "multifasta-sequences-store":
+            if triggered_id == "blast-sequences-store":
                 # Initial load - create the tab structure first
                 return None, download_button
 
@@ -1646,78 +1680,6 @@ def update_modal_content(accession):
             f"Error loading details: {str(e)}",
             style={"color": "red", "padding": "20px"},
         )
-
-
-# First callback: Handle file upload
-@callback(
-    [
-        Output("classification-upload", "data"),
-        Output("classification-file-info", "children"),
-        Output("classification-file-info", "style"),
-        Output("classification-submit-button", "style"),
-    ],
-    [
-        Input("classification-fasta-upload", "contents"),
-        Input("classification-fasta-sequence-upload", "contents"),
-    ],
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def handle_file_upload(seq_content, upload_contents):
-    ctx = dash.callback_context
-    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
-    logger.info(f"File upload triggered by: {trigger_id}")
-
-    # Use whichever content is provided
-    content_to_use = seq_content if seq_content is not None else upload_contents
-
-    if content_to_use is None:
-        raise PreventUpdate
-
-    # Parse and validate FASTA
-    header, seq, fasta_error = parse_fasta_from_file(content_to_use)
-    if fasta_error or not seq:
-        raise ValueError(f"FASTA parsing error: {fasta_error or 'No sequence found'}")
-
-    seq_type = guess_seq_type(seq)
-    if not seq_type:
-        raise ValueError("Could not determine sequence type")
-
-    # Save sequence to temporary file
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    write_fasta({"query_sequence": seq}, tmp_fasta)
-
-    # Prepare upload data
-    upload_data = {
-        "seq_type": seq_type,
-        "fasta": tmp_fasta,
-        "fetch_ship_params": {
-            "curated": False,
-            "with_sequence": True,
-            "dereplicate": True,
-        },
-        "fetch_captain_params": {"curated": True, "with_sequence": True},
-    }
-
-    # Create file info display
-    file_info = dmc.Alert(
-        title="Sequence uploaded successfully",
-        children=[
-            html.P(f"Sequence header: {header}"),
-            html.P(f"Sequence type: {seq_type}"),
-            html.P(f"Sequence length: {len(seq)} bp"),
-        ],
-        color="green",
-        variant="light",
-    )
-
-    return [
-        upload_data,
-        file_info,
-        {"display": "block"},  # Show file info
-        {"display": "block"},  # Show submit button
-    ]
 
 
 # Define a class for tracking workflow status
@@ -2230,7 +2192,7 @@ def create_classification_card(classification_data):
 @callback(
     Output("right-column-content", "children"),
     [
-        Input("multifasta-sequences-store", "data"),
+        Input("blast-sequences-store", "data"),
         Input("blast-results-store", "data"),
     ],
     prevent_initial_call=True,
@@ -2272,7 +2234,7 @@ def update_tabs_for_multifasta(multifasta_data, blast_results):
         card = dbc.Card(
             [
                 dbc.CardHeader(
-                    dbc.Tabs(id="multifasta-tabs", active_tab="tab-0", children=tabs)
+                    dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
                 ),
                 dbc.CardBody(
                     [
@@ -2406,14 +2368,17 @@ def update_tabs_for_multifasta(multifasta_data, blast_results):
 
 @callback(
     [
-        Output("multifasta-active-tab", "data"),
-        Output("multifasta-processed-tabs", "data"),
+        Output("blast-active-tab", "data"),
+        Output("blast-processed-tabs", "data"),
         Output("tab-content", "children"),
+        Output(
+            "blast-sequences-store", "data", allow_duplicate=True
+        ),  # Add this to update the processed flag
     ],
-    [Input("multifasta-tabs", "active_tab")],
+    [Input("blast-tabs", "active_tab")],
     [
-        State("multifasta-processed-tabs", "data"),
-        State("multifasta-sequences-store", "data"),
+        State("blast-processed-tabs", "data"),
+        State("blast-sequences-store", "data"),
         State("blast-results-store", "data"),
         State("captain-results-store", "data"),
         State("evalue-threshold", "value"),
@@ -2456,6 +2421,11 @@ def handle_tab_switch(
         raise PreventUpdate
 
     seq_data = multifasta_data[tab_idx]
+
+    # Update the processed flag for this sequence
+    updated_multifasta_data = multifasta_data.copy()
+    updated_multifasta_data[tab_idx]["processed"] = True
+
     header = seq_data["header"]
     sequence = seq_data["sequence"]
     seq_type = seq_data["type"]
@@ -2671,12 +2641,12 @@ def handle_tab_switch(
     logger.info(
         f"Returning data for tab {tab_idx} with content length {len(tab_content)}"
     )
-    return tab_idx, processed_tabs, tab_content
+    return tab_idx, processed_tabs, tab_content, updated_multifasta_data
 
 
 @callback(
     Output("right-column-content-debug", "children"),
-    Input("multifasta-sequences-store", "data"),
+    Input("blast-sequences-store", "data"),
     prevent_initial_call=True,
 )
 def debug_multifasta_data(multifasta_data):
