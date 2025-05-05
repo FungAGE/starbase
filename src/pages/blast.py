@@ -305,11 +305,6 @@ layout = dmc.Container(
                                 ),
                             ],
                         ),
-                        # Debug output (will be hidden in production)
-                        html.Div(
-                            id="right-column-content-debug",
-                            style={"margin-top": "10px", "color": "red"},
-                        ),
                     ],
                     style={"justify-content": "flex-start"},
                 ),
@@ -330,6 +325,7 @@ clientside_callback(
                 
                 // Use standard ID selector
                 const container = document.getElementById('blast-container');
+                const loader = document.getElementById('blast-loader');
                 
                 if (!container) {
                     console.error("No blast container found in the DOM");
@@ -374,9 +370,23 @@ clientside_callback(
                         alignmentsTable: "blast-alignments-table"
                     });
                     console.log("BlasterJS initialized successfully");
+                    
+                    // Hide the loader after successful initialization
+                    if (loader) {
+                        // Add a small delay to ensure content is rendered
+                        setTimeout(function() {
+                            // Access the data-dashloaderisloading attribute and set it to false
+                            loader.setAttribute('data-dashloaderisloading', 'false');
+                        }, 200);
+                    }
                 } catch (blasterError) {
                     console.error("Error initializing BlasterJS library:", blasterError);
                     container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
+                    
+                    // Hide the loader even if there's an error
+                    if (loader) {
+                        loader.setAttribute('data-dashloaderisloading', 'false');
+                    }
                 }
                 
                 return window.dash_clientside.no_update;
@@ -389,7 +399,7 @@ clientside_callback(
         return window.dash_clientside.no_update;
     }
     """,
-    Output("blast-container", "children"),  # Use standard ID here
+    Output("blast-container", "children"),
     Input("processed-blast-store", "data"),
     prevent_initial_call=True,
 )
@@ -1301,7 +1311,7 @@ def create_classification_output(sequence_results):
 
 
 def create_blast_container(sequence_results):
-    """Create the BLAST container"""
+    """Create the BLAST container with a spinner wrapper"""
     blast_file = sequence_results.get("blast_file")
     if not blast_file:
         return html.Div(
@@ -1313,14 +1323,25 @@ def create_blast_container(sequence_results):
             ]
         )
 
-    # Create with a regular string ID
+    # Create with a regular string ID and wrap in a spinner
     return html.Div(
-        id="blast-container",  # Use regular string ID
-        style={
-            "width": "100%",
-            "display": "flex",
-            "flexDirection": "column",
-        },
+        [
+            dbc.Spinner(
+                children=html.Div(
+                    id="blast-container",  # Use regular string ID
+                    style={
+                        "width": "100%",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "minHeight": "300px",  # Increased height to make spinner more visible
+                    },
+                ),
+                color="primary",
+                type="border",  # Options: "border", "grow"
+                fullscreen=False,
+                spinner_style={"width": "3rem", "height": "3rem"},
+            )
+        ]
     )
 
 
@@ -1461,19 +1482,3 @@ def update_active_tab(active_tab):
     # Extract tab index from tab id (e.g., "tab-2" -> 2)
     tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
     return tab_idx
-
-
-@callback(
-    Output("right-column-content-debug", "children"),
-    Input("processed-blast-store", "data"),
-    prevent_initial_call=True,
-)
-def debug_blast_container(processed_blast_data):
-    if processed_blast_data:
-        blast_text_size = (
-            len(processed_blast_data.get("blast_text", ""))
-            if processed_blast_data.get("blast_text")
-            else 0
-        )
-        return f"BLAST data size: {blast_text_size} bytes"
-    return "No BLAST data"
