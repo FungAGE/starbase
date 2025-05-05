@@ -1482,3 +1482,44 @@ def update_active_tab(active_tab):
     # Extract tab index from tab id (e.g., "tab-2" -> 2)
     tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
     return tab_idx
+
+
+@callback(
+    Output("classification-output", "children"),
+    Input("blast-results-store", "data"),
+    prevent_initial_call=True,
+)
+def update_single_sequence_classification(blast_results_store):
+    """Update classification output for single sequence submissions"""
+    if not blast_results_store:
+        return None
+
+    # Get the results for sequence 0
+    sequence_results = blast_results_store.get("sequence_results", {}).get("0")
+    if not sequence_results:
+        return None
+
+    # Create the classification output using the existing function
+    return create_classification_output(sequence_results)
+
+
+@callback(
+    Output("blast-download", "children"),
+    Input("blast-results-store", "data"),
+    prevent_initial_call=True,
+)
+def update_blast_download(blast_results_store):
+    """Create download button for single sequence submissions"""
+    if not blast_results_store:
+        return None
+
+    # Get the results for sequence 0
+    sequence_results = blast_results_store.get("sequence_results", {}).get("0")
+    if not sequence_results:
+        return None
+
+    blast_file = sequence_results.get("blast_file")
+    if not blast_file:
+        return None
+
+    return html.Div(id="blast-download", children=blast_download_button())
