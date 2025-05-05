@@ -25,7 +25,7 @@ WORKDIR $HOME/
 
 # System dependencies, conda, and supercronic installation (combined to reduce layers)
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw wget redis-server && \
+    apt-get install -y curl iptables ncbi-blast+ hmmer clustalw wget redis-server diamond && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     # Install supercronic
     curl -fsSLO "$SUPERCRONIC_URL" && \

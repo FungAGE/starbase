@@ -138,7 +138,9 @@ def run_hmmer(
 
         # Use diamond to extract protein sequence if input is nucleotide
         if query_type == "nucl":
-            logger.debug("Input is nucleotide sequence, running Diamond first")
+            logger.debug(
+                "Input is nucleotide sequence, finding the closest matching protein sequence with DIAMOND"
+            )
             protein_filename = run_diamond(
                 query_type=query_type,
                 input_gene=input_gene,
@@ -408,7 +410,6 @@ def select_ship_family(hmmer_results):
         return None, None, None
 
 
-# TODO: add qseq_translated to the output
 def run_diamond(
     input_gene="tyr",
     input_eval=0.01,
@@ -416,20 +417,10 @@ def run_diamond(
     query_fasta=None,
     threads=2,
 ):
-    """Run DIAMOND search against protein database.
-
-    Args:
-        query_type: Type of query sequence ('nucl' or 'prot')
-        input_gene: Gene type to search against (default: 'tyr')
-        input_eval: E-value threshold
-        query_fasta: Path to query FASTA file
-        threads: Number of threads to use
-
-    Returns:
-        List of dictionaries containing DIAMOND results
-    """
+    """Run DIAMOND search against protein database and extract protein sequences."""
     try:
         diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
+        protein_out = tempfile.NamedTemporaryFile(suffix=".faa", delete=False).name
 
         diamond_db = get_blast_db(
             db_type="blast", query_type="prot", gene_type=input_gene
@@ -437,6 +428,12 @@ def run_diamond(
 
         blast_type = "blastx" if query_type == "nucl" else "blastp"
         evalue = input_eval if input_eval else 0.001
+
+        # Use standard format without qseq_translated
+        outfmt = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore"
+
+        # Remove "6" and split by space for column names
+        column_names = outfmt.split()[1:]
 
         diamond_cmd = [
             "diamond",
@@ -467,25 +464,42 @@ def run_diamond(
             raise
 
         if os.path.getsize(diamond_out) > 0:
-            column_names = [
-                "qseqid",
-                "sseqid",
-                "pident",
-                "length",
-                "mismatch",
-                "gapopen",
-                "qstart",
-                "qend",
-                "sstart",
-                "send",
-                "evalue",
-                "bitscore",
-            ]
             diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
-            return diamond_results.to_dict("records")
+
+            # Sort by evalue and get top hit for each query
+            top_hits = diamond_results.sort_values(by="evalue").drop_duplicates(
+                subset="qseqid", keep="first"
+            )
+
+            # For each hit, extract the protein sequence using getorf or translate directly
+            with open(protein_out, "w") as fasta_file:
+                for _, row in top_hits.iterrows():
+                    if blast_type == "blastx":
+                        # Determine strand based on coordinates
+                        strand = 1 if row["qstart"] < row["qend"] else -1
+                        protein_seq = translate_from_coordinates(
+                            query_fasta,
+                            row["qseqid"],
+                            min(row["qstart"], row["qend"]),
+                            max(row["qstart"], row["qend"]),
+                            strand,
+                        )
+                        if protein_seq:
+                            fasta_file.write(f">{row['qseqid']}\n{protein_seq}\n")
+                    else:
+                        # For blastp, use original sequence
+                        from Bio import SeqIO
+
+                        for record in SeqIO.parse(query_fasta, "fasta"):
+                            if record.id == row["qseqid"]:
+                                fasta_file.write(f">{record.id}\n{str(record.seq)}\n")
+                                break
+
+            return protein_out
+
         else:
             logger.warning("No DIAMOND hits found")
-            return []
+            return None
 
     except Exception as e:
         logger.error(f"Error running DIAMOND: {str(e)}")
@@ -494,6 +508,33 @@ def run_diamond(
     finally:
         if "diamond_out" in locals() and os.path.exists(diamond_out):
             os.unlink(diamond_out)
+
+
+def translate_from_coordinates(fasta_file, qseqid, qstart, qend, strand=1):
+    """Translate nucleotide sequence using coordinates from Diamond."""
+    from Bio import SeqIO
+
+    for record in SeqIO.parse(fasta_file, "fasta"):
+        if record.id == qseqid:
+            # Extract the region based on coordinates (1-based)
+            qstart = max(1, qstart) - 1  # Convert to 0-based
+            region = record.seq[qstart:qend]
+
+            # Determine reading frame
+            frame = qstart % 3
+
+            # Adjust sequence to proper frame
+            adjusted_seq = region[frame:]
+
+            # Translate (handle both strands)
+            if strand > 0:
+                protein = adjusted_seq.translate()
+            else:
+                protein = adjusted_seq.reverse_complement().translate()
+
+            return str(protein)
+
+    return None
 
 
 def make_captain_alert(family, aln_length, evalue, search_type):

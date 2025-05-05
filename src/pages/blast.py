@@ -6,7 +6,7 @@ import dash_mantine_components as dmc
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 
-import tempfile
+import os
 import base64
 import pandas as pd
 import logging
@@ -18,21 +18,18 @@ from src.utils.seq_utils import (
     write_temp_fasta,
 )
 from src.utils.blast_utils import (
-    run_blast,
-    process_captain_results,
     create_no_matches_alert,
     parse_blast_xml,
     blast_download_button,
+    select_ship_family,
 )
 
 from src.components.callbacks import (
     curated_switch,
     create_file_upload,
-    create_accession_modal,
 )
 from src.database.sql_manager import fetch_meta_data
 from src.utils.telemetry import blast_limit_decorator
-from src.components.error_boundary import handle_callback_error, create_error_alert
 from src.utils.classification_utils import WORKFLOW_STAGES
 from src.tasks import (
     run_blast_search_task,
@@ -71,7 +68,6 @@ layout = dmc.Container(
         ),  # Store which tabs have been processed
         # Results stores
         dcc.Store(id="blast-results-store"),
-        dcc.Store(id="captain-results-store", data=None),
         dcc.Store(id="classification-result-store", data=None),
         # Single data store with all workflow state
         dcc.Store(id="classification-stage", data="Upload a sequence"),
@@ -518,7 +514,6 @@ clientside_callback(
     ],
     prevent_initial_call=True,
 )
-@handle_callback_error
 def update_fasta_details(seq_content, seq_filename):
     """
     Handle file uploads only - immediately process the file to show a summary
@@ -662,7 +657,6 @@ def update_fasta_details(seq_content, seq_filename):
     [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
     prevent_initial_call=True,
 )
-@handle_callback_error
 def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
     triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
@@ -708,7 +702,6 @@ def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
     ],
     prevent_initial_call=True,
 )
-@handle_callback_error
 def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
     """
     Process input when the submit button is pressed.
@@ -792,7 +785,6 @@ def update_submission_id(n_clicks):
     Output("processed-metadata-store", "data"),
     Input("curated-input", "value"),
 )
-@handle_callback_error
 def process_metadata(curated):
     try:
         initial_df = cache.get("meta_data")
@@ -812,10 +804,21 @@ def process_metadata(curated):
 # BLAST Results Processing Callback
 @callback(
     Output("processed-blast-store", "data"),
-    Input("blast-results-store", "data"),
+    [Input("blast-results-store", "data"), Input("blast-active-tab", "data")],
 )
-@handle_callback_error
-def process_blast_results(blast_results_file):
+def process_blast_results(blast_results_store, active_tab_idx):
+    if not blast_results_store:
+        return None
+
+    # Convert active_tab_idx to string (since keys in sequence_results are strings)
+    tab_idx = str(active_tab_idx or 0)
+
+    # Get the correct sequence results based on active tab
+    sequence_results = blast_results_store.get("sequence_results", {}).get(tab_idx)
+    if not sequence_results:
+        return None
+
+    blast_results_file = sequence_results.get("blast_file")
     if not blast_results_file:
         return None
 
@@ -845,19 +848,15 @@ def process_blast_results(blast_results_file):
 @callback(
     [
         Output("blast-results-store", "data"),
-        Output("captain-results-store", "data"),
-        Output("classification-interval", "disabled", allow_duplicate=True),
+        Output("classification-interval", "disabled"),
         Output("workflow-state-store", "data"),
-        Output("upload-error-message", "children", allow_duplicate=True),
     ],
     [
         Input("submission-id-store", "data"),
         Input("blast-sequences-store", "data"),
-        Input("blast-active-tab", "data"),
     ],
     [
         State("evalue-threshold", "value"),
-        State("blast-sequences-store", "data"),
     ],
     running=[
         (Output("submit-button", "loading"), True, False),
@@ -865,226 +864,150 @@ def process_blast_results(blast_results_file):
     ],
     prevent_initial_call=True,
 )
-@handle_callback_error
-def blast_callback(
-    submission_id,
-    seq_list,
-    active_tab,
-    evalue_threshold,
-    search_type="hmmsearch",
-):
+def process_sequences(submission_id, seq_list, evalue_threshold):
+    """Process only the first sequence initially"""
     if not all([seq_list, submission_id]):
-        return None, None, True, None, None
+        return None, None, None
 
-    try:
-        if isinstance(seq_list, list) and len(seq_list) > 0:
-            if len(seq_list) > active_tab:
-                if active_tab is None:
-                    active_tab = 0
-                seq_data = seq_list[active_tab]
-                query_header = seq_data.get("header", "query")
-                query_seq = seq_data.get("sequence", "")
-                query_type = seq_data.get("type", "nucl")
-                seq_list[active_tab]["processed"] = True
-        else:
-            # Handle case where seq_list isn't a list (shouldn't happen but just in case)
-            error_alert = dmc.Alert(
-                title="Invalid Sequence Data",
-                children="There was a problem with the sequence data. Please try again.",
-                color="red",
-                variant="filled",
-            )
-            return None, None, True, None, error_alert
+    blast_results = None
+    classification_interval_disabled = None
+    workflow_state = None
 
-        # Ensure query_type is a string
-        if not isinstance(query_type, str):
-            query_type = str(query_type)
+    # Process only the first sequence to start
+    if seq_list and len(seq_list) > 0:
+        # Process sequence 0
+        sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
 
-        # Check sequence length - skip detailed classification for short sequences
-        skip_classification = False
-        if query_seq and len(query_seq) < 5000:  # 5kb threshold
-            logger.info(
-                f"Sequence length {len(query_seq)} is below 5kb threshold, skipping detailed classification"
-            )
-            skip_classification = True
+        if sequence_result:
+            # Structure the blast results properly
+            blast_results = {
+                "processed_sequences": [0],  # Indices of processed sequences
+                "sequence_results": {
+                    "0": sequence_result
+                },  # Results keyed by sequence index
+            }
 
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+            # Determine if we should enable classification interval
+            skip_classification = len(sequence_result.get("sequence", "")) < 5000
+            classification_interval_disabled = skip_classification
 
-        # Start task for BLAST search - Now using celery task
-        blast_task = run_blast_search_task.delay(
-            query_header=query_header,
-            query_seq=query_seq,
-            query_type=query_type,
-            eval_threshold=evalue_threshold,
-        )
+            # Set up workflow state if needed
+            if not skip_classification and sequence_result.get("blast_file"):
+                # This should be set up for classification workflow
+                workflow_state = {
+                    "task_id": submission_id,  # Use submission ID for now
+                    "status": "started",
+                    "complete": False,
+                    "current_stage": None,
+                    "error": None,
+                    "start_time": time.time(),
+                }
 
-        blast_results_file = blast_task.get(timeout=300)  # Wait for BLAST to complete
-
-        # Run Diamond and HMMER using celery tasks
-        if query_type == "nucl":
-            # For nucleotide sequences, use the HMMER task
-            hmmer_task = run_hmmer_search_task.delay(
-                query_header=query_header,
-                query_seq=query_seq,
-                query_type=query_type,
-                eval_threshold=evalue_threshold,
-            )
-
-            hmmer_results = hmmer_task.get(timeout=300)
-
-            if hmmer_results:
-                captain_results_dict = hmmer_results.get("results")
-        else:
-            # For protein sequences, directly run HMMER task
-            hmmer_task = run_hmmer_search_task.delay(
-                query_header=query_header,
-                query_seq=query_seq,
-                query_type=query_type,
-                eval_threshold=evalue_threshold,
-            )
-
-            hmmer_results = hmmer_task.get(timeout=300)
-
-            if hmmer_results:
-                captain_results_dict = hmmer_results.get("results")
-
-        if blast_results_file is None:
-            return (
-                None,
-                None,
-                True,
-                None,
-                None,  # No error
-            )
-
-        # Rest of your existing code...
-        # Create a new workflow tracker - even if we're skipping classification
-        # so we have the proper state in the UI
-        globals()["workflow_tracker"] = WorkflowStatus()
-        globals()["workflow_tracker"].start_time = time.time()
-
-        if skip_classification:
-            # Skip classification for short sequences
-            # Mark workflow as complete immediately using a special flag
-            globals()["workflow_tracker"].complete = True
-            globals()["workflow_tracker"].match_stage = "blast_only"
-            globals()[
-                "workflow_tracker"
-            ].match_result = (
-                f"Sequence length ({len(query_seq)}bp) is below 5kb threshold"
-            )
-
-            # Return without starting the classification thread
-            return (
-                blast_results_file,
-                captain_results_dict,
-                None,
-                True,  # Disable interval since we're not doing classification
-                None,  # No error
-            )
-
-        # For sequences >= 5kb, continue with the regular classification workflow
-        upload_data = {
-            "seq_type": query_type,
-            "fasta": tmp_query_fasta,
-            "fetch_ship_params": {
-                "curated": False,
-                "with_sequence": True,
-                "dereplicate": True,
-            },
-            "fetch_captain_params": {"curated": True, "with_sequence": True},
-        }
-
-        # This launches the entire sequential workflow as a single background task
-        classification_task = run_classification_workflow_task.delay(upload_data)
-
-        # Return initial state with task ID for polling
-        return (
-            blast_results_file,
-            captain_results_dict,
-            False,  # Enable the interval for polling
-            {
-                "task_id": classification_task.id,
-                "status": "started",
-                "complete": False,
-                "current_stage": None,
-                "error": None,
-                "start_time": time.time(),
-            },
-            None,  # No error
-        )
-
-    except Exception as e:
-        logger.error(f"Error in blast_callback: {str(e)}")
-        error_alert = create_error_alert(str(e))
-        return None, None, True, None, error_alert
+    return blast_results, classification_interval_disabled, workflow_state
 
 
-@callback(
-    [
-        Output("classification-output", "children"),
-        Output("blast-download", "children"),
-    ],
-    [
-        Input("blast-results-store", "data"),
-        Input("classification-workflow-state", "data"),
-        Input("classification-result-store", "data"),
-    ],
-    [
-        State("blast-sequences-store", "data"),
-        State("captain-results-store", "data"),
-        State("submit-button", "n_clicks"),
-        State("evalue-threshold", "value"),
-        State("blast-active-tab", "data"),
-    ],
-    running=[
-        (Output("submit-button", "loading"), True, False),
-        (Output("submit-button", "disabled"), True, False),
-    ],
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def update_ui_elements(
-    blast_results_file,
-    classification_state,
-    classification_result,
-    captain_results_dict,
-    seq_list,
-    n_clicks,
-    evalue,
-    active_tab,
-):
-    if not n_clicks or blast_results_file is None:
-        return None, None
+def process_single_sequence(seq_data, evalue_threshold):
+    """Process a single sequence and return structured results"""
+    query_header = seq_data.get("header", "query")
+    query_seq = seq_data.get("sequence", "")
+    query_type = seq_data.get("type", "nucl")
 
-    # Check if we're working with more than one sequence
-    is_multifasta = seq_list and len(seq_list) > 1
+    # Write sequence to temporary FASTA file
+    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
-    try:
-        if not blast_results_file:
-            return html.Div(
-                [
-                    html.H2("Classification Results", style={"marginBottom": "20px"}),
-                    create_no_matches_alert(),
-                ]
-            ), None
+    # Run BLAST search
+    blast_task = run_blast_search_task.delay(
+        query_header=query_header,
+        query_seq=query_seq,
+        query_type=query_type,
+        eval_threshold=evalue_threshold,
+    )
+    blast_results_file = blast_task.get(timeout=300)
 
-        # Initialize classification data
-        classification_data = None
+    # Prepare upload data for classification
+    upload_data = {
+        "seq_type": query_type,
+        "fasta": tmp_query_fasta,
+        "fetch_ship_params": {
+            "curated": False,
+            "with_sequence": True,
+            "dereplicate": True,
+        },
+        "fetch_captain_params": {"curated": True, "with_sequence": True},
+    }
 
-        # Check for classification result data first
-        if classification_result is not None:
-            result_type = classification_result.get("type")
+    # run classification workflow
+    classification_task = run_classification_workflow_task.delay(
+        upload_data=upload_data,
+    )
 
-            if result_type == "match" and classification_result.get("match_stage") in [
+    # Initialize classification data
+    classification_data = classification_task.get(timeout=300)
+
+    # Check for classification result data first
+    if classification_data is not None:
+        result_type = classification_data.get("type")
+
+        if result_type == "match" and classification_data.get("match_stage") in [
+            "exact",
+            "contained",
+            "similar",
+        ]:
+            # Handle exact/contained/similar matches
+            match_stage = classification_data.get("match_stage")
+            match_result = classification_data.get("match_result")
+
+            if match_result:
+                # Get metadata for the matched ship
+                meta_df = fetch_meta_data(accession_tag=match_result)
+
+                if not meta_df.empty:
+                    # We found metadata for this match
+                    family = (
+                        meta_df["familyName"].iloc[0]
+                        if "familyName" in meta_df.columns
+                        else None
+                    )
+                    navis = (
+                        meta_df["starship_navis"].iloc[0]
+                        if "starship_navis" in meta_df.columns
+                        else None
+                    )
+                    haplotype = (
+                        meta_df["starship_haplotype"].iloc[0]
+                        if "starship_haplotype" in meta_df.columns
+                        else None
+                    )
+
+                    # Set confidence based on match type
+                    confidence = (
+                        "High"
+                        if match_stage == "exact"
+                        else ("Medium" if match_stage == "contained" else "Low")
+                    )
+
+                    classification_data = {
+                        "title": "Classification based on",
+                        "source": f"{match_stage}_match",
+                        "family": family,
+                        "navis": navis,
+                        "haplotype": haplotype,
+                        "match_type": f"Matched to {match_result}",
+                        "confidence": confidence,
+                    }
+
+        # Alternatively if classification state is available and shows a completed process
+        elif classification_data and classification_data.get("complete", False):
+            # Process based on classification state (existing logic)
+
+            # Check for workflow-based classification (highest priority)
+            if classification_data.get("match_stage") in [
                 "exact",
                 "contained",
                 "similar",
             ]:
-                # Handle exact/contained/similar matches
-                match_stage = classification_result.get("match_stage")
-                match_result = classification_result.get("match_result")
+                match_stage = classification_data.get("match_stage")
+                match_result = classification_data.get("match_result")
 
                 if match_result:
                     # Get metadata for the matched ship
@@ -1125,415 +1048,373 @@ def update_ui_elements(
                             "confidence": confidence,
                         }
 
-            # Alternatively if classification state is available and shows a completed process
-            elif classification_state and classification_state.get("complete", False):
-                # Process based on classification state (existing logic)
+            # Check for family/navis/haplotype classification from workflow
+            elif classification_data.get("found_match", False):
+                match_stage = classification_data.get("match_stage")
+                match_result = classification_data.get("match_result")
 
-                # Check for workflow-based classification (highest priority)
-                if classification_state.get("match_stage") in [
-                    "exact",
-                    "contained",
-                    "similar",
-                ]:
-                    match_stage = classification_state.get("match_stage")
-                    match_result = classification_state.get("match_result")
-
-                    if match_result:
-                        # Get metadata for the matched ship
-                        meta_df = fetch_meta_data(accession_tag=match_result)
-
-                        if not meta_df.empty:
-                            # We found metadata for this match
-                            family = (
-                                meta_df["familyName"].iloc[0]
-                                if "familyName" in meta_df.columns
-                                else None
-                            )
-                            navis = (
-                                meta_df["starship_navis"].iloc[0]
-                                if "starship_navis" in meta_df.columns
-                                else None
-                            )
-                            haplotype = (
-                                meta_df["starship_haplotype"].iloc[0]
-                                if "starship_haplotype" in meta_df.columns
-                                else None
-                            )
-
-                            # Set confidence based on match type
-                            confidence = (
-                                "High"
-                                if match_stage == "exact"
-                                else ("Medium" if match_stage == "contained" else "Low")
-                            )
-
-                            classification_data = {
-                                "title": "Classification based on",
-                                "source": f"{match_stage}_match",
-                                "family": family,
-                                "navis": navis,
-                                "haplotype": haplotype,
-                                "match_type": f"Matched to {match_result}",
-                                "confidence": confidence,
-                            }
-
-                # Check for family/navis/haplotype classification from workflow
-                elif classification_state.get("found_match", False):
-                    match_stage = classification_state.get("match_stage")
-                    match_result = classification_state.get("match_result")
-
-                    if match_stage == "family" and match_result:
-                        # Family classification found
-                        if isinstance(match_result, dict) and "family" in match_result:
-                            family_name = match_result["family"]
-                        else:
-                            family_name = match_result
-
-                        classification_data = {
-                            "title": "Family Classification",
-                            "source": "classification",
-                            "family": family_name,
-                            "match_type": "Direct classification",
-                            "confidence": "Medium",
-                        }
-                    elif match_stage == "navis" and match_result:
-                        # Navis classification found
-                        classification_data = {
-                            "title": "Navis Classification",
-                            "source": "classification",
-                            "navis": match_result,
-                            "match_type": "Direct classification",
-                            "confidence": "Medium",
-                        }
-                    elif match_stage == "haplotype" and match_result:
-                        # Haplotype classification found
-                        classification_data = {
-                            "title": "Haplotype Classification",
-                            "source": "classification",
-                            "haplotype": match_result,
-                            "match_type": "Direct classification",
-                            "confidence": "Medium",
-                        }
-
-        # If no classification from workflow, fall back to BLAST results
-        if classification_data is None:
-            # Process the BLAST results
-            blast_tsv = parse_blast_xml(blast_results_file)
-            blast_df = pd.read_csv(blast_tsv, sep="\t")
-
-            # Check if dataframe is empty
-            if len(blast_df) == 0:
-                classification_output = html.Div([create_no_matches_alert()])
-                return classification_output, None
-
-            # Sort by evalue (ascending) and pident (descending) to get best hits
-            blast_df = blast_df.sort_values(
-                ["evalue", "pident"], ascending=[True, False]
-            )
-            top_hit = blast_df.iloc[0]
-            logger.info(f"Top hit: {top_hit}")
-
-            top_evalue = float(top_hit["evalue"])
-            top_aln_length = int(top_hit["aln_length"])
-            top_pident = float(top_hit["pident"])
-
-            if top_pident >= 90:
-                # look up family name from accession tag
-                hit_IDs = top_hit["hit_IDs"]
-                meta_df = fetch_meta_data(accession_tag=hit_IDs)
-
-                if not meta_df.empty:
-                    top_family = meta_df["familyName"].iloc[0]
-                    navis = (
-                        meta_df["starship_navis"].iloc[0]
-                        if "starship_navis" in meta_df.columns
-                        else None
-                    )
-                    haplotype = (
-                        meta_df["starship_haplotype"].iloc[0]
-                        if "starship_haplotype" in meta_df.columns
-                        else None
-                    )
+                if match_stage == "family" and match_result:
+                    # Family classification found
+                    if isinstance(match_result, dict) and "family" in match_result:
+                        family_name = match_result["family"]
+                    else:
+                        family_name = match_result
 
                     classification_data = {
-                        "title": "Classification from BLAST",
-                        "source": "blast_hit",
-                        "family": top_family,
-                        "navis": navis,
-                        "haplotype": haplotype,
-                        "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
-                        "confidence": "Medium" if top_pident >= 95 else "Low",
+                        "title": "Family Classification",
+                        "source": "classification",
+                        "family": family_name,
+                        "match_type": "Direct classification",
+                        "confidence": "Medium",
                     }
-                else:
-                    # No metadata for this hit, fall back to captain results
-                    captain_family = process_captain_results(
-                        captain_results_dict, evalue, return_raw=True
-                    )
-                    if captain_family:
-                        classification_data = {
-                            "title": "Captain Gene Classification",
-                            "source": "classification",
-                            "family": captain_family,
-                            "match_type": "Captain gene classification",
-                            "confidence": "Low",
-                        }
-            else:
-                # BLAST hit below threshold, fall back to captain results
-                captain_family = process_captain_results(
-                    captain_results_dict, evalue, return_raw=True
+                elif match_stage == "navis" and match_result:
+                    # Navis classification found
+                    classification_data = {
+                        "title": "Navis Classification",
+                        "source": "classification",
+                        "navis": match_result,
+                        "match_type": "Direct classification",
+                        "confidence": "Medium",
+                    }
+                elif match_stage == "haplotype" and match_result:
+                    # Haplotype classification found
+                    classification_data = {
+                        "title": "Haplotype Classification",
+                        "source": "classification",
+                        "haplotype": match_result,
+                        "match_type": "Direct classification",
+                        "confidence": "Medium",
+                    }
+
+    # If no classification from workflow, fall back to BLAST results
+    if classification_data is None:
+        # Process the BLAST results
+        blast_tsv = parse_blast_xml(blast_results_file)
+        blast_df = pd.read_csv(blast_tsv, sep="\t")
+
+        # Check if dataframe is empty
+        if len(blast_df) == 0:
+            classification_output = html.Div([create_no_matches_alert()])
+            return classification_output, None
+
+        # Sort by evalue (ascending) and pident (descending) to get best hits
+        blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
+        top_hit = blast_df.iloc[0]
+        logger.info(f"Top hit: {top_hit}")
+
+        top_evalue = float(top_hit["evalue"])
+        top_aln_length = int(top_hit["aln_length"])
+        top_pident = float(top_hit["pident"])
+
+        if top_pident >= 90:
+            # look up family name from accession tag
+            hit_IDs = top_hit["hit_IDs"]
+            meta_df = fetch_meta_data(accession_tag=hit_IDs)
+
+            if not meta_df.empty:
+                top_family = meta_df["familyName"].iloc[0]
+                navis = (
+                    meta_df["starship_navis"].iloc[0]
+                    if "starship_navis" in meta_df.columns
+                    else None
                 )
+                haplotype = (
+                    meta_df["starship_haplotype"].iloc[0]
+                    if "starship_haplotype" in meta_df.columns
+                    else None
+                )
+
+                classification_data = {
+                    "title": "Classification from BLAST",
+                    "source": "blast_hit",
+                    "family": top_family,
+                    "navis": navis,
+                    "haplotype": haplotype,
+                    "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                    "confidence": "Medium" if top_pident >= 95 else "Low",
+                }
+            else:
+                # No metadata for this hit, fall back to captain results
+                hmmer_task = run_hmmer_search_task.delay(
+                    query_header=query_header,
+                    query_seq=query_seq,
+                    query_type=query_type,
+                    eval_threshold=evalue_threshold,
+                )
+                hmmer_results = hmmer_task.get(timeout=300)
+                captain_results = (
+                    hmmer_results.get("results") if hmmer_results else None
+                )
+                first_result = captain_results[0]  # Get just the first dictionary
+                captain_family, aln_length, evalue = select_ship_family(first_result)
+
                 if captain_family:
+                    if aln_length > 80 and evalue < 0.001:
+                        confidence = "High"
+                    else:
+                        confidence = "Low"
+
                     classification_data = {
                         "title": "Captain Gene Classification",
-                        "source": "classification",
+                        "source": "hmmsearch",
                         "family": captain_family,
-                        "match_type": "Captain gene classification",
-                        "confidence": "Low",
+                        "match_type": f"Captain gene match with length {aln_length}, Evalue: {evalue}",
+                        "confidence": confidence,
                     }
 
-        # Create the classification card with title
-        if classification_data:
-            classification_output = html.Div(
-                [
-                    dmc.Title(
-                        "Classification Results",
-                        order=2,
-                        style={"marginBottom": "20px"},
-                    ),
-                    create_classification_card(classification_data),
-                ]
+    # Return structured results
+    return {
+        "blast_file": blast_results_file,
+        "classification": classification_data,
+        "processed": True,
+        "sequence": query_seq,  # Include sequence for length checks
+    }
+
+
+# 2. Add a callback to process additional sequences when tabs are clicked
+@callback(
+    Output("blast-results-store", "data", allow_duplicate=True),
+    Input("blast-tabs", "active_tab"),
+    [
+        State("blast-results-store", "data"),
+        State("blast-sequences-store", "data"),
+        State("evalue-threshold", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def process_additional_sequence(active_tab, results_store, seq_list, evalue_threshold):
+    """Process a sequence when its tab is selected if not already processed"""
+    if not active_tab or not results_store or not seq_list:
+        raise PreventUpdate
+
+    # Extract tab index from tab id (e.g., "tab-2" -> 2)
+    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+
+    # Check if this sequence has already been processed
+    processed_sequences = results_store.get("processed_sequences", [])
+
+    if tab_idx in processed_sequences:
+        # Already processed this sequence
+        raise PreventUpdate
+
+    # Process this sequence
+    if tab_idx < len(seq_list):
+        sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
+
+        # Update the results store
+        updated_results = dict(results_store)
+        updated_results["processed_sequences"].append(tab_idx)
+        updated_results["sequence_results"][str(tab_idx)] = sequence_result
+
+        return updated_results
+
+    raise PreventUpdate
+
+
+# 3. Create tabs based on number of sequences
+@callback(
+    Output("right-column-content", "children"),
+    Input("blast-sequences-store", "data"),
+    prevent_initial_call=True,
+)
+def create_tabs_structure(seq_list):
+    """Create tabs structure based on number of sequences"""
+    if not seq_list:
+        raise PreventUpdate
+
+    # Single sequence case - no tabs needed
+    if len(seq_list) == 1:
+        return dmc.Stack(
+            children=[
+                html.Div(id="classification-output", className="mt-4"),
+                # Progress section
+                dmc.Stack(
+                    [
+                        dmc.Group(
+                            [dbc.Progress(id="classification-progress", value=0)]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("Classification Status:", size="lg", fw=500),
+                                dmc.Text(
+                                    id="classification-stage-display",
+                                    size="lg",
+                                    c="blue",
+                                ),
+                            ]
+                        ),
+                    ],
+                    id="classification-progress-section",
+                    style={"display": "none"},
+                ),
+                # BLAST results section
+                dmc.Stack(
+                    [
+                        html.Div(id="blast-container"),
+                        html.Div(id="blast-download"),
+                    ]
+                ),
+            ],
+        )
+
+    # Multiple sequences - create tabs
+    tabs = []
+    for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
+        tabs.append(
+            dbc.Tab(
+                label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
+                tab_id=f"tab-{idx}",
             )
-        else:
-            # No classification available
-            classification_output = html.Div(
-                [
-                    dmc.Title(
-                        "Classification Results",
-                        order=2,
-                        style={"marginBottom": "20px"},
-                    ),
-                    dmc.Alert(
-                        title="No Classification Available",
-                        children="Could not classify this sequence with any available method.",
-                        color="yellow",
-                        variant="light",
-                    ),
-                ]
-            )
+        )
 
-        # Create download button
-        download_button = blast_download_button()
+    return dbc.Card(
+        [
+            dbc.CardHeader(
+                dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
+            ),
+            dbc.CardBody([html.Div(id="tab-content")]),
+        ]
+    )
 
-        # If we're working with more than one sequence, we may need to handle tabs
-        if is_multifasta:
-            # Check if we've already created tabs
-            ctx = dash.callback_context
-            triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
-            # Return the outputs to be rendered in the appropriate tab
-            if triggered_id == "blast-sequences-store":
-                # Initial load - create the tab structure first
-                return None, download_button
+# 4. Render the content for the current tab
+@callback(
+    Output("tab-content", "children"),
+    [
+        Input("blast-tabs", "active_tab"),
+        Input("blast-results-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def render_tab_content(active_tab, results_store):
+    """Render the content for the current tab"""
+    if not active_tab or not results_store:
+        raise PreventUpdate
 
-        # Return regular output for single sequence or active tab
-        return classification_output, download_button
+    # Extract tab index
+    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
 
-    except Exception as e:
-        logger.error(f"Error in update_ui_elements: {e}")
-        logger.exception("Full traceback:")
-        error_div = html.Div(
+    # Check if this sequence has been processed
+    processed_sequences = results_store.get("processed_sequences", [])
+    if tab_idx not in processed_sequences:
+        # Not processed yet - show loading state
+        return dmc.Stack(
+            [
+                dmc.Center(dmc.Loader(size="xl")),
+                dmc.Text("Processing sequence...", size="lg"),
+            ]
+        )
+
+    # Get results for this sequence
+    sequence_results = results_store.get("sequence_results", {}).get(str(tab_idx))
+    if not sequence_results:
+        return dmc.Alert(
+            title="Error",
+            children="No results found for this sequence",
+            color="red",
+            variant="filled",
+        )
+
+    # Render classification results
+    classification_output = create_classification_output(sequence_results)
+
+    # Render BLAST results
+    blast_container = create_blast_container(sequence_results)
+
+    # Render download button
+    download_button = (
+        blast_download_button() if sequence_results.get("blast_file") else None
+    )
+
+    return [
+        classification_output,
+        # Progress section (hidden initially)
+        dmc.Stack(
+            [
+                dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
+                dmc.Group(
+                    [
+                        dmc.Text("Classification Status:", size="lg", fw=500),
+                        dmc.Text(
+                            id="classification-stage-display", size="lg", c="blue"
+                        ),
+                    ]
+                ),
+            ],
+            id="classification-progress-section",
+            style={"display": "none"},
+        ),
+        # BLAST results section
+        dmc.Stack(
+            [
+                blast_container,
+                html.Div(id="blast-download", children=download_button),
+            ]
+        ),
+    ]
+
+
+def create_classification_output(sequence_results):
+    """Create the classification output component"""
+    # Extract classification data
+    classification_data = sequence_results.get("classification")
+
+    if classification_data:
+        return html.Div(
             [
                 dmc.Title(
                     "Classification Results", order=2, style={"marginBottom": "20px"}
                 ),
-                create_error_alert(str(e)),
+                create_classification_card(classification_data),
             ]
         )
-        return error_div, None
-
-
-@callback(
-    Output("blast-timeout-store", "data"),
-    [Input("blast-timeout-interval", "n_intervals")],
-    [
-        State("submit-button", "n_clicks"),
-        State("blast-container", "children"),
-        State("upload-error-message", "children"),
-        State("classification-output", "children"),
-    ],
-)
-def check_timeout(
-    n_intervals, n_clicks, blast_container, error_content, classification_output
-):
-    try:
-        if n_clicks and n_intervals > 0:
-            has_output = any(
-                [
-                    blast_container is not None and blast_container != [],
-                    error_content is not None,
-                    classification_output is not None,
-                ]
-            )
-            return not has_output
-        return False
-    except Exception as e:
-        logger.error(f"Error in check_timeout: {str(e)}")
-        return False
-
-
-clientside_callback(
-    """
-    function(n_intervals) {
-        window.addEventListener('blastAccessionClick', function(event) {
-            if (event.detail && event.detail.accession) {
-                // Find the store and update it
-                var store = document.getElementById('blast-modal-accession');
-                if (store) {
-                    store.setAttribute('data-dash-store', JSON.stringify(event.detail.accession));
-                }
-            }
-        });
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output("modal-event-handler", "children"),
-    Input("interval-component", "n_intervals"),
-)
-
-
-@callback(
-    Output("blast-modal-content", "children"),
-    Input("blast-modal-accession", "data"),
-    prevent_initial_call=True,
-)
-def update_modal_content(accession):
-    if not accession:
-        raise PreventUpdate
-
-    try:
-        modal_content, _ = create_accession_modal(accession)
-        return modal_content
-    except Exception as e:
-        logger.error(f"Error in update_modal_content: {str(e)}")
+    else:
+        # No classification available
         return html.Div(
-            f"Error loading details: {str(e)}",
-            style={"color": "red", "padding": "20px"},
+            [
+                dmc.Title(
+                    "Classification Results", order=2, style={"marginBottom": "20px"}
+                ),
+                dmc.Alert(
+                    title="No Classification Available",
+                    children="Could not classify this sequence with any available method.",
+                    color="yellow",
+                    variant="light",
+                ),
+            ]
         )
 
 
-# Define a class for tracking workflow status
-class WorkflowStatus:
-    def __init__(self):
-        self.start_time = None
-        self.current_stage = None
-        self.current_stage_idx = None
-        self.stage_progress = None
-        self.found_match = False
-        self.match_stage = None
-        self.match_result = None
-        self.complete = False
-        self.error = None
-        self.stage_values = [0] * len(WORKFLOW_STAGES)
-        self.stage_animated = [False] * len(WORKFLOW_STAGES)
-        self.stage_striped = [True] * len(WORKFLOW_STAGES)
+def create_blast_container(sequence_results):
+    """Create the BLAST container"""
+    blast_file = sequence_results.get("blast_file")
+    if not blast_file:
+        return html.Div(
+            [
+                html.H2(
+                    "BLAST Results", style={"marginTop": "15px", "marginBottom": "20px"}
+                ),
+                create_no_matches_alert(),
+            ]
+        )
 
-    def to_dict(self):
-        """Convert status to dictionary for storing in dcc.Store"""
-        return {
-            "start_time": self.start_time,
-            "current_stage": self.current_stage,
-            "current_stage_idx": self.current_stage_idx,
-            "stage_progress": self.stage_progress,
-            "found_match": self.found_match,
-            "match_stage": self.match_stage,
-            "match_result": self.match_result,
-            "complete": self.complete,
-            "error": self.error,
-            "stage_values": self.stage_values,
-            "stage_animated": self.stage_animated,
-            "stage_striped": self.stage_striped,
-        }
+    return html.Div(
+        id="blast-container",
+        style={
+            "width": "100%",
+            "display": "flex",
+            "flexDirection": "column",
+        },
+    )
 
 
-# Global variable to store workflow status
-# This is the key to sharing progress between the long-running process and the UI
-workflow_tracker = None
+def load_blast_text(blast_file):
+    """Load BLAST output as text"""
+    if not blast_file or not os.path.exists(blast_file):
+        return None
 
-
-@callback(
-    [
-        Output("classification-stage-display", "children"),
-        Output("classification-progress", "value"),
-        Output("classification-progress", "animated"),
-        Output("classification-progress", "striped"),
-        Output("classification-interval", "disabled", allow_duplicate=True),
-    ],
-    Input("workflow-state-store", "data"),
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def update_ui_from_workflow_state(workflow_state):
-    """Update UI elements based on the workflow state."""
-    if not workflow_state:
-        raise PreventUpdate
-
-    # Set default values
-    stage_message = "Starting classification..."
-    overall_progress = 0
-    animated = True
-    striped = True
-    disable_interval = False
-
-    # Update based on current state
-    if workflow_state.get("complete", False):
-        disable_interval = True
-        animated = False
-        striped = False
-        overall_progress = 100
-
-        if workflow_state.get("error"):
-            stage_message = f"Error: {workflow_state['error']}"
-        elif workflow_state.get("found_match", False):
-            match_stage = workflow_state.get("match_stage", "")
-            match_result = workflow_state.get("match_result", "")
-            stage_info = next(
-                (s for s in WORKFLOW_STAGES if s["id"] == match_stage), {}
-            )
-            stage_message = f"{stage_info.get('label', 'Match')} found: {match_result}"
-        else:
-            stage_message = "Classification complete - No matches found"
-    elif workflow_state.get("current_stage"):
-        # Still processing
-        current_stage = workflow_state["current_stage"]
-        stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == current_stage), {})
-        stage_message = f"Processing: {stage_info.get('label', current_stage)}"
-
-        # Calculate progress
-        if "stages" in workflow_state:
-            completed_stages = sum(
-                1 for s in workflow_state["stages"].values() if s.get("complete", False)
-            )
-            current_progress = (
-                workflow_state["stages"].get(current_stage, {}).get("progress", 0)
-            )
-            overall_progress = ((completed_stages / len(WORKFLOW_STAGES)) * 100) + (
-                current_progress / len(WORKFLOW_STAGES)
-            )
-
-    return stage_message, overall_progress, animated, striped, disable_interval
-
-
-# Fix the callback to target the correct interval component
-@callback(
-    Output("classification-interval", "disabled", allow_duplicate=True),
-    Input("classification-submit-button", "n_clicks"),
-    prevent_initial_call=True,
-)
-def enable_interval(n_clicks):
-    """Enable the interval when the workflow starts"""
-    if n_clicks is None:
-        raise PreventUpdate
-    return False
+    with open(blast_file, "r") as f:
+        return f.read()
 
 
 # Add a function to create classification card
@@ -1652,547 +1533,15 @@ def create_classification_card(classification_data):
     )
 
 
-# Add a new callback to generate tabs based on multifasta data
 @callback(
-    Output("right-column-content", "children"),
-    [
-        Input("blast-sequences-store", "data"),
-        Input("blast-results-store", "data"),
-    ],
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def update_tabs_for_multifasta(seq_list, blast_results):
-    # Add debug logging
-    logger.info(
-        f"update_tabs_for_multifasta called with multifasta_data: {type(seq_list)}, blast_results: {type(blast_results)}"
-    )
-
-    # If there's no multifasta data or blast results, don't update
-    if not seq_list:
-        logger.info("No multifasta_data, preventing update")
-        raise PreventUpdate
-
-    if not blast_results:
-        logger.info("No blast_results, preventing update")
-        raise PreventUpdate
-
-    # If we have multifasta data (more than one sequence)
-    if isinstance(seq_list, list) and len(seq_list) > 1:
-        logger.info(f"Creating tabs for {len(seq_list)} sequences")
-
-        # Create tabs for each sequence
-        tabs = []
-        for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
-            logger.info(f"Creating tab {idx}: {seq['header'][:20]}")
-            tabs.append(
-                dbc.Tab(
-                    label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
-                    tab_id=f"tab-{idx}",
-                )
-            )
-
-        logger.info(f"Created {len(tabs)} tab objects")
-
-        # Create a simple Card with Tabs in the header
-        output = dbc.Card(
-            [
-                dbc.CardHeader(
-                    dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
-                ),
-                dbc.CardBody(
-                    [
-                        # This div will contain the content for the active tab
-                        html.Div(
-                            id="tab-content",
-                            children=[
-                                # Initial content is for the first tab
-                                html.Div(id="classification-output", className="mt-4"),
-                                dmc.Stack(
-                                    [
-                                        dmc.Group(
-                                            [
-                                                dbc.Progress(
-                                                    id="classification-progress",
-                                                    value=0,
-                                                    color="blue",
-                                                    animated=True,
-                                                    striped=True,
-                                                    style={
-                                                        "width": "100%",
-                                                        "marginBottom": "5px",
-                                                    },
-                                                ),
-                                            ]
-                                        ),
-                                        dmc.Group(
-                                            [
-                                                dmc.Text(
-                                                    "Classification Status:",
-                                                    size="lg",
-                                                    fw=500,
-                                                ),
-                                                dmc.Text(
-                                                    id="classification-stage-display",
-                                                    size="lg",
-                                                    c="blue",
-                                                ),
-                                            ]
-                                        ),
-                                    ],
-                                    gap="md",
-                                    id="classification-progress-section",
-                                    style={"display": "none"},
-                                ),
-                                # BLAST results section
-                                dmc.Stack(
-                                    [
-                                        html.Div(
-                                            id="blast-container",
-                                            style={
-                                                "width": "100%",
-                                                "display": "flex",
-                                                "flexDirection": "column",
-                                            },
-                                        ),
-                                        html.Div(id="blast-download"),
-                                        html.Div(id="subject-seq-button"),
-                                    ]
-                                ),
-                            ],
-                        )
-                    ]
-                ),
-            ]
-        )
-
-        logger.info("Successfully created card with tabs")
-    else:
-        # If there's only one sequence, return the default layout
-        logger.info("No multifasta data or only one sequence, returning default layout")
-        output = dmc.Stack(
-            children=[
-                # Progress section - initially hidden
-                html.Div(id="classification-output", className="mt-4"),
-                dmc.Stack(
-                    [
-                        dmc.Group(
-                            [
-                                dbc.Progress(
-                                    id="classification-progress",
-                                    value=0,
-                                    color="blue",
-                                    animated=True,
-                                    striped=True,
-                                    style={
-                                        "width": "100%",
-                                        "marginBottom": "5px",
-                                    },
-                                ),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text(
-                                    "Classification Status:",
-                                    size="lg",
-                                    fw=500,
-                                ),
-                                dmc.Text(
-                                    id="classification-stage-display",
-                                    size="lg",
-                                    c="blue",
-                                ),
-                            ]
-                        ),
-                    ],
-                    gap="md",
-                    id="classification-progress-section",
-                    style={"display": "none"},
-                ),
-                # BLAST results section
-                dmc.Stack(
-                    [
-                        html.Div(
-                            id="blast-container",
-                            style={
-                                "width": "100%",
-                                "display": "flex",
-                                "flexDirection": "column",
-                            },
-                        ),
-                        html.Div(id="blast-download"),
-                        html.Div(id="subject-seq-button"),
-                    ]
-                ),
-            ],
-        )
-    return output
-
-
-@callback(
-    [
-        Output("blast-active-tab", "data"),
-        Output("blast-processed-tabs", "data"),
-        Output("tab-content", "children"),
-        Output(
-            "blast-sequences-store", "data", allow_duplicate=True
-        ),  # Add this to update the processed flag
-    ],
+    Output("blast-active-tab", "data"),
     Input("blast-tabs", "active_tab"),
-    [
-        State("blast-processed-tabs", "data"),
-        State("blast-sequences-store", "data"),
-        State("blast-results-store", "data"),
-        State("classification-result-store", "data"),
-        State("evalue-threshold", "value"),
-    ],
     prevent_initial_call=True,
 )
-@handle_callback_error
-def handle_tab_switch(
-    active_tab,
-    processed_tabs,
-    seq_list,
-    blast_results,
-    classification_result,
-    evalue_threshold,
-):
-    """Track which tab is active and update processed tabs list"""
-    logger.info(f"handle_tab_switch called with active_tab: {active_tab}")
-
-    if active_tab is None or not seq_list:
-        logger.info("No active_tab or multifasta_data, preventing update")
+def update_active_tab(active_tab):
+    if not active_tab:
         raise PreventUpdate
 
-    # Extract the numeric part from the tab ID (e.g., "tab-2" -> 2)
+    # Extract tab index from tab id (e.g., "tab-2" -> 2)
     tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
-    logger.info(f"Extracted tab index: {tab_idx}")
-
-    # Add this tab to processed tabs list if not already there
-    if processed_tabs is None:
-        processed_tabs = []
-
-    if tab_idx not in processed_tabs:
-        logger.info(f"Adding tab {tab_idx} to processed tabs list")
-        processed_tabs.append(tab_idx)
-
-    # Get the sequence data for this tab
-    if tab_idx >= len(seq_list):
-        logger.error(
-            f"Tab index {tab_idx} is out of range for multifasta_data length {len(seq_list)}"
-        )
-        raise PreventUpdate
-
-    seq_data = seq_list[tab_idx]
-
-    # Update the processed flag for this sequence
-    updated_seq_list = seq_list.copy()
-    updated_seq_list[tab_idx]["processed"] = True
-
-    header = seq_data["header"]
-    sequence = seq_data["sequence"]
-    seq_type = seq_data.get("type", "nucl")
-    logger.info(f"Processing sequence for tab {tab_idx}: {header[:30]}...")
-
-    # Process this sequence for the tab
-    # First write sequence to temporary FASTA file
-    tmp_query_fasta = write_temp_fasta(header, sequence)
-    logger.info(f"Wrote sequence to temporary file: {tmp_query_fasta}")
-
-    # Run BLAST search for this sequence
-    logger.info(f"Running BLAST search for tab {tab_idx}")
-    blast_results_file = run_blast(
-        query_type=seq_type,
-        query_fasta=tmp_query_fasta,
-        tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
-        input_eval=evalue_threshold,
-        threads=2,
-    )
-
-    if blast_results_file is None:
-        # Handle error case
-        logger.error(f"No BLAST results were returned for tab {tab_idx}")
-        classification_output = html.Div(
-            create_error_alert("No BLAST results were returned")
-        )
-        blast_container = html.Div(
-            [
-                html.H2(
-                    "BLAST Results",
-                    style={
-                        "marginTop": "15px",
-                        "marginBottom": "20px",
-                        "fontWeight": "500",
-                        "textAlign": "left",
-                    },
-                ),
-                create_error_alert("No BLAST results were returned"),
-            ]
-        )
-        download_button = None
-    else:
-        logger.info(f"BLAST results returned: {blast_results_file}")
-        # Process BLAST results for classification
-        blast_tsv = parse_blast_xml(blast_results_file)
-        blast_df = pd.read_csv(blast_tsv, sep="\t")
-        logger.info(f"Parsed BLAST results with {len(blast_df)} hits")
-
-        # Create classification output
-        classification_data = None
-
-        # Check if dataframe is empty
-        if len(blast_df) == 0:
-            logger.info("No BLAST hits for classification")
-            classification_output = html.Div([create_no_matches_alert()])
-        else:
-            # Sort by evalue (ascending) and pident (descending) to get best hits
-            blast_df = blast_df.sort_values(
-                ["evalue", "pident"], ascending=[True, False]
-            )
-            top_hit = blast_df.iloc[0]
-            logger.info(
-                f"Top hit: {top_hit['hit_IDs']} with e-value {top_hit['evalue']}"
-            )
-
-            top_evalue = float(top_hit["evalue"])
-            top_aln_length = int(top_hit["aln_length"])
-            top_pident = float(top_hit["pident"])
-
-            if top_pident >= 90:
-                # look up family name from accession tag
-                hit_IDs = top_hit["hit_IDs"]
-                logger.info(f"Looking up metadata for hit ID: {hit_IDs}")
-                meta_df = fetch_meta_data(accession_tag=hit_IDs)
-
-                if not meta_df.empty:
-                    logger.info(f"Metadata found for {hit_IDs}")
-                    top_family = meta_df["familyName"].iloc[0]
-                    navis = (
-                        meta_df["starship_navis"].iloc[0]
-                        if "starship_navis" in meta_df.columns
-                        else None
-                    )
-                    haplotype = (
-                        meta_df["starship_haplotype"].iloc[0]
-                        if "starship_haplotype" in meta_df.columns
-                        else None
-                    )
-
-                    classification_data = {
-                        "title": "Classification from BLAST",
-                        "source": "blast_hit",
-                        "family": top_family,
-                        "navis": navis,
-                        "haplotype": haplotype,
-                        "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
-                        "confidence": "Medium" if top_pident >= 95 else "Low",
-                    }
-                    logger.info(f"Created classification data: {classification_data}")
-                else:
-                    logger.info(f"No metadata found for hit ID: {hit_IDs}")
-
-            # Create the classification card with title
-            if classification_data:
-                logger.info("Creating classification card")
-                classification_output = html.Div(
-                    [
-                        dmc.Title(
-                            "Classification Results",
-                            order=2,
-                            style={"marginBottom": "20px"},
-                        ),
-                        create_classification_card(classification_data),
-                    ]
-                )
-            else:
-                logger.info("No classification data available")
-                # No classification available
-                classification_output = html.Div(
-                    [
-                        dmc.Title(
-                            "Classification Results",
-                            order=2,
-                            style={"marginBottom": "20px"},
-                        ),
-                        dmc.Alert(
-                            title="No Classification Available",
-                            children="Could not classify this sequence with any available method.",
-                            color="yellow",
-                            variant="light",
-                        ),
-                    ]
-                )
-
-        # Read BLAST output for visualization
-        with open(blast_results_file, "r") as f:
-            blast_results_text = f.read()
-        logger.info(f"Read BLAST results file with {len(blast_results_text)} bytes")
-
-        # Create the BlasterJS container (will be filled by clientside callback)
-        blast_container = html.Div(
-            id="blast-container",
-            style={
-                "width": "100%",
-                "display": "flex",
-                "flexDirection": "column",
-            },
-        )
-
-        # Store the BLAST results for BlasterJS
-        blast_data_store = dcc.Store(
-            id="processed-blast-store", data={"blast_text": blast_results_text}
-        )
-        logger.info("Created BLAST data store")
-
-        # Create download button
-        download_button = blast_download_button()
-
-    # Put together the tab content
-    logger.info("Assembling complete tab content")
-    tab_content = [
-        # Classification output
-        classification_output,
-        # Progress section (hidden initially)
-        dmc.Stack(
-            [
-                dmc.Group(
-                    [
-                        dbc.Progress(
-                            id="classification-progress",
-                            value=0,
-                            color="blue",
-                            animated=True,
-                            striped=True,
-                            style={
-                                "width": "100%",
-                                "marginBottom": "5px",
-                            },
-                        ),
-                    ]
-                ),
-                dmc.Group(
-                    [
-                        dmc.Text(
-                            "Classification Status:",
-                            size="lg",
-                            fw=500,
-                        ),
-                        dmc.Text(
-                            id="classification-stage-display",
-                            size="lg",
-                            c="blue",
-                        ),
-                    ]
-                ),
-            ],
-            gap="md",
-            id="classification-progress-section",
-            style={"display": "none"},
-        ),
-        # BLAST results section
-        dmc.Stack(
-            [
-                blast_container,
-                html.Div(id="blast-download", children=download_button),
-                # Add the blast data store to trigger BlasterJS
-                blast_data_store if blast_results_file is not None else None,
-            ]
-        ),
-    ]
-
-    logger.info(
-        f"Returning data for tab {tab_idx} with content length {len(tab_content)}"
-    )
-    return tab_idx, processed_tabs, tab_content, updated_seq_list
-
-
-@callback(
-    Output("workflow-state-store", "data", allow_duplicate=True),
-    Input("submit-button", "n_clicks"),
-    State("blast-sequences-store", "data"),
-    State("evalue-threshold", "value"),
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def start_classification_workflow(n_clicks, seq_list, evalue_threshold):
-    """Start the classification workflow and initialize the state store."""
-    if not n_clicks or not seq_list:
-        raise PreventUpdate
-
-    # Prepare data for the workflow
-    if isinstance(seq_list, list) and len(seq_list) > 0:
-        seq_data = seq_list[0]  # Process the first sequence
-        query_header = seq_data.get("header", "query")
-        query_seq = seq_data.get("sequence", "")
-        query_type = seq_data.get("type", "nucl")
-
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-
-        # Prepare upload data for classification
-        upload_data = {
-            "seq_type": query_type,
-            "fasta": tmp_query_fasta,
-            "fetch_ship_params": {
-                "curated": False,
-                "with_sequence": True,
-                "dereplicate": True,
-            },
-            "fetch_captain_params": {"curated": True, "with_sequence": True},
-        }
-
-        # Start background task with celery
-        classification_task = run_classification_workflow_task.delay(upload_data)
-
-        # Return initial state with task ID
-        return {
-            "task_id": classification_task.id,
-            "status": "started",
-            "complete": False,
-            "current_stage": None,
-            "error": None,
-            "start_time": time.time(),
-        }
-
-    # No valid sequences
-    return None
-
-
-@callback(
-    Output("workflow-state-store", "data", allow_duplicate=True),
-    Input("classification-interval", "n_intervals"),
-    State("workflow-state-store", "data"),
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def poll_classification_task(n_intervals, current_state):
-    """Poll the classification task and update the state store."""
-    if not current_state or not current_state.get("task_id"):
-        raise PreventUpdate
-
-    # Skip polling if task is already complete
-    if current_state.get("complete", False):
-        return dash.no_update
-
-    # Get task status from celery
-    task_id = current_state["task_id"]
-    task = run_classification_workflow_task.AsyncResult(task_id)
-
-    if task.state == "PENDING":
-        # Task hasn't started yet
-        return current_state
-    elif task.state == "SUCCESS":
-        # Task completed - return the full result
-        # This contains the final state from run_classification_workflow
-        return task.result
-    elif task.state == "FAILURE":
-        # Task failed
-        return {
-            **current_state,
-            "complete": True,
-            "error": str(task.result) if task.result else "Task failed",
-        }
-
-    # Still pending or unknown state
-    return current_state
+    return tab_idx
