@@ -31,17 +31,11 @@ from src.components.callbacks import (
     create_file_upload,
     create_accession_modal,
 )
-from src.database.sql_manager import fetch_meta_data, fetch_captains, fetch_ships
+from src.database.sql_manager import fetch_meta_data
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
-from src.utils.classification_utils import WORKFLOW_STAGES
+from src.utils.classification_utils import WORKFLOW_STAGES, run_classification_workflow
 from src.tasks import (
-    check_exact_matches_task,
-    check_contained_matches_task,
-    check_similar_matches_task,
-    run_family_classification_task,
-    run_navis_classification_task,
-    run_haplotype_classification_task,
     run_blast_search_task,
     run_hmmer_search_task,
 )
@@ -67,18 +61,18 @@ layout = dmc.Container(
         # Upload stores
         dcc.Store(id="blast-sequences-store"),
         dcc.Store(id="upload-error-store"),
-        # Results stores
-        dcc.Store(id="blast-results-store"),
-        dcc.Store(id="captain-results-store"),
+        # Submission id
         dcc.Store(id="submission-id-store"),
         # Processed data stores
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
-        # Tab stores
-        dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
         dcc.Store(
             id="blast-processed-tabs", data=[0]
         ),  # Store which tabs have been processed
+        # Results stores
+        dcc.Store(id="blast-results-store"),
+        dcc.Store(id="captain-results-store", data=None),
+        dcc.Store(id="classification-result-store", data=None),
         # Single data store with all workflow state
         dcc.Store(id="classification-stage", data="Upload a sequence"),
         dcc.Store(
@@ -90,6 +84,8 @@ layout = dmc.Container(
             dcc.Store(id={"type": "classification-stage-data", "index": stage["id"]})
             for stage in WORKFLOW_STAGES
         ],
+        # Tab stores
+        dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
         # Timeout stores
         dcc.Store(id="blast-timeout-store", data=False),
         dcc.Interval(
@@ -101,7 +97,6 @@ layout = dmc.Container(
             interval=1000,  # 1 second
             disabled=True,
         ),
-        dcc.Store(id="classification-result-store", data=None),
         dmc.Space(h=20),
         dmc.Grid(
             children=[
@@ -307,7 +302,6 @@ layout = dmc.Container(
                                                     },
                                                 ),
                                                 html.Div(id="blast-download"),
-                                                html.Div(id="subject-seq-button"),
                                             ]
                                         ),
                                     ],
@@ -792,23 +786,6 @@ def update_submission_id(n_clicks):
     return n_clicks  # Use n_clicks as a unique submission ID
 
 
-@callback(
-    Output("subject-seq-dl-package", "data"),
-    [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
-)
-@handle_callback_error
-def subject_seq_download(n_clicks, filename):
-    try:
-        if n_clicks:
-            logger.info(f"Download initiated for file: {filename}")
-            return dcc.send_file(filename)
-        else:
-            return dash.no_update
-    except Exception as e:
-        logger.error(f"Error in subject_seq_download: {str(e)}")
-        return dash.no_update
-
-
 # Metadata Processing Callback
 @callback(
     Output("processed-metadata-store", "data"),
@@ -868,14 +845,13 @@ def process_blast_results(blast_results_file):
     [
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
-        Output("subject-seq-button", "children"),
         Output("classification-interval", "disabled"),
         Output("classification-progress-section", "style", allow_duplicate=True),
         Output("upload-error-message", "children", allow_duplicate=True),
     ],
     [
-        Input("blast-sequences-store", "data"),
         Input("submission-id-store", "data"),
+        Input("blast-sequences-store", "data"),
         Input("blast-active-tab", "data"),
     ],
     [
@@ -890,32 +866,25 @@ def process_blast_results(blast_results_file):
 )
 @handle_callback_error
 def blast_callback(
-    seq_list,
     submission_id,
+    seq_list,
     active_tab,
     evalue_threshold,
     search_type="hmmsearch",
 ):
     if not all([seq_list, submission_id]):
-        return None, None, None, True, {"display": "none"}, None
+        return None, None, True, {"display": "none"}, None
 
     try:
-        # Handle single sequence or tab selection
         if isinstance(seq_list, list) and len(seq_list) > 0:
-            if active_tab is not None and len(seq_list) > active_tab:
-                # Use the active tab's sequence data
+            if len(seq_list) > active_tab:
+                if active_tab is None:
+                    active_tab = 0
                 seq_data = seq_list[active_tab]
                 query_header = seq_data.get("header", "query")
                 query_seq = seq_data.get("sequence", "")
                 query_type = seq_data.get("type", "nucl")
-                # Mark as processed
                 seq_list[active_tab]["processed"] = True
-            else:
-                # Use the first sequence by default
-                seq_data = seq_list[0]
-                query_header = seq_data.get("header", "query")
-                query_seq = seq_data.get("sequence", "")
-                query_type = seq_data.get("type", "nucl")
         else:
             # Handle case where seq_list isn't a list (shouldn't happen but just in case)
             error_alert = dmc.Alert(
@@ -924,14 +893,12 @@ def blast_callback(
                 color="red",
                 variant="filled",
             )
-            return None, None, None, True, {"display": "none"}, error_alert
+            return None, None, True, {"display": "none"}, error_alert
 
         # Ensure query_type is a string
         if not isinstance(query_type, str):
             query_type = str(query_type)
 
-        # Continue with your existing code for BLAST search
-        captain_results_dict = None
         # Check sequence length - skip detailed classification for short sequences
         skip_classification = False
         if query_seq and len(query_seq) < 5000:  # 5kb threshold
@@ -985,7 +952,6 @@ def blast_callback(
             return (
                 None,
                 None,
-                create_error_alert("No BLAST results were returned"),
                 True,
                 {"display": "none"},
                 None,  # No error
@@ -1032,244 +998,16 @@ def blast_callback(
             "fetch_captain_params": {"curated": True, "with_sequence": True},
         }
 
-        def run_classification_workflow():
-            try:
-                # Process each stage in sequence
-                for i, stage in enumerate(WORKFLOW_STAGES):
-                    stage_id = stage["id"]
-
-                    # Update status to show progress
-                    globals()["workflow_tracker"].current_stage = stage_id
-                    globals()["workflow_tracker"].current_stage_idx = i
-                    globals()["workflow_tracker"].stage_progress = 0
-                    globals()["workflow_tracker"].stage_values[i] = (
-                        10  # Starting progress
-                    )
-                    globals()["workflow_tracker"].stage_animated[i] = True
-
-                    logger.info(
-                        f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}"
-                    )
-
-                    # Define task functions based on stage
-                    result = None
-
-                    if stage_id == "exact":
-                        result = check_exact_matches_task.delay(
-                            fasta=upload_data["fasta"],
-                            ships_dict=fetch_ships(
-                                **upload_data["fetch_ship_params"]
-                            ).to_dict("records"),
-                        ).get(timeout=180)
-                        logger.debug(f"Exact match result: {result}")
-
-                        # If we found an exact match, exit early with a completed state
-                        if result:
-                            logger.info(
-                                f"Exact match found: {result}, stopping pipeline"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = (
-                                100  # Mark this stage as completed
-                            )
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].found_match = True
-                            globals()["workflow_tracker"].match_stage = "exact"
-                            globals()["workflow_tracker"].match_result = result
-                            globals()["workflow_tracker"].complete = True
-                            break
-
-                    elif stage_id == "contained":
-                        globals()["workflow_tracker"].stage_progress = 30
-                        globals()["workflow_tracker"].stage_values[i] = 30
-                        result = check_contained_matches_task.delay(
-                            fasta=upload_data["fasta"],
-                            ships_dict=fetch_ships(
-                                **upload_data["fetch_ship_params"]
-                            ).to_dict("records"),
-                        ).get(timeout=180)
-                        logger.debug(f"Contained match result: {result}")
-
-                        # If we found a contained match, exit early
-                        if result:
-                            logger.info(
-                                f"Contained match found: {result}, stopping pipeline"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = 100
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].found_match = True
-                            globals()["workflow_tracker"].match_stage = "contained"
-                            globals()["workflow_tracker"].match_result = result
-                            globals()["workflow_tracker"].complete = True
-                            break
-
-                    elif stage_id == "similar":
-                        globals()["workflow_tracker"].stage_progress = 30
-                        globals()["workflow_tracker"].stage_values[i] = 30
-                        result = check_similar_matches_task.delay(
-                            fasta=upload_data["fasta"],
-                            ships_dict=fetch_ships(
-                                **upload_data["fetch_ship_params"]
-                            ).to_dict("records"),
-                        ).get(timeout=180)
-                        logger.debug(f"Similar match result: {result}")
-
-                        # If we found a similar match, exit early
-                        if result:
-                            logger.info(
-                                f"Similar match found: {result}, stopping pipeline"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = 100
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].found_match = True
-                            globals()["workflow_tracker"].match_stage = "similar"
-                            globals()["workflow_tracker"].match_result = result
-                            globals()["workflow_tracker"].complete = True
-                            break
-
-                    elif stage_id == "family":
-                        globals()["workflow_tracker"].stage_progress = 30
-                        globals()["workflow_tracker"].stage_values[i] = 30
-                        result = run_family_classification_task.delay(
-                            fasta=upload_data["fasta"],
-                            seq_type=upload_data["seq_type"],
-                        ).get(timeout=180)
-                        logger.debug(f"Family classification result: {result}")
-
-                        # For family stage, if result is None, stop the pipeline with appropriate message
-                        if result is None:
-                            logger.info(
-                                "Family classification did not find a match, stopping pipeline"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = (
-                                100  # Mark this stage as completed
-                            )
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].complete = True
-                            globals()[
-                                "workflow_tracker"
-                            ].match_stage = (
-                                "family"  # Not really a match but for display purposes
-                            )
-                            globals()[
-                                "workflow_tracker"
-                            ].match_result = "No family match found"
-                            break
-
-                        # Store family result for use in subsequent stages
-                        if isinstance(result, dict) and "protein" in result:
-                            upload_data["protein_file"] = result["protein"]
-
-                    elif stage_id == "navis":
-                        globals()["workflow_tracker"].stage_progress = 30
-                        globals()["workflow_tracker"].stage_values[i] = 30
-
-                        # Check if we have a protein file from the family stage
-                        if (
-                            "protein_file" not in upload_data
-                            or not upload_data["protein_file"]
-                        ):
-                            logger.warning(
-                                "No protein file available for navis classification"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = 100
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].complete = True
-                            globals()["workflow_tracker"].match_stage = "navis"
-                            globals()[
-                                "workflow_tracker"
-                            ].match_result = "No protein data available for navis"
-                            break
-
-                        result = run_navis_classification_task.delay(
-                            fasta=upload_data["protein_file"],
-                            existing_ships=fetch_captains(
-                                **upload_data["fetch_captain_params"]
-                            ).to_dict("records"),
-                        ).get(timeout=180)
-                        logger.debug(f"Navis classification result: {result}")
-
-                        # For navis stage, if result is None, stop the pipeline with appropriate message
-                        if result is None:
-                            logger.info(
-                                "Navis classification did not find a match, stopping pipeline"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = 100
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].complete = True
-                            globals()["workflow_tracker"].match_stage = "navis"
-                            globals()[
-                                "workflow_tracker"
-                            ].match_result = "No navis match found"
-                            break
-
-                    elif stage_id == "haplotype":
-                        globals()["workflow_tracker"].stage_progress = 30
-                        globals()["workflow_tracker"].stage_values[i] = 30
-                        result = run_haplotype_classification_task.delay(
-                            fasta=upload_data["fasta"],
-                            existing_ships=fetch_ships(
-                                **upload_data["fetch_ship_params"]
-                            ).to_dict("records"),
-                            navis=fetch_captains(
-                                **upload_data["fetch_captain_params"]
-                            ).to_dict("records"),
-                        ).get(timeout=180)
-                        logger.debug(f"Haplotype classification result: {result}")
-
-                        # For haplotype stage, if result is None, stop the pipeline with appropriate message
-                        if result is None:
-                            logger.info(
-                                "Haplotype classification did not find a match, stopping pipeline"
-                            )
-                            globals()["workflow_tracker"].stage_values[i] = 100
-                            globals()["workflow_tracker"].stage_animated[i] = False
-                            globals()["workflow_tracker"].complete = True
-                            globals()["workflow_tracker"].match_stage = "haplotype"
-                            globals()[
-                                "workflow_tracker"
-                            ].match_result = "No haplotype match found"
-                            break
-
-                    else:
-                        logger.warning(
-                            f"No task defined for stage {stage_id}, skipping"
-                        )
-                        globals()["workflow_tracker"].stage_values[i] = 100
-                        globals()["workflow_tracker"].stage_animated[i] = False
-                        continue
-
-                    # Update the status to show completion for this stage
-                    globals()["workflow_tracker"].stage_progress = 100
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-
-                # Mark as complete if we haven't already done so
-                globals()["workflow_tracker"].complete = True
-
-            except Exception as e:
-                # Handle errors - only unexpected errors
-                error_message = f"Error during classification: {str(e)}"
-                logger.error(error_message)
-                logger.exception("Full traceback:")  # Log full traceback for debugging
-                globals()["workflow_tracker"].error = error_message
-                globals()["workflow_tracker"].complete = True
-
-                # Mark current stage as failed
-                if globals()["workflow_tracker"].current_stage_idx is not None:
-                    i = globals()["workflow_tracker"].current_stage_idx
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].stage_striped[i] = False
-
         # Start background thread to run classification
-        classification_thread = Thread(target=run_classification_workflow)
+        classification_thread = Thread(
+            target=run_classification_workflow, args=(upload_data)
+        )
         classification_thread.daemon = True
         classification_thread.start()
 
         return (
             blast_results_file,
             captain_results_dict,
-            None,
             False,
             {"display": "block"},
             None,  # No error
@@ -1278,10 +1016,9 @@ def blast_callback(
     except Exception as e:
         logger.error(f"Error in blast_callback: {str(e)}")
         error_alert = create_error_alert(str(e))
-        return None, None, None, True, {"display": "none"}, error_alert
+        return None, None, True, {"display": "none"}, error_alert
 
 
-# 3. UI Update Callback - Modified to use classification results
 @callback(
     [
         Output("classification-output", "children", allow_duplicate=True),
@@ -1289,12 +1026,12 @@ def blast_callback(
     ],
     [
         Input("blast-results-store", "data"),
-        Input("captain-results-store", "data"),
         Input("classification-workflow-state", "data"),
         Input("classification-result-store", "data"),
-        Input("blast-sequences-store", "data"),
     ],
     [
+        State("blast-sequences-store", "data"),
+        State("captain-results-store", "data"),
         State("submit-button", "n_clicks"),
         State("evalue-threshold", "value"),
         State("blast-active-tab", "data"),
@@ -1308,9 +1045,9 @@ def blast_callback(
 @handle_callback_error
 def update_ui_elements(
     blast_results_file,
-    captain_results_dict,
     classification_state,
     classification_result,
+    captain_results_dict,
     seq_list,
     n_clicks,
     evalue,
@@ -1619,7 +1356,7 @@ def update_ui_elements(
     [
         State("submit-button", "n_clicks"),
         State("blast-container", "children"),
-        State("subject-seq-button", "children"),
+        State("upload-error-message", "children"),
         State("classification-output", "children"),
     ],
 )
@@ -1719,219 +1456,6 @@ class WorkflowStatus:
 # Global variable to store workflow status
 # This is the key to sharing progress between the long-running process and the UI
 workflow_tracker = None
-
-
-# Second callback: Initialize workflow and start the background process
-@callback(
-    [
-        Output("classification-workflow-state", "data", allow_duplicate=True),
-        Output("classification-progress-section", "style", allow_duplicate=True),
-    ],
-    Input("classification-submit-button", "n_clicks"),
-    [
-        State("classification-upload", "data"),
-    ],
-    prevent_initial_call=True,
-)
-def run_workflow_background(n_clicks, upload_data):
-    if n_clicks is None or upload_data is None:
-        raise PreventUpdate
-
-    global workflow_tracker
-    workflow_tracker = WorkflowStatus()
-    workflow_tracker.start_time = time.time()
-
-    logger.info("Starting classification workflow in background")
-
-    try:
-        # Process each stage in sequence
-        for i, stage in enumerate(WORKFLOW_STAGES):
-            stage_id = stage["id"]
-
-            # Update status to show progress
-            workflow_tracker.current_stage = stage_id
-            workflow_tracker.current_stage_idx = i
-            workflow_tracker.stage_progress = 0
-            workflow_tracker.stage_values[i] = 10  # Starting progress
-            workflow_tracker.stage_animated[i] = True
-
-            logger.info(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
-
-            # Define task functions based on stage
-            result = None
-
-            if stage_id == "exact":
-                result = check_exact_matches_task.delay(
-                    fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
-                logger.debug(f"Exact match result: {result}")
-
-                # If we found an exact match, exit early with a completed state
-                if result:
-                    logger.info(f"Exact match found: {result}, stopping pipeline")
-                    globals()["workflow_tracker"].stage_values[i] = (
-                        100  # Mark this stage as completed
-                    )
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].found_match = True
-                    globals()["workflow_tracker"].match_stage = "exact"
-                    globals()["workflow_tracker"].match_result = result
-                    globals()["workflow_tracker"].complete = True
-                    break
-
-            elif stage_id == "contained":
-                workflow_tracker.stage_progress = 30
-                workflow_tracker.stage_values[i] = 30
-                result = check_contained_matches_task.delay(
-                    fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
-                logger.debug(f"Contained match result: {result}")
-
-                # If we found a contained match, exit early
-                if result:
-                    logger.info(f"Contained match found: {result}, stopping pipeline")
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].found_match = True
-                    globals()["workflow_tracker"].match_stage = "contained"
-                    globals()["workflow_tracker"].match_result = result
-                    globals()["workflow_tracker"].complete = True
-                    break
-
-            elif stage_id == "similar":
-                workflow_tracker.stage_progress = 30
-                workflow_tracker.stage_values[i] = 30
-                result = check_similar_matches_task.delay(
-                    fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
-                logger.debug(f"Similar match result: {result}")
-
-                # If we found a similar match, exit early
-                if result:
-                    logger.info(f"Similar match found: {result}, stopping pipeline")
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].found_match = True
-                    globals()["workflow_tracker"].match_stage = "similar"
-                    globals()["workflow_tracker"].match_result = result
-                    globals()["workflow_tracker"].complete = True
-                    break
-
-            elif stage_id == "family":
-                workflow_tracker.stage_progress = 30
-                workflow_tracker.stage_values[i] = 30
-                result = run_family_classification_task.delay(
-                    fasta=upload_data["fasta"],
-                    seq_type=upload_data["seq_type"],
-                ).get(timeout=180)
-                logger.debug(f"Family classification result: {result}")
-
-                # For family stage, if result is None, stop the pipeline with appropriate message
-                if result is None:
-                    logger.info(
-                        "Family classification did not find a match, stopping pipeline"
-                    )
-                    globals()["workflow_tracker"].stage_values[i] = (
-                        100  # Mark this stage as completed
-                    )
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()[
-                        "workflow_tracker"
-                    ].match_stage = (
-                        "family"  # Not really a match but for display purposes
-                    )
-                    globals()["workflow_tracker"].match_result = "No family match found"
-                    break
-
-                # Store family result for use in subsequent stages
-                if isinstance(result, dict) and "protein" in result:
-                    upload_data["protein_file"] = result["protein"]
-
-            elif stage_id == "navis":
-                workflow_tracker.stage_progress = 30
-                workflow_tracker.stage_values[i] = 30
-
-                # Check if we have a protein file from the family stage
-                if "protein_file" not in upload_data or not upload_data["protein_file"]:
-                    logger.warning("No protein file available for navis classification")
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()["workflow_tracker"].match_stage = "navis"
-                    globals()[
-                        "workflow_tracker"
-                    ].match_result = "No protein data available for navis"
-                    break
-
-            elif stage_id == "haplotype":
-                workflow_tracker.stage_progress = 30
-                workflow_tracker.stage_values[i] = 30
-                result = run_haplotype_classification_task.delay(
-                    fasta=upload_data["fasta"],
-                    existing_ships=fetch_ships(
-                        **upload_data["fetch_ship_params"]
-                    ).to_dict("records"),
-                    navis=fetch_captains(**upload_data["fetch_captain_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
-                logger.debug(f"Haplotype classification result: {result}")
-
-                # For haplotype stage, if result is None, stop the pipeline with appropriate message
-                if result is None:
-                    logger.info(
-                        "Haplotype classification did not find a match, stopping pipeline"
-                    )
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()["workflow_tracker"].match_stage = "haplotype"
-                    globals()[
-                        "workflow_tracker"
-                    ].match_result = "No haplotype match found"
-                    break
-
-            else:
-                logger.warning(f"No task defined for stage {stage_id}, skipping")
-                globals()["workflow_tracker"].stage_values[i] = 100
-                globals()["workflow_tracker"].stage_animated[i] = False
-                continue
-
-            # Update the status to show completion for this stage
-            globals()["workflow_tracker"].stage_progress = 100
-            globals()["workflow_tracker"].stage_values[i] = 100
-            globals()["workflow_tracker"].stage_animated[i] = False
-
-        # Mark as complete if we haven't already done so
-        globals()["workflow_tracker"].complete = True
-
-    except Exception as e:
-        # Handle errors - only unexpected errors
-        error_message = f"Error during classification: {str(e)}"
-        logger.error(error_message)
-        logger.exception("Full traceback:")  # Log full traceback for debugging
-        globals()["workflow_tracker"].error = error_message
-        globals()["workflow_tracker"].complete = True
-
-        # Mark current stage as failed
-        if globals()["workflow_tracker"].current_stage_idx is not None:
-            i = globals()["workflow_tracker"].current_stage_idx
-            globals()["workflow_tracker"].stage_values[i] = 100
-            globals()["workflow_tracker"].stage_animated[i] = False
-            globals()["workflow_tracker"].stage_striped[i] = False
-
-    # Return the final state - no longer controlling the interval here
-    return workflow_tracker.to_dict(), {"display": "block"}
 
 
 # Third callback to update the UI periodically based on classification status
@@ -2375,12 +1899,12 @@ def update_tabs_for_multifasta(seq_list, blast_results):
             "blast-sequences-store", "data", allow_duplicate=True
         ),  # Add this to update the processed flag
     ],
-    [Input("blast-tabs", "active_tab")],
+    Input("blast-tabs", "active_tab"),
     [
         State("blast-processed-tabs", "data"),
         State("blast-sequences-store", "data"),
         State("blast-results-store", "data"),
-        State("captain-results-store", "data"),
+        State("classification-result-store", "data"),
         State("evalue-threshold", "value"),
     ],
     prevent_initial_call=True,
@@ -2391,7 +1915,7 @@ def handle_tab_switch(
     processed_tabs,
     seq_list,
     blast_results,
-    captain_results,
+    classification_result,
     evalue_threshold,
 ):
     """Track which tab is active and update processed tabs list"""
@@ -2631,7 +2155,6 @@ def handle_tab_switch(
             [
                 blast_container,
                 html.Div(id="blast-download", children=download_button),
-                html.Div(id="subject-seq-button"),
                 # Add the blast data store to trigger BlasterJS
                 blast_data_store if blast_results_file is not None else None,
             ]
@@ -2642,19 +2165,3 @@ def handle_tab_switch(
         f"Returning data for tab {tab_idx} with content length {len(tab_content)}"
     )
     return tab_idx, processed_tabs, tab_content, updated_seq_list
-
-
-@callback(
-    Output("right-column-content-debug", "children"),
-    Input("blast-sequences-store", "data"),
-    prevent_initial_call=True,
-)
-def debug_multifasta_data(seq_list):
-    """Debug callback to check if multifasta data is being correctly stored"""
-    if not seq_list:
-        logger.info("No multifasta data")
-
-    if isinstance(seq_list, list):
-        logger.info(f"Multifasta data contains {len(seq_list)} sequences")
-    else:
-        logger.info(f"Multifasta data is not a list: {type(seq_list)}")
