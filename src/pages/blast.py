@@ -111,10 +111,10 @@ layout = dmc.Container(
                                     # Input Section
                                     dmc.Stack(
                                         [
-                                            dmc.Title("Input Sequence", order=3),
+                                            dmc.Title("Input Sequence(s)", order=3),
                                             dmc.Textarea(
                                                 id="query-text",
-                                                placeholder="Paste FASTA sequence here...",
+                                                placeholder="Paste a maximum of 1 FASTA sequence here...",
                                                 autosize=True,
                                                 minRows=5,
                                                 maxRows=15,
@@ -136,7 +136,20 @@ layout = dmc.Container(
                                                                 ".fasta",
                                                                 ".fna",
                                                             ],
-                                                            placeholder_text="Drag and drop or click to select a FASTA file",
+                                                            placeholder_text=dmc.Stack(
+                                                                [
+                                                                    dmc.Text(
+                                                                        "Drag and drop or click to select a FASTA file",
+                                                                        size="sm",
+                                                                    ),
+                                                                    dmc.Text(
+                                                                        "Maximum of 10 sequences",
+                                                                        size="sm",
+                                                                        c="dimmed",
+                                                                    ),
+                                                                ],
+                                                                gap="xs",
+                                                            ),
                                                         ),
                                                         withBorder=False,
                                                         shadow="sm",
