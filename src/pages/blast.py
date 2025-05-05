@@ -252,7 +252,7 @@ layout = dmc.Container(
                         html.Div(
                             id="right-column-content",
                             children=[
-                                # This div will be replaced with tabs when multifasta is detected
+                                # This div will be replaced with tabs when more than one sequence is in query
                                 dmc.Stack(
                                     children=[
                                         # Progress section - initially hidden
@@ -1319,7 +1319,7 @@ def update_ui_elements(
     if not n_clicks or blast_results_file is None:
         return None, None
 
-    # Check if we're working with multifasta
+    # Check if we're working with more than one sequence
     is_multifasta = seq_list and len(seq_list) > 1
 
     try:
@@ -1585,7 +1585,7 @@ def update_ui_elements(
         # Create download button
         download_button = blast_download_button()
 
-        # If we're working with multifasta, we may need to handle tabs
+        # If we're working with more than one sequence, we may need to handle tabs
         if is_multifasta:
             # Check if we've already created tabs
             ctx = dash.callback_context
@@ -2198,14 +2198,14 @@ def create_classification_card(classification_data):
     prevent_initial_call=True,
 )
 @handle_callback_error
-def update_tabs_for_multifasta(multifasta_data, blast_results):
+def update_tabs_for_multifasta(seq_list, blast_results):
     # Add debug logging
     logger.info(
-        f"update_tabs_for_multifasta called with multifasta_data: {type(multifasta_data)}, blast_results: {type(blast_results)}"
+        f"update_tabs_for_multifasta called with multifasta_data: {type(seq_list)}, blast_results: {type(blast_results)}"
     )
 
     # If there's no multifasta data or blast results, don't update
-    if not multifasta_data:
+    if not seq_list:
         logger.info("No multifasta_data, preventing update")
         raise PreventUpdate
 
@@ -2214,12 +2214,12 @@ def update_tabs_for_multifasta(multifasta_data, blast_results):
         raise PreventUpdate
 
     # If we have multifasta data (more than one sequence)
-    if isinstance(multifasta_data, list) and len(multifasta_data) > 1:
-        logger.info(f"Creating tabs for {len(multifasta_data)} sequences")
+    if isinstance(seq_list, list) and len(seq_list) > 1:
+        logger.info(f"Creating tabs for {len(seq_list)} sequences")
 
         # Create tabs for each sequence
         tabs = []
-        for idx, seq in enumerate(multifasta_data[:10]):  # Limit to 10 sequences
+        for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
             logger.info(f"Creating tab {idx}: {seq['header'][:20]}")
             tabs.append(
                 dbc.Tab(
@@ -2389,7 +2389,7 @@ def update_tabs_for_multifasta(multifasta_data, blast_results):
 def handle_tab_switch(
     active_tab,
     processed_tabs,
-    multifasta_data,
+    seq_list,
     blast_results,
     captain_results,
     evalue_threshold,
@@ -2397,7 +2397,7 @@ def handle_tab_switch(
     """Track which tab is active and update processed tabs list"""
     logger.info(f"handle_tab_switch called with active_tab: {active_tab}")
 
-    if active_tab is None or not multifasta_data:
+    if active_tab is None or not seq_list:
         logger.info("No active_tab or multifasta_data, preventing update")
         raise PreventUpdate
 
@@ -2414,17 +2414,17 @@ def handle_tab_switch(
         processed_tabs.append(tab_idx)
 
     # Get the sequence data for this tab
-    if tab_idx >= len(multifasta_data):
+    if tab_idx >= len(seq_list):
         logger.error(
-            f"Tab index {tab_idx} is out of range for multifasta_data length {len(multifasta_data)}"
+            f"Tab index {tab_idx} is out of range for multifasta_data length {len(seq_list)}"
         )
         raise PreventUpdate
 
-    seq_data = multifasta_data[tab_idx]
+    seq_data = seq_list[tab_idx]
 
     # Update the processed flag for this sequence
-    updated_multifasta_data = multifasta_data.copy()
-    updated_multifasta_data[tab_idx]["processed"] = True
+    updated_seq_list = seq_list.copy()
+    updated_seq_list[tab_idx]["processed"] = True
 
     header = seq_data["header"]
     sequence = seq_data["sequence"]
@@ -2641,7 +2641,7 @@ def handle_tab_switch(
     logger.info(
         f"Returning data for tab {tab_idx} with content length {len(tab_content)}"
     )
-    return tab_idx, processed_tabs, tab_content, updated_multifasta_data
+    return tab_idx, processed_tabs, tab_content, updated_seq_list
 
 
 @callback(
@@ -2649,12 +2649,12 @@ def handle_tab_switch(
     Input("blast-sequences-store", "data"),
     prevent_initial_call=True,
 )
-def debug_multifasta_data(multifasta_data):
+def debug_multifasta_data(seq_list):
     """Debug callback to check if multifasta data is being correctly stored"""
-    if not multifasta_data:
+    if not seq_list:
         logger.info("No multifasta data")
 
-    if isinstance(multifasta_data, list):
-        logger.info(f"Multifasta data contains {len(multifasta_data)} sequences")
+    if isinstance(seq_list, list):
+        logger.info(f"Multifasta data contains {len(seq_list)} sequences")
     else:
-        logger.info(f"Multifasta data is not a list: {type(multifasta_data)}")
+        logger.info(f"Multifasta data is not a list: {type(seq_list)}")
