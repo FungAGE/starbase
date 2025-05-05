@@ -25,6 +25,7 @@ __all__ = [
     "run_metaeuk_easy_predict_task",
     "run_multi_pgv_task",
     "run_single_pgv_task",
+    "run_classification_workflow_task",
 ]
 
 
@@ -236,3 +237,22 @@ def run_single_pgv_task(gff_file, tmp_file):
     except Exception as e:
         logger.error(f"Single PGV failed: {str(e)}")
         return None
+
+
+@celery.task(name="run_classification_workflow_task", bind=True)
+def run_classification_workflow_task(self, upload_data):
+    """Celery task to run the classification workflow in the background.
+
+    The workflow itself runs tasks sequentially, but the entire workflow
+    runs as a background task to not block the UI.
+    """
+    from src.utils.classification_utils import run_classification_workflow
+
+    try:
+        # Run the sequential workflow
+        result = run_classification_workflow(upload_data)
+        return result
+    except Exception as e:
+        logger.error(f"Classification workflow task failed: {str(e)}")
+        logger.exception("Full traceback:")
+        raise

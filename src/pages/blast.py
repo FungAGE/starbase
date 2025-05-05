@@ -11,7 +11,6 @@ import base64
 import pandas as pd
 import logging
 import time
-from threading import Thread
 
 from src.config.cache import cache
 from src.utils.seq_utils import (
@@ -34,10 +33,11 @@ from src.components.callbacks import (
 from src.database.sql_manager import fetch_meta_data
 from src.utils.telemetry import blast_limit_decorator
 from src.components.error_boundary import handle_callback_error, create_error_alert
-from src.utils.classification_utils import WORKFLOW_STAGES, run_classification_workflow
+from src.utils.classification_utils import WORKFLOW_STAGES
 from src.tasks import (
     run_blast_search_task,
     run_hmmer_search_task,
+    run_classification_workflow_task,
 )
 
 dash.register_page(__name__)
@@ -97,6 +97,7 @@ layout = dmc.Container(
             interval=1000,  # 1 second
             disabled=True,
         ),
+        dcc.Store(id="workflow-state-store", data=None),
         dmc.Space(h=20),
         dmc.Grid(
             children=[
@@ -845,8 +846,8 @@ def process_blast_results(blast_results_file):
     [
         Output("blast-results-store", "data"),
         Output("captain-results-store", "data"),
-        Output("classification-interval", "disabled"),
-        Output("classification-progress-section", "style", allow_duplicate=True),
+        Output("classification-interval", "disabled", allow_duplicate=True),
+        Output("workflow-state-store", "data"),
         Output("upload-error-message", "children", allow_duplicate=True),
     ],
     [
@@ -873,7 +874,7 @@ def blast_callback(
     search_type="hmmsearch",
 ):
     if not all([seq_list, submission_id]):
-        return None, None, True, {"display": "none"}, None
+        return None, None, True, None, None
 
     try:
         if isinstance(seq_list, list) and len(seq_list) > 0:
@@ -893,7 +894,7 @@ def blast_callback(
                 color="red",
                 variant="filled",
             )
-            return None, None, True, {"display": "none"}, error_alert
+            return None, None, True, None, error_alert
 
         # Ensure query_type is a string
         if not isinstance(query_type, str):
@@ -918,7 +919,7 @@ def blast_callback(
             eval_threshold=evalue_threshold,
         )
 
-        blast_results_file = blast_task.get(timeout=300)  # 5 minute timeout
+        blast_results_file = blast_task.get(timeout=300)  # Wait for BLAST to complete
 
         # Run Diamond and HMMER using celery tasks
         if query_type == "nucl":
@@ -953,7 +954,7 @@ def blast_callback(
                 None,
                 None,
                 True,
-                {"display": "none"},
+                None,
                 None,  # No error
             )
 
@@ -980,9 +981,6 @@ def blast_callback(
                 captain_results_dict,
                 None,
                 True,  # Disable interval since we're not doing classification
-                {
-                    "display": "none"
-                },  # Hide progress since we're not doing classification
                 None,  # No error
             )
 
@@ -998,30 +996,34 @@ def blast_callback(
             "fetch_captain_params": {"curated": True, "with_sequence": True},
         }
 
-        # Start background thread to run classification
-        classification_thread = Thread(
-            target=run_classification_workflow, args=(upload_data)
-        )
-        classification_thread.daemon = True
-        classification_thread.start()
+        # This launches the entire sequential workflow as a single background task
+        classification_task = run_classification_workflow_task.delay(upload_data)
 
+        # Return initial state with task ID for polling
         return (
             blast_results_file,
             captain_results_dict,
-            False,
-            {"display": "block"},
+            False,  # Enable the interval for polling
+            {
+                "task_id": classification_task.id,
+                "status": "started",
+                "complete": False,
+                "current_stage": None,
+                "error": None,
+                "start_time": time.time(),
+            },
             None,  # No error
         )
 
     except Exception as e:
         logger.error(f"Error in blast_callback: {str(e)}")
         error_alert = create_error_alert(str(e))
-        return None, None, True, {"display": "none"}, error_alert
+        return None, None, True, None, error_alert
 
 
 @callback(
     [
-        Output("classification-output", "children", allow_duplicate=True),
+        Output("classification-output", "children"),
         Output("blast-download", "children"),
     ],
     [
@@ -1458,134 +1460,72 @@ class WorkflowStatus:
 workflow_tracker = None
 
 
-# Third callback to update the UI periodically based on classification status
 @callback(
     [
-        Output("classification-stage", "data", allow_duplicate=True),
-        Output("classification-stage-display", "children", allow_duplicate=True),
-        Output("classification-progress", "value", allow_duplicate=True),
-        Output("classification-progress", "animated", allow_duplicate=True),
-        Output("classification-progress", "striped", allow_duplicate=True),
-        Output("classification-result-store", "data", allow_duplicate=True),
+        Output("classification-stage-display", "children"),
+        Output("classification-progress", "value"),
+        Output("classification-progress", "animated"),
+        Output("classification-progress", "striped"),
         Output("classification-interval", "disabled", allow_duplicate=True),
     ],
-    Input("classification-interval", "n_intervals"),
+    Input("workflow-state-store", "data"),
     prevent_initial_call=True,
 )
 @handle_callback_error
-def update_ui_from_status(n_intervals):
-    """Update UI based on the current workflow status."""
-    global workflow_tracker
-
-    if workflow_tracker is None:
+def update_ui_from_workflow_state(workflow_state):
+    """Update UI elements based on the workflow state."""
+    if not workflow_state:
         raise PreventUpdate
 
-    # Get current status
-    status = workflow_tracker
-
-    # Default values
+    # Set default values
     stage_message = "Starting classification..."
-    result_data = None
-
-    # Determine if we should disable the interval after this update
+    overall_progress = 0
+    animated = True
+    striped = True
     disable_interval = False
 
-    if status.complete:
-        # Disable interval after this update since workflow is complete
+    # Update based on current state
+    if workflow_state.get("complete", False):
         disable_interval = True
-
-        if status.error:
-            # True error condition
-            stage_message = "Error occurred during classification"
-            result_data = {"type": "error", "message": status.error}
-        elif status.found_match:
-            # Successful match
-            stage_info = next(
-                (s for s in WORKFLOW_STAGES if s["id"] == status.match_stage), {}
-            )
-            stage_message = (
-                f"{stage_info.get('label', 'Match')} found: {status.match_result}"
-            )
-
-            # Create result data for the store
-            result_data = {
-                "type": "match",
-                "match_stage": status.match_stage,
-                "match_result": status.match_result,
-                "stage_color": stage_info.get("color", "blue"),
-                "stage_label": stage_info.get("label", "Match"),
-            }
-        elif status.match_stage:
-            # No match found, but we know which stage stopped the pipeline
-            stage_info = next(
-                (s for s in WORKFLOW_STAGES if s["id"] == status.match_stage), {}
-            )
-            no_match_message = f"No {status.match_stage} match found"
-
-            if status.match_result and "No" in status.match_result:
-                no_match_message = status.match_result
-
-            stage_message = f"Classification stopped: {no_match_message}"
-
-            result_data = {
-                "type": "no_match",
-                "match_stage": status.match_stage,
-                "message": no_match_message,
-                "stage_color": stage_info.get("color", "yellow"),
-            }
-        else:
-            # Generic no match case (all stages completed)
-            stage_message = "Classification complete - No matches found"
-            result_data = {
-                "type": "no_match",
-                "message": "No matches were found for this sequence",
-            }
-    elif status.current_stage:
-        # Still processing a stage
-        stage_info = next(
-            (s for s in WORKFLOW_STAGES if s["id"] == status.current_stage), {}
-        )
-        stage_message = f"Processing: {stage_info.get('label', status.current_stage)}"
-
-    # Calculate overall progress
-    if status.complete:
+        animated = False
+        striped = False
         overall_progress = 100
-        overall_animated = False
-        overall_striped = False
-    elif status.current_stage_idx is not None:
-        # Calculate progress based on current stage
-        overall_progress = ((status.current_stage_idx) / len(WORKFLOW_STAGES)) * 100
-        if status.stage_progress:
-            # Add partial progress from current stage
-            stage_contribution = (1 / len(WORKFLOW_STAGES)) * (
-                status.stage_progress / 100
+
+        if workflow_state.get("error"):
+            stage_message = f"Error: {workflow_state['error']}"
+        elif workflow_state.get("found_match", False):
+            match_stage = workflow_state.get("match_stage", "")
+            match_result = workflow_state.get("match_result", "")
+            stage_info = next(
+                (s for s in WORKFLOW_STAGES if s["id"] == match_stage), {}
             )
-            overall_progress += stage_contribution * 100
-        overall_animated = True
-        overall_striped = True
-    else:
-        overall_progress = 0
-        overall_animated = True
-        overall_striped = True
+            stage_message = f"{stage_info.get('label', 'Match')} found: {match_result}"
+        else:
+            stage_message = "Classification complete - No matches found"
+    elif workflow_state.get("current_stage"):
+        # Still processing
+        current_stage = workflow_state["current_stage"]
+        stage_info = next((s for s in WORKFLOW_STAGES if s["id"] == current_stage), {})
+        stage_message = f"Processing: {stage_info.get('label', current_stage)}"
 
-    # Log the final result for debugging
-    if status.complete and result_data is not None:
-        logger.info(f"Classification complete: {stage_message}")
+        # Calculate progress
+        if "stages" in workflow_state:
+            completed_stages = sum(
+                1 for s in workflow_state["stages"].values() if s.get("complete", False)
+            )
+            current_progress = (
+                workflow_state["stages"].get(current_stage, {}).get("progress", 0)
+            )
+            overall_progress = ((completed_stages / len(WORKFLOW_STAGES)) * 100) + (
+                current_progress / len(WORKFLOW_STAGES)
+            )
 
-    return (
-        stage_message,  # classification-stage data
-        stage_message,  # classification-stage-display
-        overall_progress,  # overall progress value
-        overall_animated,  # overall animated state
-        overall_striped,  # overall striped state
-        result_data,  # Data for the result store
-        disable_interval,  # Whether to disable the interval
-    )
+    return stage_message, overall_progress, animated, striped, disable_interval
 
 
-# Add a separate callback just to enable the interval when workflow starts
+# Fix the callback to target the correct interval component
 @callback(
-    Output("classification-workflow-interval", "disabled"),
+    Output("classification-interval", "disabled", allow_duplicate=True),
     Input("classification-submit-button", "n_clicks"),
     prevent_initial_call=True,
 )
@@ -1952,7 +1892,7 @@ def handle_tab_switch(
 
     header = seq_data["header"]
     sequence = seq_data["sequence"]
-    seq_type = seq_data["type"]
+    seq_type = seq_data.get("type", "nucl")
     logger.info(f"Processing sequence for tab {tab_idx}: {header[:30]}...")
 
     # Process this sequence for the tab
@@ -2165,3 +2105,94 @@ def handle_tab_switch(
         f"Returning data for tab {tab_idx} with content length {len(tab_content)}"
     )
     return tab_idx, processed_tabs, tab_content, updated_seq_list
+
+
+@callback(
+    Output("workflow-state-store", "data", allow_duplicate=True),
+    Input("submit-button", "n_clicks"),
+    State("blast-sequences-store", "data"),
+    State("evalue-threshold", "value"),
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def start_classification_workflow(n_clicks, seq_list, evalue_threshold):
+    """Start the classification workflow and initialize the state store."""
+    if not n_clicks or not seq_list:
+        raise PreventUpdate
+
+    # Prepare data for the workflow
+    if isinstance(seq_list, list) and len(seq_list) > 0:
+        seq_data = seq_list[0]  # Process the first sequence
+        query_header = seq_data.get("header", "query")
+        query_seq = seq_data.get("sequence", "")
+        query_type = seq_data.get("type", "nucl")
+
+        # Write sequence to temporary FASTA file
+        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+
+        # Prepare upload data for classification
+        upload_data = {
+            "seq_type": query_type,
+            "fasta": tmp_query_fasta,
+            "fetch_ship_params": {
+                "curated": False,
+                "with_sequence": True,
+                "dereplicate": True,
+            },
+            "fetch_captain_params": {"curated": True, "with_sequence": True},
+        }
+
+        # Start background task with celery
+        classification_task = run_classification_workflow_task.delay(upload_data)
+
+        # Return initial state with task ID
+        return {
+            "task_id": classification_task.id,
+            "status": "started",
+            "complete": False,
+            "current_stage": None,
+            "error": None,
+            "start_time": time.time(),
+        }
+
+    # No valid sequences
+    return None
+
+
+@callback(
+    Output("workflow-state-store", "data", allow_duplicate=True),
+    Input("classification-interval", "n_intervals"),
+    State("workflow-state-store", "data"),
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def poll_classification_task(n_intervals, current_state):
+    """Poll the classification task and update the state store."""
+    if not current_state or not current_state.get("task_id"):
+        raise PreventUpdate
+
+    # Skip polling if task is already complete
+    if current_state.get("complete", False):
+        return dash.no_update
+
+    # Get task status from celery
+    task_id = current_state["task_id"]
+    task = run_classification_workflow_task.AsyncResult(task_id)
+
+    if task.state == "PENDING":
+        # Task hasn't started yet
+        return current_state
+    elif task.state == "SUCCESS":
+        # Task completed - return the full result
+        # This contains the final state from run_classification_workflow
+        return task.result
+    elif task.state == "FAILURE":
+        # Task failed
+        return {
+            **current_state,
+            "complete": True,
+            "error": str(task.result) if task.result else "Task failed",
+        }
+
+    # Still pending or unknown state
+    return current_state

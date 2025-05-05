@@ -1048,22 +1048,31 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
 
 
 def run_classification_workflow(upload_data):
+    """Run the classification workflow and return results."""
+    # Initialize state object
+    workflow_state = {
+        "complete": False,
+        "error": None,
+        "found_match": False,
+        "match_stage": None,
+        "match_result": None,
+        "stages": {
+            stage["id"]: {"progress": 0, "complete": False} for stage in WORKFLOW_STAGES
+        },
+    }
+
     try:
         # Process each stage in sequence
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
 
-            # Update status to show progress
-            globals()["workflow_tracker"].current_stage = stage_id
-            globals()["workflow_tracker"].current_stage_idx = i
-            globals()["workflow_tracker"].stage_progress = 0
-            globals()["workflow_tracker"].stage_values[i] = 10  # Starting progress
-            globals()["workflow_tracker"].stage_animated[i] = True
+            # Update state to show progress
+            workflow_state["current_stage"] = stage_id
+            workflow_state["current_stage_idx"] = i
+            workflow_state["stages"][stage_id]["progress"] = 10
+            workflow_state["stages"][stage_id]["status"] = "running"
 
             logger.info(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
-
-            # Define task functions based on stage
-            result = None
 
             if stage_id == "exact":
                 result = check_exact_matches_task.delay(
@@ -1072,135 +1081,75 @@ def run_classification_workflow(upload_data):
                         "records"
                     ),
                 ).get(timeout=180)
-                logger.debug(f"Exact match result: {result}")
 
-                # If we found an exact match, exit early with a completed state
                 if result:
-                    logger.info(f"Exact match found: {result}, stopping pipeline")
-                    globals()["workflow_tracker"].stage_values[i] = (
-                        100  # Mark this stage as completed
-                    )
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].found_match = True
-                    globals()["workflow_tracker"].match_stage = "exact"
-                    globals()["workflow_tracker"].match_result = result
-                    globals()["workflow_tracker"].complete = True
-                    break
+                    workflow_state["stages"][stage_id]["progress"] = 100
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "exact"
+                    workflow_state["match_result"] = result
+                    workflow_state["complete"] = True
+                    return workflow_state
 
-            elif stage_id == "contained":
-                globals()["workflow_tracker"].stage_progress = 30
-                globals()["workflow_tracker"].stage_values[i] = 30
+            if stage_id == "contained":
                 result = check_contained_matches_task.delay(
                     fasta=upload_data["fasta"],
                     ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
                         "records"
                     ),
                 ).get(timeout=180)
-                logger.debug(f"Contained match result: {result}")
 
-                # If we found a contained match, exit early
                 if result:
-                    logger.info(f"Contained match found: {result}, stopping pipeline")
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].found_match = True
-                    globals()["workflow_tracker"].match_stage = "contained"
-                    globals()["workflow_tracker"].match_result = result
-                    globals()["workflow_tracker"].complete = True
-                    break
+                    workflow_state["stages"][stage_id]["progress"] = 30
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "contained"
+                    workflow_state["match_result"] = result
+                    workflow_state["complete"] = True
+                    return workflow_state
 
-            elif stage_id == "similar":
-                globals()["workflow_tracker"].stage_progress = 30
-                globals()["workflow_tracker"].stage_values[i] = 30
+            if stage_id == "similar":
                 result = check_similar_matches_task.delay(
                     fasta=upload_data["fasta"],
                     ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
                         "records"
                     ),
                 ).get(timeout=180)
-                logger.debug(f"Similar match result: {result}")
 
-                # If we found a similar match, exit early
                 if result:
-                    logger.info(f"Similar match found: {result}, stopping pipeline")
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].found_match = True
-                    globals()["workflow_tracker"].match_stage = "similar"
-                    globals()["workflow_tracker"].match_result = result
-                    globals()["workflow_tracker"].complete = True
-                    break
+                    workflow_state["stages"][stage_id]["progress"] = 50
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "similar"
+                    workflow_state["match_result"] = result
 
-            elif stage_id == "family":
-                globals()["workflow_tracker"].stage_progress = 30
-                globals()["workflow_tracker"].stage_values[i] = 30
+            if stage_id == "family":
                 result = run_family_classification_task.delay(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
                 ).get(timeout=180)
-                logger.debug(f"Family classification result: {result}")
 
-                # For family stage, if result is None, stop the pipeline with appropriate message
-                if result is None:
-                    logger.info(
-                        "Family classification did not find a match, stopping pipeline"
-                    )
-                    globals()["workflow_tracker"].stage_values[i] = (
-                        100  # Mark this stage as completed
-                    )
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()[
-                        "workflow_tracker"
-                    ].match_stage = (
-                        "family"  # Not really a match but for display purposes
-                    )
-                    globals()["workflow_tracker"].match_result = "No family match found"
-                    break
+                if result:
+                    workflow_state["stages"][stage_id]["progress"] = 70
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["complete"] = True
+                    return workflow_state
 
-                # Store family result for use in subsequent stages
-                if isinstance(result, dict) and "protein" in result:
-                    upload_data["protein_file"] = result["protein"]
-
-            elif stage_id == "navis":
-                globals()["workflow_tracker"].stage_progress = 30
-                globals()["workflow_tracker"].stage_values[i] = 30
-
-                # Check if we have a protein file from the family stage
-                if "protein_file" not in upload_data or not upload_data["protein_file"]:
-                    logger.warning("No protein file available for navis classification")
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()["workflow_tracker"].match_stage = "navis"
-                    globals()[
-                        "workflow_tracker"
-                    ].match_result = "No protein data available for navis"
-                    break
-
+            if stage_id == "navis":
                 result = run_navis_classification_task.delay(
-                    fasta=upload_data["protein_file"],
-                    existing_ships=fetch_captains(
+                    fasta=upload_data["fasta"],
+                    existing_captains=fetch_captains(
                         **upload_data["fetch_captain_params"]
                     ).to_dict("records"),
                 ).get(timeout=180)
-                logger.debug(f"Navis classification result: {result}")
 
-                # For navis stage, if result is None, stop the pipeline with appropriate message
-                if result is None:
-                    logger.info(
-                        "Navis classification did not find a match, stopping pipeline"
-                    )
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()["workflow_tracker"].match_stage = "navis"
-                    globals()["workflow_tracker"].match_result = "No navis match found"
-                    break
+                if result:
+                    workflow_state["stages"][stage_id]["progress"] = 90
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["complete"] = True
+                    return workflow_state
 
-            elif stage_id == "haplotype":
-                globals()["workflow_tracker"].stage_progress = 30
-                globals()["workflow_tracker"].stage_values[i] = 30
+            if stage_id == "haplotype":
                 result = run_haplotype_classification_task.delay(
                     fasta=upload_data["fasta"],
                     existing_ships=fetch_ships(
@@ -1210,47 +1159,27 @@ def run_classification_workflow(upload_data):
                         "records"
                     ),
                 ).get(timeout=180)
-                logger.debug(f"Haplotype classification result: {result}")
 
-                # For haplotype stage, if result is None, stop the pipeline with appropriate message
-                if result is None:
-                    logger.info(
-                        "Haplotype classification did not find a match, stopping pipeline"
-                    )
-                    globals()["workflow_tracker"].stage_values[i] = 100
-                    globals()["workflow_tracker"].stage_animated[i] = False
-                    globals()["workflow_tracker"].complete = True
-                    globals()["workflow_tracker"].match_stage = "haplotype"
-                    globals()[
-                        "workflow_tracker"
-                    ].match_result = "No haplotype match found"
-                    break
+                if result:
+                    workflow_state["stages"][stage_id]["progress"] = 100
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["complete"] = True
+                    return workflow_state
 
-            else:
-                logger.warning(f"No task defined for stage {stage_id}, skipping")
-                globals()["workflow_tracker"].stage_values[i] = 100
-                globals()["workflow_tracker"].stage_animated[i] = False
-                continue
+            # Mark this stage as complete
+            workflow_state["stages"][stage_id]["progress"] = 100
+            workflow_state["stages"][stage_id]["status"] = "complete"
 
-            # Update the status to show completion for this stage
-            globals()["workflow_tracker"].stage_progress = 100
-            globals()["workflow_tracker"].stage_values[i] = 100
-            globals()["workflow_tracker"].stage_animated[i] = False
-
-        # Mark as complete if we haven't already done so
-        globals()["workflow_tracker"].complete = True
+        # Mark workflow as complete
+        workflow_state["complete"] = True
+        return workflow_state
 
     except Exception as e:
-        # Handle errors - only unexpected errors
+        # Handle errors
         error_message = f"Error during classification: {str(e)}"
         logger.error(error_message)
-        logger.exception("Full traceback:")  # Log full traceback for debugging
-        globals()["workflow_tracker"].error = error_message
-        globals()["workflow_tracker"].complete = True
+        logger.exception("Full traceback:")
 
-        # Mark current stage as failed
-        if globals()["workflow_tracker"].current_stage_idx is not None:
-            i = globals()["workflow_tracker"].current_stage_idx
-            globals()["workflow_tracker"].stage_values[i] = 100
-            globals()["workflow_tracker"].stage_animated[i] = False
-            globals()["workflow_tracker"].stage_striped[i] = False
+        workflow_state["error"] = error_message
+        workflow_state["complete"] = True
+        return workflow_state
