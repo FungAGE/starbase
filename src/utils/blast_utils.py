@@ -425,7 +425,7 @@ def run_diamond(
         protein_out = tempfile.NamedTemporaryFile(suffix=".faa", delete=False).name
 
         diamond_db = get_blast_db(
-            db_type="blast", query_type="prot", gene_type=input_gene
+            db_type="diamond", query_type="prot", gene_type=input_gene
         )
 
         blast_type = "blastx" if query_type == "nucl" else "blastp"
@@ -688,7 +688,12 @@ def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
             db = BLAST_DB_PATHS["gene"][gene_type][query_type]
         else:
             raise ValueError(f"Invalid query type: {query_type}")
-
+    elif db_type == "diamond":
+        # Add this case for Diamond databases
+        if query_type == "nucl" or query_type == "prot":
+            db = BLAST_DB_PATHS["gene"][gene_type][query_type] + ".dmnd"
+        else:
+            raise ValueError(f"Invalid query type: {query_type}")
     elif db_type == "hmm":
         if query_type == "nucl":
             db = BLAST_DB_PATHS["gene"][gene_type]["hmm"]["nucl"]
@@ -696,7 +701,6 @@ def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
             db = BLAST_DB_PATHS["gene"][gene_type]["hmm"]["prot"]
         else:
             raise ValueError(f"Invalid query type: {query_type}")
-
     else:
         raise ValueError(f"Invalid database type: {db_type}")
 

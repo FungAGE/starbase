@@ -888,9 +888,9 @@ def process_blast_results(blast_results_store, active_tab_idx):
     ],
     [
         Input("submission-id-store", "data"),
-        Input("blast-sequences-store", "data"),
     ],
     [
+        State("blast-sequences-store", "data"),
         State("evalue-threshold", "value"),
     ],
     running=[

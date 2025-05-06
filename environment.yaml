@@ -7,7 +7,7 @@ dependencies:
   - mmseqs2==17.b804f
   - sourmash==3.5.1
   - mcl==22.282
-  - diamond==2.1.11
+  - diamond>=2.1.7
   - blast==2.16.0
   - hmmer==3.4
   - clustalw==2.1

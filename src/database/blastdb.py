@@ -48,10 +48,16 @@ def blast_db_exists(blastdb):
 
 
 def create_diamond_database(fasta_path, threads=2):
+    # Create output path with .dmnd extension
+    diamond_db = fasta_path + ".dmnd"
+
     cmd = [
-        "/usr/bin/diamond prepdb",
-        "--db",
+        "diamond",
+        "makedb",
+        "--in",
         fasta_path,
+        "--db",
+        diamond_db,
         "--threads",
         str(threads),
     ]
@@ -59,10 +65,11 @@ def create_diamond_database(fasta_path, threads=2):
     logger.info(f"Creating Diamond database with command: {' '.join(cmd)}")
 
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info("Diamond database created successfully.")
+        return diamond_db  # Return the path to the created Diamond database
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to create Diamond database: {e}")
+        logger.error(f"Failed to create Diamond database: {e.stderr}")
         raise
 
 
@@ -114,4 +121,4 @@ def create_dbs():
 
     write_fasta(captain_sequences_dict, captain_fasta_path)
     create_blast_database(captain_fasta_path, "prot")
-    create_diamond_database(captain_fasta_path, "prot")
+    create_diamond_database(captain_fasta_path)
