@@ -9,7 +9,7 @@ from dash.dependencies import Output, Input, State
 import os
 import base64
 import pandas as pd
-import logging
+from src.config.logging import get_logger
 import time
 
 from src.config.cache import cache
@@ -28,7 +28,6 @@ from src.components.callbacks import (
     create_file_upload,
 )
 from src.database.sql_manager import fetch_meta_data
-from src.utils.telemetry import blast_limit_decorator
 from src.utils.classification_utils import WORKFLOW_STAGES
 from src.tasks import (
     run_blast_search_task,
@@ -38,7 +37,7 @@ from src.tasks import (
 
 dash.register_page(__name__)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def blast_family_button(family):
@@ -879,7 +878,6 @@ def process_blast_results(blast_results_store, active_tab_idx):
         return None
 
 
-@blast_limit_decorator
 @callback(
     [
         Output("blast-results-store", "data"),

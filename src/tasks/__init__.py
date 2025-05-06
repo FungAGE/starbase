@@ -1,14 +1,15 @@
 from src.config.celery_config import celery
-from src.config.cache import cache, cleanup_old_cache
+from src.config.cache import cache, cleanup_old_cache, cache_dir
 from src.utils.telemetry import maintain_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
-import tempfile
-import logging
+from src.config.logging import get_logger
 import pandas as pd
 from typing import Optional
+import os
+import uuid
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Make sure this is at the top level of the module
 __all__ = [
@@ -42,13 +43,16 @@ def refresh_telemetry_task(ipstack_api_key):
 
 
 @celery.task(name="cleanup_cache")
-def cleanup_cache_task():
-    """Celery task to clean up cache files"""
+def cleanup_cache_task(max_age_hours=24):
+    """Celery task to clean up cache files older than specified hours"""
     try:
-        cleanup_old_cache()
-        return {"status": "success", "message": "Cache cleanup completed"}
+        result = cleanup_old_cache(max_age_hours)
+        return {
+            "status": "success",
+            "message": f"Cache cleanup completed: removed {result.get('removed', 0)} files, kept {result.get('kept', 0)} files",
+        }
     except Exception as e:
-        logger.error(f"Cache cleanup failed: {str(e)}")
+        logger.error(f"Cache cleanup task failed: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 
@@ -57,15 +61,17 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
     """Celery task to run BLAST search"""
 
     try:
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
+        # Generate a unique filename in the shared cache directory
+        unique_id = str(uuid.uuid4())
+        shared_blast_file = os.path.join(
+            cache_dir, "tmp", f"blast_result_{unique_id}.blast"
+        )
 
-        # Run BLAST
+        # Run BLAST and save output to the shared location
         blast_results_file = run_blast(
             query_type=query_type,
-            query_fasta=tmp_query_fasta,
-            tmp_blast=tmp_blast,
+            query_fasta=write_temp_fasta(query_header, query_seq),
+            tmp_blast=shared_blast_file,
             input_eval=eval_threshold,
             threads=2,
         )
@@ -73,7 +79,7 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
         if blast_results_file is None:
             return None
 
-        return blast_results_file
+        return shared_blast_file
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
@@ -249,10 +255,15 @@ def run_classification_workflow_task(self, upload_data):
     from src.utils.classification_utils import run_classification_workflow
 
     try:
-        # Run the sequential workflow
+        # Run the workflow
         result = run_classification_workflow(upload_data)
+
+        # Clean up temporary files immediately if needed
+        # Only clean files that are at least 1 hour old to avoid removing
+        # files still in use by other processes
+        cleanup_old_cache(max_age_hours=1)
+
         return result
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
-        logger.exception("Full traceback:")
         raise

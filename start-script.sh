@@ -39,8 +39,24 @@ restart_celery() {
         &
 }
 
-# Start Celery initially
+restart_celery_beat() {
+    # Kill existing Celery beat if it exists
+    if [ -f /tmp/celerybeat.pid ]; then
+        kill $(cat /tmp/celerybeat.pid) 2>/dev/null || true
+        rm /tmp/celerybeat.pid
+    fi
+
+    # Start new Celery beat scheduler
+    celery -A src.config.celery_config:celery beat \
+        --loglevel=INFO \
+        --pidfile=/tmp/celerybeat.pid \
+        --schedule=/tmp/celerybeat-schedule \
+        &
+}
+
+# Start Celery worker and beat
 restart_celery
+restart_celery_beat
 
 # Wait a moment for Redis and Celery to initialize
 sleep 3

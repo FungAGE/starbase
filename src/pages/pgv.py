@@ -5,8 +5,7 @@ from dash import dcc, html, callback, no_update
 from dash.dependencies import Output, Input, State
 
 import os
-import tempfile
-import logging
+from src.config.logging import get_logger
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
@@ -18,7 +17,7 @@ from src.components.callbacks import create_modal_callback
 from src.components.error_boundary import handle_callback_error
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
@@ -514,6 +513,8 @@ def load_ship_table(href):
 )
 @handle_callback_error
 def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
+    import uuid
+    from src.config.cache import cache_dir
     from src.database.sql_manager import fetch_accession_ship
     from src.tasks import run_multi_pgv_task, run_single_pgv_task
 
@@ -525,49 +526,52 @@ def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
         )
 
     if n_clicks > 0:
-        tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
+        unique_id = str(uuid.uuid4())
+        tmp_pgv = os.path.join(cache_dir, "tmp", f"{unique_id}.html")
+
         if selected_rows is not None:
             try:
                 if isinstance(selected_rows, list) and len(selected_rows) > 0:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        tmp_gffs = []
-                        tmp_fas = []
-                        for row in selected_rows:
-                            accession = row["accession_tag"]
-                            ship_data = fetch_accession_ship(accession)
-                            fa_df = ship_data["sequence"]
-                            tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
-                            tmp_fas.append(str(tmp_fa))
+                    unique_id = str(uuid.uuid4())
+                    temp_dir = os.path.join(cache_dir, "tmp", f"{unique_id}")
+                    tmp_gffs = []
+                    tmp_fas = []
+                    for row in selected_rows:
+                        accession = row["accession_tag"]
+                        ship_data = fetch_accession_ship(accession)
+                        fa_df = ship_data["sequence"]
+                        tmp_fa = write_tmp(fa_df, accession, "fa", temp_dir)
+                        tmp_fas.append(str(tmp_fa))
 
-                            gff_df = ship_data["gff"]
-                            tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
-                            tmp_gffs.append(tmp_gff)
+                        gff_df = ship_data["gff"]
+                        tmp_gff = write_tmp(gff_df, accession, "gff", temp_dir)
+                        tmp_gffs.append(tmp_gff)
 
-                        if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = run_multi_pgv_task.delay(
-                                tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr
-                            )
-                            message = message.get(timeout=300)
-                        elif len(selected_rows) == 1:
-                            message = run_single_pgv_task.delay(tmp_gffs[0], tmp_pgv)
-                            message = message.get(timeout=300)
-                        else:
-                            output = html.P("Please select between 1 and 4 Starships.")
-                            return output, None
-                        try:
-                            with open(tmp_pgv, "r") as file:
-                                pgv_content = file.read()
-                        except IOError:
-                            output = html.P("Failed to read the temporary file.")
-
-                        output = html.Iframe(
-                            srcDoc=pgv_content,
-                            style={
-                                "width": "100%",
-                                "height": "800px",
-                                "border": "none",
-                            },
+                    if len(selected_rows) > 1 and len(selected_rows) <= 4:
+                        message = run_multi_pgv_task.delay(
+                            tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr
                         )
+                        message = message.get(timeout=300)
+                    elif len(selected_rows) == 1:
+                        message = run_single_pgv_task.delay(tmp_gffs[0], tmp_pgv)
+                        message = message.get(timeout=300)
+                    else:
+                        output = html.P("Please select between 1 and 4 Starships.")
+                        return output, None
+                    try:
+                        with open(tmp_pgv, "r") as file:
+                            pgv_content = file.read()
+                    except IOError:
+                        output = html.P("Failed to read the temporary file.")
+
+                    output = html.Iframe(
+                        srcDoc=pgv_content,
+                        style={
+                            "width": "100%",
+                            "height": "800px",
+                            "border": "none",
+                        },
+                    )
                 else:
                     output = html.H4("Please select at least one Starship.")
             except Exception as e:

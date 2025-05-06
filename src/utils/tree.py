@@ -3,17 +3,18 @@ import warnings
 from Bio import Phylo
 import plotly.graph_objs as go
 
-import tempfile
 import subprocess
 import os
-import logging
+from src.config.logging import get_logger
+import uuid
 
+from src.config.cache import cache_dir
 from src.utils.seq_utils import load_fasta_to_dict
 from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 default_highlight_colors = {
@@ -332,7 +333,9 @@ def add_tip_labels(
 
 def plot_tree(highlight_families=None, tips=None):
     tree_string = fetch_captain_tree()
-    with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
+    unique_id = str(uuid.uuid4())
+    tree_file = os.path.join(cache_dir, "tmp", f"{unique_id}.newick")
+    with open(tree_file, "w") as temp_file:
         temp_file.write(tree_string)
         tree_file = temp_file.name
 
@@ -431,7 +434,8 @@ def plot_tree(highlight_families=None, tips=None):
 
 
 def run_mafft(query, ref_msa):
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    unique_id = str(uuid.uuid4())
+    tmp_fasta = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
     # MODEL = "PROTGTR+G+F"
     fasta_dict = load_fasta_to_dict(query)
     tmp_headers = list(fasta_dict.keys())
@@ -481,6 +485,6 @@ def gappa(tmp_tree):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    logging.info(f"Tree output: {out_tree}")
+    logger.info(f"Tree output: {out_tree}")
 
     return out_tree

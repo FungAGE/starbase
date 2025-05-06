@@ -1,5 +1,5 @@
 import warnings
-import logging
+from src.config.logging import get_logger
 
 from dash import html
 import pandas as pd
@@ -12,7 +12,7 @@ from src.database.sql_manager import fetch_paper_data
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def truncate_string(s, length=40):

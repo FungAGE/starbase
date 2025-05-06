@@ -4,6 +4,7 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - parmed
   - mmseqs2==17.b804f
   - sourmash==3.5.1
   - mcl==22.282

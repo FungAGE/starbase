@@ -2,10 +2,11 @@ import dash_mantine_components as dmc
 from dash import dcc, html
 
 import os
-import tempfile
 import subprocess
 import json
 import pandas as pd
+from src.config.logging import get_logger
+import uuid
 
 from Bio import SearchIO
 
@@ -13,9 +14,9 @@ from src.utils.seq_utils import (
     clean_shipID,
 )
 from src.components.error_boundary import create_error_alert
-import logging
+from src.config.cache import cache_dir
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
@@ -76,7 +77,9 @@ def hmmsearch(
             f"Starting hmmsearch with params: query_type={query_type}, input_gene={input_gene}"
         )
 
-        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
+        unique_id = str(uuid.uuid4())
+        tmp_hmmer = os.path.join(cache_dir, "tmp", f"{unique_id}.hmmer.txt")
+
         logger.debug(f"Created temporary output file: {tmp_hmmer}")
 
         hmmer_db = get_blast_db(db_type="hmm", query_type=query_type)
@@ -188,7 +191,9 @@ def parse_hmmer(hmmer_output_file):
     try:
         logger.debug(f"Starting to parse HMMER output file: {hmmer_output_file}")
 
-        parsed_file = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
+        unique_id = str(uuid.uuid4())
+        parsed_file = os.path.join(cache_dir, "tmp", f"{unique_id}.hmmer.parsed.txt")
+
         logger.debug(f"Created temporary parsed output file: {parsed_file}")
 
         with open(parsed_file, "w") as tsv_file:
@@ -227,7 +232,8 @@ def parse_hmmer(hmmer_output_file):
 
 # parse blast xml output to tsv
 def parse_blast_xml(xml):
-    parsed_file = tempfile.NamedTemporaryFile(suffix=".blast.parsed.txt").name
+    unique_id = str(uuid.uuid4())
+    parsed_file = os.path.join(cache_dir, "tmp", f"{unique_id}.blast.parsed.txt")
     with open(parsed_file, "w") as tsv_file:
         # Add quotes around field names to ensure proper parsing
         tsv_file.write(
@@ -421,8 +427,9 @@ def run_diamond(
 ):
     """Run DIAMOND search against protein database and extract protein sequences."""
     try:
-        diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
-        protein_out = tempfile.NamedTemporaryFile(suffix=".faa", delete=False).name
+        unique_id = str(uuid.uuid4())
+        diamond_out = os.path.join(cache_dir, "tmp", f"{unique_id}.tsv")
+        protein_out = os.path.join(cache_dir, "tmp", f"{unique_id}.faa")
 
         diamond_db = get_blast_db(
             db_type="diamond", query_type="prot", gene_type=input_gene

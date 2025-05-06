@@ -1,8 +1,8 @@
 import signal
 from contextlib import contextmanager
-import logging
+from src.config.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TimeoutError(Exception):
