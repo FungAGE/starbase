@@ -114,7 +114,7 @@ layout = dmc.Container(
                                             dmc.Title("Input Sequence(s)", order=3),
                                             dmc.Textarea(
                                                 id="query-text",
-                                                placeholder="Paste a maximum of 1 FASTA sequence here...",
+                                                placeholder="Paste a maximum of 10 FASTA sequences here...",
                                                 autosize=True,
                                                 minRows=5,
                                                 maxRows=15,
@@ -639,13 +639,13 @@ def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
         Output("blast-sequences-store", "data", allow_duplicate=True),
         Output("upload-error-store", "data", allow_duplicate=True),
         Output("upload-error-message", "children", allow_duplicate=True),
+        Output("right-column-content", "children", allow_duplicate=True),
     ],
     [
         Input("submit-button", "n_clicks"),
     ],
     [
         State("query-text", "value"),
-        State("blast-fasta-upload", "contents"),
         State("blast-sequences-store", "data"),
     ],
     running=[
@@ -653,17 +653,19 @@ def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
         (Output("submit-button", "disabled"), True, False),
     ],
     prevent_initial_call=True,
+    id="preprocess-callback",
 )
-def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
+def preprocess(n_clicks, query_text_input, seq_list):
     """
     Process input when the submit button is pressed.
     For file uploads: Use the already parsed sequences from blast-sequences-store
-    For text input: Parse the input text now
+    For text input: Parse the input text now, limiting to max 10 sequences
     """
     if not n_clicks:
         raise PreventUpdate
 
     error_alert = None
+    ui_content = None  # Initialize UI content
 
     try:
         # If we have parsed sequences from a file upload, use those
@@ -671,13 +673,26 @@ def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
             logger.info(
                 f"Using pre-parsed sequences from file upload: {len(seq_list)} sequences"
             )
-            return seq_list, None, None
+            # Ensure limit to 10 sequences
+            if len(seq_list) > 10:
+                seq_list = seq_list[:10]
 
-        # Otherwise, parse the text input
+            # Create UI structure for these sequences
+            ui_content = (
+                create_tab_layout(seq_list)
+                if len(seq_list) > 1
+                else create_single_layout()
+            )
+
+            return seq_list, None, None, ui_content
+
+        # Otherwise, parse the text input with max_sequences=10
         if query_text_input:
             logger.info("Processing text input")
             input_type, seq_list, n_seqs, error = check_input(
-                query_text_input=query_text_input, query_file_contents=None
+                query_text_input=query_text_input,
+                query_file_contents=None,
+                max_sequences=10,
             )
 
             if error:
@@ -696,10 +711,19 @@ def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
                     None,
                     str(error) if isinstance(error, str) else "Parsing error",
                     error_alert,
+                    None,
                 )
 
             logger.info(f"Text input processed: {input_type}, {n_seqs} sequences")
-            return seq_list, None, None
+
+            # Create UI structure based on number of sequences from text input
+            ui_content = (
+                create_tab_layout(seq_list)
+                if len(seq_list) > 1
+                else create_single_layout()
+            )
+
+            return seq_list, None, None, ui_content
 
         # If we have neither text input nor uploaded sequences, show an error
         error_alert = dmc.Alert(
@@ -708,7 +732,7 @@ def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
             color="yellow",
             variant="filled",
         )
-        return None, "No input provided", error_alert
+        return None, "No input provided", error_alert, None
 
     except Exception as e:
         logger.error(f"Error in preprocess: {str(e)}")
@@ -718,7 +742,55 @@ def preprocess(n_clicks, query_text_input, query_file_contents, seq_list):
             color="red",
             variant="filled",
         )
-        return None, str(e), error_alert
+        return None, str(e), error_alert, None
+
+
+# Helper functions to create layouts
+def create_single_layout():
+    return dmc.Stack(
+        children=[
+            html.Div(id="classification-output", className="mt-4"),
+            # Progress section
+            dmc.Stack(
+                [
+                    dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
+                    dmc.Group(
+                        [
+                            dmc.Text("Classification Status:", size="lg", fw=500),
+                            dmc.Text(
+                                id="classification-stage-display", size="lg", c="blue"
+                            ),
+                        ]
+                    ),
+                ],
+                id="classification-progress-section",
+                style={"display": "none"},
+            ),
+            # BLAST results section
+            dmc.Stack([html.Div(id="blast-container")]),
+        ],
+    )
+
+
+def create_tab_layout(seq_list):
+    # Create tabs for multiple sequences
+    tabs = []
+    for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
+        tabs.append(
+            dbc.Tab(
+                label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
+                tab_id=f"tab-{idx}",
+            )
+        )
+
+    return dbc.Card(
+        [
+            dbc.CardHeader(
+                dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
+            ),
+            dbc.CardBody([html.Div(id="tab-content")]),
+        ]
+    )
 
 
 @callback(
@@ -828,7 +900,7 @@ def process_blast_results(blast_results_store, active_tab_idx):
     prevent_initial_call=True,
 )
 def process_sequences(submission_id, seq_list, evalue_threshold):
-    """Process only the first sequence initially"""
+    """Process only the first sequence initially, for both text input and file uploads"""
     if not all([seq_list, submission_id]):
         return None, None, None
 
@@ -848,6 +920,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold):
                 "sequence_results": {
                     "0": sequence_result
                 },  # Results keyed by sequence index
+                "total_sequences": len(seq_list),  # Store total number of sequences
             }
 
             # Determine if we should enable classification interval
@@ -1169,83 +1242,28 @@ def process_additional_sequence(active_tab, results_store, seq_list, evalue_thre
         # Already processed this sequence
         raise PreventUpdate
 
-    # Process this sequence
-    if tab_idx < len(seq_list):
-        sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
-
-        # Update the results store
-        updated_results = dict(results_store)
-        updated_results["processed_sequences"].append(tab_idx)
-        updated_results["sequence_results"][str(tab_idx)] = sequence_result
-
-        return updated_results
-
-    raise PreventUpdate
-
-
-# 3. Create tabs based on number of sequences
-@callback(
-    Output("right-column-content", "children"),
-    Input("blast-sequences-store", "data"),
-    prevent_initial_call=True,
-)
-def create_tabs_structure(seq_list):
-    """Create tabs structure based on number of sequences"""
-    if not seq_list:
+    # Ensure tab_idx is valid
+    if tab_idx >= len(seq_list):
+        logger.error(
+            f"Tab index {tab_idx} out of range (seq_list length: {len(seq_list)})"
+        )
         raise PreventUpdate
 
-    # Single sequence case - no tabs needed
-    if len(seq_list) == 1:
-        return dmc.Stack(
-            children=[
-                html.Div(id="classification-output", className="mt-4"),
-                # Progress section
-                dmc.Stack(
-                    [
-                        dmc.Group(
-                            [dbc.Progress(id="classification-progress", value=0)]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Classification Status:", size="lg", fw=500),
-                                dmc.Text(
-                                    id="classification-stage-display",
-                                    size="lg",
-                                    c="blue",
-                                ),
-                            ]
-                        ),
-                    ],
-                    id="classification-progress-section",
-                    style={"display": "none"},
-                ),
-                # BLAST results section
-                dmc.Stack(
-                    [
-                        html.Div(id="blast-container"),
-                    ]
-                ),
-            ],
-        )
+    # Process this sequence
+    logger.info(f"Processing sequence for tab {tab_idx}")
+    sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
 
-    # Multiple sequences - create tabs
-    tabs = []
-    for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
-        tabs.append(
-            dbc.Tab(
-                label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
-                tab_id=f"tab-{idx}",
-            )
-        )
+    if not sequence_result:
+        logger.error(f"Failed to process sequence for tab {tab_idx}")
+        raise PreventUpdate
 
-    return dbc.Card(
-        [
-            dbc.CardHeader(
-                dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
-            ),
-            dbc.CardBody([html.Div(id="tab-content")]),
-        ]
-    )
+    # Update the results store
+    updated_results = dict(results_store)
+    updated_results["processed_sequences"].append(tab_idx)
+    updated_results["sequence_results"][str(tab_idx)] = sequence_result
+
+    logger.info(f"Updated results for tab {tab_idx}")
+    return updated_results
 
 
 # 4. Render the content for the current tab
@@ -1543,3 +1561,101 @@ def update_single_sequence_classification(blast_results_store):
 
     # Create the classification output using the existing function
     return create_classification_output(sequence_results)
+
+
+@callback(
+    [
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("query-text", "helperText"),
+        Output("upload-error-message", "children", allow_duplicate=True),
+    ],
+    [
+        Input("query-text", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def preprocess_text_input(query_text_input):
+    """
+    Process text input as it's entered to show a summary and limit sequences.
+    This doesn't store the sequences for processing yet - that happens when submit is clicked.
+    """
+    if not query_text_input:
+        return None, None, None
+
+    try:
+        # Parse the text input to check for multiple sequences
+        input_type, seq_list, n_seqs, error = check_input(
+            query_text_input=query_text_input,
+            query_file_contents=None,
+            max_sequences=10,
+        )
+
+        # If there's a real error, show it but don't update sequences store
+        if error and isinstance(error, dmc.Alert) and error.color == "red":
+            return None, None, error
+
+        # If we have sequences, create a summary message
+        if seq_list and n_seqs > 0:
+            if n_seqs == 1:
+                helper_text = f"Found 1 sequence: {seq_list[0]['header']} ({len(seq_list[0]['sequence'])} bp)"
+            else:
+                helper_text = f"Found {n_seqs} sequences"
+                if n_seqs > 3:
+                    seq_summary = (
+                        ", ".join([seq["header"] for seq in seq_list[:3]]) + "..."
+                    )
+                else:
+                    seq_summary = ", ".join([seq["header"] for seq in seq_list])
+                helper_text += f" ({seq_summary})"
+
+            # Add warning if we limited the sequences
+            if n_seqs > 10:
+                helper_text += " (only the first 10 will be processed)"
+
+            # Don't store sequences yet - just return helper text
+            return None, helper_text, None
+
+        return None, "No valid sequences found", None
+
+    except Exception as e:
+        logger.error(f"Error preprocessing text input: {e}")
+        return (
+            None,
+            None,
+            dmc.Alert(
+                title="Error",
+                children=f"Error preprocessing sequences: {str(e)}",
+                color="red",
+                variant="filled",
+            ),
+        )
+
+
+@callback(
+    Output("query-text", "value", allow_duplicate=True),
+    Input("blast-fasta-upload", "contents"),
+    prevent_initial_call=True,
+    id="clear-text-on-file-upload",
+)
+def clear_text_on_file_upload(file_contents):
+    """Clear the text area when a file is uploaded"""
+    if file_contents:
+        return ""
+    raise PreventUpdate
+
+
+@callback(
+    [
+        Output("blast-fasta-upload", "contents", allow_duplicate=True),
+        Output("upload-details", "children", allow_duplicate=True),
+    ],
+    Input("query-text", "value"),
+    State("blast-fasta-upload", "contents"),
+    prevent_initial_call=True,
+    id="clear-file-on-text-input",
+)
+def clear_file_on_text_input(text_value, current_file_contents):
+    """Clear the file upload when text is entered"""
+    if text_value and len(text_value.strip()) > 10 and current_file_contents:
+        return None, html.Div(html.P(["Select a FASTA file to upload"]))
+    raise PreventUpdate
