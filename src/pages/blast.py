@@ -1,43 +1,40 @@
 import dash
+from dash import dcc, html, callback, clientside_callback
+from dash_iconify import DashIconify
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-
-from dash import dcc, html, callback, clientside_callback
-
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 
-import tempfile
+import os
 import base64
 import pandas as pd
 import logging
-
+import time
 
 from src.config.cache import cache
 from src.utils.seq_utils import (
-    guess_seq_type,
     check_input,
     write_temp_fasta,
-    parse_fasta,
-    parse_fasta_from_file,
 )
 from src.utils.blast_utils import (
-    run_blast,
-    run_hmmer,
-    run_diamond,
-    make_captain_alert,
-    process_captain_results,
     create_no_matches_alert,
     parse_blast_xml,
-    blast_download_button,
-    get_blast_db,
+    select_ship_family,
 )
 
-from src.components.callbacks import curated_switch, create_file_upload
+from src.components.callbacks import (
+    curated_switch,
+    create_file_upload,
+)
 from src.database.sql_manager import fetch_meta_data
-from src.config.settings import BLAST_DB_PATHS
 from src.utils.telemetry import blast_limit_decorator
-from src.components.error_boundary import handle_callback_error, create_error_alert
+from src.utils.classification_utils import WORKFLOW_STAGES
+from src.tasks import (
+    run_blast_search_task,
+    run_hmmer_search_task,
+    run_classification_workflow_task,
+)
 
 dash.register_page(__name__)
 
@@ -57,19 +54,45 @@ layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="query-header-store"),
-        dcc.Store(id="query-seq-store"),
-        dcc.Store(id="query-type-store"),
-        dcc.Store(id="blast-results-store"),
-        dcc.Store(id="captain-results-store"),
+        # Upload stores
+        dcc.Store(id="blast-sequences-store"),
         dcc.Store(id="upload-error-store"),
+        # Submission id
+        dcc.Store(id="submission-id-store"),
+        # Processed data stores
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
-        dcc.Store(id="submission-id-store"),
-        dcc.Store(id="timeout-store", data=False),
+        dcc.Store(
+            id="blast-processed-tabs", data=[0]
+        ),  # Store which tabs have been processed
+        # Results stores
+        dcc.Store(id="blast-results-store"),
+        dcc.Store(id="classification-result-store", data=None),
+        # Single data store with all workflow state
+        dcc.Store(id="classification-stage", data="Upload a sequence"),
+        dcc.Store(
+            id="classification-workflow-state",
+            data={"current_stage": None, "complete": False},
+        ),
+        # Store for each workflow stage
+        *[
+            dcc.Store(id={"type": "classification-stage-data", "index": stage["id"]})
+            for stage in WORKFLOW_STAGES
+        ],
+        # Tab stores
+        dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
+        # Timeout stores
+        dcc.Store(id="blast-timeout-store", data=False),
         dcc.Interval(
-            id="timeout-interval", interval=30000, n_intervals=0
+            id="blast-timeout-interval", interval=30000, n_intervals=0
         ),  # 30 seconds
+        # Interval for polling workflow state
+        dcc.Interval(
+            id="classification-interval",
+            interval=1000,  # 1 second
+            disabled=True,
+        ),
+        dcc.Store(id="workflow-state-store", data=None),
         dmc.Space(h=20),
         dmc.Grid(
             children=[
@@ -88,10 +111,10 @@ layout = dmc.Container(
                                     # Input Section
                                     dmc.Stack(
                                         [
-                                            dmc.Title("Input Sequence", order=3),
+                                            dmc.Title("Input Sequence(s)", order=3),
                                             dmc.Textarea(
                                                 id="query-text",
-                                                placeholder="Paste FASTA sequence here...",
+                                                placeholder="Paste a maximum of 10 FASTA sequences here...",
                                                 autosize=True,
                                                 minRows=5,
                                                 maxRows=15,
@@ -106,14 +129,27 @@ layout = dmc.Container(
                                                     dmc.Paper(
                                                         children=create_file_upload(
                                                             upload_id="blast-fasta-upload",
-                                                            output_id="blast-fasta-sequence-upload",
+                                                            output_id="upload-details",
                                                             accept_types=[
                                                                 ".fa",
                                                                 ".fas",
                                                                 ".fasta",
                                                                 ".fna",
                                                             ],
-                                                            placeholder_text="Drag and drop or click to select a FASTA file",
+                                                            placeholder_text=dmc.Stack(
+                                                                [
+                                                                    dmc.Text(
+                                                                        "Drag and drop or click to select a FASTA file",
+                                                                        size="sm",
+                                                                    ),
+                                                                    dmc.Text(
+                                                                        "Maximum of 10 sequences",
+                                                                        size="sm",
+                                                                        c="dimmed",
+                                                                    ),
+                                                                ],
+                                                                gap="xs",
+                                                            ),
                                                         ),
                                                         withBorder=False,
                                                         shadow="sm",
@@ -217,18 +253,69 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"sm": 12, "lg": 8},
                     children=[
-                        dmc.Stack(
+                        html.Div(
+                            id="right-column-content",
                             children=[
-                                html.Div(id="ship-family"),
-                                html.Div(
-                                    [
-                                        html.Div(id="blast-multiple-alignments"),
-                                        html.Div(id="blast-alignments-table"),
+                                # This div will be replaced with tabs when more than one sequence is in query
+                                dmc.Stack(
+                                    children=[
+                                        # Progress section - initially hidden
+                                        html.Div(
+                                            id="classification-output", className="mt-4"
+                                        ),
+                                        dmc.Stack(
+                                            [
+                                                dmc.Group(
+                                                    [
+                                                        dbc.Progress(
+                                                            id="classification-progress",
+                                                            value=0,
+                                                            color="blue",
+                                                            animated=True,
+                                                            striped=True,
+                                                            style={
+                                                                "width": "100%",
+                                                                "marginBottom": "5px",
+                                                            },
+                                                        ),
+                                                    ]
+                                                ),
+                                                dmc.Group(
+                                                    [
+                                                        dmc.Text(
+                                                            "Classification Status:",
+                                                            size="lg",
+                                                            fw=500,
+                                                        ),
+                                                        dmc.Text(
+                                                            id="classification-stage-display",
+                                                            size="lg",
+                                                            c="blue",
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
+                                            gap="md",
+                                            id="classification-progress-section",
+                                            style={"display": "none"},
+                                        ),
+                                        # BLAST results section
+                                        dmc.Stack(
+                                            [
+                                                html.Div(
+                                                    id="blast-container",
+                                                    style={
+                                                        "width": "100%",
+                                                        "display": "flex",
+                                                        "flexDirection": "column",
+                                                        "alignItems": "flex-start",
+                                                        "textAlign": "left",
+                                                    },
+                                                ),
+                                            ]
+                                        ),
                                     ],
-                                    id="blast-container",
                                 ),
-                                html.Div(id="blast-download"),
-                                html.Div(id="subject-seq-button"),
                             ],
                         ),
                     ],
@@ -244,46 +331,118 @@ layout = dmc.Container(
 clientside_callback(
     """
     function(data) {
+        console.log("BlasterJS callback triggered", data);
         if (data && data.blast_text) {
             try {
-                // Clear existing content
-                document.getElementById('blast-multiple-alignments').innerHTML = '';
-                document.getElementById('blast-alignments-table').innerHTML = '';
+                console.log("Initializing BlasterJS with text length:", data.blast_text.length);
                 
-                // Initialize BlasterJS
-                var blasterjs = require("biojs-vis-blasterjs");
-                var instance = new blasterjs({
-                    string: data.blast_text,
-                    multipleAlignments: "blast-multiple-alignments",
-                    alignmentsTable: "blast-alignments-table"
-                });
+                // Use standard ID selector
+                const container = document.getElementById('blast-container');
+                const loader = document.getElementById('blast-loader');
                 
-                // Add CSS to control table width
-                var style = document.createElement('style');
-                style.textContent = `
-                    #blast-alignments-table {
-                        max-width: 100%;
-                        overflow-x: auto;
+                if (!container) {
+                    console.error("No blast container found in the DOM");
+                    console.log("Available IDs:", 
+                        Array.from(document.querySelectorAll('[id]'))
+                            .map(el => el.id)
+                            .join(', ')
+                    );
+                    return window.dash_clientside.no_update;
+                }
+                
+                console.log("Found container:", container);
+                
+                // Clear existing content first
+                container.innerHTML = '';
+                
+                // Create the title element
+                const titleElement = document.createElement('h2');
+                titleElement.innerHTML = 'BLAST Results';
+                titleElement.style.marginTop = '15px';
+                titleElement.style.marginBottom = '20px';
+                titleElement.style.textAlign = 'left';
+                titleElement.style.width = '100%';
+                
+                // Create simple divs for BlasterJS with explicit left alignment
+                const alignmentsDiv = document.createElement('div');
+                alignmentsDiv.id = 'blast-multiple-alignments';
+                alignmentsDiv.style.textAlign = 'left';
+                alignmentsDiv.style.width = '100%';
+                
+                const tableDiv = document.createElement('div');
+                tableDiv.id = 'blast-alignments-table';
+                tableDiv.style.textAlign = 'left';
+                tableDiv.style.width = '100%';
+                
+                // Add elements to the container
+                container.appendChild(titleElement);
+                container.appendChild(alignmentsDiv);
+                container.appendChild(tableDiv);
+                
+                // Add a style element to ensure BlasterJS output is properly aligned
+                const styleEl = document.createElement('style');
+                styleEl.textContent = `
+                    #blast-multiple-alignments, #blast-alignments-table {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                        padding-left: 0 !important;
                     }
-                    #blast-alignments-table table {
-                        width: 100%;
-                        table-layout: fixed;
+                    #blast-multiple-alignments div, #blast-alignments-table div,
+                    #blast-multiple-alignments table, #blast-alignments-table table {
+                        text-align: left !important;
+                        margin-left: 0 !important;
                     }
-                    #blast-alignments-table td {
-                        max-width: 200px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
+                    .alignment-viewer {
+                        text-align: left !important;
                     }
                 `;
-                document.head.appendChild(style);
+                container.appendChild(styleEl);
+                
+                // Basic BlasterJS initialization
+                try {
+                    var blasterjs = require("biojs-vis-blasterjs");
+                    console.log("BlasterJS loaded successfully");
+                    var instance = new blasterjs({
+                        string: data.blast_text,
+                        multipleAlignments: "blast-multiple-alignments",
+                        alignmentsTable: "blast-alignments-table"
+                    });
+                    console.log("BlasterJS initialized successfully");
+                    
+                    // Additional styling fix after BlasterJS renders
+                    setTimeout(function() {
+                        const tables = container.querySelectorAll('table');
+                        tables.forEach(function(table) {
+                            table.style.marginLeft = '0';
+                            table.style.textAlign = 'left';
+                        });
+                    }, 100);
+                    
+                    // Hide the loader after successful initialization
+                    if (loader) {
+                        // Add a small delay to ensure content is rendered
+                        setTimeout(function() {
+                            // Access the data-dashloaderisloading attribute and set it to false
+                            loader.setAttribute('data-dashloaderisloading', 'false');
+                        }, 200);
+                    }
+                } catch (blasterError) {
+                    console.error("Error initializing BlasterJS library:", blasterError);
+                    container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
+                    
+                    // Hide the loader even if there's an error
+                    if (loader) {
+                        loader.setAttribute('data-dashloaderisloading', 'false');
+                    }
+                }
                 
                 return window.dash_clientside.no_update;
             } catch (error) {
-                console.error('Error initializing BlasterJS:', error);
+                console.error('Overall error in callback:', error);
                 return error.toString();
             }
         }
+        console.log("No BLAST data available");
         return window.dash_clientside.no_update;
     }
     """,
@@ -294,129 +453,344 @@ clientside_callback(
 
 
 @callback(
-    Output("blast-fasta-sequence-upload", "children"),
+    [
+        Output("submit-button", "disabled", allow_duplicate=True),
+        Output("submit-button", "children", allow_duplicate=True),
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("upload-details", "children", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
+    ],
     [
         Input("blast-fasta-upload", "contents"),
         Input("blast-fasta-upload", "filename"),
     ],
+    prevent_initial_call=True,
 )
-@handle_callback_error
 def update_fasta_details(seq_content, seq_filename):
+    """
+    Handle file uploads only - immediately process the file to show a summary
+    but don't display errors in the main interface - just in the upload area.
+    """
+    button_disabled = False
+    button_text = "Submit BLAST"
+    seq_list = None
+    error_alert = None
+
+    # Default upload details - maintain this if there's an error
+    upload_details = html.Div(
+        html.P(
+            ["Select a FASTA file to upload"],
+        )
+    )
+
     if seq_content is None:
-        return [
-            html.Div(
-                html.P(
-                    ["Select a FASTA file to upload"],
+        return button_disabled, button_text, seq_list, upload_details, error_alert
+
+    try:
+        # Check for file size and prevent upload if too large
+        try:
+            max_size = 10 * 1024 * 1024  # 10 MB
+            content_type, content_string = seq_content.split(",")
+            decoded = base64.b64decode(content_string)
+            file_size = len(decoded)
+        except Exception as e:
+            logger.error(f"Error decoding file contents: {e}")
+            error_alert = dmc.Alert(
+                title="Invalid File Format",
+                children="The file appears to be corrupted or in an unsupported format.",
+                color="red",
+                variant="filled",
+            )
+            return True, "Error", None, upload_details, error_alert
+
+        # Check file size constraint
+        if file_size > max_size:
+            error_msg = f"The file '{seq_filename}' exceeds the 10 MB limit."
+            error_alert = dmc.Alert(
+                title="File Too Large",
+                children=error_msg,
+                color="red",
+                variant="filled",
+            )
+            return True, "Error", None, upload_details, error_alert
+
+        # Parse the file contents using check_input
+        input_type, seq_list, n_seqs, error = check_input(
+            query_text_input=None, query_file_contents=seq_content
+        )
+        logger.info(f"Input type: {input_type}, Number of sequences: {n_seqs}")
+
+        # Handle parsing errors
+        if error:
+            error_alert = (
+                error
+                if not isinstance(error, str)
+                else dmc.Alert(
+                    title="Error Processing File",
+                    children=error,
+                    color="red",
+                    variant="filled",
                 )
             )
-        ]
-    else:
-        try:
-            # "," is the delimeter for splitting content_type from content_string
-            content_type, content_string = seq_content.split(",")
-            query_string = base64.b64decode(content_string).decode("utf-8")
-            children = parse_fasta(query_string, seq_filename)
-            return children
+            return True, "Error", None, upload_details, error_alert
 
-        except Exception as e:
-            logger.error(e)
-            return html.Div(["There was an error processing this file."])
+        # Check if seq_list is None
+        if seq_list is None:
+            error_alert = dmc.Alert(
+                title="Parsing Error",
+                children="Failed to parse sequences from the file.",
+                color="red",
+                variant="filled",
+            )
+            return True, "Error", None, upload_details, error_alert
+
+        # Process valid sequences - create a summary for display
+        if n_seqs > 1:
+            upload_details = html.Div(
+                [
+                    html.P(f"File name: {seq_filename}"),
+                    html.P(
+                        [
+                            f"Found {n_seqs} sequences in the file",
+                            html.Span(
+                                " (maximum of 10 will be processed)",
+                                style={"color": "orange", "fontStyle": "italic"}
+                                if n_seqs > 10
+                                else {"display": "none"},
+                            ),
+                        ]
+                    ),
+                    html.Ul(
+                        [
+                            html.Li(f"{seq['header']} ({len(seq['sequence'])} bp)")
+                            for seq in seq_list[:3]
+                        ]
+                        + ([html.Li("...")] if n_seqs > 3 else [])
+                    ),
+                    html.P(
+                        "Only the first 10 sequences will be processed."
+                        if n_seqs > 10
+                        else "All sequences will be processed when you submit."
+                    ),
+                ]
+            )
+        else:
+            upload_details = html.Div(
+                [
+                    html.H6(f"File name: {seq_filename}"),
+                    html.H6(f"Number of sequences: {n_seqs}"),
+                ]
+            )
+
+        return button_disabled, button_text, seq_list, upload_details, error_alert
+
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        error_alert = dmc.Alert(
+            title="Error Processing File",
+            children=f"An unexpected error occurred: {str(e)}",
+            color="red",
+            variant="filled",
+        )
+        return True, "Error", None, upload_details, error_alert
 
 
 @callback(
     [
-        Output("submit-button", "disabled"),
-        Output("submit-button", "children"),
-        Output("upload-error-message", "children"),
-        Output("upload-error-store", "data"),
+        Output("submit-button", "disabled", allow_duplicate=True),
+        Output("submit-button", "children", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
+        Output("upload-error-store", "data", allow_duplicate=True),
     ],
     [
         Input("submit-button", "n_clicks"),
-        Input("blast-fasta-upload", "contents"),
-        Input("timeout-interval", "n_intervals"),
+        Input("blast-timeout-interval", "n_intervals"),
     ],
-    [State("blast-fasta-upload", "filename"), State("timeout-store", "data")],
+    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
     prevent_initial_call=True,
 )
-@handle_callback_error
-def handle_submission_and_upload(
-    n_clicks, contents, n_intervals, filename, timeout_triggered
-):
+def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
     triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
     # Default return values
     button_disabled = False
-    button_text = "Submit BLAST"
+    button_text = "Submit BLAST"  # Set default button text
     error_message = ""
     error_store = None
 
     # Handle timeout case
-    if triggered_id == "timeout-interval":
+    if triggered_id == "blast-timeout-interval":
         if n_clicks and timeout_triggered:
             button_disabled = True
             button_text = "Server timeout"
-            error_message = "The server is taking longer than expected to respond. Please try again later."
-            error_store = error_message
-
-    # Handle file upload
-    if triggered_id == "blast-fasta-upload" and contents is not None:
-        max_size = 10 * 1024 * 1024  # 10 MB
-        content_type, content_string = contents.split(",")
-
-        # Use our updated parse_fasta_from_file function
-        header, seq, fasta_error = parse_fasta_from_file(contents)
-
-        decoded = base64.b64decode(content_string)
-        file_size = len(decoded)
-
-        if fasta_error:
-            error_message = fasta_error
-            error_store = error_message
-            button_disabled = True
-        elif file_size > max_size:
-            error_message = f"Error: The file '{filename}' exceeds the 10 MB limit."
-            error_store = error_message
-            button_disabled = True
+            error_message = dmc.Alert(
+                title="Request Timeout",
+                children="The server is taking longer than expected to respond. Please try again later.",
+                color="yellow",
+                variant="filled",
+            )
+            error_store = "The server is taking longer than expected to respond. Please try again later."
 
     return [button_disabled, button_text, error_message, error_store]
 
 
-@blast_limit_decorator
 @callback(
     [
-        Output("query-header-store", "data"),
-        Output("query-seq-store", "data"),
-        Output("query-type-store", "data"),
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("upload-error-store", "data", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
+        Output("right-column-content", "children", allow_duplicate=True),
     ],
     [
         Input("submit-button", "n_clicks"),
-        Input("query-text", "value"),
-        Input("blast-fasta-upload", "contents"),
+    ],
+    [
+        State("query-text", "value"),
+        State("blast-sequences-store", "data"),
     ],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
     ],
+    prevent_initial_call=True,
+    id="preprocess-callback",
 )
-@handle_callback_error
-def preprocess(n_clicks, query_text_input, query_file_contents):
+def preprocess(n_clicks, query_text_input, seq_list):
+    """
+    Process input when the submit button is pressed.
+    For file uploads: Use the already parsed sequences from blast-sequences-store
+    For text input: Parse the input text now, limiting to max 10 sequences
+    """
     if not n_clicks:
         raise PreventUpdate
 
+    error_alert = None
+    ui_content = None  # Initialize UI content
+
     try:
-        input_type, query_header, query_seq = check_input(
-            query_text_input, query_file_contents
+        # If we have parsed sequences from a file upload, use those
+        if seq_list is not None:
+            logger.info(
+                f"Using pre-parsed sequences from file upload: {len(seq_list)} sequences"
+            )
+            # Ensure limit to 10 sequences
+            if len(seq_list) > 10:
+                seq_list = seq_list[:10]
+
+            # Create UI structure for these sequences
+            ui_content = (
+                create_tab_layout(seq_list)
+                if len(seq_list) > 1
+                else create_single_layout()
+            )
+
+            return seq_list, None, None, ui_content
+
+        # Otherwise, parse the text input with max_sequences=10
+        if query_text_input:
+            logger.info("Processing text input")
+            input_type, seq_list, n_seqs, error = check_input(
+                query_text_input=query_text_input,
+                query_file_contents=None,
+                max_sequences=10,
+            )
+
+            if error:
+                logger.error(f"Error parsing text input: {error}")
+                error_alert = (
+                    error
+                    if not isinstance(error, str)
+                    else dmc.Alert(
+                        title="Error Processing Sequence",
+                        children=error,
+                        color="red",
+                        variant="filled",
+                    )
+                )
+                return (
+                    None,
+                    str(error) if isinstance(error, str) else "Parsing error",
+                    error_alert,
+                    None,
+                )
+
+            logger.info(f"Text input processed: {input_type}, {n_seqs} sequences")
+
+            # Create UI structure based on number of sequences from text input
+            ui_content = (
+                create_tab_layout(seq_list)
+                if len(seq_list) > 1
+                else create_single_layout()
+            )
+
+            return seq_list, None, None, ui_content
+
+        # If we have neither text input nor uploaded sequences, show an error
+        error_alert = dmc.Alert(
+            title="No Input Provided",
+            children="Please enter a sequence or upload a FASTA file.",
+            color="yellow",
+            variant="filled",
         )
-
-        if input_type in ("none", "both"):
-            return None, None, None
-
-        query_type = guess_seq_type(query_seq)
-        return query_header, query_seq, query_type
+        return None, "No input provided", error_alert, None
 
     except Exception as e:
         logger.error(f"Error in preprocess: {str(e)}")
-        return None, None, None
+        error_alert = dmc.Alert(
+            title="Error Processing Input",
+            children=f"An unexpected error occurred: {str(e)}",
+            color="red",
+            variant="filled",
+        )
+        return None, str(e), error_alert, None
+
+
+# Helper functions to create layouts
+def create_single_layout():
+    return dmc.Stack(
+        children=[
+            html.Div(id="classification-output", className="mt-4"),
+            # Progress section
+            dmc.Stack(
+                [
+                    dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
+                    dmc.Group(
+                        [
+                            dmc.Text("Classification Status:", size="lg", fw=500),
+                            dmc.Text(
+                                id="classification-stage-display", size="lg", c="blue"
+                            ),
+                        ]
+                    ),
+                ],
+                id="classification-progress-section",
+                style={"display": "none"},
+            ),
+            # BLAST results section
+            dmc.Stack([html.Div(id="blast-container")]),
+        ],
+    )
+
+
+def create_tab_layout(seq_list):
+    # Create tabs for multiple sequences
+    tabs = []
+    for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
+        tabs.append(
+            dbc.Tab(
+                label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
+                tab_id=f"tab-{idx}",
+            )
+        )
+
+    return dbc.Card(
+        [
+            dbc.CardHeader(
+                dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
+            ),
+            dbc.CardBody([html.Div(id="tab-content")]),
+        ]
+    )
 
 
 @callback(
@@ -430,137 +804,11 @@ def update_submission_id(n_clicks):
     return n_clicks  # Use n_clicks as a unique submission ID
 
 
-@callback(
-    [
-        Output("blast-results-store", "data"),
-        Output("captain-results-store", "data"),
-        Output("subject-seq-button", "children"),
-    ],
-    [
-        Input("query-header-store", "data"),
-        Input("query-seq-store", "data"),
-        Input("query-type-store", "data"),
-        Input("submission-id-store", "data"),
-    ],
-    State("evalue-threshold", "value"),
-    running=[
-        (Output("submit-button", "loading"), True, False),
-        (Output("submit-button", "disabled"), True, False),
-    ],
-    prevent_initial_call=True,
-)
-@handle_callback_error
-def fetch_captain(
-    query_header,
-    query_seq,
-    query_type,
-    submission_id,
-    evalue_threshold,
-    search_type="hmmsearch",
-):
-    if not all([query_header, query_seq, query_type, submission_id]):
-        return None, None, None
-
-    try:
-        captain_results_dict = None
-
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-
-        # Get the appropriate database configuration
-        db = get_blast_db(query_type)
-
-        if query_type == "nucl":
-            # For nucleotide sequences, run diamond blastx first
-            diamond_results = run_diamond(
-                db_list=BLAST_DB_PATHS,  # Pass full paths dict
-                query_type=query_type,
-                input_genes="tyr",
-                input_eval=evalue_threshold,
-                query_fasta=tmp_query_fasta,
-                threads=2,
-            )
-
-            if diamond_results:
-                # Extract protein sequence from diamond results
-                protein_seq = diamond_results[0].get("qseq_translated")
-                if protein_seq:
-                    # Write protein sequence to temp file
-                    tmp_protein_fasta = write_temp_fasta(query_header, protein_seq)
-
-                    # Run hmmsearch with protein sequence
-                    captain_results_dict = run_hmmer(
-                        db_list=BLAST_DB_PATHS,  # Pass full paths dict
-                        query_type="prot",
-                        input_genes="tyr",
-                        input_eval=evalue_threshold,
-                        query_fasta=tmp_protein_fasta,
-                        threads=2,
-                    )
-        else:
-            # For protein sequences, run diamond blastp
-            diamond_results = run_diamond(
-                db_list=BLAST_DB_PATHS,
-                query_type="prot",
-                input_genes="tyr",
-                input_eval=evalue_threshold,
-                query_fasta=tmp_query_fasta,
-                threads=2,
-            )
-
-            if diamond_results:
-                captain_results_dict = run_hmmer(
-                    db_list=BLAST_DB_PATHS,
-                    query_type="prot",
-                    input_genes="tyr",
-                    input_eval=evalue_threshold,
-                    query_fasta=tmp_query_fasta,
-                    threads=2,
-                )
-
-        # Run BLAST search for visualization
-        blast_results_file = run_blast(
-            db_list=db,  # Pass string path
-            query_type=query_type,
-            query_fasta=tmp_query_fasta,
-            tmp_blast=tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name,
-            input_eval=evalue_threshold,
-            threads=2,
-        )
-
-        if blast_results_file is None:
-            return None, None, create_error_alert("No BLAST results were returned")
-
-        return blast_results_file, captain_results_dict, None
-
-    except Exception as e:
-        logger.error(f"Error in fetch_captain: {str(e)}")
-        return None, None, create_error_alert(str(e))
-
-
-@callback(
-    Output("subject-seq-dl-package", "data"),
-    [Input("subject-seq-button", "n_clicks"), Input("subject-seq", "data")],
-)
-@handle_callback_error
-def subject_seq_download(n_clicks, filename):
-    try:
-        if n_clicks:
-            logger.info(f"Download initiated for file: {filename}")
-            return dcc.send_file(filename)
-        else:
-            return dash.no_update
-    except Exception as e:
-        logger.error(f"Error in subject_seq_download: {str(e)}")
-        return dash.no_update
-
-
-# 1. Metadata Processing Callback
+# Metadata Processing Callback
 @callback(
     Output("processed-metadata-store", "data"),
     Input("curated-input", "value"),
 )
-@handle_callback_error
 def process_metadata(curated):
     try:
         initial_df = cache.get("meta_data")
@@ -577,23 +825,45 @@ def process_metadata(curated):
         return None
 
 
-# 2. BLAST Results Processing Callback
+# BLAST Results Processing Callback
 @callback(
     Output("processed-blast-store", "data"),
-    Input("blast-results-store", "data"),
+    [Input("blast-results-store", "data"), Input("blast-active-tab", "data")],
 )
-@handle_callback_error
-def process_blast_results(blast_results_file):
-    if not blast_results_file:
+def process_blast_results(blast_results_store, active_tab_idx):
+    if not blast_results_store:
+        logger.warning("No blast_results_store data")
         return None
 
+    # Convert active_tab_idx to string (since keys in sequence_results are strings)
+    tab_idx = str(active_tab_idx or 0)
+    logger.info(f"Processing BLAST results for tab index: {tab_idx}")
+
+    # Get the correct sequence results based on active tab
+    sequence_results = blast_results_store.get("sequence_results", {}).get(tab_idx)
+    if not sequence_results:
+        logger.warning(f"No sequence results for tab index {tab_idx}")
+        return None
+
+    blast_results_file = sequence_results.get("blast_file")
+    if not blast_results_file:
+        logger.warning(f"No blast file in sequence results for tab {tab_idx}")
+        return None
+
+    logger.info(f"Reading BLAST file: {blast_results_file}")
     try:
+        # Check if file exists
+        if not os.path.exists(blast_results_file):
+            logger.error(f"BLAST file does not exist: {blast_results_file}")
+            return None
+
         # Read the BLAST output as text
         with open(blast_results_file, "r") as f:
             blast_results = f.read()
 
         # Add size limit check
         results_size = len(blast_results)
+        logger.info(f"Read BLAST results, size: {results_size} bytes")
         if results_size > 5 * 1024 * 1024:  # 5MB limit
             logger.warning(f"BLAST results too large: {results_size} bytes")
             return None
@@ -604,141 +874,788 @@ def process_blast_results(blast_results_file):
         }
 
         return data
-
     except Exception as e:
         logger.error(f"Error processing BLAST results: {str(e)}")
         return None
 
 
-# 3. UI Update Callback
+@blast_limit_decorator
 @callback(
     [
-        Output("ship-family", "children"),
-        Output("blast-download", "children"),
+        Output("blast-results-store", "data"),
+        Output("classification-interval", "disabled"),
+        Output("workflow-state-store", "data"),
     ],
-    [Input("blast-results-store", "data"), Input("captain-results-store", "data")],
-    [State("submit-button", "n_clicks"), State("evalue-threshold", "value")],
+    [
+        Input("submission-id-store", "data"),
+    ],
+    [
+        State("blast-sequences-store", "data"),
+        State("evalue-threshold", "value"),
+    ],
     running=[
         (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
     ],
     prevent_initial_call=True,
 )
-@handle_callback_error
-def update_ui_elements(blast_results_file, captain_results_dict, n_clicks, evalue):
-    if not n_clicks or blast_results_file is None:
+def process_sequences(submission_id, seq_list, evalue_threshold):
+    """Process only the first sequence initially, for both text input and file uploads"""
+    if not all([seq_list, submission_id]):
+        return None, None, None
+
+    blast_results = None
+    classification_interval_disabled = None
+    workflow_state = None
+
+    # Process only the first sequence to start
+    if seq_list and len(seq_list) > 0:
+        # Process sequence 0
+        sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
+
+        if sequence_result:
+            # Structure the blast results properly
+            blast_results = {
+                "processed_sequences": [0],  # Indices of processed sequences
+                "sequence_results": {
+                    "0": sequence_result
+                },  # Results keyed by sequence index
+                "total_sequences": len(seq_list),  # Store total number of sequences
+            }
+
+            # Determine if we should enable classification interval
+            skip_classification = len(sequence_result.get("sequence", "")) < 5000
+            classification_interval_disabled = skip_classification
+
+            # Set up workflow state if needed
+            if not skip_classification and sequence_result.get("blast_file"):
+                # This should be set up for classification workflow
+                workflow_state = {
+                    "task_id": submission_id,  # Use submission ID for now
+                    "status": "started",
+                    "complete": False,
+                    "current_stage": None,
+                    "error": None,
+                    "start_time": time.time(),
+                }
+
+    return blast_results, classification_interval_disabled, workflow_state
+
+
+def process_single_sequence(seq_data, evalue_threshold):
+    """Process a single sequence and return structured results"""
+    query_header = seq_data.get("header", "query")
+    query_seq = seq_data.get("sequence", "")
+    query_type = seq_data.get("type", "nucl")
+
+    # Write sequence to temporary FASTA file
+    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+
+    # Run BLAST search
+    blast_task = run_blast_search_task.delay(
+        query_header=query_header,
+        query_seq=query_seq,
+        query_type=query_type,
+        eval_threshold=evalue_threshold,
+    )
+    blast_results_file = blast_task.get(timeout=300)
+
+    # Prepare upload data for classification
+    upload_data = {
+        "seq_type": query_type,
+        "fasta": tmp_query_fasta,
+        "fetch_ship_params": {
+            "curated": False,
+            "with_sequence": True,
+            "dereplicate": True,
+        },
+        "fetch_captain_params": {"curated": True, "with_sequence": True},
+    }
+
+    # Run classification workflow
+    classification_task = run_classification_workflow_task.delay(
+        upload_data=upload_data,
+    )
+
+    # Initialize classification data
+    classification_data = None
+    try:
+        workflow_result = classification_task.get(timeout=300)
+
+        # Check for classification result data first
+        if workflow_result is not None:
+            result_type = workflow_result.get("type")
+
+            if result_type == "match" and workflow_result.get("match_stage") in [
+                "exact",
+                "contained",
+                "similar",
+            ]:
+                # Handle exact/contained/similar matches
+                match_stage = workflow_result.get("match_stage")
+                match_result = workflow_result.get("match_result")
+
+                if match_result:
+                    # Get metadata for the matched ship
+                    meta_df = fetch_meta_data(accession_tag=match_result)
+
+                    if not meta_df.empty:
+                        # We found metadata for this match
+                        family = (
+                            meta_df["familyName"].iloc[0]
+                            if "familyName" in meta_df.columns
+                            else None
+                        )
+                        navis = (
+                            meta_df["starship_navis"].iloc[0]
+                            if "starship_navis" in meta_df.columns
+                            else None
+                        )
+                        haplotype = (
+                            meta_df["starship_haplotype"].iloc[0]
+                            if "starship_haplotype" in meta_df.columns
+                            else None
+                        )
+
+                        # Set confidence based on match type
+                        confidence = (
+                            "High"
+                            if match_stage == "exact"
+                            else ("Medium" if match_stage == "contained" else "Low")
+                        )
+
+                        classification_data = {
+                            "title": "Classification based on",
+                            "source": f"{match_stage}_match",
+                            "family": family,
+                            "navis": navis,
+                            "haplotype": haplotype,
+                            "match_type": f"Matched to {match_result}",
+                            "confidence": confidence,
+                        }
+
+            # Alternatively if classification state is available and shows a completed process
+            elif workflow_result and workflow_result.get("complete", False):
+                # Process based on classification state (existing logic)
+
+                # Check for workflow-based classification (highest priority)
+                if workflow_result.get("match_stage") in [
+                    "exact",
+                    "contained",
+                    "similar",
+                ]:
+                    match_stage = workflow_result.get("match_stage")
+                    match_result = workflow_result.get("match_result")
+
+                    if match_result:
+                        # Get metadata for the matched ship
+                        meta_df = fetch_meta_data(accession_tag=match_result)
+
+                        if not meta_df.empty:
+                            # We found metadata for this match
+                            family = (
+                                meta_df["familyName"].iloc[0]
+                                if "familyName" in meta_df.columns
+                                else None
+                            )
+                            navis = (
+                                meta_df["starship_navis"].iloc[0]
+                                if "starship_navis" in meta_df.columns
+                                else None
+                            )
+                            haplotype = (
+                                meta_df["starship_haplotype"].iloc[0]
+                                if "starship_haplotype" in meta_df.columns
+                                else None
+                            )
+
+                            # Set confidence based on match type
+                            confidence = (
+                                "High"
+                                if match_stage == "exact"
+                                else ("Medium" if match_stage == "contained" else "Low")
+                            )
+
+                            classification_data = {
+                                "title": "Classification based on",
+                                "source": f"{match_stage}_match",
+                                "family": family,
+                                "navis": navis,
+                                "haplotype": haplotype,
+                                "match_type": f"Matched to {match_result}",
+                                "confidence": confidence,
+                            }
+
+                # Check for family/navis/haplotype classification from workflow
+                elif workflow_result.get("found_match", False):
+                    match_stage = workflow_result.get("match_stage")
+                    match_result = workflow_result.get("match_result")
+
+                    if match_stage == "family" and match_result:
+                        # Family classification found
+                        if isinstance(match_result, dict) and "family" in match_result:
+                            family_name = match_result["family"]
+                        else:
+                            family_name = match_result
+
+                        classification_data = {
+                            "title": "Family Classification",
+                            "source": "classification",
+                            "family": family_name,
+                            "match_type": "Direct classification",
+                            "confidence": "Medium",
+                        }
+                    elif match_stage == "navis" and match_result:
+                        # Navis classification found
+                        classification_data = {
+                            "title": "Navis Classification",
+                            "source": "classification",
+                            "navis": match_result,
+                            "match_type": "Direct classification",
+                            "confidence": "Medium",
+                        }
+                    elif match_stage == "haplotype" and match_result:
+                        # Haplotype classification found
+                        classification_data = {
+                            "title": "Haplotype Classification",
+                            "source": "classification",
+                            "haplotype": match_result,
+                            "match_type": "Direct classification",
+                            "confidence": "Medium",
+                        }
+    except Exception as e:
+        logger.error(f"Error in classification workflow: {e}")
+
+    # If no classification from workflow, fall back to BLAST results
+    if classification_data is None:
+        # Process the BLAST results
+        try:
+            blast_tsv = parse_blast_xml(blast_results_file)
+            blast_df = pd.read_csv(blast_tsv, sep="\t")
+
+            # Check if dataframe is empty
+            if len(blast_df) == 0:
+                logger.info("No BLAST hits found")
+            else:
+                # Sort by evalue (ascending) and pident (descending) to get best hits
+                blast_df = blast_df.sort_values(
+                    ["evalue", "pident"], ascending=[True, False]
+                )
+                top_hit = blast_df.iloc[0]
+                logger.info(f"Top hit: {top_hit}")
+
+                top_evalue = float(top_hit["evalue"])
+                top_aln_length = int(top_hit["aln_length"])
+                top_pident = float(top_hit["pident"])
+
+                if top_pident >= 90:
+                    # look up family name from accession tag
+                    hit_IDs = top_hit["hit_IDs"]
+                    meta_df = fetch_meta_data(accession_tag=hit_IDs)
+
+                    if not meta_df.empty:
+                        top_family = meta_df["familyName"].iloc[0]
+                        navis = (
+                            meta_df["starship_navis"].iloc[0]
+                            if "starship_navis" in meta_df.columns
+                            else None
+                        )
+                        haplotype = (
+                            meta_df["starship_haplotype"].iloc[0]
+                            if "starship_haplotype" in meta_df.columns
+                            else None
+                        )
+
+                        classification_data = {
+                            "title": "Classification from BLAST",
+                            "source": "blast_hit",
+                            "family": top_family,
+                            "navis": navis,
+                            "haplotype": haplotype,
+                            "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                            "confidence": "Medium" if top_pident >= 95 else "Low",
+                        }
+        except Exception as e:
+            logger.error(f"Error processing BLAST results: {e}")
+
+    # If still no classification, try HMMER
+    if classification_data is None:
+        try:
+            hmmer_task = run_hmmer_search_task.delay(
+                query_header=query_header,
+                query_seq=query_seq,
+                query_type=query_type,
+                eval_threshold=evalue_threshold,
+            )
+            hmmer_results = hmmer_task.get(timeout=300)
+            captain_results = hmmer_results.get("results") if hmmer_results else None
+
+            if captain_results and len(captain_results) > 0:
+                first_result = captain_results[0]  # Get just the first dictionary
+                captain_family, aln_length, evalue = select_ship_family(first_result)
+
+                if captain_family:
+                    confidence = "High" if aln_length > 80 and evalue < 0.001 else "Low"
+
+                    classification_data = {
+                        "title": "Captain Gene Classification",
+                        "source": "hmmsearch",
+                        "family": captain_family,
+                        "match_type": f"Captain gene match with length {aln_length}, Evalue: {evalue}",
+                        "confidence": confidence,
+                    }
+        except Exception as e:
+            logger.error(f"Error processing HMMER results: {e}")
+
+    # Return structured results
+    return {
+        "blast_file": blast_results_file,
+        "classification": classification_data,
+        "processed": True,
+        "sequence": query_seq,  # Include sequence for length checks
+    }
+
+
+# 2. Add a callback to process additional sequences when tabs are clicked
+@callback(
+    Output("blast-results-store", "data", allow_duplicate=True),
+    Input("blast-tabs", "active_tab"),
+    [
+        State("blast-results-store", "data"),
+        State("blast-sequences-store", "data"),
+        State("evalue-threshold", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def process_additional_sequence(active_tab, results_store, seq_list, evalue_threshold):
+    """Process a sequence when its tab is selected if not already processed"""
+    if not active_tab or not results_store or not seq_list:
+        raise PreventUpdate
+
+    # Extract tab index from tab id (e.g., "tab-2" -> 2)
+    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+
+    # Check if this sequence has already been processed
+    processed_sequences = results_store.get("processed_sequences", [])
+
+    if tab_idx in processed_sequences:
+        # Already processed this sequence
+        raise PreventUpdate
+
+    # Ensure tab_idx is valid
+    if tab_idx >= len(seq_list):
+        logger.error(
+            f"Tab index {tab_idx} out of range (seq_list length: {len(seq_list)})"
+        )
+        raise PreventUpdate
+
+    # Process this sequence
+    logger.info(f"Processing sequence for tab {tab_idx}")
+    sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
+
+    if not sequence_result:
+        logger.error(f"Failed to process sequence for tab {tab_idx}")
+        raise PreventUpdate
+
+    # Update the results store
+    updated_results = dict(results_store)
+    updated_results["processed_sequences"].append(tab_idx)
+    updated_results["sequence_results"][str(tab_idx)] = sequence_result
+
+    logger.info(f"Updated results for tab {tab_idx}")
+    return updated_results
+
+
+# 4. Render the content for the current tab
+@callback(
+    Output("tab-content", "children"),
+    [
+        Input("blast-tabs", "active_tab"),
+        Input("blast-results-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def render_tab_content(active_tab, results_store):
+    """Render the content for the current tab"""
+    if not active_tab or not results_store:
+        raise PreventUpdate
+
+    # Extract tab index
+    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+
+    # Check if this sequence has been processed
+    processed_sequences = results_store.get("processed_sequences", [])
+    if tab_idx not in processed_sequences:
+        # Not processed yet - show loading state
+        return dmc.Stack(
+            [
+                dmc.Center(dmc.Loader(size="xl")),
+                dmc.Text("Processing sequence...", size="lg"),
+            ]
+        )
+
+    # Get results for this sequence
+    sequence_results = results_store.get("sequence_results", {}).get(str(tab_idx))
+    if not sequence_results:
+        return dmc.Alert(
+            title="Error",
+            children="No results found for this sequence",
+            color="red",
+            variant="filled",
+        )
+
+    # Render classification results
+    classification_output = create_classification_output(sequence_results)
+
+    # Render BLAST results
+    blast_container = create_blast_container(sequence_results)
+
+    return [
+        classification_output,
+        # Progress section (hidden initially)
+        dmc.Stack(
+            [
+                dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
+                dmc.Group(
+                    [
+                        dmc.Text("Classification Status:", size="lg", fw=500),
+                        dmc.Text(
+                            id="classification-stage-display", size="lg", c="blue"
+                        ),
+                    ]
+                ),
+            ],
+            id="classification-progress-section",
+            style={"display": "none"},
+        ),
+        # BLAST results section
+        dmc.Stack(
+            [
+                blast_container,
+            ]
+        ),
+    ]
+
+
+def create_classification_output(sequence_results):
+    """Create the classification output component"""
+    # Extract classification data
+    classification_data = sequence_results.get("classification")
+
+    if classification_data:
+        return html.Div(
+            [
+                dmc.Title(
+                    "Classification Results", order=2, style={"marginBottom": "20px"}
+                ),
+                create_classification_card(classification_data),
+            ]
+        )
+    else:
+        # No classification available
+        return html.Div(
+            [
+                dmc.Title(
+                    "Classification Results", order=2, style={"marginBottom": "20px"}
+                ),
+                dmc.Alert(
+                    title="No Classification Available",
+                    children="Could not classify this sequence with any available method.",
+                    color="yellow",
+                    variant="light",
+                ),
+            ]
+        )
+
+
+def create_blast_container(sequence_results):
+    """Create the BLAST container with a spinner wrapper"""
+    blast_file = sequence_results.get("blast_file")
+    if not blast_file:
+        return html.Div(
+            [
+                html.H2(
+                    "BLAST Results", style={"marginTop": "15px", "marginBottom": "20px"}
+                ),
+                create_no_matches_alert(),
+            ]
+        )
+
+    # Create with a regular string ID and wrap in a spinner
+    return html.Div(
+        [
+            dbc.Spinner(
+                children=html.Div(
+                    id="blast-container",  # Use regular string ID
+                    style={
+                        "width": "100%",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "minHeight": "300px",  # Increased height to make spinner more visible
+                        "alignItems": "flex-start",  # Left align the content
+                        "textAlign": "left",  # Ensure text is left-aligned
+                    },
+                ),
+                color="primary",
+                type="border",  # Options: "border", "grow"
+                fullscreen=False,
+                spinner_style={"width": "3rem", "height": "3rem"},
+            )
+        ]
+    )
+
+
+def load_blast_text(blast_file):
+    """Load BLAST output as text"""
+    if not blast_file or not os.path.exists(blast_file):
+        return None
+
+    with open(blast_file, "r") as f:
+        return f.read()
+
+
+# Add a function to create classification card
+def create_classification_card(classification_data):
+    """
+    Create a card displaying classification results from multiple sources
+
+    Args:
+        classification_data: Dictionary containing classification information
+
+    Returns:
+        dmc.Paper component with classification information
+    """
+    if not classification_data:
+        return None
+
+    title = classification_data.get("title", "Classification Results")
+    source = classification_data.get("source", "Unknown")
+    family = classification_data.get("family")
+    navis = classification_data.get("navis")
+    haplotype = classification_data.get("haplotype")
+    match_type = classification_data.get("match_type")
+    confidence = classification_data.get("confidence", "Low")
+
+    # Define badge colors based on source
+    source_colors = {
+        "exact_match": "green",
+        "contained_match": "teal",
+        "similar_match": "cyan",
+        "blast_hit": "blue",
+        "classification": "violet",
+        "unknown": "gray",
+    }
+
+    # Define icon based on confidence level
+    confidence_icons = {
+        "High": "mdi:shield-check",
+        "Medium": "mdi:shield-half-full",
+        "Low": "mdi:shield-outline",
+    }
+
+    source_color = source_colors.get(source, "gray")
+    confidence_icon = confidence_icons.get(confidence, "mdi:shield-outline")
+
+    # Create list of classification details
+    details = []
+
+    if family:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Text("Family:", fw=700, size="lg"),
+                    dmc.Text(family, size="lg", c="indigo"),
+                ],
+                pos="apart",
+            )
+        )
+
+    if navis:
+        details.append(
+            dmc.Group(
+                [dmc.Text("Navis:", fw=700), dmc.Text(navis, c="blue")], pos="apart"
+            )
+        )
+
+    if haplotype:
+        details.append(
+            dmc.Group(
+                [dmc.Text("Haplotype:", fw=700), dmc.Text(haplotype, c="violet")],
+                pos="apart",
+            )
+        )
+
+    if match_type:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Text("Match Type:", fw=700, size="sm"),
+                    dmc.Text(match_type, c="dimmed", size="sm"),
+                ],
+                pos="apart",
+            )
+        )
+
+    # Create card
+    return dmc.Paper(
+        children=[
+            dmc.Group(
+                [
+                    dmc.Title(title, order=3),
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
+                ],
+                pos="apart",
+            ),
+            dmc.Space(h=10),
+            *details,
+            dmc.Space(h=10),
+            dmc.Group(
+                [
+                    dmc.Text(f"Confidence: {confidence}", size="sm", c="dimmed"),
+                    dmc.ThemeIcon(
+                        DashIconify(icon=confidence_icon, width=16),
+                        size="sm",
+                        variant="light",
+                        color=source_color,
+                    ),
+                ],
+                pos="right",
+            ),
+        ],
+        p="md",
+        withBorder=True,
+        shadow="sm",
+        radius="md",
+        style={"marginBottom": "1rem"},
+    )
+
+
+@callback(
+    Output("blast-active-tab", "data"),
+    Input("blast-tabs", "active_tab"),
+    prevent_initial_call=True,
+)
+def update_active_tab(active_tab):
+    if not active_tab:
+        raise PreventUpdate
+
+    # Extract tab index from tab id (e.g., "tab-2" -> 2)
+    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+    return tab_idx
+
+
+@callback(
+    Output("classification-output", "children"),
+    Input("blast-results-store", "data"),
+    prevent_initial_call=True,
+)
+def update_single_sequence_classification(blast_results_store):
+    """Update classification output for single sequence submissions"""
+    if not blast_results_store:
+        return None
+
+    # Get the results for sequence 0
+    sequence_results = blast_results_store.get("sequence_results", {}).get("0")
+    if not sequence_results:
+        return None
+
+    # Create the classification output using the existing function
+    return create_classification_output(sequence_results)
+
+
+@callback(
+    [
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("query-text", "helperText"),
+        Output("upload-error-message", "children", allow_duplicate=True),
+    ],
+    [
+        Input("query-text", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def preprocess_text_input(query_text_input):
+    """
+    Process text input as it's entered to show a summary and limit sequences.
+    This doesn't store the sequences for processing yet - that happens when submit is clicked.
+    """
+    if not query_text_input:
         return None, None, None
 
     try:
-        if not blast_results_file:
-            return html.Div(create_no_matches_alert()), None, None
+        # Parse the text input to check for multiple sequences
+        input_type, seq_list, n_seqs, error = check_input(
+            query_text_input=query_text_input,
+            query_file_contents=None,
+            max_sequences=10,
+        )
 
-        # Process blast results first for more basic family identification
-        blast_tsv = parse_blast_xml(blast_results_file)
-        blast_df = pd.read_csv(blast_tsv, sep="\t")
+        # If there's a real error, show it but don't update sequences store
+        if error and isinstance(error, dmc.Alert) and error.color == "red":
+            return None, None, error
 
-        # Check if dataframe is empty
-        if len(blast_df) == 0:
-            return html.Div(create_no_matches_alert()), None, None
-
-        # Sort by evalue (ascending) and pident (descending) to get best hits
-        blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
-        top_hit = blast_df.iloc[0]
-        logger.info(f"Top hit: {top_hit}")
-
-        top_evalue = float(top_hit["evalue"])
-        top_aln_length = int(top_hit["aln_length"])
-        top_pident = float(top_hit["pident"])
-
-        if top_pident >= 90:
-            # look up family name from accession tag
-            hit_IDs = top_hit["hit_IDs"]
-            meta_df = fetch_meta_data(accession_tag=hit_IDs)
-
-            if not meta_df.empty:
-                top_family = meta_df["familyName"].iloc[0]
-                ship_family = make_captain_alert(
-                    top_family, top_aln_length, top_evalue, "blast"
-                )
+        # If we have sequences, create a summary message
+        if seq_list and n_seqs > 0:
+            if n_seqs == 1:
+                helper_text = f"Found 1 sequence: {seq_list[0]['header']} ({len(seq_list[0]['sequence'])} bp)"
             else:
-                logger.warning(f"No metadata found for accession: {hit_IDs}")
-                ship_family = process_captain_results(captain_results_dict, evalue)
-        else:
-            ship_family = process_captain_results(captain_results_dict, evalue)
+                helper_text = f"Found {n_seqs} sequences"
+                if n_seqs > 3:
+                    seq_summary = (
+                        ", ".join([seq["header"] for seq in seq_list[:3]]) + "..."
+                    )
+                else:
+                    seq_summary = ", ".join([seq["header"] for seq in seq_list])
+                helper_text += f" ({seq_summary})"
 
-        # Create download button
-        download_button = blast_download_button()
+            # Add warning if we limited the sequences
+            if n_seqs > 10:
+                helper_text += " (only the first 10 will be processed)"
 
-        return ship_family, download_button
+            # Don't store sequences yet - just return helper text
+            return None, helper_text, None
+
+        return None, "No valid sequences found", None
 
     except Exception as e:
-        logger.error(f"Error in update_ui_elements: {e}")
-        error_div = html.Div(create_error_alert(str(e)))
-        return error_div, None, None
-
-
-@callback(
-    Output("timeout-store", "data"),
-    [Input("timeout-interval", "n_intervals")],
-    [
-        State("submit-button", "n_clicks"),
-        State("blast-container", "children"),
-        State("ship-family", "children"),
-        State("subject-seq-button", "children"),
-    ],
-)
-def check_timeout(
-    n_intervals, n_clicks, blast_container, family_content, error_content
-):
-    if n_clicks and n_intervals > 0:
-        has_output = any(
-            [
-                blast_container is not None,
-                family_content is not None,
-                error_content is not None,
-            ]
+        logger.error(f"Error preprocessing text input: {e}")
+        return (
+            None,
+            None,
+            dmc.Alert(
+                title="Error",
+                children=f"Error preprocessing sequences: {str(e)}",
+                color="red",
+                variant="filled",
+            ),
         )
-        return not has_output
-    return False
-
-
-clientside_callback(
-    """
-    function(n_intervals) {
-        window.addEventListener('blastAccessionClick', function(event) {
-            if (event.detail && event.detail.accession) {
-                // Find the store and update it
-                var store = document.getElementById('blast-modal-accession');
-                if (store) {
-                    store.setAttribute('data-dash-store', JSON.stringify(event.detail.accession));
-                }
-            }
-        });
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output("modal-event-handler", "children"),
-    Input("interval-component", "n_intervals"),
-)
 
 
 @callback(
-    Output("blast-modal-content", "children"),
-    Input("blast-modal-accession", "data"),
+    Output("query-text", "value", allow_duplicate=True),
+    Input("blast-fasta-upload", "contents"),
     prevent_initial_call=True,
+    id="clear-text-on-file-upload",
 )
-def update_modal_content(accession):
-    from src.components.callbacks import create_accession_modal
+def clear_text_on_file_upload(file_contents):
+    """Clear the text area when a file is uploaded"""
+    if file_contents:
+        return ""
+    raise PreventUpdate
 
-    if not accession:
-        raise PreventUpdate
 
-    try:
-        modal_content, _ = create_accession_modal(accession)
-        return modal_content
-    except Exception as e:
-        logger.error(f"Error in update_modal_content: {str(e)}")
-        return html.Div(
-            f"Error loading details: {str(e)}",
-            style={"color": "red", "padding": "20px"},
-        )
+@callback(
+    [
+        Output("blast-fasta-upload", "contents", allow_duplicate=True),
+        Output("upload-details", "children", allow_duplicate=True),
+    ],
+    Input("query-text", "value"),
+    State("blast-fasta-upload", "contents"),
+    prevent_initial_call=True,
+    id="clear-file-on-text-input",
+)
+def clear_file_on_text_input(text_value, current_file_contents):
+    """Clear the file upload when text is entered"""
+    if text_value and len(text_value.strip()) > 10 and current_file_contents:
+        return None, html.Div(html.P(["Select a FASTA file to upload"]))
+    raise PreventUpdate

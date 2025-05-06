@@ -93,7 +93,12 @@ def create_error_boundary(page_content):
     return error_wrapped
 
 
-def create_error_alert(error_message):
-    return html.Div(
-        [dmc.Alert(title="Error", color="red", children=str(error_message))]
+def create_error_alert(error_message, title="Error"):
+    """Create a standardized error alert component"""
+    return dmc.Alert(
+        title=title,
+        children=error_message,
+        color="red",
+        variant="filled",
+        withCloseButton=True,
     )

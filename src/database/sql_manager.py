@@ -51,7 +51,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
 
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
-           j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, 
+           j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, j.captainID,
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
            g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
@@ -151,8 +151,10 @@ def fetch_download_data(curated=True, dereplicate=False):
         session.close()
 
 
-@cache.memoize()
-def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
+@db_retry_decorator()
+def fetch_ships(
+    accession_tags=None, curated=False, dereplicate=True, with_sequence=False
+):
     """
     Fetch ship data for specified accession tags.
 
@@ -160,7 +162,7 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
         accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
-
+        with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
     Returns:
         pd.DataFrame: DataFrame containing ship data
     """
@@ -195,14 +197,43 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
     if curated:
         query += " AND j.curated_status = 'curated'"
 
-    query += """
-    )
-    SELECT 
-        v.*,
-        s.sequence
-    FROM valid_ships v
-    LEFT JOIN ships s ON s.accession = v.accession_id
-    """
+    if with_sequence:
+        query += """
+        )
+        SELECT 
+            v.accession_id,
+            v.accession_tag,
+            v.curated_status,
+            v.elementBegin,
+            v.elementEnd,
+            v.contigID,
+            v.name,
+            v.family,
+            v.`order`,
+            v.familyName,
+            v.assembly_accession,
+            s.sequence
+        FROM valid_ships v
+        LEFT JOIN ships s ON s.accession = v.accession_id
+        WHERE s.sequence IS NOT NULL
+        """
+    else:
+        query += """
+        )
+        SELECT 
+            v.accession_id,
+            v.accession_tag,
+            v.curated_status,
+            v.elementBegin,
+            v.elementEnd,
+            v.contigID,
+            v.name,
+            v.family,
+            v.`order`,
+            v.familyName,
+            v.assembly_accession
+        FROM valid_ships v
+        """
 
     try:
         df = pd.read_sql_query(query, session.bind)
@@ -321,7 +352,9 @@ def fetch_accession_ship(accession_tag):
 
 
 @db_retry_decorator()
-def fetch_captains(accession_tags=None, curated=False, dereplicate=True):
+def fetch_captains(
+    accession_tags=None, curated=False, dereplicate=True, with_sequence=False
+):
     """
     Fetch captain data for specified accession tags.
 
@@ -329,6 +362,7 @@ def fetch_captains(accession_tags=None, curated=False, dereplicate=True):
         accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
+        with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
 
     Returns:
         pd.DataFrame: DataFrame containing ship data
@@ -361,6 +395,34 @@ def fetch_captains(accession_tags=None, curated=False, dereplicate=True):
     LEFT JOIN ships s ON s.accession = v.accession_id
     """
 
+    if accession_tags:
+        query += " AND a.accession_tag IN ({})".format(
+            ",".join(f"'{tag}'" for tag in accession_tags)
+        )
+    if curated:
+        query += " AND j.curated_status = 'curated'"
+
+    if with_sequence:
+        query += """
+        )
+        SELECT 
+            v.accession_id,
+            v.accession_tag,
+            v.curated_status,
+            s.sequence
+        FROM valid_captains v
+        LEFT JOIN ships s ON s.accession = v.accession_id
+        WHERE s.sequence IS NOT NULL
+        """
+    else:
+        query += """
+        )
+        SELECT 
+            v.accession_id,
+            v.accession_tag,
+            v.curated_status
+        FROM valid_captains v
+        """
     try:
         df = pd.read_sql_query(query, session.bind)
 

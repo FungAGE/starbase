@@ -17,6 +17,7 @@ from src.config.settings import DB_PATHS
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
+from src.config.celery_config import celery
 
 logger = get_logger(__name__)
 
@@ -40,6 +41,8 @@ limiter.init_app(server)
 register_routes(server, limiter)
 _dash_renderer._set_react_version("18.2.0")
 
+# Initialize Celery
+celery.conf.update(server.config)
 
 external_stylesheets = [
     "https://cdn.jsdelivr.net/npm/@mantine/core@7.11.0/styles.css",

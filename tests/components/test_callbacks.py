@@ -1,5 +1,4 @@
 from unittest.mock import patch
-import pandas as pd
 from src.components.callbacks import create_accession_modal
 
 

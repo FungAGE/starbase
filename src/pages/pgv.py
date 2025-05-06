@@ -506,15 +506,16 @@ def load_ship_table(href):
     [Output("pgv-figure", "children"), Output("pgv-message", "children")],
     Input("update-button", "n_clicks"),
     [
-        State("pgv-table", "selected_rows"),
-        State("pgv-table", "data"),
+        State("pgv-table", "selectedRows"),
+        State("pgv-table", "rowData"),
         State("length-threshold", "value"),
         State("identity-threshold", "value"),
     ],
 )
 @handle_callback_error
-def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
+def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
     from src.database.sql_manager import fetch_accession_ship
+    from src.tasks import run_multi_pgv_task, run_single_pgv_task
 
     message = None
     if not n_clicks:
@@ -525,14 +526,13 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
 
     if n_clicks > 0:
         tmp_pgv = tempfile.NamedTemporaryFile(suffix=".html", delete=True).name
-        if table_data and selected_rows is not None:
+        if selected_rows is not None:
             try:
                 if isinstance(selected_rows, list) and len(selected_rows) > 0:
                     with tempfile.TemporaryDirectory() as temp_dir:
                         tmp_gffs = []
                         tmp_fas = []
-                        for idx in selected_rows:
-                            row = table_data[idx]
+                        for row in selected_rows:
                             accession = row["accession_tag"]
                             ship_data = fetch_accession_ship(accession)
                             fa_df = ship_data["sequence"]
@@ -544,11 +544,13 @@ def update_pgv(n_clicks, selected_rows, table_data, len_thr, id_thr):
                             tmp_gffs.append(tmp_gff)
 
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = multi_pgv(
+                            message = run_multi_pgv_task.delay(
                                 tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr
                             )
+                            message = message.get(timeout=300)
                         elif len(selected_rows) == 1:
-                            single_pgv(tmp_gffs[0], tmp_pgv)
+                            message = run_single_pgv_task.delay(tmp_gffs[0], tmp_pgv)
+                            message = message.get(timeout=300)
                         else:
                             output = html.P("Please select between 1 and 4 Starships.")
                             return output, None

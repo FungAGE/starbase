@@ -11,6 +11,8 @@ from Bio.SeqUtils import nt_search
 from Bio import SeqIO
 from dash import html
 import dash_mantine_components as dmc
+from typing import Dict
+import os
 
 warnings.filterwarnings("ignore")
 
@@ -64,19 +66,22 @@ def guess_seq_type(query_seq):
         return None
 
 
-def write_temp_fasta(header, sequence):
-    try:
-        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
-        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
-        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
-        return tmp_query_fasta
-    except Exception as e:
-        logger.error(f"Error writing temporary FASTA: {e}")
-        return None
+def check_input(query_text_input, query_file_contents, max_sequences=10):
+    """
+    Checks the input type and parses the sequences.
 
+    Args:
+        query_text_input: Text input
+        query_file_contents: Base64-encoded file contents
+        max_sequences: Maximum number of sequences to return (default: 10)
 
-def check_input(query_text_input, query_file_contents):
+    Returns:
+        input_type: Type of input (text, file, or both [throws error])
+        seq_list: List of dictionaries with sequence metadata
+        n_seqs: Number of sequences
+        error: Error message (if any)
+    """
+    error = None
     try:
         if query_text_input in ("", None) and query_file_contents is None:
             raise ValueError(
@@ -86,34 +91,89 @@ def check_input(query_text_input, query_file_contents):
             logger.warning(
                 "Both text input and file contents are provided. Only one will be processed."
             )
-            return "both", None, None
+            return "both", None, None, error
         elif query_text_input:
             input_type = "text"
-            header, query, error = parse_fasta_from_text(query_text_input)
-            if error:  # If there's an error, return None values
+            seq_list, n_seqs, error = parse_fasta_from_text(
+                query_text_input, max_sequences=max_sequences
+            )
+            if error and isinstance(error, dmc.Alert) and error.color == "red":
+                # Only treat red alerts as errors that should prevent processing
                 logger.error(f"Error parsing text input: {error}")
-                return None, None, None
+                return None, None, None, error
         elif query_file_contents:
             input_type = "file"
-            header, query, error = parse_fasta_from_file(query_file_contents)
-            if error:  # If there's an error, return None values
-                logger.error(f"Error parsing file contents: {error}")
-                return None, None, None
+            seq_list, n_seqs, warning_or_error = parse_fasta_from_file(
+                query_file_contents, max_sequences=max_sequences
+            )
 
-        logger.debug(
-            f"Input type: {input_type}, Header: {header}, Query Length: {len(query) if query else 'None'}"
-        )
-        return input_type, header, query
+            # Only treat real errors (red alerts) as blocking errors
+            if (
+                warning_or_error
+                and isinstance(warning_or_error, dmc.Alert)
+                and warning_or_error.color == "red"
+            ):
+                logger.error(f"Error parsing file contents: {warning_or_error}")
+                return None, None, None, warning_or_error
+
+        # Return early if seq_list is None
+        if seq_list is None:
+            logger.error("No sequences were parsed")
+            return None, None, None, error if error else "No sequences could be parsed"
+
+        # Check sequence type for each sequence in the list
+        for seq_data in seq_list:
+            seq = seq_data.get("sequence", "")
+            seq_type = guess_seq_type(seq)
+            if seq_type is None:
+                logger.error(
+                    f"Error guessing sequence type for {seq_data.get('header', 'unknown')}"
+                )
+                return None, None, None, error
+            seq_data["type"] = seq_type  # Set the type in the seq_data dictionary
+
+        # Check if all sequences are the same type
+        seq_types = set(seq_data.get("type") for seq_data in seq_list)
+        if len(seq_types) > 1:
+            error_msg = "Sequences are of different types"
+            logger.error(error_msg)
+            return None, None, None, error_msg
+        else:
+            seq_type = list(seq_types)[0]
+            logger.info(f"All sequences are {seq_type}")
+
+        return input_type, seq_list, n_seqs, error
     except Exception as e:
         logger.error(f"Error in check_input: {e}")
-        return None, None, None
+        return None, None, None, str(e)
 
 
-def load_fasta_to_dict(fasta_file):
+def load_fasta_to_dict(fasta_input):
     """
-    Loads a multi-FASTA file into a dictionary with headers as keys and sequences as values.
+    Loads sequence data into a dictionary with headers as keys and sequences as values.
+
+    Parameters:
+        fasta_input: One of:
+            - A file path to a FASTA file
+            - A string containing FASTA-formatted data
+            - An iterable of SeqRecord objects
+
+    Returns:
+        dict: Dictionary mapping sequence IDs to sequence strings
     """
-    return {record.id: str(record.seq) for record in SeqIO.parse(fasta_file, "fasta")}
+    if isinstance(fasta_input, str):
+        if os.path.isfile(fasta_input):
+            return {
+                record.id: str(record.seq)
+                for record in SeqIO.parse(fasta_input, "fasta")
+            }
+        else:
+            fasta_io = StringIO(fasta_input)
+            return {
+                record.id: str(record.seq) for record in SeqIO.parse(fasta_io, "fasta")
+            }
+    else:
+        return {record.id: str(record.seq) for record in fasta_input}
 
 
 def find_start_codons(seq):
@@ -216,12 +276,13 @@ def ensure_fasta_header(text, default_header=">query"):
     return text
 
 
-def parse_fasta_from_text(text, format="fasta"):
+def parse_fasta_from_text(text, format="fasta", max_sequences=10):
     """
-    Parses a FASTA sequence from a text string.
+    Parses a (multi) FASTA sequence from a text string.
     Ensures a valid FASTA header is present.
-    Returns the header and sequence if successful, otherwise (None, None, Alert).
+    Returns a list of dictionaries with sequence metadata, number of sequences parsed, and error message if any.
     """
+    seq_list = []
     try:
         if not text or not isinstance(text, str):
             logger.error("Input text is empty or invalid type")
@@ -236,6 +297,7 @@ def parse_fasta_from_text(text, format="fasta"):
             )
 
         # Ensure proper FASTA format with header
+        # only needed for a single sequence text input
         text = ensure_fasta_header(text)
 
         try:
@@ -264,26 +326,27 @@ def parse_fasta_from_text(text, format="fasta"):
                     children="No valid sequence was found in the input.",
                 ),
             )
-        elif len(sequences) > 1:
-            logger.warning("Multiple sequences found")
-            return (
-                None,
-                None,
-                dmc.Alert(
-                    title="Multiple Sequences",
-                    color="yellow",
-                    children=[
-                        "Multiple sequences detected in the input. ",
-                        "Please enter only one sequence.",
-                    ],
-                ),
+
+        if len(sequences) > max_sequences:
+            logger.warning(
+                f"File contains {len(sequences)} sequences, limiting to {max_sequences}"
+            )
+            sequences = sequences[:max_sequences]
+
+        for seq in sequences:
+            seq_type = guess_seq_type(str(seq.seq))
+            seq_list.append(
+                {
+                    "header": seq.id,
+                    "sequence": str(seq.seq),
+                    "type": seq_type,
+                    "processed": False,
+                }
             )
 
-        query = sequences[0]
-        header, seq = str(query.id), str(query.seq)
+        if not seq_list:
+            logger.error("Empty sequence(s) after parsing")
 
-        if not seq:
-            logger.error("Empty sequence after parsing")
             return (
                 None,
                 None,
@@ -294,8 +357,7 @@ def parse_fasta_from_text(text, format="fasta"):
                 ),
             )
 
-        logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
-        return header, seq
+        return seq_list, len(sequences), None
 
     except ValueError as ve:
         logger.error(f"Value error in parse_fasta_from_text: {ve}")
@@ -324,9 +386,24 @@ def parse_fasta_from_text(text, format="fasta"):
         )
 
 
-def parse_fasta_from_file(contents):
-    header = None
-    seq = None
+def parse_fasta_from_file(contents, max_sequences=10):
+    """
+    Parses a FASTA file that may contain multiple sequences.
+    Returns a list of dictionaries with sequence metadata up to max_sequences.
+
+    Args:
+        contents: Base64-encoded file contents
+        max_sequences: Maximum number of sequences to return (default: 10)
+
+    Returns:
+        List of dictionaries with sequence metadata
+        Number of sequences parsed
+        Warning/Error message (if any)
+    """
+    seq_list = []  # Initialize as empty list
+    warning = None  # Use warning instead of error for non-critical issues
+    n_seqs = 0
+
     try:
         if not contents:
             logger.warning("No file contents provided")
@@ -398,7 +475,8 @@ def parse_fasta_from_file(contents):
                 ),
             )
 
-        if len(sequences) == 0:
+        n_seqs = len(sequences)
+        if n_seqs == 0:
             logger.warning("No sequences found in file")
             return (
                 None,
@@ -409,25 +487,39 @@ def parse_fasta_from_file(contents):
                     children="No sequences were found in the uploaded file.",
                 ),
             )
-        elif len(sequences) > 1:
-            logger.warning("Multiple sequences found")
-            return (
-                None,
-                None,
-                dmc.Alert(
-                    title="Multiple Sequences",
-                    color="yellow",
-                    children=[
-                        "Multiple sequences detected in the file. ",
-                        "Please upload a file with only one sequence.",
-                    ],
-                ),
+
+        # Limit number of sequences - but set a WARNING not an error
+        if n_seqs > max_sequences:
+            logger.warning(
+                f"File contains {n_seqs} sequences, limiting to {max_sequences}"
+            )
+            sequences = sequences[:max_sequences]
+            warning = f"Only the first {max_sequences} sequences will be processed."
+
+        # Process sequences
+        for seq in sequences:
+            seq_type = guess_seq_type(str(seq.seq))
+            seq_list.append(
+                {
+                    "header": seq.id,
+                    "sequence": str(seq.seq),
+                    "type": seq_type,
+                    "processed": False,
+                }
             )
 
-        query = sequences[0]
-        header, seq = str(query.id), str(query.seq)
-        logger.info(f"Successfully parsed sequence: {header} ({len(seq)} bp)")
-        return header, seq, None
+        # If we reach this point with sequences processed successfully, return them
+        # Make sure to use a yellow alert for warnings so they aren't treated as errors
+        if warning:
+            warning_alert = dmc.Alert(
+                title="Sequence Limit Applied",
+                color="yellow",
+                variant="light",
+                children=warning,
+            )
+            return seq_list, n_seqs, warning_alert
+
+        return seq_list, n_seqs, None
 
     except Exception as e:
         logger.error(f"Unexpected error in parse_fasta_from_file: {str(e)}")
@@ -561,3 +653,102 @@ def create_ncbi_style_header(row):
             f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
         )
         return None
+
+
+def write_temp_fasta(header, sequence):
+    try:
+        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
+        logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
+        return tmp_query_fasta
+    except Exception as e:
+        logger.error(f"Error writing temporary FASTA: {e}")
+        return None
+
+
+def write_fasta(sequences: Dict[str, str], fasta_path: str):
+    """Write a FASTA file from a dictionary of sequences.
+
+    Args:
+        sequences: Dictionary mapping sequence names to sequences
+        fasta_path: Path to output FASTA file
+    """
+    with open(fasta_path, "w") as fasta_file:
+        for name, sequence in sequences.items():
+            fasta_file.write(f">{name}\n{sequence}\n")
+
+
+def write_multi_fasta(sequences, fasta_path, sequence_col, id_col):
+    records = []
+    for idx, row in sequences.iterrows():
+        name = row[id_col] if id_col else str(idx)
+        sequence = row[sequence_col]
+        records.append(
+            SeqRecord(
+                Seq(sequence),
+                id=str(name),  # ensure ID is string
+                description="",
+            )
+        )
+
+    # Write to temporary file
+    SeqIO.write(records, fasta_path, "fasta")
+    logger.debug(f"Combined FASTA file written: {fasta_path}")
+
+
+def write_combined_fasta(
+    new_sequence: str,
+    existing_sequences: pd.DataFrame,
+    fasta_path: str,
+    sequence_col: str = "sequence",
+    id_col: str = None,
+) -> str:
+    """Write a temporary FASTA file combining new sequence with existing sequences.
+
+    Args:
+        new_sequence: New sequence to classify
+        existing_sequences: DataFrame containing existing sequences
+        sequence_col: Name of column containing sequences
+        id_col: Name of column to use as sequence IDs. If None, uses DataFrame index
+
+    Returns:
+        str: Path to temporary FASTA file
+    """
+    try:
+        records = []
+
+        records.append(
+            SeqRecord(Seq(new_sequence), id="query_sequence", description="")
+        )
+
+        write_multi_fasta(existing_sequences, fasta_path, sequence_col, id_col)
+
+    except Exception as e:
+        logger.error(f"Error writing combined FASTA: {e}")
+        return None
+
+
+def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
+    """Create a temporary directory for FASTA files."""
+    import os
+
+    # load sequence from fasta file
+    fasta_sequences = load_fasta_to_dict(fasta)
+
+    # append existing sequences to dict
+    if existing_ships is not None and not existing_ships.empty:
+        sequences = {
+            **fasta_sequences,
+            **dict(zip(existing_ships["accession_tag"], existing_ships["sequence"])),
+        }
+    else:
+        sequences = fasta_sequences
+
+    # save each as a fasta file in a temporary directory
+    tmp_fasta_dir = tempfile.mkdtemp()
+    for seq_id, seq in sequences.items():
+        tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
+        write_fasta({seq_id: seq}, tmp_fasta)
+    logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
+    return tmp_fasta_dir

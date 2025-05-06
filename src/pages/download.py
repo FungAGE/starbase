@@ -240,7 +240,10 @@ def generate_download_helper(rows, curated, dereplicate):
 
         accessions = [row["accession_tag"] for row in rows]
         dl_df = fetch_ships(
-            accession_tags=accessions, curated=curated, dereplicate=dereplicate
+            accession_tags=accessions,
+            curated=curated,
+            dereplicate=dereplicate,
+            with_sequence=True,
         )
 
         if dl_df is None or dl_df.empty:

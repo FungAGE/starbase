@@ -10,17 +10,15 @@ import pandas as pd
 from Bio import SearchIO
 
 from src.utils.seq_utils import (
-    get_protein_sequence,
     clean_shipID,
 )
-from src.database.blastdb import blast_db_exists, create_dbs
 from src.components.error_boundary import create_error_alert
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
+def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
     try:
         # Add input size check
         max_input_size = 10 * 1024 * 1024  # 10MB
@@ -30,27 +28,15 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
             )
             return None
 
-        # db_list should now be a direct path string
-        if not isinstance(db_list, (str, bytes, os.PathLike)):
-            logger.error(f"db_list must be a path-like object, got {type(db_list)}")
-            raise ValueError("Invalid database path")
-
-        logger.debug(f"Using database path: {db_list}")
-
-        if not blast_db_exists(db_list):
-            logger.info("BLAST database not found. Creating new database...")
-            create_dbs()
-
-            if not blast_db_exists(db_list):
-                logger.error("Failed to create BLAST database")
-                raise ValueError("Failed to create BLAST database")
+        blast_db = get_blast_db(db_type="blast", query_type="nucl")
+        blast_type = "blastn" if query_type == "nucl" else "tblastn"
 
         blast_cmd = [
-            "blastn" if query_type == "nucl" else "blastp",
+            blast_type,
             "-query",
             str(query_fasta),
             "-db",
-            str(db_list),
+            str(blast_db),
             "-out",
             str(tmp_blast),
             "-evalue",
@@ -78,109 +64,165 @@ def run_blast(db_list, query_type, query_fasta, tmp_blast, input_eval=0.01, thre
 
 
 def hmmsearch(
-    db_list=None,
-    query_type=None,
-    input_genes="tyr",
+    query_type="prot",
+    input_gene="tyr",
     input_eval=None,
     query_fasta=None,
     threads=None,
 ):
-    tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
-    hmmer_db = db_list["gene"][input_genes]["hmm"][query_type]
-    if not os.path.exists(hmmer_db) or os.path.getsize(hmmer_db) == 0:
-        raise ValueError(f"HMMER database {hmmer_db} not found or is empty.")
+    """Run HMMER search."""
+    try:
+        logger.debug(
+            f"Starting hmmsearch with params: query_type={query_type}, input_gene={input_gene}"
+        )
 
-    # Calculate optimal thread count based on system resources
-    if threads is None:
-        # Use 1 thread by default to avoid resource contention
-        # since multiple workers/threads might run HMMER simultaneously
-        threads = 1
-    else:
-        # Cap threads to avoid oversubscription
-        # Maximum 4 threads per HMMER process to leave resources for other concurrent requests
-        threads = min(int(threads), 4)
+        tmp_hmmer = tempfile.NamedTemporaryFile(suffix=".hmmer.txt").name
+        logger.debug(f"Created temporary output file: {tmp_hmmer}")
 
-    hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} --domE {input_eval} {hmmer_db} {query_fasta}"
-    logger.info(f"Running HMMER search: {hmmer_cmd}")
-    subprocess.run(hmmer_cmd, shell=True)
-    return tmp_hmmer
+        hmmer_db = get_blast_db(db_type="hmm", query_type=query_type)
+
+        # Calculate optimal thread count
+        if threads is None:
+            threads = 1
+        else:
+            threads = min(int(threads), 4)
+        logger.debug(f"Using {threads} threads")
+
+        hmmer_cmd = f"hmmsearch -o {tmp_hmmer} --cpu {threads} -E {input_eval} {hmmer_db} {query_fasta}"
+        logger.debug(f"Running HMMER command: {hmmer_cmd}")
+
+        result = subprocess.run(hmmer_cmd, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"HMMER search failed with return code {result.returncode}")
+            logger.error(f"STDERR: {result.stderr}")
+            raise subprocess.CalledProcessError(result.returncode, hmmer_cmd)
+
+        logger.debug("HMMER search completed successfully")
+        return tmp_hmmer
+
+    except Exception as e:
+        logger.error(f"Error in hmmsearch: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
 
 
 def run_hmmer(
-    db_list=None,
     query_type=None,
-    input_genes="tyr",
-    input_eval=None,
+    input_gene="tyr",
+    input_eval=0.01,
     query_fasta=None,
-    threads=None,
+    threads=2,
 ):
+    """Run HMMER search on input sequence.
+
+    Args:
+        query_type: Type of sequence ('nucl' or 'prot')
+        input_gene: Gene to search for (default: 'tyr')
+        input_eval: E-value threshold
+        query_fasta: Path to query FASTA file
+        threads: Number of CPU threads to use
+
+    Returns:
+        For nucleotide input (query_type=="nucl"):
+            Tuple[Dict, str]: (HMMER results dictionary, path to protein sequence file)
+        For protein input (query_type=="prot"):
+            Tuple[Dict, None]: (HMMER results dictionary, None)
+    """
     try:
-        # family classification should only use protein hmm
-        # first run hmmer using nucl hmm
-        tmp_hmmer = hmmsearch(
-            db_list,
-            query_type,
-            input_genes,
-            input_eval,
-            query_fasta,
-            threads,
+        logger.debug(
+            f"Starting HMMER search with params: query_type={query_type}, input_gene={input_gene}"
         )
+        logger.debug(f"Input FASTA file: {query_fasta}")
 
+        protein_filename = query_fasta
+
+        # Use diamond to extract protein sequence if input is nucleotide
+        if query_type == "nucl":
+            logger.debug(
+                "Input is nucleotide sequence, finding the closest matching protein sequence with DIAMOND"
+            )
+            protein_filename = run_diamond(
+                query_type=query_type,
+                input_gene=input_gene,
+                input_eval=input_eval,
+                query_fasta=query_fasta,
+                threads=threads,
+            )
+            logger.debug(f"Diamond search complete. Output file: {protein_filename}")
+
+        logger.debug(f"Running HMMER search on protein sequence: {protein_filename}")
+        tmp_hmmer = hmmsearch(
+            query_type="prot",  # Always use protein HMM
+            input_gene=input_gene,
+            input_eval=input_eval,
+            query_fasta=protein_filename,
+            threads=threads,
+        )
+        logger.debug(f"HMMER search complete. Output file: {tmp_hmmer}")
+
+        logger.debug("Parsing HMMER results")
         tmp_hmmer_parsed = parse_hmmer(tmp_hmmer)
-        # extract the gene sequence
-        gene_header, gene_seq = extract_gene_from_hmmer(tmp_hmmer_parsed)
+        logger.debug(f"Parsed HMMER results saved to: {tmp_hmmer_parsed}")
 
-        # translate nucl queries
-        if query_type == "nucl" and gene_header is not None and gene_seq is not None:
-            tmp_protein = get_protein_sequence(gene_header, gene_seq)
-            if tmp_protein is not None:
-                # run hmmer using protein sequence of extracted gene
-                tmp_hmmer_protein = hmmsearch(
-                    db_list,
-                    "prot",
-                    input_genes,
-                    input_eval,
-                    tmp_protein,
-                    threads,
-                )
-                tmp_hmmer_protein_parsed = parse_hmmer(tmp_hmmer_protein)
-                logger.info(
-                    f"Second hmmersearch run stored at: {tmp_hmmer_protein_parsed}"
-                )
-                hmmer_results = pd.read_csv(tmp_hmmer_protein_parsed, sep="\t")
+        hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
+        logger.debug(
+            f"HMMER results loaded into DataFrame with shape: {hmmer_results.shape}"
+        )
+        logger.debug(f"HMMER results columns: {hmmer_results.columns}")
+
+        # Return protein_filename only for nucleotide input
+        if query_type == "nucl":
+            return hmmer_results.to_dict("records"), protein_filename
         else:
-            hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
+            return hmmer_results.to_dict("records"), None
 
-        logger.debug(f"HMMER results parsed: {hmmer_results.shape[0]} rows.")
-
-        return hmmer_results.to_dict("records")
     except Exception as e:
-        logger.error(f"Error in HMMER search: {e}")
-        return None
+        logger.error(f"Error in HMMER search: {str(e)}")
+        logger.exception("Full traceback:")
+        return None, None
 
 
 # Parse the HMMER results
 def parse_hmmer(hmmer_output_file):
-    parsed_file = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
-    with open(parsed_file, "w") as tsv_file:
-        tsv_file.write(
-            "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
-        )
-        for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
-            for hit in record.hits:
-                for hsp in hit.hsps:
-                    query_seq = str(hsp.query.seq)
-                    subject_seq = clean_shipID(str(hsp.hit.seq))
-                    aln_length = hsp.aln_span
-                    query_start = hsp.query_start
-                    query_end = hsp.query_end
-                    gaps = str("N/A")
-                    bitscore = hsp.bitscore
-                    evalue = hsp.evalue
-                    tsv_file.write(
-                        f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
-                    )
-    return parsed_file
+    """Parse HMMER output file."""
+    try:
+        logger.debug(f"Starting to parse HMMER output file: {hmmer_output_file}")
+
+        parsed_file = tempfile.NamedTemporaryFile(suffix=".hmmer.parsed.txt").name
+        logger.debug(f"Created temporary parsed output file: {parsed_file}")
+
+        with open(parsed_file, "w") as tsv_file:
+            tsv_file.write(
+                "query_id\thit_IDs\taln_length\tquery_start\tquery_end\tgaps\tquery_seq\tsubject_seq\tevalue\tbitscore\n"
+            )
+
+            logger.debug("Parsing HMMER records")
+            record_count = 0
+            hit_count = 0
+
+            for record in SearchIO.parse(hmmer_output_file, "hmmer3-text"):
+                record_count += 1
+                for hit in record.hits:
+                    hit_count += 1
+                    for hsp in hit.hsps:
+                        query_seq = str(hsp.query.seq)
+                        subject_seq = clean_shipID(str(hsp.hit.seq))
+                        aln_length = hsp.aln_span
+                        query_start = hsp.query_start
+                        query_end = hsp.query_end
+                        gaps = str("N/A")
+                        bitscore = hsp.bitscore
+                        evalue = hsp.evalue
+
+                        tsv_file.write(
+                            f"{hit.id}\t{record.id}\t{aln_length}\t{query_start}\t{query_end}\t{gaps}\t{query_seq}\t{subject_seq}\t{evalue}\t{bitscore}\n"
+                        )
+        return parsed_file
+
+    except Exception as e:
+        logger.error(f"Error parsing HMMER output: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
 
 
 # parse blast xml output to tsv
@@ -229,40 +271,6 @@ def parse_blast_xml(xml):
                     logger.error(f"Error processing HSP: {e}")
                     continue
     return parsed_file
-
-
-def extract_gene_from_hmmer(parsed_file):
-    data = pd.read_csv(parsed_file, sep="\t")
-
-    # Get rows with the lowest e-value for each unique entry in Query
-    min_evalue_rows = data.loc[data.groupby("query_id")["evalue"].idxmin()]
-    # Reset the index
-    min_evalue_rows = min_evalue_rows.reset_index(drop=True)
-
-    # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".besthit.txt").name
-    # top_hit_out_path = tempfile.NamedTemporaryFile(suffix=".best_hsp.fa").name
-    # logger.info(f"Best hit for gene sequence: {top_hit_out_path}")
-
-    query = min_evalue_rows.loc[0, "query_id"]
-    qseq = min_evalue_rows.loc[0, "query_seq"].replace(".", "")
-
-    logger.info(f"Sequence has length {len(qseq)}")
-
-    return query, qseq
-
-    # output = html.Div(
-    #     [
-    #         dbc.Button(
-    #             "Download best captain hit",
-    #             id="subject-seq-button",
-    #             n_clicks=0,
-    #             className="d-grid gap-2 col-6 mx-auto",
-    #             style={"fontSize": "1rem"},
-    #         ),
-    #         dcc.Download(id="subject-seq-dl-package"),
-    #     ]
-    # )
-    # return output
 
 
 def circos_prep(blast_output, links_output, layout_output):
@@ -335,7 +343,7 @@ def circos_prep(blast_output, links_output, layout_output):
         json.dump(layout, json_file, indent=4)
 
 
-def blast_download_button():
+def blast_download_button(blast_file=None):
     """Creates the download button for BLAST results."""
     return html.Div(
         [
@@ -348,6 +356,8 @@ def blast_download_button():
                     gradient={"from": "indigo", "to": "cyan"},
                     size="lg",
                     leftSection=[html.I(className="bi bi-download")],
+                    # Store the file path in a data attribute if needed
+                    **{"data-blast-file": blast_file} if blast_file else {},
                 )
             ),
             dcc.Download(id="blast-dl"),
@@ -402,41 +412,30 @@ def select_ship_family(hmmer_results):
         return None, None, None
 
 
-# TODO: add qseq_translated to the output``
 def run_diamond(
-    db_list=None,
+    input_gene="tyr",
+    input_eval=0.01,
     query_type=None,
-    input_genes="tyr",
-    input_eval=None,
     query_fasta=None,
     threads=2,
 ):
-    """Run DIAMOND search against protein database.
-
-    Args:
-        db_list: Dictionary containing database paths
-        query_type: Type of query sequence ('nucl' or 'prot')
-        input_genes: Gene type to search against (default: 'tyr')
-        input_eval: E-value threshold
-        query_fasta: Path to query FASTA file
-        threads: Number of threads to use
-
-    Returns:
-        List of dictionaries containing DIAMOND results
-    """
+    """Run DIAMOND search against protein database and extract protein sequences."""
     try:
         diamond_out = tempfile.NamedTemporaryFile(suffix=".tsv", delete=False).name
+        protein_out = tempfile.NamedTemporaryFile(suffix=".faa", delete=False).name
 
-        try:
-            diamond_db = db_list["gene"][input_genes]["prot"]
-        except KeyError:
-            raise ValueError(f"Database path not found for gene type: {input_genes}")
-
-        if not os.path.exists(diamond_db) or os.path.getsize(diamond_db) == 0:
-            raise ValueError(f"DIAMOND database {diamond_db} not found or is empty")
+        diamond_db = get_blast_db(
+            db_type="diamond", query_type="prot", gene_type=input_gene
+        )
 
         blast_type = "blastx" if query_type == "nucl" else "blastp"
         evalue = input_eval if input_eval else 0.001
+
+        # Use standard format without qseq_translated
+        outfmt = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore"
+
+        # Remove "6" and split by space for column names
+        column_names = outfmt.split()[1:]
 
         diamond_cmd = [
             "diamond",
@@ -467,25 +466,42 @@ def run_diamond(
             raise
 
         if os.path.getsize(diamond_out) > 0:
-            column_names = [
-                "qseqid",
-                "sseqid",
-                "pident",
-                "length",
-                "mismatch",
-                "gapopen",
-                "qstart",
-                "qend",
-                "sstart",
-                "send",
-                "evalue",
-                "bitscore",
-            ]
             diamond_results = pd.read_csv(diamond_out, sep="\t", names=column_names)
-            return diamond_results.to_dict("records")
+
+            # Sort by evalue and get top hit for each query
+            top_hits = diamond_results.sort_values(by="evalue").drop_duplicates(
+                subset="qseqid", keep="first"
+            )
+
+            # For each hit, extract the protein sequence using getorf or translate directly
+            with open(protein_out, "w") as fasta_file:
+                for _, row in top_hits.iterrows():
+                    if blast_type == "blastx":
+                        # Determine strand based on coordinates
+                        strand = 1 if row["qstart"] < row["qend"] else -1
+                        protein_seq = translate_from_coordinates(
+                            query_fasta,
+                            row["qseqid"],
+                            min(row["qstart"], row["qend"]),
+                            max(row["qstart"], row["qend"]),
+                            strand,
+                        )
+                        if protein_seq:
+                            fasta_file.write(f">{row['qseqid']}\n{protein_seq}\n")
+                    else:
+                        # For blastp, use original sequence
+                        from Bio import SeqIO
+
+                        for record in SeqIO.parse(query_fasta, "fasta"):
+                            if record.id == row["qseqid"]:
+                                fasta_file.write(f">{record.id}\n{str(record.seq)}\n")
+                                break
+
+            return protein_out
+
         else:
             logger.warning("No DIAMOND hits found")
-            return []
+            return None
 
     except Exception as e:
         logger.error(f"Error running DIAMOND: {str(e)}")
@@ -494,6 +510,33 @@ def run_diamond(
     finally:
         if "diamond_out" in locals() and os.path.exists(diamond_out):
             os.unlink(diamond_out)
+
+
+def translate_from_coordinates(fasta_file, qseqid, qstart, qend, strand=1):
+    """Translate nucleotide sequence using coordinates from Diamond."""
+    from Bio import SeqIO
+
+    for record in SeqIO.parse(fasta_file, "fasta"):
+        if record.id == qseqid:
+            # Extract the region based on coordinates (1-based)
+            qstart = max(1, qstart) - 1  # Convert to 0-based
+            region = record.seq[qstart:qend]
+
+            # Determine reading frame
+            frame = qstart % 3
+
+            # Adjust sequence to proper frame
+            adjusted_seq = region[frame:]
+
+            # Translate (handle both strands)
+            if strand > 0:
+                protein = adjusted_seq.translate()
+            else:
+                protein = adjusted_seq.reverse_complement().translate()
+
+            return str(protein)
+
+    return None
 
 
 def make_captain_alert(family, aln_length, evalue, search_type):
@@ -634,13 +677,39 @@ def create_no_matches_alert():
     )
 
 
-def get_blast_db(query_type):
+def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
     """Get the appropriate BLAST database configuration based on query type."""
     from src.config.settings import BLAST_DB_PATHS
 
-    if query_type == "nucl":
-        return BLAST_DB_PATHS["ship"]["nucl"]
-    elif query_type == "prot":
-        return BLAST_DB_PATHS["gene"]["tyr"]["prot"]
+    if db_type == "blast":
+        if query_type == "nucl":
+            db = BLAST_DB_PATHS["ship"][query_type]
+        elif query_type == "prot":
+            db = BLAST_DB_PATHS["gene"][gene_type][query_type]
+        else:
+            raise ValueError(f"Invalid query type: {query_type}")
+    elif db_type == "diamond":
+        # Add this case for Diamond databases
+        if query_type == "nucl" or query_type == "prot":
+            db = BLAST_DB_PATHS["gene"][gene_type][query_type] + ".dmnd"
+        else:
+            raise ValueError(f"Invalid query type: {query_type}")
+    elif db_type == "hmm":
+        if query_type == "nucl":
+            db = BLAST_DB_PATHS["gene"][gene_type]["hmm"]["nucl"]
+        elif query_type == "prot":
+            db = BLAST_DB_PATHS["gene"][gene_type]["hmm"]["prot"]
+        else:
+            raise ValueError(f"Invalid query type: {query_type}")
     else:
-        raise ValueError(f"Invalid query type: {query_type}")
+        raise ValueError(f"Invalid database type: {db_type}")
+
+    if not os.path.exists(db):
+        logger.error(f"BLAST database not found: {db}")
+        raise ValueError(f"BLAST database {db} not found.")
+
+    if os.path.getsize(db) == 0:
+        logger.error(f"BLAST database is empty: {db}")
+        raise ValueError(f"BLAST database {db} is empty.")
+
+    return db
