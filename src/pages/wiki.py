@@ -13,7 +13,7 @@ from dash_iconify import DashIconify
 
 import pandas as pd
 import os
-import logging
+from src.config.logging import get_logger
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -32,7 +32,7 @@ dash.register_page(__name__)
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_accordion_item(df, papers, category):

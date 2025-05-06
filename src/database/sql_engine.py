@@ -1,8 +1,8 @@
-import logging
+from src.config.logging import get_logger
 from contextlib import contextmanager
 from src.config.database import StarbaseSession, SubmissionsSession, TelemetrySession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @contextmanager

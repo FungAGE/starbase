@@ -1,14 +1,14 @@
+import tempfile
+import pandas as pd
+from typing import Optional
 from src.config.celery_config import celery
 from src.config.cache import cache, cleanup_old_cache
 from src.utils.telemetry import maintain_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
-import tempfile
-import logging
-import pandas as pd
-from typing import Optional
+from src.config.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Make sure this is at the top level of the module
 __all__ = [

@@ -1,7 +1,3 @@
-import re
-import warnings
-import logging
-import tempfile
 from io import StringIO
 import base64
 import pandas as pd
@@ -13,10 +9,12 @@ from dash import html
 import dash_mantine_components as dmc
 from typing import Dict
 import os
+import tempfile
+import re
 
-warnings.filterwarnings("ignore")
+from src.config.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def clean_sequence(seq):

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 from datetime import datetime
 import warnings
-import logging
+from src.config.logging import get_logger
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 import pandas as pd
@@ -23,7 +23,7 @@ from sqlalchemy import text
 from src.config.database import TelemetrySession
 
 warnings.filterwarnings("ignore")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Load environment variables from .env file
 env_path = Path(".") / ".env"

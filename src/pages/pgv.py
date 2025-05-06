@@ -6,7 +6,8 @@ from dash.dependencies import Output, Input, State
 
 import os
 import tempfile
-import logging
+
+from src.config.logging import get_logger
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
@@ -18,7 +19,7 @@ from src.components.callbacks import create_modal_callback
 from src.components.error_boundary import handle_callback_error
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dash.register_page(__name__)
 

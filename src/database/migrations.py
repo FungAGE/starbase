@@ -1,8 +1,8 @@
 from sqlalchemy import text
-import logging
+from src.config.logging import get_logger
 from src.config.database import StarbaseSession
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_database_indexes():
