@@ -1,5 +1,4 @@
-# Select base image
-FROM python:3.9
+FROM condaforge/miniforge3:latest
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="STARBASE is a database and toolkit for exploring large transposable elements in Fungi"
 
@@ -18,12 +17,12 @@ ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.
     SUPERCRONIC_SHA1SUM=6817299e04457e5d6ec4809c72ee13a43e95ba41
 
 # Add user to system
-RUN useradd -m -u 1000 $USER
+RUN useradd -m -u 1001 $USER
 
 # Set working directory
 WORKDIR $HOME/
 
-# System dependencies, conda, and supercronic installation (combined to reduce layers)
+# System dependencies and supercronic installation
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y curl iptables wget redis-server && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
@@ -33,30 +32,20 @@ RUN apt-get update && apt-get upgrade -y && \
     chmod +x "$SUPERCRONIC" && \
     mv "$SUPERCRONIC" "/usr/local/bin/supercronic"
 
-# Install Miniconda
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
-    bash miniconda.sh -b -p $HOME/miniconda && \
-    rm miniconda.sh && \
-    echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
-    echo "conda activate starbase" >> $HOME/.bashrc
-
-ENV PATH=$HOME/miniconda/bin:$PATH
-
-# Copy environment file and create conda environment 
+# Copy environment file and create conda environment
 COPY environment.yaml .
 RUN conda env create -f environment.yaml && \
     conda clean -afy
 
 # Set conda environment to activate by default
-ENV PATH=$HOME/miniconda/envs/starbase/bin:$PATH
-ENV CONDA_DEFAULT_ENV=starbase
+SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
 
 # Install Node.js, npm, and blasterjs
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g biojs-vis-blasterjs
 
-# Create cron and cache directories and set up logging (combined directory creation)
+# Create cron and cache directories and set up logging
 RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
     touch /var/log/cron/cron.log && \
     # Create crontab file for supercronic
@@ -64,6 +53,8 @@ RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache
     echo "*/15 * * * * cd $HOME && curl -X POST http://localhost:8000/api/refresh-telemetry >> $HOME/cron/cron.log 2>&1" >> $HOME/cron/crontab && \
     # Add cache check to crontab
     echo "*/5 * * * * curl -f http://localhost:8000/api/cache/status || curl -X POST http://localhost:8000/api/cache/refresh" >> $HOME/cron/crontab && \
+    # Add Celery beat check (hourly check to make sure it's running)
+    echo "0 * * * * if ! pgrep -f 'celery -A src.config.celery_config:celery beat' > /dev/null; then cd $HOME && restart_celery_beat >> $HOME/cron/cron.log 2>&1; fi" >> $HOME/cron/crontab && \
     # Set permissions for all directories
     chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
     chmod -R 777 $HOME/src/database/db/cache
@@ -80,3 +71,7 @@ RUN chmod +x start-script.sh && \
 
 # Switch to user
 USER $USER
+
+# Always activate conda environment when container starts
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "starbase"]
+CMD ["./start-script.sh"]
