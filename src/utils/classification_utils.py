@@ -1,4 +1,3 @@
-import tempfile
 import subprocess
 import logging
 import pandas as pd
@@ -6,6 +5,8 @@ import hashlib
 import os
 import glob
 import signal
+import uuid
+
 from src.tasks import (
     check_exact_matches_task,
     check_contained_matches_task,
@@ -20,6 +21,7 @@ from src.utils.seq_utils import (
     create_tmp_fasta_dir,
     load_fasta_to_dict,
 )
+from src.config.cache import cache_dir
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 
@@ -210,8 +212,11 @@ def check_contained_match(
     logger.info(f"Checking for contained matches (query length: {query_len})")
 
     # ruff: noqa
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as ref_file:
+    unique_id = str(uuid.uuid4())
+    query_file = os.path.join(cache_dir, "tmp", f"{unique_id}.fasta")
+    ref_file = os.path.join(cache_dir, "tmp", f"{unique_id}.fasta")
+    with open(query_file, "w") as query_file:
+        with open(ref_file, "w") as ref_file:
             logger.debug("Writing query sequence to temporary file")
             query_file.write(f">query\n{sequence}\n")
             query_file.flush()
@@ -286,7 +291,8 @@ def check_similar_match(
     """Check for sequences with similarity above threshold using k-mer comparison."""
     logger.info(f"Starting similarity comparison (threshold={threshold})")
 
-    tmp_fasta_all_ships = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    unique_id = str(uuid.uuid4())
+    tmp_fasta_all_ships = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
     write_multi_fasta(
         existing_ships,
         tmp_fasta_all_ships,
@@ -294,7 +300,7 @@ def check_similar_match(
         id_col="accession_tag",
     )
 
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    tmp_fasta = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
 
     if os.path.exists(fasta):
         logger.info(f"Loading sequence from file: {fasta}")
@@ -490,7 +496,8 @@ def classify_haplotype(fasta: str, existing_ships: pd.DataFrame, navis: str) -> 
     # - All existing classified sequences for this navis
 
     existing_ships_navis = existing_ships[existing_ships["starship_navis"] == navis]
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    unique_id = str(uuid.uuid4())
+    tmp_fasta = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
     write_combined_fasta(
         fasta,
         existing_ships_navis,
@@ -742,25 +749,24 @@ def calculate_similarities(
     else:
         raise ValueError(f"Invalid sequence type: {seq_type}")
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        # 0. create sketch of ships
-        ship_sketch_file = os.path.join(tmp_dir, "ships.sig")
-        sourmash_sketch(
-            ship_sequence_file, ship_sketch_file, kmer_size, scaled, sketch_type
-        )
+    unique_id = str(uuid.uuid4())
+    tmp_dir = os.path.join(cache_dir, "tmp", f"{unique_id}")
+    # 0. create sketch of ships
+    ship_sketch_file = os.path.join(tmp_dir, "ships.sig")
+    sourmash_sketch(
+        ship_sequence_file, ship_sketch_file, kmer_size, scaled, sketch_type
+    )
 
-        # 1. Create signature file
-        sig_file = os.path.join(tmp_dir, "sequences.sig")
-        sourmash_sketch(new_sequence_file, sig_file, kmer_size, scaled, sketch_type)
+    # 1. Create signature file
+    sig_file = os.path.join(tmp_dir, "sequences.sig")
+    sourmash_sketch(new_sequence_file, sig_file, kmer_size, scaled, sketch_type)
 
-        # 2. Calculate pairwise similarities
-        matrix_file = os.path.join(tmp_dir, "similarity.csv")
-        sourmash_compare(
-            ship_sketch_file, sig_file, matrix_file, kmer_size, sketch_type
-        )
+    # 2. Calculate pairwise similarities
+    matrix_file = os.path.join(tmp_dir, "similarity.csv")
+    sourmash_compare(ship_sketch_file, sig_file, matrix_file, kmer_size, sketch_type)
 
-        # 3. Parse similarity matrix
-        return parse_similarity_matrix(matrix_file)
+    # 3. Parse similarity matrix
+    return parse_similarity_matrix(matrix_file)
 
 
 def parse_similarity_matrix(matrix_file):
@@ -829,27 +835,28 @@ def cluster_sequences(
             node_data: dict of node metadata
             edge_data: dict of edge weights
     """
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        # 1. Remap similarity values if threshold > 0
-        if threshold > 0:
-            remapped_sim = os.path.join(tmp_dir, "remapped.sim")
-            remap_similarities(similarity_file, remapped_sim, threshold)
-            input_file = remapped_sim
-        else:
-            input_file = similarity_file
+    unique_id = str(uuid.uuid4())
+    tmp_dir = os.path.join(cache_dir, "tmp", f"{unique_id}")
+    # 1. Remap similarity values if threshold > 0
+    if threshold > 0:
+        remapped_sim = os.path.join(tmp_dir, "remapped.sim")
+        remap_similarities(similarity_file, remapped_sim, threshold)
+        input_file = remapped_sim
+    else:
+        input_file = similarity_file
 
-        # 2. Run MCL clustering
-        mcl_output = os.path.join(tmp_dir, "mcl_clusters.txt")
-        run_mcl_clustering(input_file, mcl_output, inflation, threads)
+    # 2. Run MCL clustering
+    mcl_output = os.path.join(tmp_dir, "mcl_clusters.txt")
+    run_mcl_clustering(input_file, mcl_output, inflation, threads)
 
-        # 3. Parse results and assign group names
-        groups = parse_and_name_groups(mcl_output, group_prefix)
+    # 3. Parse results and assign group names
+    groups = parse_and_name_groups(mcl_output, group_prefix)
 
-        # 4. Generate node and edge data for visualization
-        node_data = generate_node_data(groups)
-        edge_data = generate_edge_data(similarity_file)
+    # 4. Generate node and edge data for visualization
+    node_data = generate_node_data(groups)
+    edge_data = generate_edge_data(similarity_file)
 
-        return groups, node_data, edge_data
+    return groups, node_data, edge_data
 
 
 def remap_similarities(input_file, output_file, threshold):
@@ -997,44 +1004,45 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
     """
 
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Run MetaEuk with explicit paths
-            cmd = [
-                "metaeuk",
-                "easy-predict",
-                os.path.abspath(query_fasta),  # Use absolute path
-                os.path.abspath(ref_db),  # Use absolute path
-                os.path.abspath(output_prefix),  # Use absolute path
-                tmp_dir,
-                "--metaeuk-eval",
-                "0.0001",
-                "-e",
-                "100",
-                "--max-seqs",
-                "1",
-                "--min-length",
-                "40",
-                "--search-type",
-                "3",
-                "--threads",
-                str(threads),
-            ]
+        unique_id = str(uuid.uuid4())
+        tmp_dir = os.path.join(cache_dir, "tmp", f"{unique_id}")
+        # Run MetaEuk with explicit paths
+        cmd = [
+            "metaeuk",
+            "easy-predict",
+            os.path.abspath(query_fasta),  # Use absolute path
+            os.path.abspath(ref_db),  # Use absolute path
+            os.path.abspath(output_prefix),  # Use absolute path
+            tmp_dir,
+            "--metaeuk-eval",
+            "0.0001",
+            "-e",
+            "100",
+            "--max-seqs",
+            "1",
+            "--min-length",
+            "40",
+            "--search-type",
+            "3",
+            "--threads",
+            str(threads),
+        ]
 
-            # Run command and capture output
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # Run command and capture output
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
 
-            # Check if output files were created
-            codon_fasta = f"{output_prefix}.codon.fas"
-            fasta = f"{output_prefix}.fas"
-            gff = f"{output_prefix}.gff"
+        # Check if output files were created
+        codon_fasta = f"{output_prefix}.codon.fas"
+        fasta = f"{output_prefix}.fas"
+        gff = f"{output_prefix}.gff"
 
-            for file_path in [codon_fasta, fasta, gff]:
-                if not os.path.exists(file_path):
-                    raise FileNotFoundError(
-                        f"Expected output file not created: {file_path}"
-                    )
+        for file_path in [codon_fasta, fasta, gff]:
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(
+                    f"Expected output file not created: {file_path}"
+                )
 
-            return codon_fasta, fasta, gff
+        return codon_fasta, fasta, gff
 
     except subprocess.CalledProcessError as e:
         logger.error(f"MetaEuk easy-predict failed with return code {e.returncode}")

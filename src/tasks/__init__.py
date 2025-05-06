@@ -1,12 +1,13 @@
 from src.config.celery_config import celery
-from src.config.cache import cache, cleanup_old_cache
+from src.config.cache import cache, cleanup_old_cache, cache_dir
 from src.utils.telemetry import maintain_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
-import tempfile
 import logging
 import pandas as pd
 from typing import Optional
+import os
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +58,17 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
     """Celery task to run BLAST search"""
 
     try:
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
+        # Generate a unique filename in the shared cache directory
+        unique_id = str(uuid.uuid4())
+        shared_blast_file = os.path.join(
+            cache_dir, "tmp", f"blast_result_{unique_id}.blast"
+        )
 
-        # Run BLAST
+        # Run BLAST and save output to the shared location
         blast_results_file = run_blast(
             query_type=query_type,
-            query_fasta=tmp_query_fasta,
-            tmp_blast=tmp_blast,
+            query_fasta=write_temp_fasta(query_header, query_seq),
+            tmp_blast=shared_blast_file,
             input_eval=eval_threshold,
             threads=2,
         )
@@ -73,7 +76,7 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
         if blast_results_file is None:
             return None
 
-        return blast_results_file
+        return shared_blast_file
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
