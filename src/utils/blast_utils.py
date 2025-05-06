@@ -5,7 +5,7 @@ import os
 import subprocess
 import json
 import pandas as pd
-import logging
+from src.config.logging import get_logger
 import uuid
 
 from Bio import SearchIO
@@ -16,7 +16,7 @@ from src.utils.seq_utils import (
 from src.components.error_boundary import create_error_alert
 from src.config.cache import cache_dir
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):

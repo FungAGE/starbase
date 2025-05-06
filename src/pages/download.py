@@ -13,10 +13,10 @@ from src.components.callbacks import (
 
 from src.database.sql_manager import fetch_download_data, fetch_ships
 from src.components.tables import make_dl_table, table_no_results_alert, table_error
-import logging
+from src.config.logging import get_logger
 from src.utils.seq_utils import create_ncbi_style_header
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dash.register_page(__name__)
 

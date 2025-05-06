@@ -1,5 +1,5 @@
 import subprocess
-import logging
+from src.config.logging import get_logger
 import pandas as pd
 import hashlib
 import os
@@ -25,7 +25,7 @@ from src.config.cache import cache_dir
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 accession_workflow = """
 ########################################################

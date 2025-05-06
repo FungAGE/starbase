@@ -5,7 +5,7 @@ import plotly.graph_objs as go
 
 import subprocess
 import os
-import logging
+from src.config.logging import get_logger
 import uuid
 
 from src.config.cache import cache_dir
@@ -14,7 +14,7 @@ from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 default_highlight_colors = {
@@ -485,6 +485,6 @@ def gappa(tmp_tree):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    logging.info(f"Tree output: {out_tree}")
+    logger.info(f"Tree output: {out_tree}")
 
     return out_tree

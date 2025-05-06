@@ -2,13 +2,9 @@ from src.utils.seq_utils import load_fasta_to_dict
 from src.utils.classification_utils import assign_accession
 from src.config.database import StarbaseSession
 import pandas as pd
-import logging
+from src.config.logging import get_logger
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 fasta_file = "/home/adrian/Downloads/Hephaestus_all.fasta"
 fasta_dict = load_fasta_to_dict(fasta_file)

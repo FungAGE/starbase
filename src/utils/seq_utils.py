@@ -1,6 +1,6 @@
 import re
 import warnings
-import logging
+from src.config.logging import get_logger
 from io import StringIO
 import base64
 import pandas as pd
@@ -18,7 +18,7 @@ from src.config.cache import cache_dir
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def clean_sequence(seq):

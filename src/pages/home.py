@@ -2,7 +2,7 @@ import dash
 import dash_mantine_components as dmc
 from dash import dcc, html, callback
 from dash_iconify import DashIconify
-import logging
+from src.config.logging import get_logger
 
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
@@ -12,7 +12,7 @@ from src.components.callbacks import download_ships_card
 from src.database.sql_engine import check_database_connection
 from src.database.sql_manager import get_database_stats
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dash.register_page(__name__, title="starbase Home", name="Home", path="/")
 

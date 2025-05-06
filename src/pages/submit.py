@@ -8,7 +8,7 @@ from dash import dcc, html, callback
 
 import datetime
 from src.utils.seq_utils import parse_fasta, parse_gff
-import logging
+from src.config.logging import get_logger
 
 from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,7 +17,7 @@ from src.components.callbacks import create_file_upload
 from src.utils.classification_utils import assign_accession
 from src.database.sql_manager import fetch_ships
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
