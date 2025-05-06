@@ -43,13 +43,16 @@ def refresh_telemetry_task(ipstack_api_key):
 
 
 @celery.task(name="cleanup_cache")
-def cleanup_cache_task():
-    """Celery task to clean up cache files"""
+def cleanup_cache_task(max_age_hours=24):
+    """Celery task to clean up cache files older than specified hours"""
     try:
-        cleanup_old_cache()
-        return {"status": "success", "message": "Cache cleanup completed"}
+        result = cleanup_old_cache(max_age_hours)
+        return {
+            "status": "success",
+            "message": f"Cache cleanup completed: removed {result.get('removed', 0)} files, kept {result.get('kept', 0)} files",
+        }
     except Exception as e:
-        logger.error(f"Cache cleanup failed: {str(e)}")
+        logger.error(f"Cache cleanup task failed: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 
@@ -252,10 +255,15 @@ def run_classification_workflow_task(self, upload_data):
     from src.utils.classification_utils import run_classification_workflow
 
     try:
-        # Run the sequential workflow
+        # Run the workflow
         result = run_classification_workflow(upload_data)
+
+        # Clean up temporary files immediately if needed
+        # Only clean files that are at least 1 hour old to avoid removing
+        # files still in use by other processes
+        cleanup_old_cache(max_age_hours=1)
+
         return result
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
-        logger.exception("Full traceback:")
         raise

@@ -36,7 +36,6 @@ server.config.update(
 )
 
 cache.init_app(server)
-cleanup_old_cache()
 limiter.init_app(server)
 register_routes(server, limiter)
 _dash_renderer._set_react_version("18.2.0")
@@ -106,7 +105,8 @@ def initialize_app():
         from src.database.migrations import create_database_indexes
 
         create_database_indexes()
-        cleanup_old_cache()
+        # Use a more aggressive cleanup on startup (files older than 7 days)
+        cleanup_old_cache(max_age_hours=168)  # 7 days in hours
         maintain_ip_locations()
 
 
