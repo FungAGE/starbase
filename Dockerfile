@@ -39,7 +39,10 @@ RUN conda env create -f environment.yaml && \
 
 # Copy application code (changes most frequently, so do this last)
 COPY ./ ./
-RUN chmod +x start-script.sh && \
+
+# Create necessary directories and set permissions
+RUN mkdir -p $HOME/src/database/db/cache /var/run/crond /var/log/cron && \
+    chmod +x start-script.sh && \
     # Ensure all directories and files are owned by starbase user
     chown -R $USER:$USER $HOME && \
     chmod -R 755 $HOME && \
