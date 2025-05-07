@@ -37,6 +37,15 @@ COPY environment.yaml .
 RUN conda env create -f environment.yaml && \
     conda clean -afy
 
+# Copy application code (changes most frequently, so do this last)
+COPY ./ ./
+RUN chmod +x start-script.sh && \
+    # Ensure all directories and files are owned by starbase user
+    chown -R $USER:$USER $HOME && \
+    chmod -R 755 $HOME && \
+    chmod -R 777 $HOME/src/database/db/cache && \
+    chmod -R 777 /var/run/crond /var/log/cron
+
 # Set conda environment to activate by default
 SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
 
@@ -63,17 +72,7 @@ RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/cache/status || exit 1
 
-# Copy application code (changes most frequently, so do this last)
-COPY ./ ./
-
-# These commands need root privileges
-RUN chmod +x start-script.sh && \
-    chown -R $USER: $USER $HOME && \
-    chmod -R 755 $HOME && \
-    chmod -R 777 $HOME/src/database/db/cache && \
-    chmod -R 777 /var/run/crond /var/log/cron
-
-# Switch to user AFTER all root operations are complete
+# Switch to user
 USER $USER
 
 # Always activate conda environment when container starts
