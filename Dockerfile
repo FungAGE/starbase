@@ -67,7 +67,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 COPY ./ ./
 RUN chmod +x start-script.sh && \
     # Ensure all directories and files are owned by starbase user
-    chown -R $USER:$USER $HOME/src
+    chown -R $USER: $USER $HOME && \
+    chmod -R 755 $HOME && \
+    chmod -R 777 $HOME/src/database/db/cache && \
+    chmod -R 777 /var/run/crond /var/log/cron
 
 # Switch to user
 USER $USER
