@@ -46,7 +46,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 COPY ./ ./
 
 # Create necessary directories and set permissions
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database && \
+RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database /dev/shm/starbase_cache/tmp /dev/shm/starbase_cache/celery && \
     touch /var/log/cron/cron.log && \
     # Create crontab file for supercronic
     echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
@@ -60,7 +60,7 @@ RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database && \
     chown $USER:$USER $HOME/start-script.sh && \
     chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
     chmod -R 755 $HOME && \
-    chmod -R 777 /var/run/crond /var/log/cron
+    chmod -R 777 /var/run/crond /var/log/cron /dev/shm/starbase_cache
 
 # Set conda environment to activate by default
 SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
