@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Create and set permissions for cache directory
+mkdir -p $HOME/src/database/db/cache/tmp
+chmod -R 777 $HOME/src/database/db/cache
+
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
 
