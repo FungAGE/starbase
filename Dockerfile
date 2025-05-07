@@ -46,7 +46,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 COPY ./ ./
 
 # Create necessary directories and set permissions
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron && \
+RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database && \
     touch /var/log/cron/cron.log && \
     # Create crontab file for supercronic
     echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \

@@ -7,9 +7,14 @@ if [ ! -x "$0" ]; then
     exit 1
 fi
 
-# Create and set permissions for cache directory
-mkdir -p $HOME/src/database/db/cache/tmp
-chmod -R 777 $HOME/src/database/db/cache
+# Ensure all necessary directories exist and have correct permissions
+for dir in "$HOME/src/database/db" "$HOME/src/database/db/cache" "$HOME/src/database/db/tmp"; do
+    if [ ! -d "$dir" ]; then
+        echo "Directory does not exist, creating: $dir"
+        mkdir -p "$dir"
+    fi
+    chmod -R 777 "$dir"
+done
 
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
