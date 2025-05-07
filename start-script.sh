@@ -1,4 +1,15 @@
 #!/bin/bash
+set -e  # Exit on error
+
+# Ensure script is executable
+if [ ! -x "$0" ]; then
+    echo "Error: Script is not executable"
+    exit 1
+fi
+
+# Create and set permissions for cache directory
+mkdir -p $HOME/src/database/db/cache/tmp
+chmod -R 777 $HOME/src/database/db/cache
 
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes

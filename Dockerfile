@@ -37,25 +37,16 @@ COPY environment.yaml .
 RUN conda env create -f environment.yaml && \
     conda clean -afy
 
-# Copy application code (changes most frequently, so do this last)
-COPY ./ ./
-RUN chmod +x start-script.sh && \
-    # Ensure all directories and files are owned by starbase user
-    chown -R $USER:$USER $HOME && \
-    chmod -R 755 $HOME && \
-    chmod -R 777 $HOME/src/database/db/cache && \
-    chmod -R 777 /var/run/crond /var/log/cron
-
-# Set conda environment to activate by default
-SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
-
 # Install Node.js, npm, and blasterjs
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g biojs-vis-blasterjs
 
-# Create cron and cache directories and set up logging
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
+# Copy application code (changes most frequently, so do this last)
+COPY ./ ./
+
+# Create necessary directories and set permissions
+RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron && \
     touch /var/log/cron/cron.log && \
     # Create crontab file for supercronic
     echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
@@ -64,9 +55,15 @@ RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache
     echo "*/5 * * * * curl -f http://localhost:8000/api/cache/status || curl -X POST http://localhost:8000/api/cache/refresh" >> $HOME/cron/crontab && \
     # Add Celery beat check (hourly check to make sure it's running)
     echo "0 * * * * if ! pgrep -f 'celery -A src.config.celery_config:celery beat' > /dev/null; then cd $HOME && restart_celery_beat >> $HOME/cron/cron.log 2>&1; fi" >> $HOME/cron/crontab && \
-    # Set permissions for all directories
+    # Set permissions for all directories and files
+    chmod +x $HOME/start-script.sh && \
+    chown $USER:$USER $HOME/start-script.sh && \
     chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
-    chmod -R 777 $HOME/src/database/db/cache
+    chmod -R 755 $HOME && \
+    chmod -R 777 /var/run/crond /var/log/cron
+
+# Set conda environment to activate by default
+SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
