@@ -56,7 +56,8 @@ RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron && \
     # Add Celery beat check (hourly check to make sure it's running)
     echo "0 * * * * if ! pgrep -f 'celery -A src.config.celery_config:celery beat' > /dev/null; then cd $HOME && restart_celery_beat >> $HOME/cron/cron.log 2>&1; fi" >> $HOME/cron/crontab && \
     # Set permissions for all directories and files
-    chmod +x start-script.sh && \
+    chmod +x $HOME/start-script.sh && \
+    chown $USER:$USER $HOME/start-script.sh && \
     chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
     chmod -R 755 $HOME && \
     chmod -R 777 /var/run/crond /var/log/cron
