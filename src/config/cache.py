@@ -2,13 +2,13 @@ from flask_caching import Cache
 import os
 import time
 
-from src.config.settings import DATA_DIR
 
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
-cache_dir = os.path.join(DATA_DIR, "cache")
+# Use /dev/shm for temporary storage
+cache_dir = "/dev/shm/starbase_cache"
 os.makedirs(cache_dir, exist_ok=True)
 
 # Create tmp directory
