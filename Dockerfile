@@ -57,7 +57,11 @@ RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache
     echo "0 * * * * if ! pgrep -f 'celery -A src.config.celery_config:celery beat' > /dev/null; then cd $HOME && restart_celery_beat >> $HOME/cron/cron.log 2>&1; fi" >> $HOME/cron/crontab && \
     # Set permissions for all directories
     chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
-    chmod -R 777 $HOME/src/database/db/cache
+    chmod -R 755 $HOME && \
+    chmod -R 777 /var/run/crond /var/log/cron /dev/shm/starbase_cache
+
+# Set conda environment to activate by default
+SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

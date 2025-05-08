@@ -1,4 +1,3 @@
-from io import StringIO
 import base64
 import pandas as pd
 from Bio.SeqRecord import SeqRecord
@@ -11,6 +10,9 @@ from typing import Dict
 import os
 import tempfile
 import re
+import uuid
+
+from src.config.cache import cache_dir
 
 from src.config.logging import get_logger
 
@@ -240,9 +242,8 @@ def get_protein_sequence(header, nuc_sequence):
     Returns:
         str: The filename of the generated FASTA file.
     """
-    protein_output_filename = tempfile.NamedTemporaryFile(
-        suffix=".faa", delete=False
-    ).name
+    unique_id = str(uuid.uuid4())
+    protein_output_filename = os.path.join(cache_dir, "tmp", f"{unique_id}.faa")
     protein_seqs = translate_seq(nuc_sequence)
 
     if protein_seqs is not None:
@@ -654,9 +655,16 @@ def create_ncbi_style_header(row):
 
 
 def write_temp_fasta(header, sequence):
+    """Write a temporary FASTA file."""
+    import os
+    import uuid
+    from src.config.cache import cache_dir
+
     try:
         cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
-        tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        unique_id = str(uuid.uuid4())
+        tmp_query_fasta = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
+
         SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
         logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
         return tmp_query_fasta
@@ -744,7 +752,8 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
         sequences = fasta_sequences
 
     # save each as a fasta file in a temporary directory
-    tmp_fasta_dir = tempfile.mkdtemp()
+    unique_id = str(uuid.uuid4())
+    tmp_fasta_dir = os.path.join(cache_dir, "tmp", f"{unique_id}")
     for seq_id, seq in sequences.items():
         tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
         write_fasta({seq_id: seq}, tmp_fasta)

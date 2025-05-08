@@ -11,10 +11,10 @@ services:
     environment:
       - FLASK_ENV=dev
     volumes:
-      - .:/app
-      - ./src/database/db:/app/src/database/db
+      - .:/home/starbase
+      - ./src/database/db:/home/starbase/src/database/db
     restart: always
-    command: ["./start-script.sh"]
+    command: ["bash", "./start-script.sh"]
   unit-tests:
     build:
       context: .
@@ -23,6 +23,6 @@ services:
     environment:
       - PYTHONPATH=/app:/app/src
     volumes:
-      - .:/app
-      - ./src/database/db:/app/src/database/db
+      - .:/home/starbase
+      - ./src/database/db:/home/starbase/src/database/db
     command: ["pytest", "-v"]

@@ -3,14 +3,15 @@ import warnings
 import io
 import os
 import base64
-import tempfile
 import matplotlib.pyplot as plt
 import plotly.express as px
+import uuid
 
 from Bio.Seq import Seq
 import logomaker as lm
 from Bio.Align.Applications import ClustalwCommandline
 
+from src.config.cache import cache_dir
 from src.utils.seq_utils import clean_sequence
 
 warnings.filterwarnings("ignore")
@@ -123,8 +124,9 @@ def make_logo(seqs, fig_name=None, type=None):
     if not seqs:  # If all sequences are empty, return None
         return None
 
-    temp_in_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False)
-    temp_out_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False)
+    unique_id = str(uuid.uuid4())
+    temp_in_file = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
+    temp_out_file = os.path.join(cache_dir, "tmp", f"{unique_id}.fa")
 
     # Write sequences to the temporary input file
     with open(temp_in_file.name, "w") as file:

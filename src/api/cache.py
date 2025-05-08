@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from src.config.cache import cache, cleanup_old_cache, cache_dir
 from src.config.logging import get_logger
 from src.config.limiter import limiter
@@ -45,8 +45,22 @@ def refresh_cache():
 def force_cache_cleanup():
     """Force cleanup of old cache files."""
     try:
-        cleanup_old_cache()
-        return jsonify({"status": "success", "message": "Cache cleanup completed"}), 200
+        # Get age threshold from request parameters, default to 24 hours
+        max_age_hours = request.json.get("max_age_hours", 24) if request.is_json else 24
+
+        # Validate the threshold
+        if not isinstance(max_age_hours, (int, float)) or max_age_hours < 0:
+            return jsonify(
+                {"status": "error", "error": "Invalid max_age_hours value"}
+            ), 400
+
+        result = cleanup_old_cache(max_age_hours)
+        return jsonify(
+            {
+                "status": "success",
+                "message": f"Cache cleanup completed: removed {result.get('removed', 0)} files",
+            }
+        ), 200
     except Exception as e:
         logger.error(f"Cache cleanup failed: {str(e)}")
         return jsonify({"status": "error", "error": str(e)}), 500
