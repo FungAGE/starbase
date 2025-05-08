@@ -11,6 +11,7 @@ import base64
 import pandas as pd
 import logging
 import time
+import tempfile
 
 from src.config.cache import cache
 from src.utils.seq_utils import (
@@ -28,7 +29,6 @@ from src.components.callbacks import (
     create_file_upload,
 )
 from src.database.sql_manager import fetch_meta_data
-from src.utils.telemetry import blast_limit_decorator
 from src.utils.classification_utils import WORKFLOW_STAGES
 from src.tasks import (
     run_blast_search_task,
@@ -332,118 +332,134 @@ clientside_callback(
     """
     function(data) {
         console.log("BlasterJS callback triggered", data);
-        if (data && data.blast_text) {
-            try {
-                console.log("Initializing BlasterJS with text length:", data.blast_text.length);
-                
-                // Use standard ID selector
-                const container = document.getElementById('blast-container');
-                const loader = document.getElementById('blast-loader');
-                
-                if (!container) {
-                    console.error("No blast container found in the DOM");
-                    console.log("Available IDs:", 
-                        Array.from(document.querySelectorAll('[id]'))
-                            .map(el => el.id)
-                            .join(', ')
-                    );
-                    return window.dash_clientside.no_update;
-                }
-                
-                console.log("Found container:", container);
-                
-                // Clear existing content first
-                container.innerHTML = '';
-                
-                // Create the title element
-                const titleElement = document.createElement('h2');
-                titleElement.innerHTML = 'BLAST Results';
-                titleElement.style.marginTop = '15px';
-                titleElement.style.marginBottom = '20px';
-                titleElement.style.textAlign = 'left';
-                titleElement.style.width = '100%';
-                
-                // Create simple divs for BlasterJS with explicit left alignment
-                const alignmentsDiv = document.createElement('div');
-                alignmentsDiv.id = 'blast-multiple-alignments';
-                alignmentsDiv.style.textAlign = 'left';
-                alignmentsDiv.style.width = '100%';
-                
-                const tableDiv = document.createElement('div');
-                tableDiv.id = 'blast-alignments-table';
-                tableDiv.style.textAlign = 'left';
-                tableDiv.style.width = '100%';
-                
-                // Add elements to the container
-                container.appendChild(titleElement);
-                container.appendChild(alignmentsDiv);
-                container.appendChild(tableDiv);
-                
-                // Add a style element to ensure BlasterJS output is properly aligned
-                const styleEl = document.createElement('style');
-                styleEl.textContent = `
-                    #blast-multiple-alignments, #blast-alignments-table {
-                        text-align: left !important;
-                        margin-left: 0 !important;
-                        padding-left: 0 !important;
-                    }
-                    #blast-multiple-alignments div, #blast-alignments-table div,
-                    #blast-multiple-alignments table, #blast-alignments-table table {
-                        text-align: left !important;
-                        margin-left: 0 !important;
-                    }
-                    .alignment-viewer {
-                        text-align: left !important;
-                    }
-                `;
-                container.appendChild(styleEl);
-                
-                // Basic BlasterJS initialization
-                try {
-                    var blasterjs = require("biojs-vis-blasterjs");
-                    console.log("BlasterJS loaded successfully");
-                    var instance = new blasterjs({
-                        string: data.blast_text,
-                        multipleAlignments: "blast-multiple-alignments",
-                        alignmentsTable: "blast-alignments-table"
-                    });
-                    console.log("BlasterJS initialized successfully");
-                    
-                    // Additional styling fix after BlasterJS renders
-                    setTimeout(function() {
-                        const tables = container.querySelectorAll('table');
-                        tables.forEach(function(table) {
-                            table.style.marginLeft = '0';
-                            table.style.textAlign = 'left';
-                        });
-                    }, 100);
-                    
-                    // Hide the loader after successful initialization
-                    if (loader) {
-                        // Add a small delay to ensure content is rendered
-                        setTimeout(function() {
-                            // Access the data-dashloaderisloading attribute and set it to false
-                            loader.setAttribute('data-dashloaderisloading', 'false');
-                        }, 200);
-                    }
-                } catch (blasterError) {
-                    console.error("Error initializing BlasterJS library:", blasterError);
-                    container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
-                    
-                    // Hide the loader even if there's an error
-                    if (loader) {
-                        loader.setAttribute('data-dashloaderisloading', 'false');
-                    }
-                }
-                
-                return window.dash_clientside.no_update;
-            } catch (error) {
-                console.error('Overall error in callback:', error);
-                return error.toString();
-            }
+        
+        // Check if we have valid data
+        if (!data || !data.blast_text) {
+            console.log("No valid BLAST data available");
+            // Return empty div to avoid undefined errors
+            const container = document.getElementById('blast-container');
+            return window.dash_clientside.no_update;
         }
-        console.log("No BLAST data available");
-        return window.dash_clientside.no_update;
+        
+        try {
+            console.log("Initializing BlasterJS with text length:", data.blast_text.length);
+            
+            // Use standard ID selector
+            const container = document.getElementById('blast-container');
+            const loader = document.getElementById('blast-loader');
+            
+            if (!container) {
+                console.error("No blast container found in the DOM");
+                console.log("Available IDs:", 
+                    Array.from(document.querySelectorAll('[id]'))
+                        .map(el => el.id)
+                        .join(', ')
+                );
+                return window.dash_clientside.no_update;
+            }
+            
+            console.log("Found container:", container);
+            
+            // Clear existing content first
+            container.innerHTML = '';
+            
+            // If we have empty blast text, show a message
+            if (!data.blast_text.trim()) {
+                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
+                return window.dash_clientside.no_update;
+            }
+            
+            // Create the title element
+            const titleElement = document.createElement('h2');
+            titleElement.innerHTML = 'BLAST Results';
+            titleElement.style.marginTop = '15px';
+            titleElement.style.marginBottom = '20px';
+            titleElement.style.textAlign = 'left';
+            titleElement.style.width = '100%';
+            
+            // Create simple divs for BlasterJS with explicit left alignment
+            const alignmentsDiv = document.createElement('div');
+            alignmentsDiv.id = 'blast-multiple-alignments';
+            alignmentsDiv.style.textAlign = 'left';
+            alignmentsDiv.style.width = '100%';
+            
+            const tableDiv = document.createElement('div');
+            tableDiv.id = 'blast-alignments-table';
+            tableDiv.style.textAlign = 'left';
+            tableDiv.style.width = '100%';
+            
+            // Add elements to the container
+            container.appendChild(titleElement);
+            container.appendChild(alignmentsDiv);
+            container.appendChild(tableDiv);
+            
+            // Add a style element to ensure BlasterJS output is properly aligned
+            const styleEl = document.createElement('style');
+            styleEl.textContent = `
+                #blast-multiple-alignments, #blast-alignments-table {
+                    text-align: left !important;
+                    margin-left: 0 !important;
+                    padding-left: 0 !important;
+                }
+                #blast-multiple-alignments div, #blast-alignments-table div,
+                #blast-multiple-alignments table, #blast-alignments-table table {
+                    text-align: left !important;
+                    margin-left: 0 !important;
+                }
+                .alignment-viewer {
+                    text-align: left !important;
+                }
+            `;
+            container.appendChild(styleEl);
+            
+            // Basic BlasterJS initialization
+            try {
+                var blasterjs = require("biojs-vis-blasterjs");
+                console.log("BlasterJS loaded successfully");
+                var instance = new blasterjs({
+                    string: data.blast_text,
+                    multipleAlignments: "blast-multiple-alignments",
+                    alignmentsTable: "blast-alignments-table"
+                });
+                console.log("BlasterJS initialized successfully");
+                
+                // Additional styling fix after BlasterJS renders
+                setTimeout(function() {
+                    const tables = container.querySelectorAll('table');
+                    tables.forEach(function(table) {
+                        table.style.marginLeft = '0';
+                        table.style.textAlign = 'left';
+                    });
+                }, 100);
+                
+                // Hide the loader after successful initialization
+                if (loader) {
+                    // Add a small delay to ensure content is rendered
+                    setTimeout(function() {
+                        // Access the data-dashloaderisloading attribute and set it to false
+                        loader.setAttribute('data-dashloaderisloading', 'false');
+                    }, 200);
+                }
+            } catch (blasterError) {
+                console.error("Error initializing BlasterJS library:", blasterError);
+                container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
+                
+                // Hide the loader even if there's an error
+                if (loader) {
+                    loader.setAttribute('data-dashloaderisloading', 'false');
+                }
+            }
+            
+            return window.dash_clientside.no_update;
+        } catch (error) {
+            console.error('Overall error in callback:', error);
+            // Error handling - display error in container
+            const container = document.getElementById('blast-container');
+            if (container) {
+                container.innerHTML = "<div style='color:red; padding: 20px;'>Error displaying BLAST results: " + error.toString() + "</div>";
+            }
+            return window.dash_clientside.no_update;
+        }
     }
     """,
     Output("blast-container", "children"),
@@ -876,14 +892,14 @@ def process_blast_results(blast_results_store, active_tab_idx):
         return data
     except Exception as e:
         logger.error(f"Error processing BLAST results: {str(e)}")
-        return None
+        # Always return consistent data format, even on error
+        return {"blast_text": ""}  # Return empty string instead of None
 
 
-@blast_limit_decorator
 @callback(
     [
         Output("blast-results-store", "data"),
-        Output("classification-interval", "disabled"),
+        Output("classification-interval", "disabled", allow_duplicate=True),
         Output("workflow-state-store", "data"),
     ],
     [
@@ -902,44 +918,93 @@ def process_blast_results(blast_results_store, active_tab_idx):
 def process_sequences(submission_id, seq_list, evalue_threshold):
     """Process only the first sequence initially, for both text input and file uploads"""
     if not all([seq_list, submission_id]):
-        return None, None, None
+        return None, True, None
 
-    blast_results = None
-    classification_interval_disabled = None
-    workflow_state = None
+    try:
+        blast_results = None
+        classification_interval_disabled = True
+        workflow_state = None
 
-    # Process only the first sequence to start
-    if seq_list and len(seq_list) > 0:
-        # Process sequence 0
-        sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
+        # Process only the first sequence to start
+        if seq_list and len(seq_list) > 0:
+            # Process sequence 0
+            sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
 
-        if sequence_result:
-            # Structure the blast results properly
-            blast_results = {
-                "processed_sequences": [0],  # Indices of processed sequences
-                "sequence_results": {
-                    "0": sequence_result
-                },  # Results keyed by sequence index
-                "total_sequences": len(seq_list),  # Store total number of sequences
-            }
-
-            # Determine if we should enable classification interval
-            skip_classification = len(sequence_result.get("sequence", "")) < 5000
-            classification_interval_disabled = skip_classification
-
-            # Set up workflow state if needed
-            if not skip_classification and sequence_result.get("blast_file"):
-                # This should be set up for classification workflow
-                workflow_state = {
-                    "task_id": submission_id,  # Use submission ID for now
-                    "status": "started",
-                    "complete": False,
-                    "current_stage": None,
-                    "error": None,
-                    "start_time": time.time(),
+            if sequence_result:
+                # Structure the blast results properly
+                blast_results = {
+                    "processed_sequences": [0],  # Indices of processed sequences
+                    "sequence_results": {
+                        "0": sequence_result
+                    },  # Results keyed by sequence index
+                    "total_sequences": len(seq_list),  # Store total number of sequences
                 }
 
-    return blast_results, classification_interval_disabled, workflow_state
+                # Determine if we should enable classification interval
+                sequence_length = len(sequence_result.get("sequence", ""))
+                skip_classification = sequence_length < 5000
+                classification_interval_disabled = skip_classification
+
+                # Set up workflow state if needed
+                if not skip_classification and sequence_result.get("blast_file"):
+                    # Create upload_data with file contents instead of file paths
+                    # Read the file content to include in upload_data
+                    fasta_content = None
+                    tmp_query_fasta = None
+
+                    try:
+                        tmp_query_fasta = write_temp_fasta(
+                            seq_list[0].get("header", "query"),
+                            seq_list[0].get("sequence", ""),
+                        )
+
+                        if tmp_query_fasta and os.path.exists(tmp_query_fasta):
+                            with open(tmp_query_fasta, "r") as f:
+                                fasta_content = f.read()
+                    except Exception as e:
+                        logger.error(f"Error reading temp FASTA file: {e}")
+
+                    # Initialize a complete workflow state structure
+                    workflow_state = {
+                        "task_id": submission_id,  # Use submission ID for now
+                        "status": "started",
+                        "complete": False,
+                        "current_stage": None,
+                        "current_stage_idx": 0,
+                        "error": None,
+                        "found_match": False,
+                        "match_stage": None,
+                        "match_result": None,
+                        "start_time": time.time(),
+                        "stages": {
+                            stage["id"]: {"progress": 0, "complete": False}
+                            for stage in WORKFLOW_STAGES
+                        },
+                        "upload_data": {
+                            "seq_type": seq_list[0].get("type", "nucl"),
+                            "fasta": {"content": fasta_content}
+                            if fasta_content
+                            else (tmp_query_fasta or ""),
+                            "fetch_ship_params": {
+                                "curated": False,
+                                "with_sequence": True,
+                                "dereplicate": True,
+                            },
+                            "fetch_captain_params": {
+                                "curated": True,
+                                "with_sequence": True,
+                            },
+                        },
+                    }
+
+                    # Make sure we definitely enable the interval
+                    classification_interval_disabled = False
+
+        return blast_results, classification_interval_disabled, workflow_state
+    except Exception as e:
+        logger.error(f"Error in process_sequences: {e}")
+        # Return basic data on error
+        return None, True, {"complete": True, "error": str(e), "status": "failed"}
 
 
 def process_single_sequence(seq_data, evalue_threshold):
@@ -950,15 +1015,59 @@ def process_single_sequence(seq_data, evalue_threshold):
 
     # Write sequence to temporary FASTA file
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+    if not tmp_query_fasta:
+        logger.error("Failed to write temporary FASTA file")
+        return {
+            "blast_file": None,
+            "classification": None,
+            "processed": False,
+            "sequence": query_seq,
+            "error": "Failed to create temporary file",
+        }
 
-    # Run BLAST search
-    blast_task = run_blast_search_task.delay(
-        query_header=query_header,
-        query_seq=query_seq,
-        query_type=query_type,
-        eval_threshold=evalue_threshold,
-    )
-    blast_results_file = blast_task.get(timeout=300)
+    try:
+        # Run BLAST search
+        blast_task = run_blast_search_task.delay(
+            query_header=query_header,
+            query_seq=query_seq,
+            query_type=query_type,
+            eval_threshold=evalue_threshold,
+        )
+        blast_results = blast_task.get(timeout=300)
+
+        # Handle case where blast_results is None or invalid
+        if not blast_results:
+            logger.warning("BLAST search returned no results")
+            blast_results_file = None
+        elif isinstance(blast_results, dict) and "content" in blast_results:
+            # Handle the new format (content-based instead of file path)
+            blast_results_file = tempfile.NamedTemporaryFile(
+                suffix=".blast", delete=False
+            ).name
+            with open(blast_results_file, "w") as f:
+                f.write(blast_results["content"])
+            logger.debug(f"Created temporary BLAST results file: {blast_results_file}")
+        elif isinstance(blast_results, str) and os.path.exists(blast_results):
+            # Handle the old format (file path)
+            blast_results_file = blast_results
+            logger.debug(f"Using existing BLAST results file: {blast_results_file}")
+        else:
+            # Handle unexpected format
+            logger.error(f"Unexpected BLAST results format: {type(blast_results)}")
+            blast_results_file = None
+    except Exception as e:
+        logger.error(f"Error running BLAST search: {e}")
+        blast_results_file = None
+
+    # If BLAST search failed, return basic structure with error
+    if not blast_results_file:
+        return {
+            "blast_file": None,
+            "classification": None,
+            "processed": False,
+            "sequence": query_seq,
+            "error": "BLAST search failed",
+        }
 
     # Prepare upload data for classification
     upload_data = {
@@ -972,14 +1081,14 @@ def process_single_sequence(seq_data, evalue_threshold):
         "fetch_captain_params": {"curated": True, "with_sequence": True},
     }
 
-    # Run classification workflow
-    classification_task = run_classification_workflow_task.delay(
-        upload_data=upload_data,
-    )
-
     # Initialize classification data
     classification_data = None
+
     try:
+        # Run classification workflow
+        classification_task = run_classification_workflow_task.delay(
+            upload_data=upload_data,
+        )
         workflow_result = classification_task.get(timeout=300)
 
         # Check for classification result data first
@@ -1130,51 +1239,56 @@ def process_single_sequence(seq_data, evalue_threshold):
     if classification_data is None:
         # Process the BLAST results
         try:
-            blast_tsv = parse_blast_xml(blast_results_file)
-            blast_df = pd.read_csv(blast_tsv, sep="\t")
+            # Verify the file exists before processing
+            if blast_results_file and os.path.exists(blast_results_file):
+                blast_tsv = parse_blast_xml(blast_results_file)
+                if blast_tsv and os.path.exists(blast_tsv):
+                    blast_df = pd.read_csv(blast_tsv, sep="\t")
 
-            # Check if dataframe is empty
-            if len(blast_df) == 0:
-                logger.info("No BLAST hits found")
-            else:
-                # Sort by evalue (ascending) and pident (descending) to get best hits
-                blast_df = blast_df.sort_values(
-                    ["evalue", "pident"], ascending=[True, False]
-                )
-                top_hit = blast_df.iloc[0]
-                logger.info(f"Top hit: {top_hit}")
-
-                top_evalue = float(top_hit["evalue"])
-                top_aln_length = int(top_hit["aln_length"])
-                top_pident = float(top_hit["pident"])
-
-                if top_pident >= 90:
-                    # look up family name from accession tag
-                    hit_IDs = top_hit["hit_IDs"]
-                    meta_df = fetch_meta_data(accession_tag=hit_IDs)
-
-                    if not meta_df.empty:
-                        top_family = meta_df["familyName"].iloc[0]
-                        navis = (
-                            meta_df["starship_navis"].iloc[0]
-                            if "starship_navis" in meta_df.columns
-                            else None
+                    # Check if dataframe is empty
+                    if len(blast_df) == 0:
+                        logger.info("No BLAST hits found")
+                    else:
+                        # Sort by evalue (ascending) and pident (descending) to get best hits
+                        blast_df = blast_df.sort_values(
+                            ["evalue", "pident"], ascending=[True, False]
                         )
-                        haplotype = (
-                            meta_df["starship_haplotype"].iloc[0]
-                            if "starship_haplotype" in meta_df.columns
-                            else None
-                        )
+                        top_hit = blast_df.iloc[0]
+                        logger.info(f"Top hit: {top_hit}")
 
-                        classification_data = {
-                            "title": "Classification from BLAST",
-                            "source": "blast_hit",
-                            "family": top_family,
-                            "navis": navis,
-                            "haplotype": haplotype,
-                            "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
-                            "confidence": "Medium" if top_pident >= 95 else "Low",
-                        }
+                        top_evalue = float(top_hit["evalue"])
+                        top_aln_length = int(top_hit["aln_length"])
+                        top_pident = float(top_hit["pident"])
+
+                        if top_pident >= 90:
+                            # look up family name from accession tag
+                            hit_IDs = top_hit["hit_IDs"]
+                            meta_df = fetch_meta_data(accession_tag=hit_IDs)
+
+                            if not meta_df.empty:
+                                top_family = meta_df["familyName"].iloc[0]
+                                navis = (
+                                    meta_df["starship_navis"].iloc[0]
+                                    if "starship_navis" in meta_df.columns
+                                    else None
+                                )
+                                haplotype = (
+                                    meta_df["starship_haplotype"].iloc[0]
+                                    if "starship_haplotype" in meta_df.columns
+                                    else None
+                                )
+
+                                classification_data = {
+                                    "title": "Classification from BLAST",
+                                    "source": "blast_hit",
+                                    "family": top_family,
+                                    "navis": navis,
+                                    "haplotype": haplotype,
+                                    "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                                    "confidence": "Medium"
+                                    if top_pident >= 95
+                                    else "Low",
+                                }
         except Exception as e:
             logger.error(f"Error processing BLAST results: {e}")
 
@@ -1188,7 +1302,23 @@ def process_single_sequence(seq_data, evalue_threshold):
                 eval_threshold=evalue_threshold,
             )
             hmmer_results = hmmer_task.get(timeout=300)
-            captain_results = hmmer_results.get("results") if hmmer_results else None
+
+            # Handle the new format with protein_content instead of protein_file
+            captain_results = None
+            if hmmer_results:
+                captain_results = hmmer_results.get("results")
+
+                # If we need the protein file for something else, recreate it
+                if (
+                    "protein_content" in hmmer_results
+                    and hmmer_results["protein_content"]
+                ):
+                    protein_temp_file = tempfile.NamedTemporaryFile(
+                        suffix=".faa", delete=False
+                    ).name
+                    with open(protein_temp_file, "w") as f:
+                        f.write(hmmer_results["protein_content"])
+                    # If needed: hmmer_results["protein_file"] = protein_temp_file
 
             if captain_results and len(captain_results) > 0:
                 first_result = captain_results[0]  # Get just the first dictionary
@@ -1281,7 +1411,18 @@ def render_tab_content(active_tab, results_store):
         raise PreventUpdate
 
     # Extract tab index
-    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+    try:
+        tab_idx = (
+            int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+        )
+    except (ValueError, IndexError):
+        logger.error(f"Invalid tab format: {active_tab}")
+        return dmc.Alert(
+            title="Error",
+            children="Invalid tab format",
+            color="red",
+            variant="filled",
+        )
 
     # Check if this sequence has been processed
     processed_sequences = results_store.get("processed_sequences", [])
@@ -1300,6 +1441,15 @@ def render_tab_content(active_tab, results_store):
         return dmc.Alert(
             title="Error",
             children="No results found for this sequence",
+            color="red",
+            variant="filled",
+        )
+
+    # Check for errors in the results
+    if "error" in sequence_results:
+        return dmc.Alert(
+            title="Error Processing Sequence",
+            children=sequence_results["error"],
             color="red",
             variant="filled",
         )
@@ -1659,3 +1809,196 @@ def clear_file_on_text_input(text_value, current_file_contents):
     if text_value and len(text_value.strip()) > 10 and current_file_contents:
         return None, html.Div(html.P(["Select a FASTA file to upload"]))
     raise PreventUpdate
+
+
+@callback(
+    Output("workflow-state-store", "data", allow_duplicate=True),
+    [
+        Input("classification-interval", "n_intervals"),
+        Input("workflow-state-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def update_classification_workflow_state(n_intervals, workflow_state):
+    """Poll for updated classification workflow state"""
+    if workflow_state is None:
+        logger.warning("Workflow state is None")
+        return {"complete": True, "error": "Missing workflow state", "status": "failed"}
+
+    if workflow_state.get("complete", False):
+        raise PreventUpdate
+
+    # Check if task is running
+    task_id = workflow_state.get("task_id")
+    if not task_id:
+        logger.warning("No task ID found in workflow state")
+        workflow_state["error"] = "Missing task ID"
+        workflow_state["complete"] = True
+        workflow_state["status"] = "failed"
+        return workflow_state
+
+    try:
+        # Start the classification workflow task if needed
+        if workflow_state.get("task_id") and not workflow_state.get("celery_task_id"):
+            # Use the upload_data from the workflow_state
+            upload_data = workflow_state.get("upload_data", {})
+            if not upload_data:
+                logger.error("No upload_data found in workflow state")
+                workflow_state["error"] = "Missing upload data"
+                workflow_state["complete"] = True
+                workflow_state["status"] = "failed"
+                return workflow_state
+
+            # Start the task
+            task = run_classification_workflow_task.delay(upload_data=upload_data)
+            workflow_state["celery_task_id"] = task.id
+            # Initialize stages if not present
+            if "stages" not in workflow_state:
+                workflow_state["stages"] = {
+                    stage["id"]: {"progress": 0, "complete": False}
+                    for stage in WORKFLOW_STAGES
+                }
+            return workflow_state
+
+        # Check existing task status
+        celery_task_id = workflow_state.get("celery_task_id")
+        if not celery_task_id:
+            logger.warning("No Celery task ID found in workflow state")
+            workflow_state["error"] = "Missing Celery task ID"
+            workflow_state["complete"] = True
+            workflow_state["status"] = "failed"
+            return workflow_state
+
+        # Get AsyncResult for task
+        task = run_classification_workflow_task.AsyncResult(celery_task_id)
+        task_status = task.status
+
+        # Update workflow status based on task state
+        if task_status == "PENDING":
+            workflow_state["status"] = "pending"
+        elif task_status == "STARTED":
+            workflow_state["status"] = "running"
+        elif task_status == "SUCCESS":
+            # Merge the results from the task
+            task_result = task.get()
+            if isinstance(task_result, dict):
+                # Make sure we don't overwrite crucial fields with None values
+                for key, value in task_result.items():
+                    if value is not None or key not in workflow_state:
+                        workflow_state[key] = value
+            workflow_state["status"] = "complete"
+            workflow_state["complete"] = True
+        elif task_status in ("FAILURE", "REVOKED"):
+            workflow_state["status"] = "failed"
+            workflow_state["error"] = str(task.result) if task.result else "Task failed"
+            workflow_state["complete"] = True
+        else:
+            # For unknown status, log it but keep current state
+            logger.warning(f"Unknown task status: {task_status}")
+            workflow_state["status"] = f"unknown ({task_status})"
+
+        return workflow_state
+
+    except Exception as e:
+        logger.error(f"Error updating workflow state: {e}")
+        workflow_state["error"] = str(e)
+        workflow_state["status"] = "failed"
+        workflow_state["complete"] = True
+        return workflow_state
+
+
+@callback(
+    [
+        Output("classification-progress", "value"),
+        Output("classification-stage-display", "children"),
+        Output("classification-progress-section", "style"),
+    ],
+    Input("workflow-state-store", "data"),
+    prevent_initial_call=True,
+)
+def update_classification_progress(workflow_state):
+    """Update the classification progress UI based on workflow state"""
+    if not workflow_state or not isinstance(workflow_state, dict):
+        logger.warning("Invalid workflow state type or empty")
+        return 0, "No workflow data", {"display": "none"}
+
+    # Only show if we have a valid state with a status
+    status = workflow_state.get("status", "")
+    if not status or status == "pending" or "task_id" not in workflow_state:
+        return 0, "", {"display": "none"}
+
+    # Calculate progress percentage
+    progress = 0
+    if workflow_state.get("complete", False):
+        progress = 100
+    elif (
+        "current_stage_idx" in workflow_state
+        and workflow_state["current_stage_idx"] is not None
+    ):
+        try:
+            stage_idx = int(workflow_state.get("current_stage_idx", 0))
+            total_stages = len(WORKFLOW_STAGES)
+
+            # Safely get the stage progress
+            current_stage = workflow_state.get("current_stage")
+            stages_dict = workflow_state.get("stages", {})
+
+            if current_stage and current_stage in stages_dict:
+                stage_data = stages_dict[current_stage]
+                stage_progress = (
+                    stage_data.get("progress", 0) if isinstance(stage_data, dict) else 0
+                )
+            else:
+                stage_progress = 0
+
+            # Calculate overall progress: stage contribution + progress within stage
+            progress = int(
+                (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
+            )
+            # Ensure progress is within valid range
+            progress = max(0, min(100, progress))
+        except (ValueError, ZeroDivisionError, TypeError) as e:
+            logger.error(f"Error calculating progress: {e}")
+            progress = 0
+
+    # Get current stage label
+    if "error" in workflow_state and workflow_state["error"]:
+        stage_text = f"Error: {workflow_state['error']}"
+    elif workflow_state.get("complete", False):
+        if workflow_state.get("found_match", False):
+            match_stage = workflow_state.get("match_stage", "unknown")
+            stage_text = f"Complete - {match_stage.capitalize()} match found"
+        else:
+            stage_text = "Classification complete"
+    else:
+        current_stage = workflow_state.get("current_stage")
+        if current_stage:
+            # Find the stage label
+            stage_label = None
+            for stage in WORKFLOW_STAGES:
+                if stage["id"] == current_stage:
+                    stage_label = stage["label"]
+                    break
+
+            stage_text = stage_label if stage_label else f"Processing {current_stage}"
+        else:
+            stage_text = "Starting classification..."
+
+    # Show section if classification is in progress
+    style = (
+        {"display": "block"} if status and status != "pending" else {"display": "none"}
+    )
+
+    return progress, stage_text, style
+
+
+@callback(
+    Output("classification-interval", "disabled", allow_duplicate=True),
+    Input("workflow-state-store", "data"),
+    prevent_initial_call=True,
+)
+def disable_interval_when_complete(workflow_state):
+    """Disable the interval when classification is complete"""
+    if workflow_state and workflow_state.get("complete", False):
+        return True
+    return False

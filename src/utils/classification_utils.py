@@ -1062,6 +1062,17 @@ def run_classification_workflow(upload_data):
     }
 
     try:
+        # Process file content if provided instead of file path
+        fasta_path = upload_data["fasta"]
+        if isinstance(fasta_path, dict) and "content" in fasta_path:
+            # Create a temporary file with the content
+            tmp_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+            with open(tmp_file, "w") as f:
+                f.write(fasta_path["content"])
+            # Update the upload_data to use the temporary file path
+            upload_data["fasta"] = tmp_file
+            fasta_path = tmp_file
+
         # Process each stage in sequence
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
