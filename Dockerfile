@@ -64,10 +64,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/cache/status || exit 1
 
 # Copy application code (changes most frequently, so do this last)
-COPY ./ ./
-RUN chmod +x start-script.sh && \
-    # Ensure all directories and files are owned by starbase user
-    chown -R $USER:$USER $HOME/src
+# Ensure all directories and files are owned by starbase user
+COPY --chown=$USER:$USER ./ ./
+RUN chmod +x start-script.sh
 
 # Switch to user
 USER $USER
