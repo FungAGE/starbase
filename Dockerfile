@@ -37,28 +37,32 @@ COPY environment.yaml .
 RUN conda env create -f environment.yaml && \
     conda clean -afy
 
-# Set conda environment to activate by default
+# Use bash directly instead of conda for these system operations
+SHELL ["/bin/bash", "-c"]
+
+# Create directories and log files
+RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
+    touch /var/log/cron/cron.log
+
+# Set up crontab entries
+RUN echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
+    echo "*/15 * * * * cd $HOME && curl -X POST http://localhost:8000/api/refresh-telemetry >> $HOME/cron/cron.log 2>&1" >> $HOME/cron/crontab && \
+    echo "*/5 * * * * curl -f http://localhost:8000/api/cache/status || curl -X POST http://localhost:8000/api/cache/refresh" >> $HOME/cron/crontab && \
+    echo "0 * * * * if ! pgrep -f 'celery -A src.config.celery_config:celery beat' > /dev/null; then cd $HOME && restart_celery_beat >> $HOME/cron/cron.log 2>&1; fi" >> $HOME/cron/crontab
+
+# Set permissions
+RUN chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
+    chmod -R 755 $HOME && \
+    mkdir -p /dev/shm/starbase_cache && \
+    chmod -R 777 /var/run/crond /var/log/cron /dev/shm/starbase_cache
+
+# Switch back to conda for subsequent operations
 SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]
 
 # Install Node.js, npm, and blasterjs
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g biojs-vis-blasterjs
-
-# Create cron and cache directories and set up logging
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
-    touch /var/log/cron/cron.log && \
-    # Create crontab file for supercronic
-    echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
-    echo "*/15 * * * * cd $HOME && curl -X POST http://localhost:8000/api/refresh-telemetry >> $HOME/cron/cron.log 2>&1" >> $HOME/cron/crontab && \
-    # Add cache check to crontab
-    echo "*/5 * * * * curl -f http://localhost:8000/api/cache/status || curl -X POST http://localhost:8000/api/cache/refresh" >> $HOME/cron/crontab && \
-    # Add Celery beat check (hourly check to make sure it's running)
-    echo "0 * * * * if ! pgrep -f 'celery -A src.config.celery_config:celery beat' > /dev/null; then cd $HOME && restart_celery_beat >> $HOME/cron/cron.log 2>&1; fi" >> $HOME/cron/crontab && \
-    # Set permissions for all directories
-    chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
-    chmod -R 755 $HOME && \
-    chmod -R 777 /var/run/crond /var/log/cron /dev/shm/starbase_cache
 
 # Set conda environment to activate by default
 SHELL ["conda", "run", "-n", "starbase", "/bin/bash", "-c"]

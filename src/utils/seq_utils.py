@@ -8,7 +8,7 @@ from dash import html
 import dash_mantine_components as dmc
 from typing import Dict
 import os
-import tempfile
+from io import StringIO
 import re
 import uuid
 
