@@ -19,9 +19,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: starbase_app
+    container_name: starbase_test
     environment:
-      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONPATH=/app:/app/src
     volumes:
       - .:/app
       - ./src/database/db:/app/src/database/db
