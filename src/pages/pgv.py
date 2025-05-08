@@ -5,6 +5,7 @@ from dash import dcc, html, callback, no_update
 from dash.dependencies import Output, Input, State
 
 import os
+
 from src.config.logging import get_logger
 
 from pygenomeviz import GenomeViz

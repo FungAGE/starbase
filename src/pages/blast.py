@@ -543,6 +543,21 @@ def update_fasta_details(seq_content, seq_filename):
             )
             return True, "Error", None, upload_details, error_alert
 
+        # Check if seq_list is empty
+        if len(seq_list) == 0:
+            error_alert = dmc.Alert(
+                title="Empty File",
+                children="No valid sequences found in the file.",
+                color="yellow",
+                variant="filled",
+            )
+            return True, "Error", None, upload_details, error_alert
+
+        # Log the first sequence for debugging
+        logger.info(
+            f"First sequence: {seq_list[0]['header'][:30]}... ({len(seq_list[0]['sequence'])} bp)"
+        )
+
         # Process valid sequences - create a summary for display
         if n_seqs > 1:
             upload_details = html.Div(
@@ -578,8 +593,13 @@ def update_fasta_details(seq_content, seq_filename):
                 [
                     html.H6(f"File name: {seq_filename}"),
                     html.H6(f"Number of sequences: {n_seqs}"),
+                    html.H6(f"Sequence: {seq_list[0]['header']}"),
+                    html.H6(f"Length: {len(seq_list[0]['sequence'])} bp"),
                 ]
             )
+
+        # Log the current state
+        logger.info(f"Successfully parsed {len(seq_list)} sequences from file upload")
 
         return button_disabled, button_text, seq_list, upload_details, error_alert
 
@@ -668,7 +688,7 @@ def preprocess(n_clicks, query_text_input, seq_list):
 
     try:
         # If we have parsed sequences from a file upload, use those
-        if seq_list is not None:
+        if seq_list is not None and len(seq_list) > 0:
             logger.info(
                 f"Using pre-parsed sequences from file upload: {len(seq_list)} sequences"
             )
@@ -899,8 +919,20 @@ def process_blast_results(blast_results_store, active_tab_idx):
 )
 def process_sequences(submission_id, seq_list, evalue_threshold):
     """Process only the first sequence initially, for both text input and file uploads"""
-    if not all([seq_list, submission_id]):
-        return None, None, None
+    if not submission_id:
+        raise PreventUpdate
+
+    # Add protection for empty seq_list
+    if not seq_list:
+        logger.error("No sequences provided in blast-sequences-store")
+        return None, True, None
+
+    # Add protection for empty sequence list
+    if len(seq_list) == 0:
+        logger.error("Empty sequence list in blast-sequences-store")
+        return None, True, None
+
+    logger.info(f"Processing sequences in process_sequences, count: {len(seq_list)}")
 
     blast_results = None
     classification_interval_disabled = None
@@ -1655,5 +1687,22 @@ def clear_text_on_file_upload(file_contents):
 def clear_file_on_text_input(text_value, current_file_contents):
     """Clear the file upload when text is entered"""
     if text_value and len(text_value.strip()) > 10 and current_file_contents:
-        return None, html.Div(html.P(["Select a FASTA file to upload"]))
+        # Don't return None here, return an empty string instead to ensure proper state handling
+        return "", html.Div(html.P(["Select a FASTA file to upload"]))
     raise PreventUpdate
+
+
+# Add this callback to debug the state of blast-sequences-store
+@callback(
+    Output("upload-error-message", "children", allow_duplicate=True),
+    [Input("blast-sequences-store", "data")],
+    prevent_initial_call=True,
+    id="debug-sequences-store",
+)
+def debug_sequences_store(seq_list):
+    """Debug callback to log the state of blast-sequences-store"""
+    if seq_list:
+        logger.info(f"blast-sequences-store has data: {len(seq_list)} sequences")
+    else:
+        logger.warning("blast-sequences-store is empty or None")
+    return None

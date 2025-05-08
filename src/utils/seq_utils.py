@@ -1,7 +1,3 @@
-import re
-import warnings
-from src.config.logging import get_logger
-from io import StringIO
 import base64
 import pandas as pd
 from Bio.SeqRecord import SeqRecord
@@ -12,11 +8,13 @@ from dash import html
 import dash_mantine_components as dmc
 from typing import Dict
 import os
+import tempfile
+import re
 import uuid
 
 from src.config.cache import cache_dir
 
-warnings.filterwarnings("ignore")
+from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
