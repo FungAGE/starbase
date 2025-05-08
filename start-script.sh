@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e  # Exit on error
 
+# Activate conda environment if not already activated
+if [[ -z "$CONDA_PREFIX" || "$CONDA_PREFIX" != *"/starbase" ]]; then
+    source $(conda info --base)/etc/profile.d/conda.sh
+    conda activate starbase
+fi
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
