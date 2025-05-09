@@ -81,17 +81,12 @@ layout = dmc.Container(
         ],
         # Tab stores
         dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
-        # Timeout stores
-        dcc.Store(id="blast-timeout-store", data=False),
-        dcc.Interval(
-            id="blast-timeout-interval", interval=30000, n_intervals=0
-        ),  # 30 seconds
         # Interval for polling workflow state
         dcc.Interval(
             id="classification-interval",
-            interval=1000,  # 1 second
+            interval=500,  # 500ms for faster initial updates
             disabled=True,
-            max_intervals=300,  # Maximum 5 minutes of polling
+            max_intervals=600,  # Maximum 5 minutes of polling (300s)
         ),
         dcc.Store(id="workflow-state-store", data=None),
         dmc.Space(h=20),
@@ -637,45 +632,6 @@ def update_fasta_details(seq_content, seq_filename):
             variant="filled",
         )
         return True, "Error", None, upload_details, error_alert
-
-
-@callback(
-    [
-        Output("submit-button", "disabled", allow_duplicate=True),
-        Output("submit-button", "children", allow_duplicate=True),
-        Output("upload-error-message", "children", allow_duplicate=True),
-        Output("upload-error-store", "data", allow_duplicate=True),
-    ],
-    [
-        Input("submit-button", "n_clicks"),
-        Input("blast-timeout-interval", "n_intervals"),
-    ],
-    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
-    prevent_initial_call=True,
-)
-def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
-    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-
-    # Default return values
-    button_disabled = False
-    button_text = "Submit BLAST"  # Set default button text
-    error_message = ""
-    error_store = None
-
-    # Handle timeout case
-    if triggered_id == "blast-timeout-interval":
-        if n_clicks and timeout_triggered:
-            button_disabled = True
-            button_text = "Server timeout"
-            error_message = dmc.Alert(
-                title="Request Timeout",
-                children="The server is taking longer than expected to respond. Please try again later.",
-                color="yellow",
-                variant="filled",
-            )
-            error_store = "The server is taking longer than expected to respond. Please try again later."
-
-    return [button_disabled, button_text, error_message, error_store]
 
 
 @callback(
@@ -2181,6 +2137,7 @@ def update_classification_workflow_state(n_intervals, workflow_state):
     ],
     Input("workflow-state-store", "data"),
     prevent_initial_call=True,
+    id="update-classification-progress-callback",
 )
 def update_classification_progress(workflow_state):
     """Update the classification progress UI based on workflow state"""
