@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: starbase:latest
+    container_name: starbase_app
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=dev
+      - MINIKUBE_ACTIVE=true
+    volumes:
+      - ..:/app
+      - minikube-db:/app/src/database/db
+    restart: always
+    command: ["./start-script.sh"]
+  
+  unit-tests:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: starbase-tests:latest
+    container_name: starbase_tests
+    environment:
+      - PYTHONPATH=/app:/app/src
+      - MINIKUBE_ACTIVE=true
+    volumes:
+      - ..:/app
+      - minikube-db:/app/src/database/db
+    command: ["pytest", "-v"]
+
+volumes:
+  minikube-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /tmp/starbase-data

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: starbase
+  labels:
+    app: starbase
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: starbase
+  template:
+    metadata:
+      labels:
+        app: starbase
+    spec:
+      containers:
+      - name: starbase
+        image: starbase:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        env:
+        - name: FLASK_ENV
+          value: "dev"
+        volumeMounts:
+        - name: starbase-db
+          mountPath: /app/src/database/db
+        resources:
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        readinessProbe:
+          httpGet:
+            path: /api/cache/status
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        livenessProbe:
+          httpGet:
+            path: /api/cache/status
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 60
+      volumes:
+      - name: starbase-db
+        persistentVolumeClaim:
+          claimName: starbase-db-pvc 

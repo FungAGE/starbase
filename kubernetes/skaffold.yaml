@@ -1,0 +1,28 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: starbase
+build:
+  artifacts:
+  - image: starbase
+    context: ..
+    docker:
+      dockerfile: Dockerfile
+deploy:
+  kubectl:
+    manifests:
+    - deployment.yaml
+    - service.yaml
+    - ingress.yaml
+profiles:
+  - name: dev
+    build:
+      tagPolicy:
+        sha256: {}
+    deploy:
+      kubectl: {}
+portForward:
+  - resourceType: service
+    resourceName: starbase
+    port: 80
+    localPort: 8000 

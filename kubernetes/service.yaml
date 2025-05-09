@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: starbase
+  labels:
+    app: starbase
+spec:
+  selector:
+    app: starbase
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP 
