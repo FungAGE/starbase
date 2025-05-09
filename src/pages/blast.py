@@ -91,6 +91,7 @@ layout = dmc.Container(
             id="classification-interval",
             interval=1000,  # 1 second
             disabled=True,
+            max_intervals=300,  # Maximum 5 minutes of polling
         ),
         dcc.Store(id="workflow-state-store", data=None),
         dmc.Space(h=20),
@@ -942,8 +943,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold):
 
                 # Determine if we should enable classification interval
                 sequence_length = len(sequence_result.get("sequence", ""))
-                skip_classification = sequence_length < 5000
-                classification_interval_disabled = skip_classification
+                skip_classification = (
+                    sequence_length < 5000 or sequence_result.get("error") is not None
+                )
+
+                # Default to disabled
+                classification_interval_disabled = True
 
                 # Set up workflow state if needed
                 if not skip_classification and sequence_result.get("blast_file"):
@@ -963,48 +968,58 @@ def process_sequences(submission_id, seq_list, evalue_threshold):
                                 fasta_content = f.read()
                     except Exception as e:
                         logger.error(f"Error reading temp FASTA file: {e}")
+                        # If we can't read the file, skip classification
+                        skip_classification = True
 
-                    # Initialize a complete workflow state structure
-                    workflow_state = {
-                        "task_id": submission_id,  # Use submission ID for now
-                        "status": "started",
-                        "complete": False,
-                        "current_stage": None,
-                        "current_stage_idx": 0,
-                        "error": None,
-                        "found_match": False,
-                        "match_stage": None,
-                        "match_result": None,
-                        "start_time": time.time(),
-                        "stages": {
-                            stage["id"]: {"progress": 0, "complete": False}
-                            for stage in WORKFLOW_STAGES
-                        },
-                        "upload_data": {
-                            "seq_type": seq_list[0].get("type", "nucl"),
-                            "fasta": {"content": fasta_content}
-                            if fasta_content
-                            else (tmp_query_fasta or ""),
-                            "fetch_ship_params": {
-                                "curated": False,
-                                "with_sequence": True,
-                                "dereplicate": True,
+                    if not skip_classification:
+                        # Initialize a complete workflow state structure
+                        workflow_state = {
+                            "task_id": str(submission_id),  # Ensure it's a string
+                            "status": "initialized",
+                            "complete": False,
+                            "current_stage": None,
+                            "current_stage_idx": 0,
+                            "error": None,
+                            "found_match": False,
+                            "match_stage": None,
+                            "match_result": None,
+                            "start_time": time.time(),
+                            "stages": {
+                                stage["id"]: {"progress": 0, "complete": False}
+                                for stage in WORKFLOW_STAGES
                             },
-                            "fetch_captain_params": {
-                                "curated": True,
-                                "with_sequence": True,
+                            "upload_data": {
+                                "seq_type": seq_list[0].get("type", "nucl"),
+                                "fasta": {"content": fasta_content}
+                                if fasta_content
+                                else (tmp_query_fasta or ""),
+                                "fetch_ship_params": {
+                                    "curated": False,
+                                    "with_sequence": True,
+                                    "dereplicate": True,
+                                },
+                                "fetch_captain_params": {
+                                    "curated": True,
+                                    "with_sequence": True,
+                                },
                             },
-                        },
-                    }
+                        }
 
-                    # Make sure we definitely enable the interval
-                    classification_interval_disabled = False
+                        # Only enable the interval if we have a proper workflow state
+                        if workflow_state is not None:
+                            classification_interval_disabled = False
 
         return blast_results, classification_interval_disabled, workflow_state
     except Exception as e:
         logger.error(f"Error in process_sequences: {e}")
         # Return basic data on error
-        return None, True, {"complete": True, "error": str(e), "status": "failed"}
+        error_state = {
+            "complete": True,
+            "error": str(e),
+            "status": "failed",
+            "task_id": str(submission_id) if submission_id else None,
+        }
+        return None, True, error_state
 
 
 def process_single_sequence(seq_data, evalue_threshold):
@@ -1821,6 +1836,7 @@ def clear_file_on_text_input(text_value, current_file_contents):
 )
 def update_classification_workflow_state(n_intervals, workflow_state):
     """Poll for updated classification workflow state"""
+    # First check if we should skip this update
     if workflow_state is None:
         logger.warning("Workflow state is None")
         return {"complete": True, "error": "Missing workflow state", "status": "failed"}
@@ -1828,10 +1844,25 @@ def update_classification_workflow_state(n_intervals, workflow_state):
     if workflow_state.get("complete", False):
         raise PreventUpdate
 
+    # Check for timing out after too many intervals (e.g., 300 = 5 minutes with 1s interval)
+    max_intervals = 300  # 5 minutes at 1 second intervals
+    if n_intervals and n_intervals > max_intervals:
+        logger.warning(
+            f"Classification polling timed out after {n_intervals} intervals"
+        )
+        workflow_state = (
+            workflow_state.copy()
+        )  # Create a copy to avoid modifying the input
+        workflow_state["error"] = "Classification timed out"
+        workflow_state["complete"] = True
+        workflow_state["status"] = "timeout"
+        return workflow_state
+
     # Check if task is running
     task_id = workflow_state.get("task_id")
     if not task_id:
         logger.warning("No task ID found in workflow state")
+        workflow_state = workflow_state.copy()
         workflow_state["error"] = "Missing task ID"
         workflow_state["complete"] = True
         workflow_state["status"] = "failed"
@@ -1844,6 +1875,7 @@ def update_classification_workflow_state(n_intervals, workflow_state):
             upload_data = workflow_state.get("upload_data", {})
             if not upload_data:
                 logger.error("No upload_data found in workflow state")
+                workflow_state = workflow_state.copy()
                 workflow_state["error"] = "Missing upload data"
                 workflow_state["complete"] = True
                 workflow_state["status"] = "failed"
@@ -1851,6 +1883,7 @@ def update_classification_workflow_state(n_intervals, workflow_state):
 
             # Start the task
             task = run_classification_workflow_task.delay(upload_data=upload_data)
+            workflow_state = workflow_state.copy()
             workflow_state["celery_task_id"] = task.id
             # Initialize stages if not present
             if "stages" not in workflow_state:
@@ -1864,6 +1897,7 @@ def update_classification_workflow_state(n_intervals, workflow_state):
         celery_task_id = workflow_state.get("celery_task_id")
         if not celery_task_id:
             logger.warning("No Celery task ID found in workflow state")
+            workflow_state = workflow_state.copy()
             workflow_state["error"] = "Missing Celery task ID"
             workflow_state["complete"] = True
             workflow_state["status"] = "failed"
@@ -1873,6 +1907,9 @@ def update_classification_workflow_state(n_intervals, workflow_state):
         task = run_classification_workflow_task.AsyncResult(celery_task_id)
         task_status = task.status
 
+        # Create a copy of workflow state before modifying
+        workflow_state = workflow_state.copy()
+
         # Update workflow status based on task state
         if task_status == "PENDING":
             workflow_state["status"] = "pending"
@@ -1880,17 +1917,26 @@ def update_classification_workflow_state(n_intervals, workflow_state):
             workflow_state["status"] = "running"
         elif task_status == "SUCCESS":
             # Merge the results from the task
-            task_result = task.get()
-            if isinstance(task_result, dict):
-                # Make sure we don't overwrite crucial fields with None values
-                for key, value in task_result.items():
-                    if value is not None or key not in workflow_state:
-                        workflow_state[key] = value
+            try:
+                task_result = task.get(timeout=5)  # Add timeout to prevent hanging
+                if isinstance(task_result, dict):
+                    # Make sure we don't overwrite crucial fields with None values
+                    for key, value in task_result.items():
+                        if value is not None or key not in workflow_state:
+                            workflow_state[key] = value
+            except Exception as e:
+                logger.error(f"Error getting task result: {e}")
+
             workflow_state["status"] = "complete"
             workflow_state["complete"] = True
         elif task_status in ("FAILURE", "REVOKED"):
             workflow_state["status"] = "failed"
-            workflow_state["error"] = str(task.result) if task.result else "Task failed"
+            try:
+                workflow_state["error"] = (
+                    str(task.result) if task.result else "Task failed"
+                )
+            except Exception as e:
+                workflow_state["error"] = f"Error accessing task result: {str(e)}"
             workflow_state["complete"] = True
         else:
             # For unknown status, log it but keep current state
@@ -1901,6 +1947,11 @@ def update_classification_workflow_state(n_intervals, workflow_state):
 
     except Exception as e:
         logger.error(f"Error updating workflow state: {e}")
+        # Create a copy to ensure we return a new object
+        if not isinstance(workflow_state, dict):
+            workflow_state = {}
+        else:
+            workflow_state = workflow_state.copy()
         workflow_state["error"] = str(e)
         workflow_state["status"] = "failed"
         workflow_state["complete"] = True
@@ -1999,6 +2050,21 @@ def update_classification_progress(workflow_state):
 )
 def disable_interval_when_complete(workflow_state):
     """Disable the interval when classification is complete"""
-    if workflow_state and workflow_state.get("complete", False):
+    if workflow_state is None:
+        # If no workflow state, keep the interval disabled
         return True
+
+    # Always disable if complete flag is set
+    if workflow_state.get("complete", False):
+        return True
+
+    # Disable if there's an error
+    if workflow_state.get("error") is not None:
+        return True
+
+    # Disable if status indicates completion
+    if workflow_state.get("status") in ["complete", "failed", "timeout"]:
+        return True
+
+    # Otherwise, keep the interval running
     return False
