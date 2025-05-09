@@ -6,20 +6,15 @@ import hashlib
 import os
 import glob
 import signal
-from src.tasks import (
-    check_exact_matches_task,
-    check_contained_matches_task,
-    check_similar_matches_task,
-    run_family_classification_task,
-    run_navis_classification_task,
-    run_haplotype_classification_task,
-)
 from src.utils.seq_utils import (
     write_combined_fasta,
     write_multi_fasta,
     create_tmp_fasta_dir,
     load_fasta_to_dict,
 )
+from src.database.sql_manager import fetch_ships
+
+
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
 
@@ -90,7 +85,9 @@ def assign_accession(
         return exact_match, False
 
     logger.info("Step 2: Checking for contained matches...")
-    container_match = check_contained_match(sequence, existing_ships)
+    container_match = check_contained_match(
+        sequence, existing_ships, min_coverage=0.95, min_identity=0.95
+    )
     if container_match:
         logger.info(f"Found containing match: {container_match}")
         return container_match, True  # Flag for review since it's truncated
@@ -363,6 +360,7 @@ def classify_family(
 
     family_dict = None
     tmp_protein_filename = None
+    hmmer_dict = None
 
     if os.path.exists(fasta):
         logger.info(f"Loading sequence from file: {fasta}")
@@ -479,15 +477,24 @@ def classify_navis(
 
 
 def classify_haplotype(fasta: str, existing_ships: pd.DataFrame, navis: str) -> str:
-    """Assign haplotype based on full sequence similarity."""
-    # Part 3: Haplotype Assignment
-    # - Compare full sequence to existing classified sequences
-    # - Use sourmash for similarity calculation
-    # - Use MCL clustering to group with existing haplotypes
+    """Assign haplotype based on full sequence similarity.
+    - Compare full sequence to existing classified sequences
+    - Use sourmash for similarity calculation
+    - Use MCL clustering to group with existing haplotypes
 
-    # Create temporary FASTA with:
-    # - New sequence
-    # - All existing classified sequences for this navis
+    Create temporary FASTA with:
+    - New sequence
+    - All existing classified sequences for this navis
+
+    - groups looks like this:
+    ```
+    'sequence_id': {
+        'group_id': 'HAP000001',
+        'is_representative': True
+    }
+    ```
+
+    """
 
     existing_ships_navis = existing_ships[existing_ships["starship_navis"] == navis]
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
@@ -499,21 +506,13 @@ def classify_haplotype(fasta: str, existing_ships: pd.DataFrame, navis: str) -> 
         id_col="accession_tag",
     )
 
-    # Calculate similarities
     similarities = calculate_similarities(
         ship_sequence_file=tmp_fasta, new_sequence_file=tmp_fasta, seq_type="nucl"
     )
 
-    # Cluster sequences
     groups, _, _ = cluster_sequences(
         similarities, group_prefix="HAP", inflation=1.5, threshold=0.05
     )
-
-    # groups looks like this:
-    # 'sequence_id': {
-    #     'group_id': 'HAP000001',
-    #     'is_representative': True
-    # }
 
     # Find which group has the member "query_sequence"
     rep_group_id = None
@@ -983,11 +982,10 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
             f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
 
 
-# denova annotation using metaeuk easy-predict
 # TODO: make sure `ref_db` is a fasta file (do we need to `createdb` for this fasta file?)
 # TODO: make sure that `output_prefix` is a temp directory
 def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
-    """Run MetaEuk easy-predict with proper directory handling.
+    """Run MetaEuk easy-predict for de novo annotation.
 
     Args:
         query_fasta: Path to input FASTA file
@@ -1002,9 +1000,9 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
             cmd = [
                 "metaeuk",
                 "easy-predict",
-                os.path.abspath(query_fasta),  # Use absolute path
-                os.path.abspath(ref_db),  # Use absolute path
-                os.path.abspath(output_prefix),  # Use absolute path
+                os.path.abspath(query_fasta),
+                os.path.abspath(ref_db),
+                os.path.abspath(output_prefix),
                 tmp_dir,
                 "--metaeuk-eval",
                 "0.0001",
@@ -1049,7 +1047,7 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
 
 def run_classification_workflow(upload_data):
     """Run the classification workflow and return results."""
-    # Initialize state object
+    # Initialize workflow state object
     workflow_state = {
         "complete": False,
         "error": None,
@@ -1062,18 +1060,14 @@ def run_classification_workflow(upload_data):
     }
 
     try:
-        # Process file content if provided instead of file path
         fasta_path = upload_data["fasta"]
         if isinstance(fasta_path, dict) and "content" in fasta_path:
-            # Create a temporary file with the content
             tmp_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
             with open(tmp_file, "w") as f:
                 f.write(fasta_path["content"])
-            # Update the upload_data to use the temporary file path
             upload_data["fasta"] = tmp_file
             fasta_path = tmp_file
 
-        # Process each stage in sequence
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
 
@@ -1086,9 +1080,6 @@ def run_classification_workflow(upload_data):
             logger.info(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
-                from src.utils.classification_utils import check_exact_match
-                from src.database.sql_manager import fetch_ships
-
                 ships_df = fetch_ships(**upload_data["fetch_ship_params"])
                 result = check_exact_match(
                     fasta=upload_data["fasta"], existing_ships=ships_df
@@ -1104,12 +1095,14 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "contained":
-                result = check_contained_matches_task.delay(
+                result = check_contained_match(
                     fasta=upload_data["fasta"],
                     ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
                         "records"
                     ),
-                ).get(timeout=180)
+                    min_coverage=0.95,
+                    min_identity=0.95,
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 30
@@ -1121,12 +1114,11 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "similar":
-                result = check_similar_matches_task.delay(
+                result = check_similar_match(
                     fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
+                    existing_ships=fetch_ships(**upload_data["fetch_ship_params"]),
+                    threshold=0.95,
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 50
@@ -1136,10 +1128,14 @@ def run_classification_workflow(upload_data):
                     workflow_state["match_result"] = result
 
             if stage_id == "family":
-                result = run_family_classification_task.delay(
+                result = classify_family(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
-                ).get(timeout=180)
+                    blast_df=upload_data["blast_df"],
+                    pident_thresh=90,
+                    input_eval=0.001,
+                    threads=1,
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 70
@@ -1148,12 +1144,13 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "navis":
-                result = run_navis_classification_task.delay(
+                result = classify_navis(
                     fasta=upload_data["fasta"],
                     existing_captains=fetch_captains(
                         **upload_data["fetch_captain_params"]
                     ).to_dict("records"),
-                ).get(timeout=180)
+                    threads=1,
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 90
@@ -1162,7 +1159,7 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "haplotype":
-                result = run_haplotype_classification_task.delay(
+                result = classify_haplotype(
                     fasta=upload_data["fasta"],
                     existing_ships=fetch_ships(
                         **upload_data["fetch_ship_params"]
@@ -1170,7 +1167,7 @@ def run_classification_workflow(upload_data):
                     navis=fetch_captains(**upload_data["fetch_captain_params"]).to_dict(
                         "records"
                     ),
-                ).get(timeout=180)
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 100
@@ -1187,8 +1184,7 @@ def run_classification_workflow(upload_data):
         return workflow_state
 
     except Exception as e:
-        # Handle errors
-        error_message = f"Error during classification: {str(e)}"
+        error_message = str(e)
         logger.error(error_message)
         logger.exception("Full traceback:")
 
