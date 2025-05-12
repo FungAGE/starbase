@@ -6,14 +6,6 @@ import hashlib
 import os
 import glob
 import signal
-from src.tasks import (
-    check_exact_matches_task,
-    check_contained_matches_task,
-    check_similar_matches_task,
-    run_family_classification_task,
-    run_navis_classification_task,
-    run_haplotype_classification_task,
-)
 from src.utils.seq_utils import (
     write_combined_fasta,
     write_multi_fasta,
@@ -1086,7 +1078,6 @@ def run_classification_workflow(upload_data):
             logger.info(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
-                from src.utils.classification_utils import check_exact_match
                 from src.database.sql_manager import fetch_ships
 
                 ships_df = fetch_ships(**upload_data["fetch_ship_params"])
@@ -1104,12 +1095,10 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "contained":
-                result = check_contained_matches_task.delay(
+                result = check_contained_match(
                     fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
+                    existing_ships=fetch_ships(**upload_data["fetch_ship_params"]),
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 30
@@ -1121,12 +1110,10 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "similar":
-                result = check_similar_matches_task.delay(
+                result = check_similar_match(
                     fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
-                ).get(timeout=180)
+                    existing_ships=fetch_ships(**upload_data["fetch_ship_params"]),
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 50
@@ -1136,10 +1123,10 @@ def run_classification_workflow(upload_data):
                     workflow_state["match_result"] = result
 
             if stage_id == "family":
-                result = run_family_classification_task.delay(
+                result = classify_family(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
-                ).get(timeout=180)
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 70
@@ -1148,12 +1135,12 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "navis":
-                result = run_navis_classification_task.delay(
+                result = classify_navis(
                     fasta=upload_data["fasta"],
                     existing_captains=fetch_captains(
                         **upload_data["fetch_captain_params"]
                     ).to_dict("records"),
-                ).get(timeout=180)
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 90
@@ -1162,7 +1149,7 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "haplotype":
-                result = run_haplotype_classification_task.delay(
+                result = classify_haplotype(
                     fasta=upload_data["fasta"],
                     existing_ships=fetch_ships(
                         **upload_data["fetch_ship_params"]
@@ -1170,7 +1157,7 @@ def run_classification_workflow(upload_data):
                     navis=fetch_captains(**upload_data["fetch_captain_params"]).to_dict(
                         "records"
                     ),
-                ).get(timeout=180)
+                )
 
                 if result:
                     workflow_state["stages"][stage_id]["progress"] = 100

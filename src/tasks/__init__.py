@@ -53,8 +53,10 @@ def cleanup_cache_task():
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="run_blast_search")
-def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
+def run_blast_search_task(
+    self, query_header, query_seq, query_type, eval_threshold=0.01
+):
     """Celery task to run BLAST search"""
 
     try:
@@ -96,11 +98,14 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_hmmer_search")
-def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
+def run_hmmer_search_task(
+    self, query_header, query_seq, query_type, eval_threshold=0.01
+):
     """Celery task to run HMMER search"""
 
     try:
@@ -136,11 +141,14 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"HMMER search failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="check_exact_matches_task")
-def check_exact_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
+@celery.task(
+    name="check_exact_matches_task", bind=True, max_retries=3, retry_backoff=True
+)
+def check_exact_matches_task(self, fasta: str, ships_dict: list) -> Optional[str]:
     from src.utils.classification_utils import check_exact_match
 
     try:
@@ -159,11 +167,14 @@ def check_exact_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
         return check_exact_match(fasta_path, existing_ships)
     except Exception as e:
         logger.error(f"Exact match check failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="check_contained_matches_task")
-def check_contained_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
+@celery.task(
+    name="check_contained_matches_task", bind=True, max_retries=3, retry_backoff=True
+)
+def check_contained_matches_task(self, fasta: str, ships_dict: list) -> Optional[str]:
     from src.utils.classification_utils import check_contained_match
 
     try:
@@ -186,12 +197,15 @@ def check_contained_matches_task(fasta: str, ships_dict: list) -> Optional[str]:
 
     except Exception as e:
         logger.error(f"Contained match check failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="check_similar_matches_task")
+@celery.task(
+    name="check_similar_matches_task", bind=True, max_retries=3, retry_backoff=True
+)
 def check_similar_matches_task(
-    fasta: str, ships_dict: list, threshold: float = 0.9
+    self, fasta: str, ships_dict: list, threshold: float = 0.9
 ) -> Optional[str]:
     from src.utils.classification_utils import check_similar_match
 
@@ -216,11 +230,14 @@ def check_similar_matches_task(
         return result
     except Exception as e:
         logger.error(f"Similar match check failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_family_classification_task")
-def run_family_classification_task(fasta, seq_type):
+@celery.task(
+    name="run_family_classification_task", bind=True, max_retries=3, retry_backoff=True
+)
+def run_family_classification_task(self, fasta, seq_type):
     from src.utils.classification_utils import classify_family
 
     try:
@@ -263,11 +280,14 @@ def run_family_classification_task(fasta, seq_type):
         return family_dict
     except Exception as e:
         logger.error(f"Family classification failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_navis_classification_task")
-def run_navis_classification_task(fasta, existing_captains):
+@celery.task(
+    name="run_navis_classification_task", bind=True, max_retries=3, retry_backoff=True
+)
+def run_navis_classification_task(self, fasta, existing_captains):
     from src.utils.classification_utils import classify_navis
 
     try:
@@ -288,11 +308,17 @@ def run_navis_classification_task(fasta, existing_captains):
         return classify_navis(fasta_path, existing_captains)
     except Exception as e:
         logger.error(f"Navis classification failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_haplotype_classification_task")
-def run_haplotype_classification_task(fasta, existing_ships, navis):
+@celery.task(
+    name="run_haplotype_classification_task",
+    bind=True,
+    max_retries=3,
+    retry_backoff=True,
+)
+def run_haplotype_classification_task(self, fasta, existing_ships, navis):
     from src.utils.classification_utils import classify_haplotype
 
     try:
@@ -313,11 +339,14 @@ def run_haplotype_classification_task(fasta, existing_ships, navis):
         return classify_haplotype(fasta_path, existing_ships, navis)
     except Exception as e:
         logger.error(f"Haplotype classification failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_metaeuk_easy_predict_task")
-def run_metaeuk_easy_predict_task(fasta, ref_db, output_prefix, threads):
+@celery.task(
+    name="run_metaeuk_easy_predict_task", bind=True, max_retries=3, retry_backoff=True
+)
+def run_metaeuk_easy_predict_task(self, fasta, ref_db, output_prefix, threads):
     from src.utils.classification_utils import metaeuk_easy_predict
 
     try:
@@ -329,22 +358,24 @@ def run_metaeuk_easy_predict_task(fasta, ref_db, output_prefix, threads):
         )
     except Exception as e:
         logger.error(f"Metaeuk failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_multi_pgv_task")
-def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
+@celery.task(name="run_multi_pgv_task", bind=True, max_retries=3, retry_backoff=True)
+def run_multi_pgv_task(self, gff_files, seqs, tmp_file, len_thr, id_thr):
     from src.pages.pgv import multi_pgv
 
     try:
         return multi_pgv(gff_files, seqs, tmp_file, len_thr, id_thr)
     except Exception as e:
         logger.error(f"Multi PGV failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_single_pgv_task")
-def run_single_pgv_task(gff_file, tmp_file):
+@celery.task(name="run_single_pgv_task", bind=True, max_retries=3, retry_backoff=True)
+def run_single_pgv_task(self, gff_file, tmp_file):
     """Celery task to run `single_pgv`"""
     from src.pages.pgv import single_pgv
 
@@ -352,10 +383,16 @@ def run_single_pgv_task(gff_file, tmp_file):
         return single_pgv(gff_file, tmp_file)
     except Exception as e:
         logger.error(f"Single PGV failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_classification_workflow_task", bind=True)
+@celery.task(
+    name="run_classification_workflow_task",
+    bind=True,
+    max_retries=3,
+    retry_backoff=True,
+)
 def run_classification_workflow_task(self, upload_data):
     """Celery task to run the classification workflow in the background.
 
@@ -371,4 +408,5 @@ def run_classification_workflow_task(self, upload_data):
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
         logger.exception("Full traceback:")
-        raise
+        self.retry(exc=e, countdown=3)
+        return None

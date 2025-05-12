@@ -3,6 +3,9 @@
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
 
+# Add check to verify Redis is running
+redis-cli ping || { echo "Redis failed to start"; exit 1; }
+
 # Start cron in the background using supercronic
 supercronic $HOME/cron/crontab &
 
