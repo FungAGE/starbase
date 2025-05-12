@@ -256,8 +256,18 @@ layout = dmc.Container(
                                 dmc.Stack(
                                     children=[
                                         # Progress section - initially hidden
-                                        html.Div(
-                                            id="classification-output", className="mt-4"
+                                        dbc.Spinner(
+                                            children=html.Div(
+                                                id="classification-output",
+                                                className="mt-4",
+                                            ),
+                                            color="primary",
+                                            type="border",
+                                            fullscreen=False,
+                                            spinner_style={
+                                                "width": "3rem",
+                                                "height": "3rem",
+                                            },
                                         ),
                                         dmc.Stack(
                                             [
@@ -298,27 +308,18 @@ layout = dmc.Container(
                                         # BLAST results section
                                         dmc.Stack(
                                             [
-                                                dbc.Spinner(
-                                                    children=html.Div(
-                                                        id="blast-container",
-                                                        className="blast-container",
-                                                        style={
-                                                            "width": "100%",
-                                                            "display": "flex",
-                                                            "flexDirection": "column",
-                                                            "minHeight": "300px",
-                                                            "alignItems": "flex-start",
-                                                            "textAlign": "left",
-                                                        },
-                                                    ),
-                                                    color="primary",
-                                                    type="border",
-                                                    fullscreen=False,
-                                                    spinner_style={
-                                                        "width": "3rem",
-                                                        "height": "3rem",
+                                                html.Div(
+                                                    id="blast-container",
+                                                    className="blast-container",
+                                                    style={
+                                                        "width": "100%",
+                                                        "display": "flex",
+                                                        "flexDirection": "column",
+                                                        "minHeight": "300px",
+                                                        "alignItems": "flex-start",
+                                                        "textAlign": "left",
                                                     },
-                                                )
+                                                ),
                                             ]
                                         ),
                                     ],
@@ -2273,32 +2274,49 @@ clientside_callback(
                 return window.dash_clientside.no_update;
             }
 
-            // Find the correct container based on active tab
-            const containerId = `blast-container-${tabIdx}`;
-            let container = document.getElementById(containerId);
-            
-            if (!container) {
-                console.log(`No container found with ID: ${containerId}`);
-                // Try fallback options
-                const containers = document.getElementsByClassName('blast-container');
-                if (containers.length > 0) {
-                    console.log("Found container by class instead");
-                    container = containers[0];
-                } else {
-                    const mainContainer = document.getElementById('blast-container');
-                    if (mainContainer) {
-                        console.log("Using main blast-container as fallback");
-                        container = mainContainer;
-                    } else {
-                        console.error("No blast containers found in the DOM");
-                        return window.dash_clientside.no_update;
+            // Function to initialize BlasterJS with delay to ensure DOM is ready
+            const initializeBlasterJS = function() {
+                // Find the correct container based on active tab
+                const containerId = `blast-container-${tabIdx}`;
+                let container = document.getElementById(containerId);
+                
+                if (!container) {
+                    console.log(`No container found with ID: ${containerId}, searching more broadly`);
+                    
+                    // Try finding by query selector within tab content
+                    const tabContent = document.getElementById('tab-content');
+                    if (tabContent) {
+                        const containers = tabContent.querySelectorAll('.blast-container');
+                        if (containers.length > 0) {
+                            console.log("Found container within tab content");
+                            container = containers[0];
+                        }
+                    }
+                    
+                    // If still not found, try all containers
+                    if (!container) {
+                        const allContainers = document.getElementsByClassName('blast-container');
+                        if (allContainers.length > 0) {
+                            console.log("Found container by class name");
+                            container = allContainers[0];
+                        } else {
+                            // Final fallback to main container
+                            container = document.getElementById('blast-container');
+                            if (!container) {
+                                console.error("No blast containers found in the DOM after extended search");
+                                return false; // Signal that initialization failed
+                            }
+                        }
                     }
                 }
-            }
 
-            // Only initialize if empty or not initialized yet
-            if (container.children.length === 0 || !container.dataset.initialized) {
-                console.log(`Initializing BlasterJS for tab ${tabIdx}`);
+                // Check if this container has already been initialized
+                if (container.dataset.initialized === "true") {
+                    console.log(`Container ${containerId} already initialized`);
+                    return true;
+                }
+
+                console.log(`Initializing BlasterJS for tab ${tabIdx} in container:`, container);
                 
                 // Clear existing content
                 container.innerHTML = '';
@@ -2358,7 +2376,7 @@ clientside_callback(
                     emptyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
                     container.appendChild(emptyDiv);
                     container.dataset.initialized = "true";
-                    return window.dash_clientside.no_update;
+                    return true;
                 }
                 
                 // Initialize BlasterJS
@@ -2368,7 +2386,7 @@ clientside_callback(
                         console.error("require function not available - can't load BlasterJS");
                         container.innerHTML += '<div style="color:orange;padding:10px;">Error: BlasterJS library not available</div>';
                         container.dataset.initialized = "error";
-                        return window.dash_clientside.no_update;
+                        return false;
                     }
                     
                     let blasterjs = require("biojs-vis-blasterjs");
@@ -2376,7 +2394,7 @@ clientside_callback(
                         console.error("Failed to load BlasterJS library");
                         container.innerHTML += '<div style="color:orange;padding:10px;">Error loading BlasterJS library</div>';
                         container.dataset.initialized = "error";
-                        return window.dash_clientside.no_update;
+                        return false;
                     }
                     
                     let instance = new blasterjs({
@@ -2398,10 +2416,32 @@ clientside_callback(
                     }, 100);
                     
                     console.log(`BlasterJS initialized for tab ${tabIdx}`);
+                    return true;
                 } catch (error) {
                     console.error("Error initializing BlasterJS:", error);
                     container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
                     container.dataset.initialized = "error";
+                    return false;
+                }
+            };
+            
+            // First attempt immediate initialization
+            if (!initializeBlasterJS()) {
+                // If initialization fails, try again with delays
+                console.log("Initial attempt failed, retrying with delay");
+                
+                // Set up retries with increasing delays
+                const retryDelays = [100, 300, 500, 1000]; // milliseconds
+                
+                for (let i = 0; i < retryDelays.length; i++) {
+                    setTimeout(function() {
+                        console.log(`Retry attempt ${i+1} after ${retryDelays[i]}ms`);
+                        if (initializeBlasterJS()) {
+                            console.log(`Successfully initialized on retry ${i+1}`);
+                        } else if (i === retryDelays.length - 1) {
+                            console.error("All retry attempts failed");
+                        }
+                    }, retryDelays[i]);
                 }
             }
         } catch (error) {
