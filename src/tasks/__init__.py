@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 from typing import Optional
 import os
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -367,6 +368,20 @@ def run_classification_workflow_task(self, upload_data):
     try:
         # Run the sequential workflow
         result = run_classification_workflow(upload_data)
+
+        # Test JSON serialization before returning
+        try:
+            # Test if result is JSON serializable
+            json.dumps(result)
+        except TypeError as json_error:
+            logger.error(f"Result is not JSON serializable: {json_error}")
+            # Return a safe version with error information
+            return {
+                "complete": True,
+                "error": f"Classification result is not JSON serializable: {str(json_error)}",
+                "status": "failed",
+            }
+
         return result
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")

@@ -1071,7 +1071,9 @@ def process_single_sequence(seq_data, evalue_threshold):
     upload_data = {
         "seq_type": query_type,
         "fasta": tmp_query_fasta,
-        "blast_df": blast_df,
+        "blast_df": blast_df.to_dict("records")
+        if isinstance(blast_df, pd.DataFrame)
+        else blast_df,
         "fetch_ship_params": {
             "curated": False,
             "with_sequence": True,
