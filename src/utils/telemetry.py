@@ -21,6 +21,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 from sqlalchemy import text
 from src.config.database import TelemetrySession
+from src.config.celery_config import celery
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -218,7 +219,8 @@ class GeolocatorService:
         return LocationInfo.create_empty(ip)
 
 
-def update_ip_locations(ipstack_api_key: Optional[str] = None):
+@celery.task(name="src.utils.telemetry.update_ip_locations")
+def update_ip_locations(api_key=None):
     """
     Update locations for any new IPs in request_logs that aren't in ip_locations.
     This should be run periodically (e.g., daily) rather than on every app launch.
@@ -245,7 +247,7 @@ def update_ip_locations(ipstack_api_key: Optional[str] = None):
 
             try:
                 # Get location data
-                location = geolocator.get_location(ip, ipstack_api_key)
+                location = geolocator.get_location(ip, api_key)
 
                 # Skip if we got an empty location
                 if location.lat == 0 and location.lon == 0:
@@ -803,6 +805,31 @@ def blast_limit_decorator(f):
     return wrapped
 
 
+@celery.task(name="src.utils.telemetry.refresh_telemetry")
+def refresh_telemetry():
+    """Refresh telemetry data as a Celery task."""
+    try:
+        response = requests.post("http://localhost:8000/api/telemetry/refresh")
+        return {"status": "success", "response": response.status_code}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@celery.task(name="src.utils.telemetry.check_cache_status")
+def check_cache_status():
+    """Check cache status and refresh if needed."""
+    try:
+        # First check if cache is healthy
+        status_response = requests.get("http://localhost:8000/api/cache/status")
+        if status_response.status_code != 200:
+            # Cache needs refresh
+            refresh_response = requests.post("http://localhost:8000/api/cache/refresh")
+            return {"status": "refreshed", "response": refresh_response.status_code}
+        return {"status": "healthy"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 if __name__ == "__main__":
     import sys
 
@@ -811,7 +838,7 @@ if __name__ == "__main__":
 
         if command == "update_ip_locations":
             logger.info("Running IP location updates...")
-            maintain_ip_locations(IPSTACK_API_KEY)
+            update_ip_locations(IPSTACK_API_KEY)
             logger.info("IP location updates completed")
         else:
             logger.error(f"Unknown command: {command}")

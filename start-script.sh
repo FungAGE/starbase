@@ -3,9 +3,6 @@
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
 
-# Start cron in the background using supercronic
-supercronic $HOME/cron/crontab &
-
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,6 +26,12 @@ restart_celery() {
         rm /tmp/celery.pid
     fi
 
+    # Kill existing Celery beat if it exists
+    if [ -f /tmp/celerybeat.pid ]; then
+        kill $(cat /tmp/celerybeat.pid) 2>/dev/null || true
+        rm /tmp/celerybeat.pid
+    fi
+
     # Start new Celery worker
     celery -A src.config.celery_config:celery worker \
         --loglevel=DEBUG \
@@ -36,6 +39,12 @@ restart_celery() {
         --max-tasks-per-child=1000 \
         --max-memory-per-child=1024000 \
         --pidfile=/tmp/celery.pid \
+        &
+    
+    # Start Celery beat for scheduled tasks
+    celery -A src.config.celery_config:celery beat \
+        --loglevel=INFO \
+        --pidfile=/tmp/celerybeat.pid \
         &
 }
 
