@@ -344,7 +344,7 @@ def insert_submission(
                 },
             )
             session.commit()
-            logger.info(f"Successfully inserted submission for {seq_filename}")
+            logger.debug(f"Successfully inserted submission for {seq_filename}")
             return True
 
     except SQLAlchemyError as e:

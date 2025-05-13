@@ -59,7 +59,6 @@ layout = dmc.Container(
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="classification-result-store", data=None),
         # Single data store with all workflow state
-        dcc.Store(id="classification-stage", data="Upload a sequence"),
         dcc.Store(
             id="classification-workflow-state",
             data={"current_stage": None, "complete": False},
@@ -250,45 +249,8 @@ layout = dmc.Container(
                                 # This div will be replaced with tabs when more than one sequence is in query
                                 dmc.Stack(
                                     children=[
-                                        # Progress section - initially hidden
                                         html.Div(
                                             id="classification-output", className="mt-4"
-                                        ),
-                                        dmc.Stack(
-                                            [
-                                                dmc.Group(
-                                                    [
-                                                        dbc.Progress(
-                                                            id="classification-progress",
-                                                            value=0,
-                                                            color="blue",
-                                                            animated=True,
-                                                            striped=True,
-                                                            style={
-                                                                "width": "100%",
-                                                                "marginBottom": "5px",
-                                                            },
-                                                        ),
-                                                    ]
-                                                ),
-                                                dmc.Group(
-                                                    [
-                                                        dmc.Text(
-                                                            "Classification Status:",
-                                                            size="lg",
-                                                            fw=500,
-                                                        ),
-                                                        dmc.Text(
-                                                            id="classification-stage-display",
-                                                            size="lg",
-                                                            c="blue",
-                                                        ),
-                                                    ]
-                                                ),
-                                            ],
-                                            gap="md",
-                                            id="classification-progress-section",
-                                            style={"display": "none"},
                                         ),
                                         # BLAST results section
                                         dmc.Stack(
@@ -403,7 +365,7 @@ def update_fasta_details(seq_content, seq_filename):
 
         # Save success/error status in a log
         if seq_list:
-            logger.info(
+            logger.debug(
                 f"Successfully parsed file upload: {seq_filename}, type={input_type}, sequences={n_seqs}"
             )
         else:
@@ -610,22 +572,6 @@ def create_single_layout():
     return dmc.Stack(
         children=[
             html.Div(id="classification-output", className="mt-4"),
-            # Progress section
-            dmc.Stack(
-                [
-                    dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
-                    dmc.Group(
-                        [
-                            dmc.Text("Classification Status:", size="lg", fw=500),
-                            dmc.Text(
-                                id="classification-stage-display", size="lg", c="blue"
-                            ),
-                        ]
-                    ),
-                ],
-                id="classification-progress-section",
-                style={"display": "none"},
-            ),
             # BLAST results section - use create_blast_container for consistency
             dmc.Stack(
                 [
@@ -699,11 +645,11 @@ def create_blast_container(sequence_results, tab_id=None):
 
     # For single sequences, ensure we're using the standard ID
     if tab_id is None:
-        logger.info(
+        logger.debug(
             "Creating blast container for single sequence with ID: blast-container"
         )
     else:
-        logger.info(
+        logger.debug(
             f"Creating blast container for tab {tab_id} with ID: {container_id}"
         )
 
@@ -766,7 +712,7 @@ def process_blast_results(blast_results_store, active_tab_idx):
 
     # Convert active_tab_idx to string (since keys in sequence_results are strings)
     tab_idx = str(active_tab_idx or 0)
-    logger.info(f"Processing BLAST results for tab index: {tab_idx}")
+    logger.debug(f"Processing BLAST results for tab index: {tab_idx}")
 
     # Get the correct sequence results based on active tab
     sequence_results = blast_results_store.get("sequence_results", {}).get(tab_idx)
@@ -780,7 +726,7 @@ def process_blast_results(blast_results_store, active_tab_idx):
 
     # If we have direct blast_content, use it without reading file
     if blast_content:
-        logger.info(f"Using direct blast_content for tab {tab_idx}")
+        logger.debug(f"Using direct blast_content for tab {tab_idx}")
         return {"blast_text": blast_content}
 
     # If no blast_file, return empty blast text with warning
@@ -788,7 +734,7 @@ def process_blast_results(blast_results_store, active_tab_idx):
         logger.warning(f"No blast file in sequence results for tab {tab_idx}")
         return {"blast_text": ""}
 
-    logger.info(f"Reading BLAST file: {blast_results_file}")
+    logger.debug(f"Reading BLAST file: {blast_results_file}")
     try:
         # Check if file exists
         if not os.path.exists(blast_results_file):
@@ -801,7 +747,7 @@ def process_blast_results(blast_results_store, active_tab_idx):
 
         # Add size limit check
         results_size = len(blast_results)
-        logger.info(f"Read BLAST results, size: {results_size} bytes")
+        logger.debug(f"Read BLAST results, size: {results_size} bytes")
         if results_size > 5 * 1024 * 1024:  # 5MB limit
             logger.warning(f"BLAST results too large: {results_size} bytes")
             return {"blast_text": "BLAST results too large to display"}
@@ -861,13 +807,13 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
 
     try:
         # Log what we're working with to help with debugging
-        logger.info(
+        logger.debug(
             f"Preprocess called with seq_list={seq_list is not None}, query_text_input={query_text_input is not None}, file_contents={file_contents is not None}"
         )
 
         # If we have parsed sequences from a file upload, use those
         if seq_list is not None:
-            logger.info(
+            logger.debug(
                 f"Using pre-parsed sequences from blast-sequences-store: {len(seq_list)} sequences"
             )
             # Ensure limit to 10 sequences
@@ -886,7 +832,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         # If we have file contents but no parsed sequences, try to parse them now
         # This handles cases where the file upload callback hasn't completed before submit
         if file_contents and not seq_list:
-            logger.info("Parsing file contents directly from state")
+            logger.debug("Parsing file contents directly from state")
             try:
                 input_type, seq_list, n_seqs, error = check_input(
                     query_text_input=None, query_file_contents=file_contents
@@ -912,7 +858,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
                     )
 
                 if seq_list and len(seq_list) > 0:
-                    logger.info(
+                    logger.debug(
                         f"Successfully parsed {len(seq_list)} sequences from file contents"
                     )
                     # Ensure limit to 10 sequences
@@ -933,7 +879,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
 
         # Otherwise, parse the text input with max_sequences=10
         if query_text_input:
-            logger.info("Processing text input")
+            logger.debug("Processing text input")
             input_type, seq_list, n_seqs, error = check_input(
                 query_text_input=query_text_input,
                 query_file_contents=None,
@@ -959,7 +905,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
                     None,
                 )
 
-            logger.info(f"Text input processed: {input_type}, {n_seqs} sequences")
+            logger.debug(f"Text input processed: {input_type}, {n_seqs} sequences")
 
             # Create UI structure based on number of sequences from text input
             ui_content = (
@@ -1093,7 +1039,7 @@ def process_single_sequence(seq_data, evalue_threshold):
                 # If it's a string but not a file, it might be the actual content
                 blast_content = blast_results
                 blast_results_file = None
-                logger.info("Using blast results string as content")
+                logger.debug("Using blast results string as content")
             else:
                 blast_results_file = None
                 blast_content = None
@@ -1109,7 +1055,7 @@ def process_single_sequence(seq_data, evalue_threshold):
             if blast_tsv and os.path.exists(blast_tsv):
                 blast_df = pd.read_csv(blast_tsv, sep="\t")
                 if len(blast_df) == 0:
-                    logger.info("No BLAST hits found")
+                    logger.debug("No BLAST hits found")
     else:
         # If BLAST search failed, return basic structure with error
         return {
@@ -1294,7 +1240,7 @@ def process_single_sequence(seq_data, evalue_threshold):
                 ["evalue", "pident"], ascending=[True, False]
             )
             top_hit = blast_df.iloc[0]
-            logger.info(f"Top hit: {top_hit}")
+            logger.debug(f"Top hit: {top_hit}")
 
             top_evalue = float(top_hit["evalue"])
             top_aln_length = int(top_hit["aln_length"])
@@ -1414,7 +1360,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
     if not seq_list:
         # If we have no seq_list but do have file contents, parse the file directly
         if file_contents:
-            logger.info("No seq_list but file_contents available - parsing directly")
+            logger.debug("No seq_list but file_contents available - parsing directly")
             try:
                 input_type, direct_seq_list, n_seqs, error = check_input(
                     query_text_input=None, query_file_contents=file_contents
@@ -1430,7 +1376,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                     }
                     return None, True, error_state
 
-                logger.info(
+                logger.debug(
                     f"Successfully parsed {len(direct_seq_list)} sequences directly from file contents"
                 )
                 seq_list = direct_seq_list
@@ -1453,7 +1399,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
             }
             return None, True, error_state
 
-    logger.info(
+    logger.debug(
         f"Processing sequence submission with ID: {submission_id}, sequences: {len(seq_list)}"
     )
 
@@ -1466,7 +1412,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
         if seq_list and len(seq_list) > 0:
             # Log sequence details for debugging
             first_seq = seq_list[0]
-            logger.info(
+            logger.debug(
                 f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}"
             )
 
@@ -1474,7 +1420,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
             sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
 
             if sequence_result:
-                logger.info(
+                logger.debug(
                     f"Sequence result: processed={sequence_result.get('processed', False)}, blast_file={sequence_result.get('blast_file') is not None}"
                 )
 
@@ -1493,7 +1439,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                     sequence_length < 5000 or sequence_result.get("error") is not None
                 )
 
-                logger.info(
+                logger.debug(
                     f"Classification decision: skip={skip_classification}, seq_length={sequence_length}"
                 )
 
@@ -1516,7 +1462,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                         if tmp_query_fasta and os.path.exists(tmp_query_fasta):
                             with open(tmp_query_fasta, "r") as f:
                                 fasta_content = f.read()
-                            logger.info(
+                            logger.debug(
                                 f"Successfully read temp FASTA file: {tmp_query_fasta}"
                             )
                         else:
@@ -1562,7 +1508,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                         # Only enable the interval if we have a proper workflow state
                         if workflow_state is not None:
-                            logger.info("Enabling classification interval")
+                            logger.debug("Enabling classification interval")
                             classification_interval_disabled = False
                         else:
                             logger.warning(
@@ -1584,7 +1530,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                     "total_sequences": len(seq_list),
                 }
 
-        logger.info(
+        logger.debug(
             f"Completed process_sequences: has_blast_results={blast_results is not None}, interval_disabled={classification_interval_disabled}"
         )
         return blast_results, classification_interval_disabled, workflow_state
@@ -1633,7 +1579,7 @@ def process_additional_sequence(active_tab, results_store, seq_list, evalue_thre
         raise PreventUpdate
 
     # Process this sequence
-    logger.info(f"Processing sequence for tab {tab_idx}")
+    logger.debug(f"Processing sequence for tab {tab_idx}")
     sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
 
     if not sequence_result:
@@ -1645,7 +1591,7 @@ def process_additional_sequence(active_tab, results_store, seq_list, evalue_thre
     updated_results["processed_sequences"].append(tab_idx)
     updated_results["sequence_results"][str(tab_idx)] = sequence_result
 
-    logger.info(f"Updated results for tab {tab_idx}")
+    logger.debug(f"Updated results for tab {tab_idx}")
     return updated_results
 
 
@@ -1719,22 +1665,6 @@ def render_tab_content(active_tab, results_store):
 
     return [
         classification_output,
-        # Progress section (hidden initially)
-        dmc.Stack(
-            [
-                dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
-                dmc.Group(
-                    [
-                        dmc.Text("Classification Status:", size="lg", fw=500),
-                        dmc.Text(
-                            id="classification-stage-display", size="lg", c="blue"
-                        ),
-                    ]
-                ),
-            ],
-            id="classification-progress-section",
-            style={"display": "none"},
-        ),
         # BLAST results section
         dmc.Stack(
             [
@@ -2270,91 +2200,6 @@ def update_classification_workflow_state(n_intervals, workflow_state):
         workflow_state["status"] = "failed"
         workflow_state["complete"] = True
         return workflow_state
-
-
-@callback(
-    [
-        Output("classification-progress", "value"),
-        Output("classification-stage-display", "children"),
-        Output("classification-progress-section", "style"),
-    ],
-    Input("workflow-state-store", "data"),
-    prevent_initial_call=True,
-)
-def update_classification_progress(workflow_state):
-    """Update the classification progress UI based on workflow state"""
-    if not workflow_state or not isinstance(workflow_state, dict):
-        logger.warning("Invalid workflow state type or empty")
-        return 0, "No workflow data", {"display": "none"}
-
-    # Only show if we have a valid state with a status
-    status = workflow_state.get("status", "")
-    if not status or status == "pending" or "task_id" not in workflow_state:
-        return 0, "", {"display": "none"}
-
-    # Calculate progress percentage
-    progress = 0
-    if workflow_state.get("complete", False):
-        progress = 100
-    elif (
-        "current_stage_idx" in workflow_state
-        and workflow_state["current_stage_idx"] is not None
-    ):
-        try:
-            stage_idx = int(workflow_state.get("current_stage_idx", 0))
-            total_stages = len(WORKFLOW_STAGES)
-
-            # Safely get the stage progress
-            current_stage = workflow_state.get("current_stage")
-            stages_dict = workflow_state.get("stages", {})
-
-            if current_stage and current_stage in stages_dict:
-                stage_data = stages_dict[current_stage]
-                stage_progress = (
-                    stage_data.get("progress", 0) if isinstance(stage_data, dict) else 0
-                )
-            else:
-                stage_progress = 0
-
-            # Calculate overall progress: stage contribution + progress within stage
-            progress = int(
-                (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
-            )
-            # Ensure progress is within valid range
-            progress = max(0, min(100, progress))
-        except (ValueError, ZeroDivisionError, TypeError) as e:
-            logger.error(f"Error calculating progress: {e}")
-            progress = 0
-
-    # Get current stage label
-    if "error" in workflow_state and workflow_state["error"]:
-        stage_text = f"Error: {workflow_state['error']}"
-    elif workflow_state.get("complete", False):
-        if workflow_state.get("found_match", False):
-            match_stage = workflow_state.get("match_stage", "unknown")
-            stage_text = f"Complete - {match_stage.capitalize()} match found"
-        else:
-            stage_text = "Classification complete"
-    else:
-        current_stage = workflow_state.get("current_stage")
-        if current_stage:
-            # Find the stage label
-            stage_label = None
-            for stage in WORKFLOW_STAGES:
-                if stage["id"] == current_stage:
-                    stage_label = stage["label"]
-                    break
-
-            stage_text = stage_label if stage_label else f"Processing {current_stage}"
-        else:
-            stage_text = "Starting classification..."
-
-    # Show section if classification is in progress
-    style = (
-        {"display": "block"} if status and status != "pending" else {"display": "none"}
-    )
-
-    return progress, stage_text, style
 
 
 @callback(

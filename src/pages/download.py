@@ -204,7 +204,7 @@ def update_dl_table(curated, dereplicate):
             logger.warning("fetch_download_data returned None or empty DataFrame")
             return table_no_results_alert(), "No records found"
 
-        logger.info(
+        logger.debug(
             f"Retrieved {len(df)} records (curated={curated}, dereplicated={dereplicate})."
         )
         df = df.fillna("")  # Explicitly fill NA values
@@ -275,7 +275,7 @@ def generate_download_helper(rows, curated, dereplicate):
             fasta_content.append(f"{header}\n{row['sequence']}")
 
         fasta_str = "\n".join(fasta_content)
-        logger.info(
+        logger.debug(
             f"FASTA content created successfully for {len(fasta_content)} sequences."
         )
 

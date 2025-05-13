@@ -206,13 +206,13 @@ def check_similar_matches_task(
         else:
             fasta_path = fasta
 
-        logger.info(f"Starting similar match task with {len(ships_dict)} ships")
+        logger.debug(f"Starting similar match task with {len(ships_dict)} ships")
         # Convert list of dicts back to DataFrame
         existing_ships = pd.DataFrame.from_dict(ships_dict)
-        logger.info(f"Converted to DataFrame with shape {existing_ships.shape}")
+        logger.debug(f"Converted to DataFrame with shape {existing_ships.shape}")
 
         result = check_similar_match(fasta_path, existing_ships, threshold)
-        logger.info(f"Similar match result: {result}")
+        logger.debug(f"Similar match result: {result}")
         return result
     except Exception as e:
         logger.error(f"Similar match check failed: {str(e)}")

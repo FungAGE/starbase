@@ -22,6 +22,10 @@ from src.telemetry.utils import log_request, get_client_ip, update_ip_locations
 
 logger = get_logger(__name__)
 
+# Get the environment
+ENV = os.getenv("ENVIRONMENT", "development")
+IS_DEV = ENV.lower() == "development"
+
 server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
@@ -105,6 +109,7 @@ engines = {
         max_overflow=20,
         pool_timeout=30,
         pool_recycle=1800,
+        echo=IS_DEV,  # Only log SQL in development mode
     )
     for name, url in DATABASE_URLS.items()
 }

@@ -76,31 +76,31 @@ def assign_accession(
     if existing_ships is None:
         existing_ships = fetch_ships(curated=True)
 
-    logger.info("Starting accession assignment process")
+    logger.debug("Starting accession assignment process")
 
-    logger.info("Step 1: Checking for exact matches using MD5 hash...")
+    logger.debug("Step 1: Checking for exact matches using MD5 hash...")
     exact_match = check_exact_match(sequence, existing_ships)
     if exact_match:
-        logger.info(f"Found exact match: {exact_match}")
+        logger.debug(f"Found exact match: {exact_match}")
         return exact_match, False
 
-    logger.info("Step 2: Checking for contained matches...")
+    logger.debug("Step 2: Checking for contained matches...")
     container_match = check_contained_match(
         sequence, existing_ships, min_coverage=0.95, min_identity=0.95
     )
     if container_match:
-        logger.info(f"Found containing match: {container_match}")
+        logger.debug(f"Found containing match: {container_match}")
         return container_match, True  # Flag for review since it's truncated
 
-    logger.info(f"Step 3: Checking for similar matches (threshold={threshold})...")
+    logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
     similar_match = check_similar_match(sequence, existing_ships, threshold)
     if similar_match:
-        logger.info(f"Found similar match: {similar_match}")
+        logger.debug(f"Found similar match: {similar_match}")
         return similar_match, True  # Flag for review due to high similarity
 
-    logger.info("No matches found, generating new accession...")
+    logger.debug("No matches found, generating new accession...")
     new_accession = generate_new_accession(existing_ships)
-    logger.info(f"Generated new accession: {new_accession}")
+    logger.debug(f"Generated new accession: {new_accession}")
     return new_accession, False
 
 
@@ -121,8 +121,8 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 
     # Find next available number
     next_num = max(existing_nums) + 1
-    logger.info(f"Last used accession number: SBS{max(existing_nums):06d}")
-    logger.info(f"Assigning new accession number: SBS{next_num:06d}")
+    logger.debug(f"Last used accession number: SBS{max(existing_nums):06d}")
+    logger.debug(f"Assigning new accession number: SBS{next_num:06d}")
 
     return f"SBS{next_num:06d}"
 
@@ -136,7 +136,7 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
     # fasta should be a file path
     if os.path.exists(fasta):
-        logger.info(f"Loading sequence from file: {fasta}")
+        logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
@@ -166,12 +166,12 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
     if skipped_count > 0:
         logger.warning(f"Skipped {skipped_count} sequences due to null values")
 
-    logger.info(f"Compared against {len(existing_hashes)} valid sequences")
+    logger.debug(f"Compared against {len(existing_hashes)} valid sequences")
     match = existing_hashes.get(sequence_hash)
     if match:
-        logger.info(f"Found exact hash match: {match}")
+        logger.debug(f"Found exact hash match: {match}")
     else:
-        logger.info("No exact match found")
+        logger.debug("No exact match found")
     return match
 
 
@@ -195,7 +195,7 @@ def check_contained_match(
     containing_matches = []
 
     if os.path.exists(fasta):
-        logger.info(f"Loading sequence from file: {fasta}")
+        logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
@@ -204,7 +204,7 @@ def check_contained_match(
 
     query_len = len(sequence)
 
-    logger.info(f"Checking for contained matches (query length: {query_len})")
+    logger.debug(f"Checking for contained matches (query length: {query_len})")
 
     # ruff: noqa
     with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file:
@@ -220,9 +220,9 @@ def check_contained_match(
                     ref_file.write(f">{row['accession_tag']}\n{row['sequence']}\n")
                     ref_count += 1
             ref_file.flush()
-            logger.info(f"Written {ref_count} reference sequences for comparison")
+            logger.debug(f"Written {ref_count} reference sequences for comparison")
 
-            logger.info("Running minimap2 alignment")
+            logger.debug("Running minimap2 alignment")
             cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
@@ -245,7 +245,7 @@ def check_contained_match(
                 identity = matches / align_length
 
                 if coverage >= min_coverage and identity >= min_identity:
-                    logger.info(
+                    logger.debug(
                         f"Found containing match: {ref_name} "
                         f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
                     )
@@ -261,19 +261,19 @@ def check_contained_match(
                         )
                     )
 
-            logger.info(f"Processed {alignment_count} alignments from minimap2")
+            logger.debug(f"Processed {alignment_count} alignments from minimap2")
 
     # Sort by score descending, then by length descending
     if containing_matches:
         containing_matches.sort(reverse=True)
-        logger.info(f"Found {len(containing_matches)} containing matches")
-        logger.info(
+        logger.debug(f"Found {len(containing_matches)} containing matches")
+        logger.debug(
             f"Selected best match: {containing_matches[0][2]} "
             f"(score: {containing_matches[0][0]:.2f}, length: {containing_matches[0][1]})"
         )
         return containing_matches[0][2]  # Return accession of best match
 
-    logger.info("No containing matches found")
+    logger.debug("No containing matches found")
     return None
 
 
@@ -281,7 +281,7 @@ def check_similar_match(
     fasta: str, existing_ships: pd.DataFrame, threshold: float
 ) -> Optional[str]:
     """Check for sequences with similarity above threshold using k-mer comparison."""
-    logger.info(f"Starting similarity comparison (threshold={threshold})")
+    logger.debug(f"Starting similarity comparison (threshold={threshold})")
 
     tmp_fasta_all_ships = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     write_multi_fasta(
@@ -294,7 +294,7 @@ def check_similar_match(
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
 
     if os.path.exists(fasta):
-        logger.info(f"Loading sequence from file: {fasta}")
+        logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
@@ -326,10 +326,10 @@ def check_similar_match(
         for acc_id, sim in similarities["query_sequence"].items():
             logger.debug(f"Similarity to {acc_id}: {sim}")
             if sim >= threshold:
-                logger.info(f"Found similar match: {acc_id} (similarity: {sim})")
+                logger.debug(f"Found similar match: {acc_id} (similarity: {sim})")
                 return acc_id
 
-    logger.info("No similar matches found above threshold")
+    logger.debug("No similar matches found above threshold")
     return None
 
 
@@ -363,7 +363,7 @@ def classify_family(
     hmmer_dict = None
 
     if os.path.exists(fasta):
-        logger.info(f"Loading sequence from file: {fasta}")
+        logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
@@ -374,7 +374,7 @@ def classify_family(
         # Sort by evalue (ascending) and pident (descending) to get best hits
         blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
         top_hit = blast_df.iloc[0]
-        logger.info(f"Top hit: {top_hit}")
+        logger.debug(f"Top hit: {top_hit}")
 
         top_evalue = float(top_hit["evalue"])
         top_aln_length = int(top_hit["aln_length"])
@@ -685,7 +685,7 @@ def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled, sketch_type="dna
         sequence_file,
     ]
 
-    logger.info(f"Creating sourmash signatures: {' '.join(sketch_cmd)}")
+    logger.debug(f"Creating sourmash signatures: {' '.join(sketch_cmd)}")
     try:
         subprocess.run(sketch_cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
@@ -708,7 +708,7 @@ def sourmash_compare(
         str(kmer_size),
     ]
 
-    logger.info(f"Calculating pairwise similarities: {' '.join(compare_cmd)}")
+    logger.debug(f"Calculating pairwise similarities: {' '.join(compare_cmd)}")
     try:
         subprocess.run(compare_cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
@@ -911,7 +911,7 @@ def parse_and_name_groups(mcl_output, prefix):
                         "is_representative": member == members[0],
                     }
 
-    logger.info(f"Grouped sequences into {group_count} clusters")
+    logger.debug(f"Grouped sequences into {group_count} clusters")
     return groups
 
 
@@ -1077,7 +1077,7 @@ def run_classification_workflow(upload_data):
             workflow_state["stages"][stage_id]["progress"] = 10
             workflow_state["stages"][stage_id]["status"] = "running"
 
-            logger.info(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
+            logger.debug(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
                 ships_df = fetch_ships(**upload_data["fetch_ship_params"])

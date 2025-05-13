@@ -37,6 +37,6 @@ def cleanup_old_cache():
 
                 shutil.rmtree(filepath)  # remove old directories if they exist
             cleanup_count += 1
-        logger.info(f"Cleaned up {cleanup_count} cache items")
+        logger.debug(f"Cleaned up {cleanup_count} cache items")
     except Exception as e:
         logger.error(f"Cache cleanup failed: {str(e)}")

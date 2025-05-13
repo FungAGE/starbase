@@ -3,6 +3,9 @@
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
 
+# Default to production mode
+DEV_MODE=false
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -19,6 +22,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Set environment variables based on mode
+export PYTHONPATH=$(pwd)
+if [ "$DEV_MODE" = "true" ]; then
+    export ENVIRONMENT="development"
+else
+    export ENVIRONMENT="production"
+    export PYTHONUNBUFFERED=1
+    export SQLALCHEMY_WARN_20=1
+    export SQLALCHEMY_SILENCE_UBER_WARNING=1
+fi
+
 restart_celery() {
     # Kill existing Celery worker if it exists
     if [ -f /tmp/celery.pid ]; then
@@ -32,9 +46,26 @@ restart_celery() {
         rm /tmp/celerybeat.pid
     fi
 
+    # Set log level based on environment
+    if [ "$DEV_MODE" = "true" ]; then
+        CELERY_LOG_LEVEL=DEBUG
+    else
+        CELERY_LOG_LEVEL=WARNING
+    fi
+
+    # This environment variable will silence internal Celery logging
+    if [ "$DEV_MODE" != "true" ]; then
+        export CELERY_WORKER_HIJACK_ROOT_LOGGER=False
+        export CELERY_WORKER_REDIRECT_STDOUTS=False
+        
+        # These env vars can help silence Celery logs in production
+        export CELERY_WORKER_TASK_LOG_FORMAT="%(message)s"
+        export CELERY_WORKER_REDIRECT_STDOUTS_LEVEL=WARNING
+    fi
+
     # Start new Celery worker
     celery -A src.config.celery_config:celery worker \
-        --loglevel=DEBUG \
+        --loglevel=$CELERY_LOG_LEVEL \
         --concurrency=4 \
         --max-tasks-per-child=1000 \
         --max-memory-per-child=1024000 \
@@ -43,7 +74,7 @@ restart_celery() {
     
     # Start Celery beat for scheduled tasks
     celery -A src.config.celery_config:celery beat \
-        --loglevel=INFO \
+        --loglevel=$CELERY_LOG_LEVEL \
         --pidfile=/tmp/celerybeat.pid \
         &
 }
@@ -60,6 +91,7 @@ if [ "$DEV_MODE" = "true" ]; then
     uvicorn --host=0.0.0.0 \
         --port=8000 \
         --reload \
+        --log-level=debug \
         --interface wsgi \
         --proxy-headers \
         --forwarded-allow-ips='*' \
@@ -73,12 +105,13 @@ else
     uvicorn --host=0.0.0.0 \
         --port=8000 \
         --workers=4 \
+        --log-level=warning \
         --interface wsgi \
         --proxy-headers \
         --forwarded-allow-ips='*' \
         --timeout-keep-alive=5 \
         --timeout-graceful-shutdown=60 \
         --limit-max-requests=1000 \
-        --access-log \
+        --no-access-log \
         app:server
 fi

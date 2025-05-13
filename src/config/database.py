@@ -3,6 +3,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
+# Get the environment
+ENV = os.getenv("ENVIRONMENT", "development")
+IS_DEV = ENV.lower() == "development"
+
 # Create base class for declarative models
 Base = declarative_base()
 
@@ -13,7 +17,9 @@ def create_db_engine(db_path):
         db_dir = os.path.dirname(db_path)
         if not os.path.exists(db_dir):
             os.makedirs(db_dir)
-    return create_engine(f"sqlite:///{db_path}", echo=False)
+
+    # Set echo based on environment - only log SQL in development
+    return create_engine(f"sqlite:///{db_path}", echo=IS_DEV)
 
 
 # Create engines

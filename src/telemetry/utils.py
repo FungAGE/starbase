@@ -774,7 +774,7 @@ def blast_limit_decorator(f):
                     raise PreventUpdate("Hourly BLAST limit exceeded")
 
                 # Log the BLAST request
-                logger.info(f"BLAST submission from IP: {client_ip}")
+                logger.debug(f"BLAST submission from IP: {client_ip}")
                 log_request(client_ip, "/api/blast-submit")
 
             return f(*args, **kwargs)

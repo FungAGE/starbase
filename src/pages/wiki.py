@@ -385,7 +385,7 @@ def load_paper_data(url):
             paper_df = cache.get("paper_data")
             if paper_df is None:
                 paper_df = fetch_paper_data()
-            logger.info(f"Paper data query returned {len(paper_df)} rows.")
+            logger.debug(f"Paper data query returned {len(paper_df)} rows.")
             return paper_df.to_dict("records")
         except SQLAlchemyError:
             logger.error(
@@ -422,7 +422,7 @@ def create_accordion(cached_meta, cached_papers):
 
     try:
         unique_categories = df["familyName"].dropna().unique().tolist()
-        logger.info(
+        logger.debug(
             f"Found {len(unique_categories)} unique categories for the accordion."
         )
         assert isinstance(unique_categories, list), "unique_categories must be a list"
