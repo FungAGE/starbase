@@ -18,6 +18,7 @@ celery.conf.update(
     accept_content=["json"],
     imports=[
         "src.tasks",
+        "src.telemetry.tasks",
     ],
     worker_prefetch_multiplier=1,  # Disable prefetching for more predictable behavior
     task_time_limit=300,  # 5 minute timeout
@@ -32,18 +33,18 @@ celery.conf.update(
 # Configure periodic tasks
 celery.conf.beat_schedule = {
     "update-ip-locations-hourly": {
-        "task": "src.utils.telemetry.update_ip_locations",
+        "task": "src.telemetry.tasks.update_ip_locations",
         "schedule": crontab(minute=0),  # Every hour at minute 0
     },
     "refresh-telemetry-every-15min": {
-        "task": "src.utils.telemetry.refresh_telemetry",
+        "task": "src.telemetry.tasks.refresh_telemetry",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
     "check-cache-status-every-5min": {
-        "task": "src.utils.telemetry.check_cache_status",
+        "task": "src.telemetry.tasks.check_cache_status",
         "schedule": crontab(minute="*/5"),  # Every 5 minutes
     },
 }
 
 # This ensures tasks are properly registered
-celery.autodiscover_tasks(["src.tasks"])
+celery.autodiscover_tasks(["src.tasks", "src.telemetry"])

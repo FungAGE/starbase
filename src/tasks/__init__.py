@@ -1,6 +1,6 @@
 from src.config.celery_config import celery
 from src.config.cache import cache, cleanup_old_cache
-from src.utils.telemetry import maintain_ip_locations
+from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
 import tempfile
@@ -34,7 +34,7 @@ __all__ = [
 def refresh_telemetry_task(ipstack_api_key):
     """Celery task to refresh telemetry data"""
     try:
-        maintain_ip_locations(ipstack_api_key)
+        update_ip_locations(ipstack_api_key)
         cache.delete("telemetry_data")
         return {"status": "success"}
     except Exception as e:

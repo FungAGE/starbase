@@ -11,7 +11,6 @@ from dash import Dash, html, dcc, _dash_renderer
 
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button
-from src.utils.telemetry import log_request, get_client_ip, maintain_ip_locations
 from src.config.cache import cache, cleanup_old_cache
 from src.config.database import SubmissionsSession
 from src.config.settings import DB_PATHS
@@ -19,6 +18,7 @@ from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
 from src.config.celery_config import celery
+from src.telemetry.utils import log_request, get_client_ip, update_ip_locations
 
 logger = get_logger(__name__)
 
@@ -117,7 +117,7 @@ def initialize_app():
 
         create_database_indexes()
         cleanup_old_cache()
-        maintain_ip_locations()
+        update_ip_locations()
 
 
 def serve_app_layout():

@@ -1,7 +1,10 @@
-import os
+"""
+Telemetry utilities module.
+Contains core telemetry functions used throughout the application.
+"""
+
 from pathlib import Path
 from dotenv import load_dotenv
-
 from datetime import datetime
 import warnings
 import logging
@@ -21,7 +24,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 from sqlalchemy import text
 from src.config.database import TelemetrySession
-from src.config.celery_config import celery
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -29,16 +31,6 @@ logger = logging.getLogger(__name__)
 # Load environment variables from .env file
 env_path = Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
-
-# Get environment variables with defaults
-IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY") or os.getenv("IPSTACK_API_KEY")
-
-
-def validate_config():
-    """Validate that all required environment variables are set"""
-    if not IPSTACK_API_KEY:
-        raise EnvironmentError("IPSTACK_API_KEY environment variable is not set")
-
 
 # Define valid pages
 page_mapping = {
@@ -219,11 +211,10 @@ class GeolocatorService:
         return LocationInfo.create_empty(ip)
 
 
-@celery.task(name="src.utils.telemetry.update_ip_locations")
 def update_ip_locations(api_key=None):
     """
     Update locations for any new IPs in request_logs that aren't in ip_locations.
-    This should be run periodically (e.g., daily) rather than on every app launch.
+    This should be run periodically (e.g., hourly) rather than on every app launch.
     """
     session = TelemetrySession()
     geolocator = GeolocatorService()
@@ -290,8 +281,11 @@ def update_ip_locations(api_key=None):
                 logger.error(f"Error updating location for IP {ip}: {str(e)}")
                 session.rollback()
 
+        return {"status": "success", "ips_processed": len(new_ips)}
+
     except Exception as e:
         logger.error(f"Error in update_ip_locations: {str(e)}")
+        return {"status": "error", "error": str(e)}
     finally:
         session.close()
 
@@ -328,16 +322,6 @@ def get_ip_locations():
         return []
     finally:
         session.close()
-
-
-# Function to be called by your maintenance scripts
-def maintain_ip_locations(ipstack_api_key: Optional[str] = None):
-    """
-    Maintenance function to be run periodically (e.g., daily cron job)
-    to update IP location data.
-    """
-    initialize_ip_locations_table()
-    update_ip_locations(ipstack_api_key)
 
 
 def get_client_ip():
@@ -385,7 +369,6 @@ def is_development_ip(ip_address):
     return any(ip_address.startswith(prefix) for prefix in local_prefixes)
 
 
-# use the telemetry_engine to log request_logs
 def log_request(ip_address, endpoint):
     """Log request details to telemetry database."""
     if is_development_ip(ip_address):
@@ -746,7 +729,7 @@ def count_blast_submissions(ip_address, hours=1):
         """
         result = (
             session.execute(
-                query, {"ip": ip_address, "hours_ago": f"-{hours} hours"}
+                text(query), {"ip": ip_address, "hours_ago": f"-{hours} hours"}
             ).scalar()
             or 0
         )
@@ -803,46 +786,3 @@ def blast_limit_decorator(f):
             raise
 
     return wrapped
-
-
-@celery.task(name="src.utils.telemetry.refresh_telemetry")
-def refresh_telemetry():
-    """Refresh telemetry data as a Celery task."""
-    try:
-        response = requests.post("http://localhost:8000/api/telemetry/refresh")
-        return {"status": "success", "response": response.status_code}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-@celery.task(name="src.utils.telemetry.check_cache_status")
-def check_cache_status():
-    """Check cache status and refresh if needed."""
-    try:
-        # First check if cache is healthy
-        status_response = requests.get("http://localhost:8000/api/cache/status")
-        if status_response.status_code != 200:
-            # Cache needs refresh
-            refresh_response = requests.post("http://localhost:8000/api/cache/refresh")
-            return {"status": "refreshed", "response": refresh_response.status_code}
-        return {"status": "healthy"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-
-        if command == "update_ip_locations":
-            logger.info("Running IP location updates...")
-            update_ip_locations(IPSTACK_API_KEY)
-            logger.info("IP location updates completed")
-        else:
-            logger.error(f"Unknown command: {command}")
-            sys.exit(1)
-    else:
-        logger.error("No command specified")
-        sys.exit(1)
