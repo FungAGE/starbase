@@ -4,4 +4,4 @@ alembic/
 alembic.ini
 .cache
 src/data/db.tar.gz
-src/database/db/cache/
+src/database/db/
