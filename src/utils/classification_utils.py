@@ -86,7 +86,10 @@ def assign_accession(
 
     logger.debug("Step 2: Checking for contained matches...")
     container_match = check_contained_match(
-        sequence, existing_ships, min_coverage=0.95, min_identity=0.95
+        fasta=sequence,
+        existing_ships=existing_ships,
+        min_coverage=0.95,
+        min_identity=0.95,
     )
     if container_match:
         logger.debug(f"Found containing match: {container_match}")
@@ -497,6 +500,7 @@ def classify_haplotype(fasta: str, existing_ships: pd.DataFrame, navis: str) -> 
     """
 
     existing_ships_navis = existing_ships[existing_ships["starship_navis"] == navis]
+
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
     write_combined_fasta(
         fasta,
@@ -1061,12 +1065,24 @@ def run_classification_workflow(upload_data):
 
     try:
         fasta_path = upload_data["fasta"]
+        ships_df = fetch_ships(**upload_data["fetch_ship_params"])
+        logger.debug(f"ships_df type: {type(ships_df)}")
+        logger.debug(f"length of ships_df: {len(ships_df)}")
+        if isinstance(ships_df, list):
+            ships_df = pd.DataFrame(ships_df)
+
         if isinstance(fasta_path, dict) and "content" in fasta_path:
             tmp_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
             with open(tmp_file, "w") as f:
                 f.write(fasta_path["content"])
             upload_data["fasta"] = tmp_file
             fasta_path = tmp_file
+
+        # Make sure blast_df is serializable
+        if "blast_df" in upload_data and isinstance(
+            upload_data["blast_df"], pd.DataFrame
+        ):
+            upload_data["blast_df"] = upload_data["blast_df"].to_dict("records")
 
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
@@ -1080,7 +1096,6 @@ def run_classification_workflow(upload_data):
             logger.debug(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
-                ships_df = fetch_ships(**upload_data["fetch_ship_params"])
                 result = check_exact_match(
                     fasta=upload_data["fasta"], existing_ships=ships_df
                 )
@@ -1097,9 +1112,7 @@ def run_classification_workflow(upload_data):
             if stage_id == "contained":
                 result = check_contained_match(
                     fasta=upload_data["fasta"],
-                    ships_dict=fetch_ships(**upload_data["fetch_ship_params"]).to_dict(
-                        "records"
-                    ),
+                    existing_ships=ships_df,
                     min_coverage=0.95,
                     min_identity=0.95,
                 )
@@ -1116,7 +1129,7 @@ def run_classification_workflow(upload_data):
             if stage_id == "similar":
                 result = check_similar_match(
                     fasta=upload_data["fasta"],
-                    existing_ships=fetch_ships(**upload_data["fetch_ship_params"]),
+                    existing_ships=ships_df,
                     threshold=0.95,
                 )
 
@@ -1128,10 +1141,14 @@ def run_classification_workflow(upload_data):
                     workflow_state["match_result"] = result
 
             if stage_id == "family":
+                blast_df = upload_data["blast_df"]
+                if isinstance(blast_df, list):
+                    blast_df = pd.DataFrame(blast_df)
+
                 result = classify_family(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
-                    blast_df=upload_data["blast_df"],
+                    blast_df=blast_df,
                     pident_thresh=90,
                     input_eval=0.001,
                     threads=1,
@@ -1161,9 +1178,7 @@ def run_classification_workflow(upload_data):
             if stage_id == "haplotype":
                 result = classify_haplotype(
                     fasta=upload_data["fasta"],
-                    existing_ships=fetch_ships(
-                        **upload_data["fetch_ship_params"]
-                    ).to_dict("records"),
+                    existing_ships=ships_df,
                     navis=fetch_captains(**upload_data["fetch_captain_params"]).to_dict(
                         "records"
                     ),
@@ -1185,7 +1200,7 @@ def run_classification_workflow(upload_data):
 
     except Exception as e:
         error_message = str(e)
-        logger.error(error_message)
+        logger.error(f"Error in classification workflow: {error_message}")
         logger.exception("Full traceback:")
 
         workflow_state["error"] = error_message
