@@ -13,7 +13,9 @@ from src.utils.seq_utils import (
     load_fasta_to_dict,
 )
 from src.database.sql_manager import fetch_ships
-
+from Bio import SeqIO
+import numpy as np
+import networkx as nx
 
 from typing import Optional, Tuple, Dict, Any, Callable
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
@@ -316,8 +318,7 @@ def check_similar_match(
 
     # Calculate similarities
     similarities = calculate_similarities(
-        ship_sequence_file=tmp_fasta,
-        new_sequence_file=tmp_fasta_all_ships,
+        fasta_file=tmp_fasta,
         seq_type="nucl",
     )
 
@@ -325,12 +326,12 @@ def check_similar_match(
     logger.debug(f"Calculated similarities for {len(similarities)} sequences")
 
     # Check if we have any similarities above threshold
-    if "query_sequence" in similarities:
-        for acc_id, sim in similarities["query_sequence"].items():
-            logger.debug(f"Similarity to {acc_id}: {sim}")
+    if similarities:
+        for seq_id, sim in similarities:
+            logger.debug(f"Similarity to {seq_id}: {sim}")
             if sim >= threshold:
-                logger.debug(f"Found similar match: {acc_id} (similarity: {sim})")
-                return acc_id
+                logger.debug(f"Found similar match: {seq_id} (similarity: {sim})")
+                return seq_id
 
     logger.debug("No similar matches found above threshold")
     return None
@@ -479,69 +480,249 @@ def classify_navis(
         return navis_name
 
 
-def classify_haplotype(fasta: str, existing_ships: pd.DataFrame, navis: str) -> str:
-    """Assign haplotype based on full sequence similarity.
-    - Compare full sequence to existing classified sequences
-    - Use sourmash for similarity calculation
-    - Use MCL clustering to group with existing haplotypes
-
-    Create temporary FASTA with:
-    - New sequence
-    - All existing classified sequences for this navis
-
-    - groups looks like this:
-    ```
-    'sequence_id': {
-        'group_id': 'HAP000001',
-        'is_representative': True
-    }
-    ```
-
+def classify_haplotype(fasta, existing_ships, navis=None):
     """
+    Classify a sequence by haplotype based on sequence similarity.
 
-    existing_ships_navis = existing_ships[existing_ships["starship_navis"] == navis]
+    Args:
+        fasta (str): Path to the FASTA file containing the query sequence.
+        existing_ships (DataFrame or list): DataFrame or list of existing ships data.
+        navis (str, list, or dict): The navis value to filter ships by. If None, all ships are used.
 
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    write_combined_fasta(
-        fasta,
-        existing_ships_navis,
-        fasta_path=tmp_fasta,
-        sequence_col="sequence",
-        id_col="accession_tag",
-    )
+    Returns:
+        dict: Classification result with haplotype information.
+    """
+    try:
+        # Convert to DataFrame if needed
+        if isinstance(existing_ships, list):
+            logger.debug("Converting existing_ships from list to DataFrame")
+            existing_ships = pd.DataFrame(existing_ships)
 
-    similarities = calculate_similarities(
-        ship_sequence_file=tmp_fasta, new_sequence_file=tmp_fasta, seq_type="nucl"
-    )
-
-    groups, _, _ = cluster_sequences(
-        similarities, group_prefix="HAP", inflation=1.5, threshold=0.05
-    )
-
-    # Find which group has the member "query_sequence"
-    rep_group_id = None
-    for group, members in groups.items():
-        if "query_sequence" in members:
-            rep_group_id = group["group_id"]
-            break
-
-    # Return haplotype based on existing classifications in that group
-    seq_ids_in_rep_group = []
-    for group, members in groups.items():
-        if group["group_id"] == rep_group_id:
-            seq_ids_in_rep_group.append(group["sequence_id"])
-
-    # just get the first sequence id in the group
-    haplotype_name = existing_ships[
-        existing_ships["captainID"] == seq_ids_in_rep_group[0]
-    ]["starship_haplotype"].values[0]
-
-    if haplotype_name is None:
-        logger.warning(
-            f"No haplotype name, but sequence clusters with captainID: {seq_ids_in_rep_group[0]}"
+        logger.debug(
+            f"existing_ships shape: {existing_ships.shape if not existing_ships.empty else 'empty'}"
         )
+        if not existing_ships.empty:
+            logger.debug(f"existing_ships columns: {existing_ships.columns.tolist()}")
 
-    return haplotype_name
+        # Print the type and value of navis for debugging
+        logger.debug(f"navis type: {type(navis)}, value: {navis}")
+
+        # Handle different types of navis parameter
+        if navis is not None:
+            if isinstance(navis, list):
+                if len(navis) > 0:
+                    navis = str(navis[0])
+                    logger.debug(f"Using first value from navis list: {navis}")
+                else:
+                    navis = None
+                    logger.warning("Empty navis list provided, using all ships")
+            elif isinstance(navis, dict):
+                if len(navis) > 0:
+                    first_key = next(iter(navis))
+                    navis = str(navis[first_key])
+                    logger.debug(f"Using first value from navis dict: {navis}")
+                else:
+                    navis = None
+                    logger.warning("Empty navis dict provided, using all ships")
+            else:
+                navis = str(navis)
+                logger.debug(f"Using navis value: {navis}")
+
+        if existing_ships.empty:
+            logger.warning("No existing ships data provided")
+            return {
+                "haplotype_name": "Unknown",
+                "confidence": 0,
+                "note": "No ships data available",
+            }
+
+        # Check if starship_navis column exists
+        if navis is not None and "starship_navis" in existing_ships.columns:
+            filtered_ships = existing_ships[existing_ships["starship_navis"] == navis]
+            logger.debug(f"Filtered to {len(filtered_ships)} ships with navis={navis}")
+            if filtered_ships.empty:
+                logger.warning(
+                    f"No ships found with navis={navis}, using all available ships"
+                )
+                filtered_ships = existing_ships
+        else:
+            if navis is not None:
+                logger.warning(
+                    "No starship_navis column in ships DataFrame, using all ships"
+                )
+            filtered_ships = existing_ships
+
+        # Check if necessary columns exist
+        if "sequence" not in filtered_ships.columns:
+            logger.error("No 'sequence' column in ships DataFrame")
+            return {
+                "haplotype_name": "Unknown",
+                "confidence": 0,
+                "note": "Missing sequence data",
+            }
+
+        required_columns = ["sequence", "captainID", "starship_haplotype"]
+        missing_columns = [
+            col for col in required_columns if col not in filtered_ships.columns
+        ]
+        if missing_columns:
+            logger.warning(f"Missing columns in ships DataFrame: {missing_columns}")
+
+        # Count valid sequences (non-null)
+        valid_seqs = filtered_ships["sequence"].dropna().count()
+        logger.debug(f"Found {valid_seqs} valid sequences")
+
+        if valid_seqs == 0:
+            logger.warning("No valid sequences found in filtered ships")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "No valid sequences for comparison",
+            }
+
+        # Read the FASTA file
+        try:
+            query_seq = list(SeqIO.parse(fasta, "fasta"))
+            if not query_seq:
+                logger.error("No sequences found in the provided FASTA file")
+                return {
+                    "haplotype_name": "Error",
+                    "confidence": 0,
+                    "note": "Invalid FASTA file",
+                }
+            query_seq = query_seq[0]
+            logger.debug(f"Read query sequence of length {len(query_seq)}")
+        except Exception as e:
+            logger.error(f"Error reading FASTA file: {e}")
+            return {
+                "haplotype_name": "Error",
+                "confidence": 0,
+                "note": f"FASTA file error: {str(e)}",
+            }
+
+        # Create a temporary directory for intermediate files
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Create a combined FASTA file with existing ships and the query sequence
+            combined_fasta = os.path.join(tmp_dir, "combined.fasta")
+
+            try:
+                with open(combined_fasta, "w") as f:
+                    # Write query sequence
+                    f.write(f">{query_seq.id}\n{str(query_seq.seq)}\n")
+
+                    # Write ship sequences
+                    for i, row in filtered_ships.iterrows():
+                        if pd.notna(row.get("sequence")):
+                            seq_id = row.get("captainID", f"ship_{i}")
+                            f.write(f">{seq_id}\n{row['sequence']}\n")
+
+                logger.debug(f"Created combined FASTA file at {combined_fasta}")
+            except Exception as e:
+                logger.error(f"Error creating combined FASTA file: {e}")
+                return {
+                    "haplotype_name": "Error",
+                    "confidence": 0,
+                    "note": "Error preparing sequences",
+                }
+
+            # Calculate pairwise similarities
+            try:
+                similarities = calculate_similarities(combined_fasta, seq_type="nucl")
+                logger.debug(f"Calculated {len(similarities)} pairwise similarities")
+            except Exception as e:
+                logger.error(f"Error calculating similarities: {e}")
+                return {
+                    "haplotype_name": "Error",
+                    "confidence": 0,
+                    "note": f"Similarity calculation error: {str(e)}",
+                }
+
+            # Cluster sequences
+            try:
+                groups = cluster_sequences(similarities, threshold=0.95)
+                logger.debug(f"Clustered sequences into {len(groups)} groups")
+            except Exception as e:
+                logger.error(f"Error clustering sequences: {e}")
+                return {
+                    "haplotype_name": "Error",
+                    "confidence": 0,
+                    "note": f"Clustering error: {str(e)}",
+                }
+
+            # Find the group containing the query sequence
+            query_group = None
+            for group in groups:
+                if query_seq.id in group:
+                    query_group = group
+                    break
+
+            if query_group is None:
+                logger.warning("Query sequence not found in any cluster")
+                return {
+                    "haplotype_name": "Novel",
+                    "confidence": 0,
+                    "note": "Query did not cluster with any existing sequence",
+                }
+
+            # Get ship IDs in the same group
+            ship_ids = [seq_id for seq_id in query_group if seq_id != query_seq.id]
+            logger.debug(f"Found {len(ship_ids)} ships in the same cluster as query")
+
+            if not ship_ids:
+                logger.warning("No ships in the same cluster as query")
+                return {
+                    "haplotype_name": "Novel",
+                    "confidence": 0,
+                    "note": "Query formed its own cluster",
+                }
+
+            # Get haplotypes for these ships
+            ship_haplotypes = filtered_ships[
+                filtered_ships["captainID"].isin(ship_ids)
+            ]["starship_haplotype"].dropna()
+
+            if ship_haplotypes.empty:
+                logger.warning("No haplotype information for clustered ships")
+                return {
+                    "haplotype_name": "Novel",
+                    "confidence": 0,
+                    "note": "No haplotype information available",
+                }
+
+            # Count haplotype occurrences
+            haplotype_counts = ship_haplotypes.value_counts()
+            logger.debug(f"Haplotype counts: {haplotype_counts.to_dict()}")
+
+            if haplotype_counts.empty:
+                logger.warning("No haplotype counts found")
+                return {
+                    "haplotype_name": "Novel",
+                    "confidence": 0,
+                    "note": "No haplotype information available",
+                }
+
+            # Get the most common haplotype
+            most_common_haplotype = haplotype_counts.index[0]
+            confidence = haplotype_counts.iloc[0] / haplotype_counts.sum()
+
+            logger.debug(
+                f"Most common haplotype: {most_common_haplotype} with confidence {confidence:.2f}"
+            )
+
+            return {
+                "haplotype_name": most_common_haplotype,
+                "confidence": float(confidence),
+                "counts": haplotype_counts.to_dict(),
+                "cluster_size": len(query_group) - 1,  # Excluding the query itself
+            }
+    except Exception as e:
+        logger.error(f"Unexpected error in classify_haplotype: {e}")
+        logger.exception("Full traceback:")
+        return {
+            "haplotype_name": "Error",
+            "confidence": 0,
+            "note": f"Classification error: {str(e)}",
+        }
 
 
 def mmseqs_easy_cluster(
@@ -676,127 +857,192 @@ def mmseqs_easy_cluster(
                     pass
 
 
-def sourmash_sketch(sequence_file, sig_file, kmer_size, scaled, sketch_type="dna"):
-    sketch_cmd = [
-        "sourmash",
-        "sketch",
-        f"{sketch_type}",
-        "--singleton",
-        "--output",
-        sig_file,
-        "-p",
-        f"k={kmer_size},scaled={scaled},noabund",
-        sequence_file,
-    ]
-
-    logger.debug(f"Creating sourmash signatures: {' '.join(sketch_cmd)}")
-    try:
-        subprocess.run(sketch_cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Sourmash sketch failed: {e.stderr}")
-        raise
-
-
-def sourmash_compare(
-    ship_sketch, new_sketch, matrix_file, kmer_size, sketch_type="dna"
-):
-    compare_cmd = [
-        "sourmash",
-        "compare",
-        ship_sketch,
-        new_sketch,
-        f"--{sketch_type}",  # dna or protein
-        "--csv",
-        matrix_file,
-        "-k",
-        str(kmer_size),
-    ]
-
-    logger.debug(f"Calculating pairwise similarities: {' '.join(compare_cmd)}")
-    try:
-        subprocess.run(compare_cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Sourmash compare failed: {e.stderr}")
-        raise
-
-
-def calculate_similarities(
-    ship_sequence_file=None, new_sequence_file=None, seq_type="nucl", threads=1
-):
-    """Calculate k-mer similarity between sequences using sourmash.
+def sourmash_sketch(fasta_path, sig_file, ksize=21, scaled=1000, sketch_type="dna"):
+    """
+    Create sourmash signatures from a FASTA file.
 
     Args:
-        sequence_file (str): Path to input FASTA file
-        seq_type (str): Sequence type to compare - 'nucl' or 'prot'
-        threads (int): Number of threads to use
+        fasta_path (str): Path to input FASTA file
+        sig_file (str): Path to output signature file
+        ksize (int): k-mer size
+        scaled (int): Scaled factor
+        sketch_type (str): Sketch type (dna, protein)
 
     Returns:
-        dict: Nested dictionary of pairwise similarities {seq1: {seq2: similarity}}
+        bool: True if successful, False otherwise
     """
-    # Set sourmash parameters based on sequence type
-    if seq_type == "nucl":
-        kmer_size = 510  # Default from starfish sig
-        scaled = 100
-        sketch_type = "dna"
-    elif seq_type == "prot":
-        kmer_size = 17
-        scaled = 20
-        sketch_type = "protein"
-    else:
-        raise ValueError(f"Invalid sequence type: {seq_type}")
+    try:
+        cmd = [
+            "sourmash",
+            "sketch",
+            sketch_type,
+            "-p",
+            f"k={ksize},scaled={scaled}",
+            "-o",
+            sig_file,
+            fasta_path,
+        ]
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        # 0. create sketch of ships
-        ship_sketch_file = os.path.join(tmp_dir, "ships.sig")
-        sourmash_sketch(
-            ship_sequence_file, ship_sketch_file, kmer_size, scaled, sketch_type
+        logger.debug(f"Running sourmash sketch: {' '.join(cmd)}")
+
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True
         )
 
-        # 1. Create signature file
-        sig_file = os.path.join(tmp_dir, "sequences.sig")
-        sourmash_sketch(new_sequence_file, sig_file, kmer_size, scaled, sketch_type)
+        logger.debug(f"sourmash sketch stdout: {result.stdout}")
 
-        # 2. Calculate pairwise similarities
-        matrix_file = os.path.join(tmp_dir, "similarity.csv")
-        sourmash_compare(
-            ship_sketch_file, sig_file, matrix_file, kmer_size, sketch_type
-        )
+        if result.stderr:
+            logger.debug(f"sourmash sketch stderr: {result.stderr}")
 
-        # 3. Parse similarity matrix
-        return parse_similarity_matrix(matrix_file)
+        return os.path.exists(sig_file)
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"sourmash sketch error: {e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Error running sourmash sketch: {e}")
+        return False
 
 
-def parse_similarity_matrix(matrix_file):
-    """Parse sourmash CSV output into pairwise similarities.
+def sourmash_compare(sig_file, matrix_file, ksize=21):
+    """
+    Compare sourmash signatures and create a CSV similarity matrix.
 
     Args:
-        matrix_file (str): Path to sourmash CSV output
+        sig_file (str): Path to signature file
+        matrix_file (str): Path to output CSV matrix file
+        ksize (int): k-mer size
 
     Returns:
-        dict: Nested dictionary of pairwise similarities
+        bool: True if successful, False otherwise
     """
-    similarities = {}
+    try:
+        cmd = ["sourmash", "compare", sig_file, "-k", str(ksize), "-o", matrix_file]
 
-    with open(matrix_file) as f:
-        # First line contains sequence IDs
-        headers = next(f).strip().split(",")
-        seq_ids = headers[1:]  # First column is empty
+        logger.debug(f"Running sourmash compare: {' '.join(cmd)}")
 
-        # Read similarity values
-        for i, line in enumerate(f):
-            values = line.strip().split(",")
-            seq_id = values[0]
-            similarities[seq_id] = {}
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True
+        )
 
-            # Convert similarity values to float and store
-            for j, val in enumerate(values[1:]):
-                target_id = seq_ids[j]
-                if seq_id != target_id:  # Skip self-comparisons
-                    sim = float(val)
-                    if sim > 0:  # Only store non-zero similarities
-                        similarities[seq_id][target_id] = sim
+        logger.debug(f"sourmash compare stdout: {result.stdout}")
 
-    return similarities
+        if result.stderr:
+            logger.debug(f"sourmash compare stderr: {result.stderr}")
+
+        return os.path.exists(matrix_file)
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"sourmash compare error: {e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Error running sourmash compare: {e}")
+        return False
+
+
+def calculate_similarities(fasta_file, seq_type="nucl"):
+    """
+    Calculate pairwise similarities between sequences in a FASTA file.
+
+    Args:
+        fasta_file (str): Path to the FASTA file containing sequences
+        seq_type (str): Type of sequences, either 'nucl' or 'prot'
+
+    Returns:
+        list: List of tuples (seq_id1, seq_id2, similarity)
+    """
+    logger.debug(f"Calculating similarities for {fasta_file}, type={seq_type}")
+
+    try:
+        # Set parameters based on sequence type
+        if seq_type == "nucl":
+            k = 21
+            scaled = 1000
+            sketch_type = "dna"
+        else:
+            k = 7
+            scaled = 100
+            sketch_type = "protein"
+
+        # Create temporary directory for intermediate files
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Create paths for output files
+            sig_file = os.path.join(tmp_dir, "signatures.sig")
+            matrix_file = os.path.join(tmp_dir, "similarity_matrix.csv")
+
+            # Generate sketch for the sequences
+            try:
+                result = sourmash_sketch(
+                    fasta_path=fasta_file,
+                    sig_file=sig_file,
+                    ksize=k,
+                    scaled=scaled,
+                    sketch_type=sketch_type,
+                )
+
+                if not result:
+                    logger.error("Failed to sketch sequences")
+                    return []
+
+                logger.debug(f"Created sketch file: {sig_file}")
+            except Exception as e:
+                logger.error(f"Error sketching sequences: {e}")
+                return []
+
+            # Calculate pairwise similarities
+            try:
+                result = sourmash_compare(
+                    sig_file=sig_file, matrix_file=matrix_file, ksize=k
+                )
+
+                if not result:
+                    logger.error("Failed to calculate similarities")
+                    return []
+
+                logger.debug(f"Created similarity matrix: {matrix_file}")
+            except Exception as e:
+                logger.error(f"Error calculating similarities: {e}")
+                return []
+
+            # Parse similarity matrix
+            try:
+                similarities = []
+
+                with open(matrix_file, "r") as f:
+                    # Skip the header
+                    header = next(f).strip().split(",")
+                    seq_ids = header[1:]  # First column is empty
+
+                    for i, line in enumerate(f):
+                        fields = line.strip().split(",")
+                        seq_id1 = fields[0]
+
+                        for j, sim_str in enumerate(fields[1:]):
+                            seq_id2 = seq_ids[j]
+
+                            # Skip self-comparisons in similarity matrix
+                            if seq_id1 == seq_id2:
+                                continue
+
+                            # Parse similarity value
+                            try:
+                                similarity = float(sim_str)
+                                similarities.append((seq_id1, seq_id2, similarity))
+                            except ValueError:
+                                logger.warning(
+                                    f"Could not parse similarity value: {sim_str}"
+                                )
+
+                logger.debug(f"Parsed {len(similarities)} pairwise similarities")
+                return similarities
+
+            except Exception as e:
+                logger.error(f"Error parsing similarity matrix: {e}")
+                return []
+
+    except Exception as e:
+        logger.error(f"Unexpected error in calculate_similarities: {e}")
+        return []
 
 
 def write_similarity_file(similarities, output_file):
@@ -814,45 +1060,55 @@ def write_similarity_file(similarities, output_file):
                 f.write(f"{seq1}\t{seq2}\t{sim:.3f}\n")
 
 
-def cluster_sequences(
-    similarity_file, group_prefix="HAP", inflation=1.5, threshold=0.0, threads=1
-):
-    """Group sequences into clusters using MCL algorithm.
+def cluster_sequences(similarities, threshold=0.95):
+    """
+    Cluster sequences based on pairwise similarities.
 
     Args:
-        similarity_file (str): Path to similarity file (from calculate_similarities)
-        group_prefix (str): Prefix for naming groups
-        inflation (float): MCL inflation parameter
-        threshold (float): Minimum similarity threshold (0-1)
-        threads (int): Number of threads to use
+        similarities (list): List of tuples (seq_id1, seq_id2, similarity)
+        threshold (float): Similarity threshold for clustering
 
     Returns:
-        tuple: (groups, node_data, edge_data) where:
-            groups: dict mapping sequence IDs to group assignments
-            node_data: dict of node metadata
-            edge_data: dict of edge weights
+        list: List of sets, where each set contains sequence IDs in the same cluster
     """
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        # 1. Remap similarity values if threshold > 0
-        if threshold > 0:
-            remapped_sim = os.path.join(tmp_dir, "remapped.sim")
-            remap_similarities(similarity_file, remapped_sim, threshold)
-            input_file = remapped_sim
-        else:
-            input_file = similarity_file
+    logger.debug(f"Clustering sequences with threshold {threshold}")
 
-        # 2. Run MCL clustering
-        mcl_output = os.path.join(tmp_dir, "mcl_clusters.txt")
-        run_mcl_clustering(input_file, mcl_output, inflation, threads)
+    try:
+        # Filter similarities by threshold
+        filtered_similarities = [
+            (id1, id2) for id1, id2, sim in similarities if sim >= threshold
+        ]
+        logger.debug(
+            f"Using {len(filtered_similarities)} out of {len(similarities)} similarities above threshold"
+        )
 
-        # 3. Parse results and assign group names
-        groups = parse_and_name_groups(mcl_output, group_prefix)
+        if not filtered_similarities:
+            logger.warning("No similarities above threshold")
+            return []
 
-        # 4. Generate node and edge data for visualization
-        node_data = generate_node_data(groups)
-        edge_data = generate_edge_data(similarity_file)
+        # Create a graph of connected sequences
+        G = nx.Graph()
 
-        return groups, node_data, edge_data
+        # Add all sequence IDs to the graph
+        all_seq_ids = set()
+        for id1, id2, _ in similarities:
+            all_seq_ids.add(id1)
+            all_seq_ids.add(id2)
+
+        G.add_nodes_from(all_seq_ids)
+
+        # Add edges for pairs with similarity >= threshold
+        G.add_edges_from(filtered_similarities)
+
+        # Find connected components (clusters)
+        clusters = list(nx.connected_components(G))
+        logger.debug(f"Found {len(clusters)} clusters")
+
+        return clusters
+
+    except Exception as e:
+        logger.error(f"Error in cluster_sequences: {e}")
+        return []
 
 
 def remap_similarities(input_file, output_file, threshold):
@@ -1064,13 +1320,11 @@ def run_classification_workflow(upload_data):
     }
 
     try:
-        fasta_path = upload_data["fasta"]
-        ships_df = fetch_ships(**upload_data["fetch_ship_params"])
-        logger.debug(f"ships_df type: {type(ships_df)}")
-        logger.debug(f"length of ships_df: {len(ships_df)}")
-        if isinstance(ships_df, list):
-            ships_df = pd.DataFrame(ships_df)
+        # Parse parameters for database fetches
+        ships_df = fetch_ships(**upload_data.get("fetch_ship_params"))
+        captains_df = fetch_captains(**upload_data.get("fetch_captain_params"))
 
+        fasta_path = upload_data["fasta"]
         if isinstance(fasta_path, dict) and "content" in fasta_path:
             tmp_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
             with open(tmp_file, "w") as f:
@@ -1096,11 +1350,13 @@ def run_classification_workflow(upload_data):
             logger.debug(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
+                logger.debug("Running exact match check")
                 result = check_exact_match(
                     fasta=upload_data["fasta"], existing_ships=ships_df
                 )
 
                 if result:
+                    logger.debug(f"Found exact match: {result}")
                     workflow_state["stages"][stage_id]["progress"] = 100
                     workflow_state["stages"][stage_id]["status"] = "complete"
                     workflow_state["found_match"] = True
@@ -1110,6 +1366,7 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "contained":
+                logger.debug("Running contained match check")
                 result = check_contained_match(
                     fasta=upload_data["fasta"],
                     existing_ships=ships_df,
@@ -1118,6 +1375,7 @@ def run_classification_workflow(upload_data):
                 )
 
                 if result:
+                    logger.debug(f"Found contained match: {result}")
                     workflow_state["stages"][stage_id]["progress"] = 30
                     workflow_state["stages"][stage_id]["status"] = "complete"
                     workflow_state["found_match"] = True
@@ -1127,6 +1385,7 @@ def run_classification_workflow(upload_data):
                     return workflow_state
 
             if stage_id == "similar":
+                logger.debug("Running similarity match check")
                 result = check_similar_match(
                     fasta=upload_data["fasta"],
                     existing_ships=ships_df,
@@ -1134,6 +1393,7 @@ def run_classification_workflow(upload_data):
                 )
 
                 if result:
+                    logger.debug(f"Found similar match: {result}")
                     workflow_state["stages"][stage_id]["progress"] = 50
                     workflow_state["stages"][stage_id]["status"] = "complete"
                     workflow_state["found_match"] = True
@@ -1141,9 +1401,23 @@ def run_classification_workflow(upload_data):
                     workflow_state["match_result"] = result
 
             if stage_id == "family":
-                blast_df = upload_data["blast_df"]
+                logger.debug("Running family classification")
+                blast_df = upload_data.get("blast_df")
+                if blast_df is None:
+                    logger.warning("No blast_df available for family classification")
+                    workflow_state["stages"][stage_id]["progress"] = 50
+                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                    continue
+
                 if isinstance(blast_df, list):
+                    logger.debug("Converting blast_df from list to DataFrame")
                     blast_df = pd.DataFrame(blast_df)
+
+                if blast_df.empty:
+                    logger.warning("blast_df is empty")
+                    workflow_state["stages"][stage_id]["progress"] = 50
+                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                    continue
 
                 result = classify_family(
                     fasta=upload_data["fasta"],
@@ -1155,40 +1429,99 @@ def run_classification_workflow(upload_data):
                 )
 
                 if result:
+                    logger.debug(f"Found family classification: {result}")
                     workflow_state["stages"][stage_id]["progress"] = 70
                     workflow_state["stages"][stage_id]["status"] = "complete"
                     workflow_state["complete"] = True
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "family"
+                    workflow_state["match_result"] = result
                     return workflow_state
 
             if stage_id == "navis":
+                logger.debug("Running navis classification")
+                if captains_df.empty:
+                    logger.warning("No captain data available for navis classification")
+                    workflow_state["stages"][stage_id]["progress"] = 80
+                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                    continue
+
                 result = classify_navis(
                     fasta=upload_data["fasta"],
-                    existing_captains=fetch_captains(
-                        **upload_data["fetch_captain_params"]
-                    ).to_dict("records"),
+                    existing_captains=captains_df,
                     threads=1,
                 )
 
                 if result:
+                    logger.debug(f"Found navis classification: {result}")
                     workflow_state["stages"][stage_id]["progress"] = 90
                     workflow_state["stages"][stage_id]["status"] = "complete"
                     workflow_state["complete"] = True
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "navis"
+                    workflow_state["match_result"] = result
                     return workflow_state
 
             if stage_id == "haplotype":
-                result = classify_haplotype(
-                    fasta=upload_data["fasta"],
-                    existing_ships=ships_df,
-                    navis=fetch_captains(**upload_data["fetch_captain_params"]).to_dict(
-                        "records"
-                    ),
-                )
+                logger.debug("Running haplotype classification")
+                if captains_df.empty or ships_df.empty:
+                    logger.warning("Missing data for haplotype classification")
+                    workflow_state["stages"][stage_id]["progress"] = 90
+                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                    continue
 
-                if result:
-                    workflow_state["stages"][stage_id]["progress"] = 100
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["complete"] = True
-                    return workflow_state
+                # Extract navis value from the first captain record
+                navis_value = None
+                try:
+                    if (
+                        not captains_df.empty
+                        and "starship_navis" in captains_df.columns
+                    ):
+                        navis_values = captains_df["starship_navis"].dropna().unique()
+                        if len(navis_values) > 0:
+                            navis_value = navis_values[0]
+                            logger.debug(f"Using navis value: {navis_value}")
+                        else:
+                            logger.warning("No non-null navis values found")
+                    else:
+                        logger.warning("No navis column in captains data")
+
+                    if navis_value is None and "starship_navis" in ships_df.columns:
+                        navis_values = ships_df["starship_navis"].dropna().unique()
+                        if len(navis_values) > 0:
+                            navis_value = navis_values[0]
+                            logger.debug(
+                                f"Using navis value from ships_df: {navis_value}"
+                            )
+                except Exception as e:
+                    logger.error(f"Error extracting navis value: {e}")
+
+                if navis_value is None:
+                    logger.warning("No navis value found, using fallback value 'UNK'")
+                    navis_value = "UNK"
+
+                try:
+                    result = classify_haplotype(
+                        fasta=upload_data["fasta"],
+                        existing_ships=ships_df,
+                        navis=navis_value,
+                    )
+
+                    if result:
+                        logger.debug(f"Found haplotype classification: {result}")
+                        workflow_state["stages"][stage_id]["progress"] = 100
+                        workflow_state["stages"][stage_id]["status"] = "complete"
+                        workflow_state["complete"] = True
+                        workflow_state["found_match"] = True
+                        workflow_state["match_stage"] = "haplotype"
+                        workflow_state["match_result"] = result
+                        return workflow_state
+                except Exception as e:
+                    logger.error(f"Error in haplotype classification: {e}")
+                    workflow_state["stages"][stage_id]["status"] = "error"
+                    workflow_state["error"] = (
+                        f"Haplotype classification error: {str(e)}"
+                    )
 
             # Mark this stage as complete
             workflow_state["stages"][stage_id]["progress"] = 100
