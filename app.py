@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -80,6 +81,16 @@ app = Dash(
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
     update_title=None,
 )
+
+# Enable dev tools after initialization (only for local development)
+if os.environ.get("DEV_MODE"):
+    app.enable_dev_tools(
+        dev_tools_props_check=True,
+        dev_tools_ui=True,
+        dev_tools_hot_reload=True,
+        dev_tools_silence_routes_logging=False,
+        dev_tools_prune_errors=False,
+    )
 
 DATABASE_URLS = {
     "starbase": f"sqlite:///{DB_PATHS['starbase']}",
@@ -177,4 +188,4 @@ with server.app_context():
     initialize_app()
 
 if __name__ == "__main__":
-    app.run_server(debug=False)
+    app.run_server(debug=True)
