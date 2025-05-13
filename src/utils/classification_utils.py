@@ -14,11 +14,10 @@ from src.utils.seq_utils import (
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
-import numpy as np
 import networkx as nx
 
-from typing import Optional, Tuple, Dict, Any, Callable
-from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
+from typing import Optional, Tuple, Dict
+from src.database.sql_manager import fetch_ships, fetch_captains
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +345,7 @@ def classify_family(
     fasta=None,
     seq_type=None,
     blast_df=None,
+    meta_dict=None,
     pident_thresh=90,
     input_eval=0.001,
     threads=1,
@@ -365,6 +365,9 @@ def classify_family(
     family_dict = None
     tmp_protein_filename = None
     hmmer_dict = None
+
+    if meta_dict is not None and isinstance(meta_dict, list):
+        meta_df = pd.DataFrame(meta_dict)
 
     if os.path.exists(fasta):
         logger.debug(f"Loading sequence from file: {fasta}")
@@ -386,8 +389,10 @@ def classify_family(
 
         if top_pident >= pident_thresh:
             # look up family name from accession tag
-            query_accession = top_hit["query_id"]
-            top_family = fetch_meta_data(accession_tag=query_accession)["familyName"]
+            hit_accession = top_hit["hit_IDs"]
+            top_family = meta_df[meta_df["accession_tag"] == hit_accession][
+                "familyName"
+            ].iloc[0]
             family_dict = {
                 "family": top_family,
                 "aln_length": top_aln_length,
@@ -1305,7 +1310,7 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
         raise
 
 
-def run_classification_workflow(upload_data):
+def run_classification_workflow(upload_data, meta_dict=None):
     """Run the classification workflow and return results."""
     # Initialize workflow state object
     workflow_state = {
@@ -1423,6 +1428,7 @@ def run_classification_workflow(upload_data):
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
                     blast_df=blast_df,
+                    meta_dict=meta_dict,
                     pident_thresh=90,
                     input_eval=0.001,
                     threads=1,

@@ -39,6 +39,42 @@ dash.register_page(__name__)
 
 logger = logging.getLogger(__name__)
 
+progress_section = dmc.Stack(
+    [
+        dmc.Group(
+            [
+                dbc.Progress(
+                    id="classification-progress",
+                    value=0,
+                    color="blue",
+                    animated=True,
+                    striped=True,
+                    style={
+                        "width": "100%",
+                        "marginBottom": "5px",
+                    },
+                ),
+            ]
+        ),
+        dmc.Group(
+            [
+                dmc.Text(
+                    "Classification Status:",
+                    size="lg",
+                    fw=500,
+                ),
+                dmc.Text(
+                    id="classification-stage-display",
+                    size="lg",
+                    c="blue",
+                ),
+            ]
+        ),
+    ],
+    gap="md",
+    id="classification-progress-section",
+    style={"display": "none"},
+)
 
 layout = dmc.Container(
     fluid=True,
@@ -59,6 +95,7 @@ layout = dmc.Container(
         dcc.Store(id="blast-results-store"),
         dcc.Store(id="classification-result-store", data=None),
         # Single data store with all workflow state
+        dcc.Store(id="classification-stage", data="Upload a sequence"),
         dcc.Store(
             id="classification-workflow-state",
             data={"current_stage": None, "complete": False},
@@ -252,6 +289,7 @@ layout = dmc.Container(
                                         html.Div(
                                             id="classification-output", className="mt-4"
                                         ),
+                                        progress_section,
                                         # BLAST results section
                                         dmc.Stack(
                                             [
@@ -1083,9 +1121,13 @@ def process_single_sequence(seq_data, evalue_threshold):
     }
 
     try:
+        meta_df = fetch_meta_data()
+        meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+
         # Run classification workflow
         classification_task = run_classification_workflow_task.delay(
             upload_data=upload_data,
+            meta_dict=meta_dict,
         )
         workflow_result = classification_task.get(timeout=300)
 
@@ -1103,24 +1145,22 @@ def process_single_sequence(seq_data, evalue_threshold):
                 match_result = workflow_result.get("match_result")
 
                 if match_result:
-                    # Get metadata for the matched ship
-                    meta_df = fetch_meta_data(accession_tag=match_result)
+                    meta_df_sub = meta_df[meta_df["accession_tag"] == match_result]
 
-                    if not meta_df.empty:
-                        # We found metadata for this match
+                    if not meta_df_sub.empty:
                         family = (
-                            meta_df["familyName"].iloc[0]
-                            if "familyName" in meta_df.columns
+                            meta_df_sub["familyName"].iloc[0]
+                            if "familyName" in meta_df_sub.columns
                             else None
                         )
                         navis = (
-                            meta_df["starship_navis"].iloc[0]
-                            if "starship_navis" in meta_df.columns
+                            meta_df_sub["starship_navis"].iloc[0]
+                            if "starship_navis" in meta_df_sub.columns
                             else None
                         )
                         haplotype = (
-                            meta_df["starship_haplotype"].iloc[0]
-                            if "starship_haplotype" in meta_df.columns
+                            meta_df_sub["starship_haplotype"].iloc[0]
+                            if "starship_haplotype" in meta_df_sub.columns
                             else None
                         )
 
@@ -1156,23 +1196,23 @@ def process_single_sequence(seq_data, evalue_threshold):
 
                     if match_result:
                         # Get metadata for the matched ship
-                        meta_df = fetch_meta_data(accession_tag=match_result)
+                        meta_df_sub = meta_df[meta_df["accession_tag"] == match_result]
 
-                        if not meta_df.empty:
+                        if not meta_df_sub.empty:
                             # We found metadata for this match
                             family = (
-                                meta_df["familyName"].iloc[0]
-                                if "familyName" in meta_df.columns
+                                meta_df_sub["familyName"].iloc[0]
+                                if "familyName" in meta_df_sub.columns
                                 else None
                             )
                             navis = (
-                                meta_df["starship_navis"].iloc[0]
-                                if "starship_navis" in meta_df.columns
+                                meta_df_sub["starship_navis"].iloc[0]
+                                if "starship_navis" in meta_df_sub.columns
                                 else None
                             )
                             haplotype = (
-                                meta_df["starship_haplotype"].iloc[0]
-                                if "starship_haplotype" in meta_df.columns
+                                meta_df_sub["starship_haplotype"].iloc[0]
+                                if "starship_haplotype" in meta_df_sub.columns
                                 else None
                             )
 
@@ -1251,18 +1291,18 @@ def process_single_sequence(seq_data, evalue_threshold):
             if top_pident >= 90:
                 # look up family name from accession tag
                 hit_IDs = top_hit["hit_IDs"]
-                meta_df = fetch_meta_data(accession_tag=hit_IDs)
+                meta_df_sub = meta_df[meta_df["accession_tag"].isin(hit_IDs)]
 
-                if not meta_df.empty:
-                    top_family = meta_df["familyName"].iloc[0]
+                if not meta_df_sub.empty:
+                    top_family = meta_df_sub["familyName"].iloc[0]
                     navis = (
-                        meta_df["starship_navis"].iloc[0]
-                        if "starship_navis" in meta_df.columns
+                        meta_df_sub["starship_navis"].iloc[0]
+                        if "starship_navis" in meta_df_sub.columns
                         else None
                     )
                     haplotype = (
-                        meta_df["starship_haplotype"].iloc[0]
-                        if "starship_haplotype" in meta_df.columns
+                        meta_df_sub["starship_haplotype"].iloc[0]
+                        if "starship_haplotype" in meta_df_sub.columns
                         else None
                     )
 
@@ -1667,6 +1707,7 @@ def render_tab_content(active_tab, results_store):
 
     return [
         classification_output,
+        progress_section,
         # BLAST results section
         dmc.Stack(
             [
@@ -2128,7 +2169,12 @@ def update_classification_workflow_state(n_intervals, workflow_state):
                 return workflow_state
 
             # Start the task
-            task = run_classification_workflow_task.delay(upload_data=upload_data)
+            meta_df = fetch_meta_data()
+            meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+
+            task = run_classification_workflow_task.delay(
+                upload_data=upload_data, meta_dict=meta_dict
+            )
             workflow_state = workflow_state.copy()
             workflow_state["celery_task_id"] = task.id
             # Initialize stages if not present
@@ -2202,6 +2248,91 @@ def update_classification_workflow_state(n_intervals, workflow_state):
         workflow_state["status"] = "failed"
         workflow_state["complete"] = True
         return workflow_state
+
+
+@callback(
+    [
+        Output("classification-progress", "value"),
+        Output("classification-stage-display", "children"),
+        Output("classification-progress-section", "style"),
+    ],
+    Input("workflow-state-store", "data"),
+    prevent_initial_call=True,
+)
+def update_classification_progress(workflow_state):
+    """Update the classification progress UI based on workflow state"""
+    if not workflow_state or not isinstance(workflow_state, dict):
+        logger.warning("Invalid workflow state type or empty")
+        return 0, "No workflow data", {"display": "none"}
+
+    # Only show if we have a valid state with a status
+    status = workflow_state.get("status", "")
+    if not status or status == "pending" or "task_id" not in workflow_state:
+        return 0, "", {"display": "none"}
+
+    # Calculate progress percentage
+    progress = 0
+    if workflow_state.get("complete", False):
+        progress = 100
+    elif (
+        "current_stage_idx" in workflow_state
+        and workflow_state["current_stage_idx"] is not None
+    ):
+        try:
+            stage_idx = int(workflow_state.get("current_stage_idx", 0))
+            total_stages = len(WORKFLOW_STAGES)
+
+            # Safely get the stage progress
+            current_stage = workflow_state.get("current_stage")
+            stages_dict = workflow_state.get("stages", {})
+
+            if current_stage and current_stage in stages_dict:
+                stage_data = stages_dict[current_stage]
+                stage_progress = (
+                    stage_data.get("progress", 0) if isinstance(stage_data, dict) else 0
+                )
+            else:
+                stage_progress = 0
+
+            # Calculate overall progress: stage contribution + progress within stage
+            progress = int(
+                (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
+            )
+            # Ensure progress is within valid range
+            progress = max(0, min(100, progress))
+        except (ValueError, ZeroDivisionError, TypeError) as e:
+            logger.error(f"Error calculating progress: {e}")
+            progress = 0
+
+    # Get current stage label
+    if "error" in workflow_state and workflow_state["error"]:
+        stage_text = f"Error: {workflow_state['error']}"
+    elif workflow_state.get("complete", False):
+        if workflow_state.get("found_match", False):
+            match_stage = workflow_state.get("match_stage", "unknown")
+            stage_text = f"Complete - {match_stage.capitalize()} match found"
+        else:
+            stage_text = "Classification complete"
+    else:
+        current_stage = workflow_state.get("current_stage")
+        if current_stage:
+            # Find the stage label
+            stage_label = None
+            for stage in WORKFLOW_STAGES:
+                if stage["id"] == current_stage:
+                    stage_label = stage["label"]
+                    break
+
+            stage_text = stage_label if stage_label else f"Processing {current_stage}"
+        else:
+            stage_text = "Starting classification..."
+
+    # Show section if classification is in progress
+    style = (
+        {"display": "block"} if status and status != "pending" else {"display": "none"}
+    )
+
+    return progress, stage_text, style
 
 
 @callback(

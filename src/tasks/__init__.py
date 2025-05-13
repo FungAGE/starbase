@@ -155,7 +155,7 @@ def run_single_pgv_task(gff_file, tmp_file):
 
 
 @celery.task(name="run_classification_workflow_task", bind=True)
-def run_classification_workflow_task(self, upload_data):
+def run_classification_workflow_task(self, upload_data, meta_dict=None):
     """Celery task to run the classification workflow in the background.
 
     The workflow itself runs tasks sequentially, but the entire workflow
@@ -165,7 +165,7 @@ def run_classification_workflow_task(self, upload_data):
 
     try:
         # Run the sequential workflow
-        result = run_classification_workflow(upload_data)
+        result = run_classification_workflow(upload_data, meta_dict)
 
         # Test JSON serialization before returning
         try:
