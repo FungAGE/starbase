@@ -681,8 +681,8 @@ def create_blast_container(sequence_results, tab_id=None):
         sequence_results: The BLAST results data
         tab_id: Optional ID suffix for creating unique container IDs in a tabbed interface
     """
-    blast_file = sequence_results.get("blast_file")
-    if not blast_file:
+    blast_content = sequence_results.get("blast_content")
+    if not blast_content:
         return html.Div(
             [
                 html.H2(
@@ -774,17 +774,26 @@ def process_blast_results(blast_results_store, active_tab_idx):
         logger.warning(f"No sequence results for tab index {tab_idx}")
         return None
 
+    # Check for blast_file or blast_content directly in sequence_results
     blast_results_file = sequence_results.get("blast_file")
+    blast_content = sequence_results.get("blast_content")
+
+    # If we have direct blast_content, use it without reading file
+    if blast_content:
+        logger.info(f"Using direct blast_content for tab {tab_idx}")
+        return {"blast_text": blast_content}
+
+    # If no blast_file, return empty blast text with warning
     if not blast_results_file:
         logger.warning(f"No blast file in sequence results for tab {tab_idx}")
-        return None
+        return {"blast_text": ""}
 
     logger.info(f"Reading BLAST file: {blast_results_file}")
     try:
         # Check if file exists
         if not os.path.exists(blast_results_file):
             logger.error(f"BLAST file does not exist: {blast_results_file}")
-            return None
+            return {"blast_text": ""}
 
         # Read the BLAST output as text
         with open(blast_results_file, "r") as f:
@@ -795,7 +804,7 @@ def process_blast_results(blast_results_store, active_tab_idx):
         logger.info(f"Read BLAST results, size: {results_size} bytes")
         if results_size > 5 * 1024 * 1024:  # 5MB limit
             logger.warning(f"BLAST results too large: {results_size} bytes")
-            return None
+            return {"blast_text": "BLAST results too large to display"}
 
         # Format data for BlasterJS
         data = {
@@ -1028,6 +1037,7 @@ def process_single_sequence(seq_data, evalue_threshold):
 
     classification_data = None
     blast_df = None
+    blast_content = None
 
     # Write sequence to temporary FASTA file
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
@@ -1035,6 +1045,7 @@ def process_single_sequence(seq_data, evalue_threshold):
         logger.error("Failed to write temporary FASTA file")
         return {
             "blast_file": None,
+            "blast_content": None,
             "classification": None,
             "processed": False,
             "sequence": query_seq,
@@ -1055,41 +1066,60 @@ def process_single_sequence(seq_data, evalue_threshold):
         if not blast_results:
             logger.warning("BLAST search returned no results")
             blast_results_file = None
+            blast_content = None
         elif isinstance(blast_results, dict) and "content" in blast_results:
             # Handle the new format (content-based instead of file path)
+            blast_content = blast_results["content"]
             blast_results_file = tempfile.NamedTemporaryFile(
                 suffix=".blast", delete=False
             ).name
             with open(blast_results_file, "w") as f:
-                f.write(blast_results["content"])
+                f.write(blast_content)
             logger.debug(f"Created temporary BLAST results file: {blast_results_file}")
         elif isinstance(blast_results, str) and os.path.exists(blast_results):
             # Handle the old format (file path)
             blast_results_file = blast_results
+            # Also read content from file for direct access
+            try:
+                with open(blast_results_file, "r") as f:
+                    blast_content = f.read()
+            except Exception as e:
+                logger.error(f"Error reading blast file content: {e}")
             logger.debug(f"Using existing BLAST results file: {blast_results_file}")
         else:
             # Handle unexpected format
             logger.error(f"Unexpected BLAST results format: {type(blast_results)}")
-            blast_results_file = None
+            if isinstance(blast_results, str):
+                # If it's a string but not a file, it might be the actual content
+                blast_content = blast_results
+                blast_results_file = None
+                logger.info("Using blast results string as content")
+            else:
+                blast_results_file = None
+                blast_content = None
     except Exception as e:
         logger.error(f"Error running BLAST search: {e}")
         blast_results_file = None
+        blast_content = None
 
-    if blast_results_file and os.path.exists(blast_results_file):
-        blast_tsv = parse_blast_xml(blast_results_file)
-        if blast_tsv and os.path.exists(blast_tsv):
-            blast_df = pd.read_csv(blast_tsv, sep="\t")
-            if len(blast_df) == 0:
-                logger.info("No BLAST hits found")
-            else:
-                # If BLAST search failed, return basic structure with error
-                return {
-                    "blast_file": None,
-                    "classification": None,
-                    "processed": False,
-                    "sequence": query_seq,
-                    "error": "BLAST search failed",
-                }
+    if (blast_results_file and os.path.exists(blast_results_file)) or blast_content:
+        # Process either with file or direct content
+        if blast_results_file and os.path.exists(blast_results_file):
+            blast_tsv = parse_blast_xml(blast_results_file)
+            if blast_tsv and os.path.exists(blast_tsv):
+                blast_df = pd.read_csv(blast_tsv, sep="\t")
+                if len(blast_df) == 0:
+                    logger.info("No BLAST hits found")
+    else:
+        # If BLAST search failed, return basic structure with error
+        return {
+            "blast_file": None,
+            "blast_content": None,
+            "classification": None,
+            "processed": False,
+            "sequence": query_seq,
+            "error": "BLAST search failed",
+        }
 
     # Prepare upload data for classification
     upload_data = {
@@ -1256,7 +1286,7 @@ def process_single_sequence(seq_data, evalue_threshold):
         logger.error(f"Error in classification workflow: {e}")
 
     # If no classification from workflow, fall back to BLAST results
-    if classification_data is None:
+    if classification_data is None and blast_df is not None:
         # Process the BLAST results
         try:
             # Sort by evalue (ascending) and pident (descending) to get best hits
@@ -1348,6 +1378,7 @@ def process_single_sequence(seq_data, evalue_threshold):
     # Return structured results
     return {
         "blast_file": blast_results_file,
+        "blast_content": blast_content,  # Include direct content
         "classification": classification_data,
         "processed": True,
         "sequence": query_seq,  # Include sequence for length checks
@@ -1470,7 +1501,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                 classification_interval_disabled = True
 
                 # Set up workflow state if needed
-                if not skip_classification and sequence_result.get("blast_file"):
+                if not skip_classification and sequence_result.get("blast_content"):
                     # Create upload_data with file contents instead of file paths
                     # Read the file content to include in upload_data
                     fasta_content = None
@@ -1750,113 +1781,133 @@ clientside_callback(
             let containerId = active_tab_idx !== null ? 
                 `blast-container-${active_tab_idx}` : 'blast-container';
             
-            // Use standard ID selector
-            let container = document.getElementById(containerId);
-            
-            if (!container) {
-                console.log(`No blast container found with ID: ${containerId}, trying the default container`);
-                // Try to find the default container first since this is likely a single sequence view
-                container = document.getElementById('blast-container');
+            // Create a function that will attempt to initialize BlasterJS
+            const initializeBlasterJS = (attempts = 0, maxAttempts = 5) => {
+                // Use standard ID selector
+                let container = document.getElementById(containerId);
                 
+                // If no container is found and we haven't exceeded max attempts, retry
+                if (!container && attempts < maxAttempts) {
+                    console.log(`Container ${containerId} not found, retrying in 100ms (attempt ${attempts + 1}/${maxAttempts})`);
+                    setTimeout(() => initializeBlasterJS(attempts + 1, maxAttempts), 100);
+                    return;
+                }
+                
+                // If still no container after max attempts, try fallback options
                 if (!container) {
-                    console.log("No default container found, trying by class");
-                    // If still not found, try to find a container with class blast-container 
-                    let containers = document.getElementsByClassName('blast-container');
-                    if (containers.length > 0) {
-                        console.log("Found container by class instead");
-                        container = containers[0];
-                    } else {
-                        console.error("No blast containers found in the DOM");
-                        return window.dash_clientside.no_update;
+                    console.log(`No container found with ID: ${containerId} after ${maxAttempts} attempts`);
+                    // Try to find the default container first since this is likely a single sequence view
+                    container = document.getElementById('blast-container');
+                    
+                    if (!container) {
+                        console.log("No default container found, trying by class");
+                        // If still not found, try to find a container with class blast-container 
+                        let containers = document.getElementsByClassName('blast-container');
+                        if (containers.length > 0) {
+                            console.log("Found container by class instead");
+                            container = containers[0];
+                        } else {
+                            console.error("No blast containers found in the DOM");
+                            return;
+                        }
                     }
                 }
-            }
-            
-            console.log("Found container:", container);
-            
-            // Clear existing content first
-            container.innerHTML = '';
-            
-            // If we have empty blast text, show a message
-            if (!data.blast_text.trim()) {
-                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
-                return window.dash_clientside.no_update;
-            }
-            
-            // Create the title element
-            const titleElement = document.createElement('h2');
-            titleElement.innerHTML = 'BLAST Results';
-            titleElement.style.marginTop = '15px';
-            titleElement.style.marginBottom = '20px';
-            titleElement.style.textAlign = 'left';
-            titleElement.style.width = '100%';
-            
-            // Create unique IDs for this container to avoid conflicts in multi-tab view
-            const uniquePrefix = containerId.replace('blast-container', 'blast');
-            const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
-            const tablesDivId = `${uniquePrefix}-alignments-table`;
-            
-            // Create simple divs for BlasterJS with explicit left alignment
-            const alignmentsDiv = document.createElement('div');
-            alignmentsDiv.id = alignmentsDivId;
-            alignmentsDiv.style.textAlign = 'left';
-            alignmentsDiv.style.width = '100%';
-            
-            const tableDiv = document.createElement('div');
-            tableDiv.id = tablesDivId;
-            tableDiv.style.textAlign = 'left';
-            tableDiv.style.width = '100%';
-            
-            // Add elements to the container
-            container.appendChild(titleElement);
-            container.appendChild(alignmentsDiv);
-            container.appendChild(tableDiv);
-            
-            // Add a style element to ensure BlasterJS output is properly aligned
-            const styleEl = document.createElement('style');
-            styleEl.textContent = `
-                #${alignmentsDivId}, #${tablesDivId} {
-                    text-align: left !important;
-                    margin-left: 0 !important;
-                    padding-left: 0 !important;
-                }
-                #${alignmentsDivId} div, #${tablesDivId} div,
-                #${alignmentsDivId} table, #${tablesDivId} table {
-                    text-align: left !important;
-                    margin-left: 0 !important;
-                }
-                .alignment-viewer {
-                    text-align: left !important;
-                }
-            `;
-            container.appendChild(styleEl);
-            
-            // Basic BlasterJS initialization
-            try {
-                var blasterjs = require("biojs-vis-blasterjs");
-                console.log("BlasterJS loaded successfully");
-                var instance = new blasterjs({
-                    string: data.blast_text,
-                    multipleAlignments: alignmentsDivId,
-                    alignmentsTable: tablesDivId
-                });
-                console.log("BlasterJS initialized successfully for", containerId);
                 
-                // Store instance ID in a data attribute for potential future reference
-                container.dataset.blasterjsInstance = uniquePrefix;
+                console.log("Found container:", container);
                 
-                // Additional styling fix after BlasterJS renders
-                setTimeout(function() {
-                    const tables = container.querySelectorAll('table');
-                    tables.forEach(function(table) {
-                        table.style.marginLeft = '0';
-                        table.style.textAlign = 'left';
+                // Clear existing content first
+                container.innerHTML = '';
+                
+                // If we have empty or invalid blast text, show a message
+                if (!data.blast_text || !data.blast_text.trim() || data.blast_text === "BLAST results too large to display") {
+                    let messageText = data.blast_text === "BLAST results too large to display" ?
+                        "The BLAST results are too large to display in the browser." :
+                        "No BLAST results to display";
+                        
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">' + messageText + '</div>';
+                    return;
+                }
+                
+                // Create the title element
+                const titleElement = document.createElement('h2');
+                titleElement.innerHTML = 'BLAST Results';
+                titleElement.style.marginTop = '15px';
+                titleElement.style.marginBottom = '20px';
+                titleElement.style.textAlign = 'left';
+                titleElement.style.width = '100%';
+                
+                // Create unique IDs for this container to avoid conflicts in multi-tab view
+                const uniquePrefix = containerId.replace('blast-container', 'blast');
+                const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
+                const tablesDivId = `${uniquePrefix}-alignments-table`;
+                
+                // Create simple divs for BlasterJS with explicit left alignment
+                const alignmentsDiv = document.createElement('div');
+                alignmentsDiv.id = alignmentsDivId;
+                alignmentsDiv.style.textAlign = 'left';
+                alignmentsDiv.style.width = '100%';
+                
+                const tableDiv = document.createElement('div');
+                tableDiv.id = tablesDivId;
+                tableDiv.style.textAlign = 'left';
+                tableDiv.style.width = '100%';
+                
+                // Add elements to the container
+                container.appendChild(titleElement);
+                container.appendChild(alignmentsDiv);
+                container.appendChild(tableDiv);
+                
+                // Add a style element to ensure BlasterJS output is properly aligned
+                const styleEl = document.createElement('style');
+                styleEl.textContent = `
+                    #${alignmentsDivId}, #${tablesDivId} {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                        padding-left: 0 !important;
+                    }
+                    #${alignmentsDivId} div, #${tablesDivId} div,
+                    #${alignmentsDivId} table, #${tablesDivId} table {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                    }
+                    .alignment-viewer {
+                        text-align: left !important;
+                    }
+                `;
+                container.appendChild(styleEl);
+                
+                // Basic BlasterJS initialization
+                try {
+                    var blasterjs = require("biojs-vis-blasterjs");
+                    console.log("BlasterJS loaded successfully");
+                    var instance = new blasterjs({
+                        string: data.blast_text,
+                        multipleAlignments: alignmentsDivId,
+                        alignmentsTable: tablesDivId
                     });
-                }, 100);
-            } catch (blasterError) {
-                console.error("Error initializing BlasterJS library:", blasterError);
-                container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
-            }
+                    console.log("BlasterJS initialized successfully for", containerId);
+                    
+                    // Store instance ID in a data attribute for potential future reference
+                    container.dataset.blasterjsInstance = uniquePrefix;
+                    container.dataset.initialized = "true";
+                    
+                    // Additional styling fix after BlasterJS renders
+                    setTimeout(function() {
+                        const tables = container.querySelectorAll('table');
+                        tables.forEach(function(table) {
+                            table.style.marginLeft = '0';
+                            table.style.textAlign = 'left';
+                        });
+                    }, 100);
+                } catch (blasterError) {
+                    console.error("Error initializing BlasterJS library:", blasterError);
+                    container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
+                    container.dataset.initialized = "error";
+                }
+            };
+            
+            // Start the initialization process
+            initializeBlasterJS();
             
             return window.dash_clientside.no_update;
         } catch (error) {
@@ -1885,7 +1936,7 @@ clientside_callback(
         }
         
         if (!blast_data) {
-            console.warn("No blast data available");
+            // console.warn("No blast data available");
             return window.dash_clientside.no_update;
         }
         
@@ -1904,135 +1955,154 @@ clientside_callback(
 
             // Find the correct container based on active tab
             const containerId = `blast-container-${tabIdx}`;
-            let container = document.getElementById(containerId);
             
-            if (!container) {
-                console.log(`No container found with ID: ${containerId}`);
-                // Try fallback options
-                const containers = document.getElementsByClassName('blast-container');
-                if (containers.length > 0) {
-                    console.log("Found container by class instead");
-                    container = containers[0];
-                } else {
-                    const mainContainer = document.getElementById('blast-container');
-                    if (mainContainer) {
-                        console.log("Using main blast-container as fallback");
-                        container = mainContainer;
+            // Create a function that will attempt to initialize BlasterJS
+            const initializeBlasterJS = (attempts = 0, maxAttempts = 5) => {
+                let container = document.getElementById(containerId);
+                
+                // If no container is found and we haven't exceeded max attempts, retry
+                if (!container && attempts < maxAttempts) {
+                    console.log(`Container ${containerId} not found, retrying in 100ms (attempt ${attempts + 1}/${maxAttempts})`);
+                    setTimeout(() => initializeBlasterJS(attempts + 1, maxAttempts), 100);
+                    return;
+                }
+                
+                // If still no container after max attempts, try fallback options
+                if (!container) {
+                    console.log(`No container found with ID: ${containerId} after ${maxAttempts} attempts`);
+                    // Try fallback options
+                    const containers = document.getElementsByClassName('blast-container');
+                    if (containers.length > 0) {
+                        console.log("Found container by class instead");
+                        container = containers[0];
                     } else {
-                        console.error("No blast containers found in the DOM");
-                        return window.dash_clientside.no_update;
+                        const mainContainer = document.getElementById('blast-container');
+                        if (mainContainer) {
+                            console.log("Using main blast-container as fallback");
+                            container = mainContainer;
+                        } else {
+                            console.error("No blast containers found in the DOM");
+                            return;
+                        }
                     }
                 }
-            }
 
-            // Only initialize if empty or not initialized yet
-            if (container.children.length === 0 || !container.dataset.initialized) {
-                console.log(`Initializing BlasterJS for tab ${tabIdx}`);
-                
-                // Clear existing content
-                container.innerHTML = '';
-                
-                // Create the title element
-                const titleElement = document.createElement('h2');
-                titleElement.innerHTML = 'BLAST Results';
-                titleElement.style.marginTop = '15px';
-                titleElement.style.marginBottom = '20px';
-                titleElement.style.textAlign = 'left';
-                titleElement.style.width = '100%';
-                
-                // Create unique IDs for this container
-                const uniquePrefix = `blast-${tabIdx}`;
-                const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
-                const tablesDivId = `${uniquePrefix}-alignments-table`;
-                
-                // Create divs for BlasterJS
-                const alignmentsDiv = document.createElement('div');
-                alignmentsDiv.id = alignmentsDivId;
-                alignmentsDiv.style.textAlign = 'left';
-                alignmentsDiv.style.width = '100%';
-                
-                const tableDiv = document.createElement('div');
-                tableDiv.id = tablesDivId;
-                tableDiv.style.textAlign = 'left';
-                tableDiv.style.width = '100%';
-                
-                // Add elements to the container
-                container.appendChild(titleElement);
-                container.appendChild(alignmentsDiv);
-                container.appendChild(tableDiv);
-                
-                // Add styling
-                const styleEl = document.createElement('style');
-                styleEl.textContent = `
-                    #${alignmentsDivId}, #${tablesDivId} {
-                        text-align: left !important;
-                        margin-left: 0 !important;
-                        padding-left: 0 !important;
-                    }
-                    #${alignmentsDivId} div, #${tablesDivId} div,
-                    #${alignmentsDivId} table, #${tablesDivId} table {
-                        text-align: left !important;
-                        margin-left: 0 !important;
-                    }
-                    .alignment-viewer {
-                        text-align: left !important;
-                    }
-                `;
-                container.appendChild(styleEl);
-                
-                // Validate blast text
-                if (!blast_data.blast_text.trim()) {
-                    console.warn("Empty BLAST text, showing empty results message");
-                    const emptyDiv = document.createElement('div');
-                    emptyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
-                    container.appendChild(emptyDiv);
-                    container.dataset.initialized = "true";
-                    return window.dash_clientside.no_update;
-                }
-                
-                // Initialize BlasterJS
-                try {
-                    // Check if biojs-vis-blasterjs is available
-                    if (typeof require !== 'function') {
-                        console.error("require function not available - can't load BlasterJS");
-                        container.innerHTML += '<div style="color:orange;padding:10px;">Error: BlasterJS library not available</div>';
-                        container.dataset.initialized = "error";
-                        return window.dash_clientside.no_update;
+                // Only initialize if empty or not initialized yet
+                if (container.children.length === 0 || !container.dataset.initialized) {
+                    console.log(`Initializing BlasterJS for tab ${tabIdx}`);
+                    
+                    // Clear existing content
+                    container.innerHTML = '';
+                    
+                    // Create the title element
+                    const titleElement = document.createElement('h2');
+                    titleElement.innerHTML = 'BLAST Results';
+                    titleElement.style.marginTop = '15px';
+                    titleElement.style.marginBottom = '20px';
+                    titleElement.style.textAlign = 'left';
+                    titleElement.style.width = '100%';
+                    
+                    // Create unique IDs for this container
+                    const uniquePrefix = `blast-${tabIdx}`;
+                    const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
+                    const tablesDivId = `${uniquePrefix}-alignments-table`;
+                    
+                    // Create divs for BlasterJS
+                    const alignmentsDiv = document.createElement('div');
+                    alignmentsDiv.id = alignmentsDivId;
+                    alignmentsDiv.style.textAlign = 'left';
+                    alignmentsDiv.style.width = '100%';
+                    
+                    const tableDiv = document.createElement('div');
+                    tableDiv.id = tablesDivId;
+                    tableDiv.style.textAlign = 'left';
+                    tableDiv.style.width = '100%';
+                    
+                    // Add elements to the container
+                    container.appendChild(titleElement);
+                    container.appendChild(alignmentsDiv);
+                    container.appendChild(tableDiv);
+                    
+                    // Add styling
+                    const styleEl = document.createElement('style');
+                    styleEl.textContent = `
+                        #${alignmentsDivId}, #${tablesDivId} {
+                            text-align: left !important;
+                            margin-left: 0 !important;
+                            padding-left: 0 !important;
+                        }
+                        #${alignmentsDivId} div, #${tablesDivId} div,
+                        #${alignmentsDivId} table, #${tablesDivId} table {
+                            text-align: left !important;
+                            margin-left: 0 !important;
+                        }
+                        .alignment-viewer {
+                            text-align: left !important;
+                        }
+                    `;
+                    container.appendChild(styleEl);
+                    
+                    // Validate blast text
+                    if (!blast_data.blast_text.trim() || blast_data.blast_text === "BLAST results too large to display") {
+                        let messageText = blast_data.blast_text === "BLAST results too large to display" ?
+                            "The BLAST results are too large to display in the browser." :
+                            "No BLAST results to display";
+                        
+                        const emptyDiv = document.createElement('div');
+                        emptyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">' + messageText + '</div>';
+                        container.appendChild(emptyDiv);
+                        container.dataset.initialized = "true";
+                        return;
                     }
                     
-                    let blasterjs = require("biojs-vis-blasterjs");
-                    if (!blasterjs) {
-                        console.error("Failed to load BlasterJS library");
-                        container.innerHTML += '<div style="color:orange;padding:10px;">Error loading BlasterJS library</div>';
-                        container.dataset.initialized = "error";
-                        return window.dash_clientside.no_update;
-                    }
-                    
-                    let instance = new blasterjs({
-                        string: blast_data.blast_text,
-                        multipleAlignments: alignmentsDivId,
-                        alignmentsTable: tablesDivId
-                    });
-                    
-                    // Mark as initialized
-                    container.dataset.initialized = "true";
-                    
-                    // Apply additional styling
-                    setTimeout(function() {
-                        const tables = container.querySelectorAll('table');
-                        tables.forEach(function(table) {
-                            table.style.marginLeft = '0';
-                            table.style.textAlign = 'left';
+                    // Initialize BlasterJS
+                    try {
+                        // Check if biojs-vis-blasterjs is available
+                        if (typeof require !== 'function') {
+                            console.error("require function not available - can't load BlasterJS");
+                            container.innerHTML += '<div style="color:orange;padding:10px;">Error: BlasterJS library not available</div>';
+                            container.dataset.initialized = "error";
+                            return;
+                        }
+                        
+                        let blasterjs = require("biojs-vis-blasterjs");
+                        if (!blasterjs) {
+                            console.error("Failed to load BlasterJS library");
+                            container.innerHTML += '<div style="color:orange;padding:10px;">Error loading BlasterJS library</div>';
+                            container.dataset.initialized = "error";
+                            return;
+                        }
+                        
+                        let instance = new blasterjs({
+                            string: blast_data.blast_text,
+                            multipleAlignments: alignmentsDivId,
+                            alignmentsTable: tablesDivId
                         });
-                    }, 100);
-                    
-                    console.log(`BlasterJS initialized for tab ${tabIdx}`);
-                } catch (error) {
-                    console.error("Error initializing BlasterJS:", error);
-                    container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
-                    container.dataset.initialized = "error";
+                        
+                        // Mark as initialized
+                        container.dataset.initialized = "true";
+                        
+                        // Apply additional styling
+                        setTimeout(function() {
+                            const tables = container.querySelectorAll('table');
+                            tables.forEach(function(table) {
+                                table.style.marginLeft = '0';
+                                table.style.textAlign = 'left';
+                            });
+                        }, 100);
+                        
+                        console.log(`BlasterJS initialized for tab ${tabIdx}`);
+                    } catch (error) {
+                        console.error("Error initializing BlasterJS:", error);
+                        container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
+                        container.dataset.initialized = "error";
+                    }
                 }
-            }
+            };
+            
+            // Start the initialization process
+            initializeBlasterJS();
+            
         } catch (error) {
             console.error("Error in tab visualization callback:", error);
         }
@@ -2276,8 +2346,8 @@ def update_classification_progress(workflow_state):
                     break
 
             stage_text = stage_label if stage_label else f"Processing {current_stage}"
-        # else:
-        #     stage_text = "Starting classification..."
+        else:
+            stage_text = "Starting classification..."
 
     # Show section if classification is in progress
     style = (
