@@ -1,6 +1,5 @@
 import dash
 from dash import dcc, html, callback, clientside_callback
-from dash_iconify import DashIconify
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash.exceptions import PreventUpdate
@@ -39,15 +38,6 @@ from src.tasks import (
 dash.register_page(__name__)
 
 logger = logging.getLogger(__name__)
-
-
-def blast_family_button(family):
-    return dbc.Button(
-        family,
-        color="primary",
-        href=f"/wiki?page={family}",
-        external_link=False,
-    )
 
 
 layout = dmc.Container(
@@ -339,145 +329,9 @@ layout = dmc.Container(
     ],
 )
 
-# Define the clientside JavaScript function directly in the callback
-clientside_callback(
-    """
-    function(data, active_tab_idx) {
-        console.log("BlasterJS callback triggered", data, "active tab:", active_tab_idx);
-        
-        // Check if we have valid data
-        if (!data || !data.blast_text) {
-            console.log("No valid BLAST data available");
-            return window.dash_clientside.no_update;
-        }
-        
-        try {
-            console.log("Initializing BlasterJS with text length:", data.blast_text.length);
-            
-            // Find the correct container based on active tab
-            let containerId = active_tab_idx !== null ? 
-                `blast-container-${active_tab_idx}` : 'blast-container';
-            
-            // Use standard ID selector
-            let container = document.getElementById(containerId);
-            
-            if (!container) {
-                console.log(`No blast container found with ID: ${containerId}, trying the default container`);
-                // Try to find the default container first since this is likely a single sequence view
-                container = document.getElementById('blast-container');
-                
-                if (!container) {
-                    console.log("No default container found, trying by class");
-                    // If still not found, try to find a container with class blast-container 
-                    let containers = document.getElementsByClassName('blast-container');
-                    if (containers.length > 0) {
-                        console.log("Found container by class instead");
-                        container = containers[0];
-                    } else {
-                        console.error("No blast containers found in the DOM");
-                        return window.dash_clientside.no_update;
-                    }
-                }
-            }
-            
-            console.log("Found container:", container);
-            
-            // Clear existing content first
-            container.innerHTML = '';
-            
-            // If we have empty blast text, show a message
-            if (!data.blast_text.trim()) {
-                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
-                return window.dash_clientside.no_update;
-            }
-            
-            // Create the title element
-            const titleElement = document.createElement('h2');
-            titleElement.innerHTML = 'BLAST Results';
-            titleElement.style.marginTop = '15px';
-            titleElement.style.marginBottom = '20px';
-            titleElement.style.textAlign = 'left';
-            titleElement.style.width = '100%';
-            
-            // Create unique IDs for this container to avoid conflicts in multi-tab view
-            const uniquePrefix = containerId.replace('blast-container', 'blast');
-            const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
-            const tablesDivId = `${uniquePrefix}-alignments-table`;
-            
-            // Create simple divs for BlasterJS with explicit left alignment
-            const alignmentsDiv = document.createElement('div');
-            alignmentsDiv.id = alignmentsDivId;
-            alignmentsDiv.style.textAlign = 'left';
-            alignmentsDiv.style.width = '100%';
-            
-            const tableDiv = document.createElement('div');
-            tableDiv.id = tablesDivId;
-            tableDiv.style.textAlign = 'left';
-            tableDiv.style.width = '100%';
-            
-            // Add elements to the container
-            container.appendChild(titleElement);
-            container.appendChild(alignmentsDiv);
-            container.appendChild(tableDiv);
-            
-            // Add a style element to ensure BlasterJS output is properly aligned
-            const styleEl = document.createElement('style');
-            styleEl.textContent = `
-                #${alignmentsDivId}, #${tablesDivId} {
-                    text-align: left !important;
-                    margin-left: 0 !important;
-                    padding-left: 0 !important;
-                }
-                #${alignmentsDivId} div, #${tablesDivId} div,
-                #${alignmentsDivId} table, #${tablesDivId} table {
-                    text-align: left !important;
-                    margin-left: 0 !important;
-                }
-                .alignment-viewer {
-                    text-align: left !important;
-                }
-            `;
-            container.appendChild(styleEl);
-            
-            // Basic BlasterJS initialization
-            try {
-                var blasterjs = require("biojs-vis-blasterjs");
-                console.log("BlasterJS loaded successfully");
-                var instance = new blasterjs({
-                    string: data.blast_text,
-                    multipleAlignments: alignmentsDivId,
-                    alignmentsTable: tablesDivId
-                });
-                console.log("BlasterJS initialized successfully for", containerId);
-                
-                // Store instance ID in a data attribute for potential future reference
-                container.dataset.blasterjsInstance = uniquePrefix;
-                
-                // Additional styling fix after BlasterJS renders
-                setTimeout(function() {
-                    const tables = container.querySelectorAll('table');
-                    tables.forEach(function(table) {
-                        table.style.marginLeft = '0';
-                        table.style.textAlign = 'left';
-                    });
-                }, 100);
-            } catch (blasterError) {
-                console.error("Error initializing BlasterJS library:", blasterError);
-                container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
-            }
-            
-            return window.dash_clientside.no_update;
-        } catch (error) {
-            console.error('Overall error in callback:', error);
-            // Error handling - display error in a div
-            return window.dash_clientside.no_update;
-        }
-    }
-    """,
-    Output("blast-container", "children"),
-    [Input("processed-blast-store", "data"), Input("blast-active-tab", "data")],
-    prevent_initial_call=True,
-)
+########################################################
+# Handle Sequence Input
+########################################################
 
 
 @callback(
@@ -640,42 +494,324 @@ def update_fasta_details(seq_content, seq_filename):
 
 
 @callback(
+    Output("query-text", "value", allow_duplicate=True),
+    Input("blast-fasta-upload", "contents"),
+    prevent_initial_call=True,
+    id="clear-text-on-file-upload",
+)
+def clear_text_on_file_upload(file_contents):
+    """Clear the text area when a file is uploaded"""
+    if file_contents:
+        return ""
+    raise PreventUpdate
+
+
+@callback(
     [
-        Output("submit-button", "disabled", allow_duplicate=True),
-        Output("submit-button", "children", allow_duplicate=True),
+        Output("blast-fasta-upload", "contents", allow_duplicate=True),
+        Output("upload-details", "children", allow_duplicate=True),
+    ],
+    Input("query-text", "value"),
+    State("blast-fasta-upload", "contents"),
+    prevent_initial_call=True,
+    id="clear-file-on-text-input",
+)
+def clear_file_on_text_input(text_value, current_file_contents):
+    """Clear the file upload when text is entered"""
+    if text_value and len(text_value.strip()) > 10 and current_file_contents:
+        return None, html.Div(html.P(["Select a FASTA file to upload"]))
+    raise PreventUpdate
+
+
+@callback(
+    [
+        Output("blast-sequences-store", "data", allow_duplicate=True),
+        Output("query-text", "helperText"),
         Output("upload-error-message", "children", allow_duplicate=True),
-        Output("upload-error-store", "data", allow_duplicate=True),
     ],
     [
-        Input("submit-button", "n_clicks"),
-        Input("blast-timeout-interval", "n_intervals"),
+        Input("query-text", "value"),
     ],
-    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
     prevent_initial_call=True,
 )
-def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
-    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+def preprocess_text_input(query_text_input):
+    """
+    Process text input as it's entered to show a summary and limit sequences.
+    This doesn't store the sequences for processing yet - that happens when submit is clicked.
+    """
+    if not query_text_input:
+        return None, None, None
 
-    # Default return values
-    button_disabled = False
-    button_text = "Submit BLAST"  # Set default button text
-    error_message = ""
-    error_store = None
+    try:
+        # Parse the text input to check for multiple sequences
+        input_type, seq_list, n_seqs, error = check_input(
+            query_text_input=query_text_input,
+            query_file_contents=None,
+            max_sequences=10,
+        )
 
-    # Handle timeout case
-    if triggered_id == "blast-timeout-interval":
-        if n_clicks and timeout_triggered:
-            button_disabled = True
-            button_text = "Server timeout"
-            error_message = dmc.Alert(
-                title="Request Timeout",
-                children="The server is taking longer than expected to respond. Please try again later.",
-                color="yellow",
+        # If there's a real error, show it but don't update sequences store
+        if error and isinstance(error, dmc.Alert) and error.color == "red":
+            return None, None, error
+
+        # If we have sequences, create a summary message
+        if seq_list and n_seqs > 0:
+            if n_seqs == 1:
+                helper_text = f"Found 1 sequence: {seq_list[0]['header']} ({len(seq_list[0]['sequence'])} bp)"
+            else:
+                helper_text = f"Found {n_seqs} sequences"
+                if n_seqs > 3:
+                    seq_summary = (
+                        ", ".join([seq["header"] for seq in seq_list[:3]]) + "..."
+                    )
+                else:
+                    seq_summary = ", ".join([seq["header"] for seq in seq_list])
+                helper_text += f" ({seq_summary})"
+
+            # Add warning if we limited the sequences
+            if n_seqs > 10:
+                helper_text += " (only the first 10 will be processed)"
+
+            # Don't store sequences yet - just return helper text
+            return None, helper_text, None
+
+        return None, "No valid sequences found", None
+
+    except Exception as e:
+        logger.error(f"Error preprocessing text input: {e}")
+        return (
+            None,
+            None,
+            dmc.Alert(
+                title="Error",
+                children=f"Error preprocessing sequences: {str(e)}",
+                color="red",
                 variant="filled",
-            )
-            error_store = "The server is taking longer than expected to respond. Please try again later."
+            ),
+        )
 
-    return [button_disabled, button_text, error_message, error_store]
+
+@callback(
+    Output("submission-id-store", "data"),
+    Input("submit-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def update_submission_id(n_clicks):
+    if not n_clicks:
+        raise PreventUpdate
+    return n_clicks  # Use n_clicks as a unique submission ID
+
+
+########################################################
+# Setup Layout
+########################################################
+# Helper functions to create layouts
+def create_single_layout():
+    return dmc.Stack(
+        children=[
+            html.Div(id="classification-output", className="mt-4"),
+            # Progress section
+            dmc.Stack(
+                [
+                    dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
+                    dmc.Group(
+                        [
+                            dmc.Text("Classification Status:", size="lg", fw=500),
+                            dmc.Text(
+                                id="classification-stage-display", size="lg", c="blue"
+                            ),
+                        ]
+                    ),
+                ],
+                id="classification-progress-section",
+                style={"display": "none"},
+            ),
+            # BLAST results section - use create_blast_container for consistency
+            dmc.Stack(
+                [
+                    dbc.Spinner(
+                        children=html.Div(
+                            id="blast-container",
+                            className="blast-container",
+                            style={
+                                "width": "100%",
+                                "display": "flex",
+                                "flexDirection": "column",
+                                "minHeight": "300px",
+                                "alignItems": "flex-start",
+                                "textAlign": "left",
+                            },
+                        ),
+                        color="primary",
+                        type="border",
+                        fullscreen=False,
+                        spinner_style={"width": "3rem", "height": "3rem"},
+                    )
+                ]
+            ),
+        ],
+    )
+
+
+def create_tab_layout(seq_list, n_seqs=10):
+    """Create tabs for multiple sequences"""
+    tabs = []
+    for idx, seq in enumerate(seq_list[:n_seqs]):
+        tabs.append(
+            dbc.Tab(
+                label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
+                tab_id=f"tab-{idx}",
+            )
+        )
+
+    return dbc.Card(
+        [
+            dbc.CardHeader(
+                dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
+            ),
+            dbc.CardBody([html.Div(id="tab-content")]),
+        ]
+    )
+
+
+def create_blast_container(sequence_results, tab_id=None):
+    """Create the BLAST container with a spinner wrapper
+
+    Args:
+        sequence_results: The BLAST results data
+        tab_id: Optional ID suffix for creating unique container IDs in a tabbed interface
+    """
+    blast_file = sequence_results.get("blast_file")
+    if not blast_file:
+        return html.Div(
+            [
+                html.H2(
+                    "BLAST Results", style={"marginTop": "15px", "marginBottom": "20px"}
+                ),
+                create_no_matches_alert(),
+            ]
+        )
+
+    # Create a unique container ID if tab_id is provided
+    container_id = (
+        f"blast-container-{tab_id}" if tab_id is not None else "blast-container"
+    )
+
+    # For single sequences, ensure we're using the standard ID
+    if tab_id is None:
+        logger.info(
+            "Creating blast container for single sequence with ID: blast-container"
+        )
+    else:
+        logger.info(
+            f"Creating blast container for tab {tab_id} with ID: {container_id}"
+        )
+
+    # Create with a regular string ID and wrap in a spinner
+    return html.Div(
+        [
+            dbc.Spinner(
+                children=html.Div(
+                    id=container_id,
+                    className="blast-container",  # Add a common class for all containers
+                    style={
+                        "width": "100%",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "minHeight": "300px",  # Increased height to make spinner more visible
+                        "alignItems": "flex-start",  # Left align the content
+                        "textAlign": "left",  # Ensure text is left-aligned
+                    },
+                ),
+                color="primary",
+                type="border",  # Options: "border", "grow"
+                fullscreen=False,
+                spinner_style={"width": "3rem", "height": "3rem"},
+            )
+        ]
+    )
+
+
+########################################################
+# Processing Data
+########################################################
+@callback(
+    Output("processed-metadata-store", "data"),
+    Input("curated-input", "value"),
+)
+def process_metadata(curated):
+    try:
+        initial_df = cache.get("meta_data")
+        if initial_df is None:
+            initial_df = fetch_meta_data(curated=curated)
+
+        return (
+            initial_df[["accession_tag", "familyName"]]
+            .drop_duplicates()
+            .to_dict("records")
+        )
+    except Exception as e:
+        logger.error(f"Error processing metadata: {str(e)}")
+        return None
+
+
+@callback(
+    Output("processed-blast-store", "data"),
+    [Input("blast-results-store", "data"), Input("blast-active-tab", "data")],
+)
+def process_blast_results(blast_results_store, active_tab_idx):
+    if not blast_results_store:
+        logger.warning("No blast_results_store data")
+        return None
+
+    # Convert active_tab_idx to string (since keys in sequence_results are strings)
+    tab_idx = str(active_tab_idx or 0)
+    logger.info(f"Processing BLAST results for tab index: {tab_idx}")
+
+    # Get the correct sequence results based on active tab
+    sequence_results = blast_results_store.get("sequence_results", {}).get(tab_idx)
+    if not sequence_results:
+        logger.warning(f"No sequence results for tab index {tab_idx}")
+        return None
+
+    blast_results_file = sequence_results.get("blast_file")
+    if not blast_results_file:
+        logger.warning(f"No blast file in sequence results for tab {tab_idx}")
+        return None
+
+    logger.info(f"Reading BLAST file: {blast_results_file}")
+    try:
+        # Check if file exists
+        if not os.path.exists(blast_results_file):
+            logger.error(f"BLAST file does not exist: {blast_results_file}")
+            return None
+
+        # Read the BLAST output as text
+        with open(blast_results_file, "r") as f:
+            blast_results = f.read()
+
+        # Add size limit check
+        results_size = len(blast_results)
+        logger.info(f"Read BLAST results, size: {results_size} bytes")
+        if results_size > 5 * 1024 * 1024:  # 5MB limit
+            logger.warning(f"BLAST results too large: {results_size} bytes")
+            return None
+
+        # Format data for BlasterJS
+        data = {
+            "blast_text": blast_results  # Pass the raw BLAST text directly
+        }
+
+        return data
+    except Exception as e:
+        logger.error(f"Error processing BLAST results: {str(e)}")
+        # Always return consistent data format, even on error
+        return {"blast_text": ""}  # Return empty string instead of None
+
+
+########################################################
+# Main Processing
+########################################################
 
 
 @callback(
@@ -845,375 +981,43 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         return None, str(e), error_alert, None
 
 
-# Helper functions to create layouts
-def create_single_layout():
-    return dmc.Stack(
-        children=[
-            html.Div(id="classification-output", className="mt-4"),
-            # Progress section
-            dmc.Stack(
-                [
-                    dmc.Group([dbc.Progress(id="classification-progress", value=0)]),
-                    dmc.Group(
-                        [
-                            dmc.Text("Classification Status:", size="lg", fw=500),
-                            dmc.Text(
-                                id="classification-stage-display", size="lg", c="blue"
-                            ),
-                        ]
-                    ),
-                ],
-                id="classification-progress-section",
-                style={"display": "none"},
-            ),
-            # BLAST results section - use create_blast_container for consistency
-            dmc.Stack(
-                [
-                    dbc.Spinner(
-                        children=html.Div(
-                            id="blast-container",
-                            className="blast-container",
-                            style={
-                                "width": "100%",
-                                "display": "flex",
-                                "flexDirection": "column",
-                                "minHeight": "300px",
-                                "alignItems": "flex-start",
-                                "textAlign": "left",
-                            },
-                        ),
-                        color="primary",
-                        type="border",
-                        fullscreen=False,
-                        spinner_style={"width": "3rem", "height": "3rem"},
-                    )
-                ]
-            ),
-        ],
-    )
-
-
-def create_tab_layout(seq_list):
-    # Create tabs for multiple sequences
-    tabs = []
-    for idx, seq in enumerate(seq_list[:10]):  # Limit to 10 sequences
-        tabs.append(
-            dbc.Tab(
-                label=f"Sequence {idx + 1}: {seq['header'][:20]}{'...' if len(seq['header']) > 20 else ''}",
-                tab_id=f"tab-{idx}",
-            )
-        )
-
-    return dbc.Card(
-        [
-            dbc.CardHeader(
-                dbc.Tabs(id="blast-tabs", active_tab="tab-0", children=tabs)
-            ),
-            dbc.CardBody([html.Div(id="tab-content")]),
-        ]
-    )
-
-
 @callback(
-    Output("submission-id-store", "data"),
-    Input("submit-button", "n_clicks"),
+    [
+        Output("submit-button", "disabled", allow_duplicate=True),
+        Output("submit-button", "children", allow_duplicate=True),
+        Output("upload-error-message", "children", allow_duplicate=True),
+        Output("upload-error-store", "data", allow_duplicate=True),
+    ],
+    [
+        Input("submit-button", "n_clicks"),
+        Input("blast-timeout-interval", "n_intervals"),
+    ],
+    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
     prevent_initial_call=True,
 )
-def update_submission_id(n_clicks):
-    if not n_clicks:
-        raise PreventUpdate
-    return n_clicks  # Use n_clicks as a unique submission ID
+def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
+    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
+    # Default return values
+    button_disabled = False
+    button_text = "Submit BLAST"  # Set default button text
+    error_message = ""
+    error_store = None
 
-# Metadata Processing Callback
-@callback(
-    Output("processed-metadata-store", "data"),
-    Input("curated-input", "value"),
-)
-def process_metadata(curated):
-    try:
-        initial_df = cache.get("meta_data")
-        if initial_df is None:
-            initial_df = fetch_meta_data(curated=curated)
-
-        return (
-            initial_df[["accession_tag", "familyName"]]
-            .drop_duplicates()
-            .to_dict("records")
-        )
-    except Exception as e:
-        logger.error(f"Error processing metadata: {str(e)}")
-        return None
-
-
-# BLAST Results Processing Callback
-@callback(
-    Output("processed-blast-store", "data"),
-    [Input("blast-results-store", "data"), Input("blast-active-tab", "data")],
-)
-def process_blast_results(blast_results_store, active_tab_idx):
-    if not blast_results_store:
-        logger.warning("No blast_results_store data")
-        return None
-
-    # Convert active_tab_idx to string (since keys in sequence_results are strings)
-    tab_idx = str(active_tab_idx or 0)
-    logger.info(f"Processing BLAST results for tab index: {tab_idx}")
-
-    # Get the correct sequence results based on active tab
-    sequence_results = blast_results_store.get("sequence_results", {}).get(tab_idx)
-    if not sequence_results:
-        logger.warning(f"No sequence results for tab index {tab_idx}")
-        return None
-
-    blast_results_file = sequence_results.get("blast_file")
-    if not blast_results_file:
-        logger.warning(f"No blast file in sequence results for tab {tab_idx}")
-        return None
-
-    logger.info(f"Reading BLAST file: {blast_results_file}")
-    try:
-        # Check if file exists
-        if not os.path.exists(blast_results_file):
-            logger.error(f"BLAST file does not exist: {blast_results_file}")
-            return None
-
-        # Read the BLAST output as text
-        with open(blast_results_file, "r") as f:
-            blast_results = f.read()
-
-        # Add size limit check
-        results_size = len(blast_results)
-        logger.info(f"Read BLAST results, size: {results_size} bytes")
-        if results_size > 5 * 1024 * 1024:  # 5MB limit
-            logger.warning(f"BLAST results too large: {results_size} bytes")
-            return None
-
-        # Format data for BlasterJS
-        data = {
-            "blast_text": blast_results  # Pass the raw BLAST text directly
-        }
-
-        return data
-    except Exception as e:
-        logger.error(f"Error processing BLAST results: {str(e)}")
-        # Always return consistent data format, even on error
-        return {"blast_text": ""}  # Return empty string instead of None
-
-
-@callback(
-    [
-        Output("blast-results-store", "data"),
-        Output("classification-interval", "disabled", allow_duplicate=True),
-        Output("workflow-state-store", "data"),
-    ],
-    [
-        Input("submission-id-store", "data"),
-    ],
-    [
-        State("blast-sequences-store", "data"),
-        State("evalue-threshold", "value"),
-        State("blast-fasta-upload", "contents"),  # Add file contents as state
-    ],
-    running=[
-        (Output("submit-button", "loading"), True, False),
-        (Output("submit-button", "disabled"), True, False),
-    ],
-    prevent_initial_call=True,
-)
-def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
-    """Process only the first sequence initially, for both text input and file uploads"""
-    if not submission_id:
-        logger.warning("No submission_id provided to process_sequences")
-        raise PreventUpdate
-
-    if not seq_list:
-        # If we have no seq_list but do have file contents, parse the file directly
-        if file_contents:
-            logger.info("No seq_list but file_contents available - parsing directly")
-            try:
-                input_type, direct_seq_list, n_seqs, error = check_input(
-                    query_text_input=None, query_file_contents=file_contents
-                )
-
-                if error or not direct_seq_list or len(direct_seq_list) == 0:
-                    logger.warning(f"Failed to parse file contents directly: {error}")
-                    error_state = {
-                        "complete": True,
-                        "error": "Failed to parse sequence data",
-                        "status": "failed",
-                        "task_id": str(submission_id),
-                    }
-                    return None, True, error_state
-
-                logger.info(
-                    f"Successfully parsed {len(direct_seq_list)} sequences directly from file contents"
-                )
-                seq_list = direct_seq_list
-            except Exception as e:
-                logger.error(f"Error parsing file contents: {e}")
-                error_state = {
-                    "complete": True,
-                    "error": "Error parsing sequence data",
-                    "status": "failed",
-                    "task_id": str(submission_id),
-                }
-                return None, True, error_state
-        else:
-            logger.warning("No seq_list or file_contents provided to process_sequences")
-            error_state = {
-                "complete": True,
-                "error": "No sequence data available",
-                "status": "failed",
-                "task_id": str(submission_id) if submission_id else None,
-            }
-            return None, True, error_state
-
-    logger.info(
-        f"Processing sequence submission with ID: {submission_id}, sequences: {len(seq_list)}"
-    )
-
-    try:
-        blast_results = None
-        classification_interval_disabled = True
-        workflow_state = None
-
-        # Process only the first sequence to start
-        if seq_list and len(seq_list) > 0:
-            # Log sequence details for debugging
-            first_seq = seq_list[0]
-            logger.info(
-                f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}"
+    # Handle timeout case
+    if triggered_id == "blast-timeout-interval":
+        if n_clicks and timeout_triggered:
+            button_disabled = True
+            button_text = "Server timeout"
+            error_message = dmc.Alert(
+                title="Request Timeout",
+                children="The server is taking longer than expected to respond. Please try again later.",
+                color="yellow",
+                variant="filled",
             )
+            error_store = "The server is taking longer than expected to respond. Please try again later."
 
-            # Process sequence 0
-            sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
-
-            if sequence_result:
-                logger.info(
-                    f"Sequence result: processed={sequence_result.get('processed', False)}, blast_file={sequence_result.get('blast_file') is not None}"
-                )
-
-                # Structure the blast results properly
-                blast_results = {
-                    "processed_sequences": [0],  # Indices of processed sequences
-                    "sequence_results": {
-                        "0": sequence_result
-                    },  # Results keyed by sequence index
-                    "total_sequences": len(seq_list),  # Store total number of sequences
-                }
-
-                # Determine if we should enable classification interval
-                sequence_length = len(sequence_result.get("sequence", ""))
-                skip_classification = (
-                    sequence_length < 5000 or sequence_result.get("error") is not None
-                )
-
-                logger.info(
-                    f"Classification decision: skip={skip_classification}, seq_length={sequence_length}"
-                )
-
-                # Default to disabled
-                classification_interval_disabled = True
-
-                # Set up workflow state if needed
-                if not skip_classification and sequence_result.get("blast_file"):
-                    # Create upload_data with file contents instead of file paths
-                    # Read the file content to include in upload_data
-                    fasta_content = None
-                    tmp_query_fasta = None
-
-                    try:
-                        tmp_query_fasta = write_temp_fasta(
-                            seq_list[0].get("header", "query"),
-                            seq_list[0].get("sequence", ""),
-                        )
-
-                        if tmp_query_fasta and os.path.exists(tmp_query_fasta):
-                            with open(tmp_query_fasta, "r") as f:
-                                fasta_content = f.read()
-                            logger.info(
-                                f"Successfully read temp FASTA file: {tmp_query_fasta}"
-                            )
-                        else:
-                            logger.warning("Failed to create or access temp FASTA file")
-                    except Exception as e:
-                        logger.error(f"Error reading temp FASTA file: {e}")
-                        # If we can't read the file, skip classification
-                        skip_classification = True
-
-                    if not skip_classification:
-                        # Initialize a complete workflow state structure
-                        workflow_state = {
-                            "task_id": str(submission_id),  # Ensure it's a string
-                            "status": "initialized",
-                            "complete": False,
-                            "current_stage": None,
-                            "current_stage_idx": 0,
-                            "error": None,
-                            "found_match": False,
-                            "match_stage": None,
-                            "match_result": None,
-                            "start_time": time.time(),
-                            "stages": {
-                                stage["id"]: {"progress": 0, "complete": False}
-                                for stage in WORKFLOW_STAGES
-                            },
-                            "upload_data": {
-                                "seq_type": seq_list[0].get("type", "nucl"),
-                                "fasta": {"content": fasta_content}
-                                if fasta_content
-                                else (tmp_query_fasta or ""),
-                                "fetch_ship_params": {
-                                    "curated": False,
-                                    "with_sequence": True,
-                                    "dereplicate": True,
-                                },
-                                "fetch_captain_params": {
-                                    "curated": True,
-                                    "with_sequence": True,
-                                },
-                            },
-                        }
-
-                        # Only enable the interval if we have a proper workflow state
-                        if workflow_state is not None:
-                            logger.info("Enabling classification interval")
-                            classification_interval_disabled = False
-                        else:
-                            logger.warning(
-                                "Classification enabled but workflow state is None"
-                            )
-            else:
-                logger.warning(
-                    "No sequence result returned from process_single_sequence"
-                )
-                blast_results = {
-                    "processed_sequences": [0],
-                    "sequence_results": {
-                        "0": {
-                            "processed": False,
-                            "error": "Failed to process sequence",
-                            "sequence": seq_list[0].get("sequence", ""),
-                        }
-                    },
-                    "total_sequences": len(seq_list),
-                }
-
-        logger.info(
-            f"Completed process_sequences: has_blast_results={blast_results is not None}, interval_disabled={classification_interval_disabled}"
-        )
-        return blast_results, classification_interval_disabled, workflow_state
-    except Exception as e:
-        logger.error(f"Error in process_sequences: {str(e)}", exc_info=True)
-        # Return basic data on error
-        error_state = {
-            "complete": True,
-            "error": str(e),
-            "status": "failed",
-            "task_id": str(submission_id) if submission_id else None,
-        }
-        return None, True, error_state
+    return [button_disabled, button_text, error_message, error_store]
 
 
 def process_single_sequence(seq_data, evalue_threshold):
@@ -1550,7 +1354,221 @@ def process_single_sequence(seq_data, evalue_threshold):
     }
 
 
-# 2. Add a callback to process additional sequences when tabs are clicked
+@callback(
+    [
+        Output("blast-results-store", "data"),
+        Output("classification-interval", "disabled", allow_duplicate=True),
+        Output("workflow-state-store", "data"),
+    ],
+    [
+        Input("submission-id-store", "data"),
+    ],
+    [
+        State("blast-sequences-store", "data"),
+        State("evalue-threshold", "value"),
+        State("blast-fasta-upload", "contents"),  # Add file contents as state
+    ],
+    running=[
+        (Output("submit-button", "loading"), True, False),
+        (Output("submit-button", "disabled"), True, False),
+    ],
+    prevent_initial_call=True,
+)
+def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
+    """Process only the first sequence initially, for both text input and file uploads"""
+    if not submission_id:
+        logger.warning("No submission_id provided to process_sequences")
+        raise PreventUpdate
+
+    if not seq_list:
+        # If we have no seq_list but do have file contents, parse the file directly
+        if file_contents:
+            logger.info("No seq_list but file_contents available - parsing directly")
+            try:
+                input_type, direct_seq_list, n_seqs, error = check_input(
+                    query_text_input=None, query_file_contents=file_contents
+                )
+
+                if error or not direct_seq_list or len(direct_seq_list) == 0:
+                    logger.warning(f"Failed to parse file contents directly: {error}")
+                    error_state = {
+                        "complete": True,
+                        "error": "Failed to parse sequence data",
+                        "status": "failed",
+                        "task_id": str(submission_id),
+                    }
+                    return None, True, error_state
+
+                logger.info(
+                    f"Successfully parsed {len(direct_seq_list)} sequences directly from file contents"
+                )
+                seq_list = direct_seq_list
+            except Exception as e:
+                logger.error(f"Error parsing file contents: {e}")
+                error_state = {
+                    "complete": True,
+                    "error": "Error parsing sequence data",
+                    "status": "failed",
+                    "task_id": str(submission_id),
+                }
+                return None, True, error_state
+        else:
+            logger.warning("No seq_list or file_contents provided to process_sequences")
+            error_state = {
+                "complete": True,
+                "error": "No sequence data available",
+                "status": "failed",
+                "task_id": str(submission_id) if submission_id else None,
+            }
+            return None, True, error_state
+
+    logger.info(
+        f"Processing sequence submission with ID: {submission_id}, sequences: {len(seq_list)}"
+    )
+
+    try:
+        blast_results = None
+        classification_interval_disabled = True
+        workflow_state = None
+
+        # Process only the first sequence to start
+        if seq_list and len(seq_list) > 0:
+            # Log sequence details for debugging
+            first_seq = seq_list[0]
+            logger.info(
+                f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}"
+            )
+
+            # Process sequence 0
+            sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
+
+            if sequence_result:
+                logger.info(
+                    f"Sequence result: processed={sequence_result.get('processed', False)}, blast_file={sequence_result.get('blast_file') is not None}"
+                )
+
+                # Structure the blast results properly
+                blast_results = {
+                    "processed_sequences": [0],  # Indices of processed sequences
+                    "sequence_results": {
+                        "0": sequence_result
+                    },  # Results keyed by sequence index
+                    "total_sequences": len(seq_list),  # Store total number of sequences
+                }
+
+                # Determine if we should enable classification interval
+                sequence_length = len(sequence_result.get("sequence", ""))
+                skip_classification = (
+                    sequence_length < 5000 or sequence_result.get("error") is not None
+                )
+
+                logger.info(
+                    f"Classification decision: skip={skip_classification}, seq_length={sequence_length}"
+                )
+
+                # Default to disabled
+                classification_interval_disabled = True
+
+                # Set up workflow state if needed
+                if not skip_classification and sequence_result.get("blast_file"):
+                    # Create upload_data with file contents instead of file paths
+                    # Read the file content to include in upload_data
+                    fasta_content = None
+                    tmp_query_fasta = None
+
+                    try:
+                        tmp_query_fasta = write_temp_fasta(
+                            seq_list[0].get("header", "query"),
+                            seq_list[0].get("sequence", ""),
+                        )
+
+                        if tmp_query_fasta and os.path.exists(tmp_query_fasta):
+                            with open(tmp_query_fasta, "r") as f:
+                                fasta_content = f.read()
+                            logger.info(
+                                f"Successfully read temp FASTA file: {tmp_query_fasta}"
+                            )
+                        else:
+                            logger.warning("Failed to create or access temp FASTA file")
+                    except Exception as e:
+                        logger.error(f"Error reading temp FASTA file: {e}")
+                        # If we can't read the file, skip classification
+                        skip_classification = True
+
+                    if not skip_classification:
+                        # Initialize a complete workflow state structure
+                        workflow_state = {
+                            "task_id": str(submission_id),  # Ensure it's a string
+                            "status": "initialized",
+                            "complete": False,
+                            "current_stage": None,
+                            "current_stage_idx": 0,
+                            "error": None,
+                            "found_match": False,
+                            "match_stage": None,
+                            "match_result": None,
+                            "start_time": time.time(),
+                            "stages": {
+                                stage["id"]: {"progress": 0, "complete": False}
+                                for stage in WORKFLOW_STAGES
+                            },
+                            "upload_data": {
+                                "seq_type": seq_list[0].get("type", "nucl"),
+                                "fasta": {"content": fasta_content}
+                                if fasta_content
+                                else (tmp_query_fasta or ""),
+                                "fetch_ship_params": {
+                                    "curated": False,
+                                    "with_sequence": True,
+                                    "dereplicate": True,
+                                },
+                                "fetch_captain_params": {
+                                    "curated": True,
+                                    "with_sequence": True,
+                                },
+                            },
+                        }
+
+                        # Only enable the interval if we have a proper workflow state
+                        if workflow_state is not None:
+                            logger.info("Enabling classification interval")
+                            classification_interval_disabled = False
+                        else:
+                            logger.warning(
+                                "Classification enabled but workflow state is None"
+                            )
+            else:
+                logger.warning(
+                    "No sequence result returned from process_single_sequence"
+                )
+                blast_results = {
+                    "processed_sequences": [0],
+                    "sequence_results": {
+                        "0": {
+                            "processed": False,
+                            "error": "Failed to process sequence",
+                            "sequence": seq_list[0].get("sequence", ""),
+                        }
+                    },
+                    "total_sequences": len(seq_list),
+                }
+
+        logger.info(
+            f"Completed process_sequences: has_blast_results={blast_results is not None}, interval_disabled={classification_interval_disabled}"
+        )
+        return blast_results, classification_interval_disabled, workflow_state
+    except Exception as e:
+        logger.error(f"Error in process_sequences: {str(e)}", exc_info=True)
+        # Return basic data on error
+        error_state = {
+            "complete": True,
+            "error": str(e),
+            "status": "failed",
+            "task_id": str(submission_id) if submission_id else None,
+        }
+        return None, True, error_state
+
+
 @callback(
     Output("blast-results-store", "data", allow_duplicate=True),
     Input("blast-tabs", "active_tab"),
@@ -1600,7 +1618,9 @@ def process_additional_sequence(active_tab, results_store, seq_list, evalue_thre
     return updated_results
 
 
-# 4. Render the content for the current tab
+########################################################
+# Tabbed Output
+########################################################
 @callback(
     Output("tab-content", "children"),
     [
@@ -1611,6 +1631,8 @@ def process_additional_sequence(active_tab, results_store, seq_list, evalue_thre
 )
 def render_tab_content(active_tab, results_store):
     """Render the content for the current tab"""
+    from src.utils.classification_utils import create_classification_output
+
     if not active_tab or not results_store:
         raise PreventUpdate
 
@@ -1691,220 +1713,6 @@ def render_tab_content(active_tab, results_store):
     ]
 
 
-def create_classification_output(sequence_results):
-    """Create the classification output component"""
-    # Extract classification data
-    classification_data = sequence_results.get("classification")
-
-    if classification_data:
-        return html.Div(
-            [
-                dmc.Title(
-                    "Classification Results", order=2, style={"marginBottom": "20px"}
-                ),
-                create_classification_card(classification_data),
-            ]
-        )
-    else:
-        # No classification available
-        return html.Div(
-            [
-                dmc.Title(
-                    "Classification Results", order=2, style={"marginBottom": "20px"}
-                ),
-                dmc.Alert(
-                    title="No Classification Available",
-                    children="Could not classify this sequence with any available method.",
-                    color="yellow",
-                    variant="light",
-                ),
-            ]
-        )
-
-
-def create_blast_container(sequence_results, tab_id=None):
-    """Create the BLAST container with a spinner wrapper
-
-    Args:
-        sequence_results: The BLAST results data
-        tab_id: Optional ID suffix for creating unique container IDs in a tabbed interface
-    """
-    blast_file = sequence_results.get("blast_file")
-    if not blast_file:
-        return html.Div(
-            [
-                html.H2(
-                    "BLAST Results", style={"marginTop": "15px", "marginBottom": "20px"}
-                ),
-                create_no_matches_alert(),
-            ]
-        )
-
-    # Create a unique container ID if tab_id is provided
-    container_id = (
-        f"blast-container-{tab_id}" if tab_id is not None else "blast-container"
-    )
-
-    # For single sequences, ensure we're using the standard ID
-    if tab_id is None:
-        logger.info(
-            "Creating blast container for single sequence with ID: blast-container"
-        )
-    else:
-        logger.info(
-            f"Creating blast container for tab {tab_id} with ID: {container_id}"
-        )
-
-    # Create with a regular string ID and wrap in a spinner
-    return html.Div(
-        [
-            dbc.Spinner(
-                children=html.Div(
-                    id=container_id,
-                    className="blast-container",  # Add a common class for all containers
-                    style={
-                        "width": "100%",
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "minHeight": "300px",  # Increased height to make spinner more visible
-                        "alignItems": "flex-start",  # Left align the content
-                        "textAlign": "left",  # Ensure text is left-aligned
-                    },
-                ),
-                color="primary",
-                type="border",  # Options: "border", "grow"
-                fullscreen=False,
-                spinner_style={"width": "3rem", "height": "3rem"},
-            )
-        ]
-    )
-
-
-def load_blast_text(blast_file):
-    """Load BLAST output as text"""
-    if not blast_file or not os.path.exists(blast_file):
-        return None
-
-    with open(blast_file, "r") as f:
-        return f.read()
-
-
-# Add a function to create classification card
-def create_classification_card(classification_data):
-    """
-    Create a card displaying classification results from multiple sources
-
-    Args:
-        classification_data: Dictionary containing classification information
-
-    Returns:
-        dmc.Paper component with classification information
-    """
-    if not classification_data:
-        return None
-
-    title = classification_data.get("title", "Classification Results")
-    source = classification_data.get("source", "Unknown")
-    family = classification_data.get("family")
-    navis = classification_data.get("navis")
-    haplotype = classification_data.get("haplotype")
-    match_type = classification_data.get("match_type")
-    confidence = classification_data.get("confidence", "Low")
-
-    # Define badge colors based on source
-    source_colors = {
-        "exact_match": "green",
-        "contained_match": "teal",
-        "similar_match": "cyan",
-        "blast_hit": "blue",
-        "classification": "violet",
-        "unknown": "gray",
-    }
-
-    # Define icon based on confidence level
-    confidence_icons = {
-        "High": "mdi:shield-check",
-        "Medium": "mdi:shield-half-full",
-        "Low": "mdi:shield-outline",
-    }
-
-    source_color = source_colors.get(source, "gray")
-    confidence_icon = confidence_icons.get(confidence, "mdi:shield-outline")
-
-    # Create list of classification details
-    details = []
-
-    if family:
-        details.append(
-            dmc.Group(
-                [
-                    dmc.Text("Family:", fw=700, size="lg"),
-                    dmc.Text(family, size="lg", c="indigo"),
-                ],
-                pos="apart",
-            )
-        )
-
-    if navis:
-        details.append(
-            dmc.Group(
-                [dmc.Text("Navis:", fw=700), dmc.Text(navis, c="blue")], pos="apart"
-            )
-        )
-
-    if haplotype:
-        details.append(
-            dmc.Group(
-                [dmc.Text("Haplotype:", fw=700), dmc.Text(haplotype, c="violet")],
-                pos="apart",
-            )
-        )
-
-    if match_type:
-        details.append(
-            dmc.Group(
-                [
-                    dmc.Text("Match Type:", fw=700, size="sm"),
-                    dmc.Text(match_type, c="dimmed", size="sm"),
-                ],
-                pos="apart",
-            )
-        )
-
-    # Create card
-    return dmc.Paper(
-        children=[
-            dmc.Group(
-                [
-                    dmc.Title(title, order=3),
-                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
-                ],
-                pos="apart",
-            ),
-            dmc.Space(h=10),
-            *details,
-            dmc.Space(h=10),
-            dmc.Group(
-                [
-                    dmc.Text(f"Confidence: {confidence}", size="sm", c="dimmed"),
-                    dmc.ThemeIcon(
-                        DashIconify(icon=confidence_icon, width=16),
-                        size="sm",
-                        variant="light",
-                        color=source_color,
-                    ),
-                ],
-                pos="right",
-            ),
-        ],
-        p="md",
-        withBorder=True,
-        shadow="sm",
-        radius="md",
-        style={"marginBottom": "1rem"},
-    )
-
-
 @callback(
     Output("blast-active-tab", "data"),
     Input("blast-tabs", "active_tab"),
@@ -1919,6 +1727,328 @@ def update_active_tab(active_tab):
     return tab_idx
 
 
+########################################################
+# Clientside callbacks for BlasterJS
+########################################################
+
+# Define the clientside JavaScript function directly in the callback
+clientside_callback(
+    """
+    function(data, active_tab_idx) {
+        console.log("BlasterJS callback triggered", data, "active tab:", active_tab_idx);
+        
+        // Check if we have valid data
+        if (!data || !data.blast_text) {
+            console.log("No valid BLAST data available");
+            return window.dash_clientside.no_update;
+        }
+        
+        try {
+            console.log("Initializing BlasterJS with text length:", data.blast_text.length);
+            
+            // Find the correct container based on active tab
+            let containerId = active_tab_idx !== null ? 
+                `blast-container-${active_tab_idx}` : 'blast-container';
+            
+            // Use standard ID selector
+            let container = document.getElementById(containerId);
+            
+            if (!container) {
+                console.log(`No blast container found with ID: ${containerId}, trying the default container`);
+                // Try to find the default container first since this is likely a single sequence view
+                container = document.getElementById('blast-container');
+                
+                if (!container) {
+                    console.log("No default container found, trying by class");
+                    // If still not found, try to find a container with class blast-container 
+                    let containers = document.getElementsByClassName('blast-container');
+                    if (containers.length > 0) {
+                        console.log("Found container by class instead");
+                        container = containers[0];
+                    } else {
+                        console.error("No blast containers found in the DOM");
+                        return window.dash_clientside.no_update;
+                    }
+                }
+            }
+            
+            console.log("Found container:", container);
+            
+            // Clear existing content first
+            container.innerHTML = '';
+            
+            // If we have empty blast text, show a message
+            if (!data.blast_text.trim()) {
+                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
+                return window.dash_clientside.no_update;
+            }
+            
+            // Create the title element
+            const titleElement = document.createElement('h2');
+            titleElement.innerHTML = 'BLAST Results';
+            titleElement.style.marginTop = '15px';
+            titleElement.style.marginBottom = '20px';
+            titleElement.style.textAlign = 'left';
+            titleElement.style.width = '100%';
+            
+            // Create unique IDs for this container to avoid conflicts in multi-tab view
+            const uniquePrefix = containerId.replace('blast-container', 'blast');
+            const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
+            const tablesDivId = `${uniquePrefix}-alignments-table`;
+            
+            // Create simple divs for BlasterJS with explicit left alignment
+            const alignmentsDiv = document.createElement('div');
+            alignmentsDiv.id = alignmentsDivId;
+            alignmentsDiv.style.textAlign = 'left';
+            alignmentsDiv.style.width = '100%';
+            
+            const tableDiv = document.createElement('div');
+            tableDiv.id = tablesDivId;
+            tableDiv.style.textAlign = 'left';
+            tableDiv.style.width = '100%';
+            
+            // Add elements to the container
+            container.appendChild(titleElement);
+            container.appendChild(alignmentsDiv);
+            container.appendChild(tableDiv);
+            
+            // Add a style element to ensure BlasterJS output is properly aligned
+            const styleEl = document.createElement('style');
+            styleEl.textContent = `
+                #${alignmentsDivId}, #${tablesDivId} {
+                    text-align: left !important;
+                    margin-left: 0 !important;
+                    padding-left: 0 !important;
+                }
+                #${alignmentsDivId} div, #${tablesDivId} div,
+                #${alignmentsDivId} table, #${tablesDivId} table {
+                    text-align: left !important;
+                    margin-left: 0 !important;
+                }
+                .alignment-viewer {
+                    text-align: left !important;
+                }
+            `;
+            container.appendChild(styleEl);
+            
+            // Basic BlasterJS initialization
+            try {
+                var blasterjs = require("biojs-vis-blasterjs");
+                console.log("BlasterJS loaded successfully");
+                var instance = new blasterjs({
+                    string: data.blast_text,
+                    multipleAlignments: alignmentsDivId,
+                    alignmentsTable: tablesDivId
+                });
+                console.log("BlasterJS initialized successfully for", containerId);
+                
+                // Store instance ID in a data attribute for potential future reference
+                container.dataset.blasterjsInstance = uniquePrefix;
+                
+                // Additional styling fix after BlasterJS renders
+                setTimeout(function() {
+                    const tables = container.querySelectorAll('table');
+                    tables.forEach(function(table) {
+                        table.style.marginLeft = '0';
+                        table.style.textAlign = 'left';
+                    });
+                }, 100);
+            } catch (blasterError) {
+                console.error("Error initializing BlasterJS library:", blasterError);
+                container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
+            }
+            
+            return window.dash_clientside.no_update;
+        } catch (error) {
+            console.error('Overall error in callback:', error);
+            // Error handling - display error in a div
+            return window.dash_clientside.no_update;
+        }
+    }
+    """,
+    Output("blast-container", "children"),
+    [Input("processed-blast-store", "data"), Input("blast-active-tab", "data")],
+    prevent_initial_call=True,
+)
+
+# Add a clientside callback for tab-specific BLAST visualization
+clientside_callback(
+    """
+    function(active_tab, blast_data) {
+        console.log("Tab BlasterJS callback triggered", 
+                    active_tab, 
+                    blast_data ? (blast_data.blast_text ? "has text" : "no text") : "no data");
+        
+        if (!active_tab) {
+            console.warn("No active tab provided");
+            return window.dash_clientside.no_update;
+        }
+        
+        if (!blast_data) {
+            console.warn("No blast data available");
+            return window.dash_clientside.no_update;
+        }
+        
+        if (!blast_data.blast_text) {
+            console.warn("No blast text in data");
+            return window.dash_clientside.no_update;
+        }
+
+        try {
+            // Extract the tab index from the active tab ID
+            const tabIdx = parseInt(active_tab.split("-")[1]);
+            if (isNaN(tabIdx)) {
+                console.error("Invalid tab index:", active_tab);
+                return window.dash_clientside.no_update;
+            }
+
+            // Find the correct container based on active tab
+            const containerId = `blast-container-${tabIdx}`;
+            let container = document.getElementById(containerId);
+            
+            if (!container) {
+                console.log(`No container found with ID: ${containerId}`);
+                // Try fallback options
+                const containers = document.getElementsByClassName('blast-container');
+                if (containers.length > 0) {
+                    console.log("Found container by class instead");
+                    container = containers[0];
+                } else {
+                    const mainContainer = document.getElementById('blast-container');
+                    if (mainContainer) {
+                        console.log("Using main blast-container as fallback");
+                        container = mainContainer;
+                    } else {
+                        console.error("No blast containers found in the DOM");
+                        return window.dash_clientside.no_update;
+                    }
+                }
+            }
+
+            // Only initialize if empty or not initialized yet
+            if (container.children.length === 0 || !container.dataset.initialized) {
+                console.log(`Initializing BlasterJS for tab ${tabIdx}`);
+                
+                // Clear existing content
+                container.innerHTML = '';
+                
+                // Create the title element
+                const titleElement = document.createElement('h2');
+                titleElement.innerHTML = 'BLAST Results';
+                titleElement.style.marginTop = '15px';
+                titleElement.style.marginBottom = '20px';
+                titleElement.style.textAlign = 'left';
+                titleElement.style.width = '100%';
+                
+                // Create unique IDs for this container
+                const uniquePrefix = `blast-${tabIdx}`;
+                const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
+                const tablesDivId = `${uniquePrefix}-alignments-table`;
+                
+                // Create divs for BlasterJS
+                const alignmentsDiv = document.createElement('div');
+                alignmentsDiv.id = alignmentsDivId;
+                alignmentsDiv.style.textAlign = 'left';
+                alignmentsDiv.style.width = '100%';
+                
+                const tableDiv = document.createElement('div');
+                tableDiv.id = tablesDivId;
+                tableDiv.style.textAlign = 'left';
+                tableDiv.style.width = '100%';
+                
+                // Add elements to the container
+                container.appendChild(titleElement);
+                container.appendChild(alignmentsDiv);
+                container.appendChild(tableDiv);
+                
+                // Add styling
+                const styleEl = document.createElement('style');
+                styleEl.textContent = `
+                    #${alignmentsDivId}, #${tablesDivId} {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                        padding-left: 0 !important;
+                    }
+                    #${alignmentsDivId} div, #${tablesDivId} div,
+                    #${alignmentsDivId} table, #${tablesDivId} table {
+                        text-align: left !important;
+                        margin-left: 0 !important;
+                    }
+                    .alignment-viewer {
+                        text-align: left !important;
+                    }
+                `;
+                container.appendChild(styleEl);
+                
+                // Validate blast text
+                if (!blast_data.blast_text.trim()) {
+                    console.warn("Empty BLAST text, showing empty results message");
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
+                    container.appendChild(emptyDiv);
+                    container.dataset.initialized = "true";
+                    return window.dash_clientside.no_update;
+                }
+                
+                // Initialize BlasterJS
+                try {
+                    // Check if biojs-vis-blasterjs is available
+                    if (typeof require !== 'function') {
+                        console.error("require function not available - can't load BlasterJS");
+                        container.innerHTML += '<div style="color:orange;padding:10px;">Error: BlasterJS library not available</div>';
+                        container.dataset.initialized = "error";
+                        return window.dash_clientside.no_update;
+                    }
+                    
+                    let blasterjs = require("biojs-vis-blasterjs");
+                    if (!blasterjs) {
+                        console.error("Failed to load BlasterJS library");
+                        container.innerHTML += '<div style="color:orange;padding:10px;">Error loading BlasterJS library</div>';
+                        container.dataset.initialized = "error";
+                        return window.dash_clientside.no_update;
+                    }
+                    
+                    let instance = new blasterjs({
+                        string: blast_data.blast_text,
+                        multipleAlignments: alignmentsDivId,
+                        alignmentsTable: tablesDivId
+                    });
+                    
+                    // Mark as initialized
+                    container.dataset.initialized = "true";
+                    
+                    // Apply additional styling
+                    setTimeout(function() {
+                        const tables = container.querySelectorAll('table');
+                        tables.forEach(function(table) {
+                            table.style.marginLeft = '0';
+                            table.style.textAlign = 'left';
+                        });
+                    }, 100);
+                    
+                    console.log(`BlasterJS initialized for tab ${tabIdx}`);
+                } catch (error) {
+                    console.error("Error initializing BlasterJS:", error);
+                    container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
+                    container.dataset.initialized = "error";
+                }
+            }
+        } catch (error) {
+            console.error("Error in tab visualization callback:", error);
+        }
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("tab-content", "children", allow_duplicate=True),
+    [Input("blast-tabs", "active_tab"), Input("processed-blast-store", "data")],
+    prevent_initial_call=True,
+)
+
+
+########################################################
+# Classification Output
+########################################################
 @callback(
     Output("classification-output", "children"),
     Input("blast-results-store", "data"),
@@ -1926,6 +2056,8 @@ def update_active_tab(active_tab):
 )
 def update_single_sequence_classification(blast_results_store):
     """Update classification output for single sequence submissions"""
+    from src.utils.classification_utils import create_classification_output
+
     if not blast_results_store:
         return None
 
@@ -1936,104 +2068,6 @@ def update_single_sequence_classification(blast_results_store):
 
     # Create the classification output using the existing function
     return create_classification_output(sequence_results)
-
-
-@callback(
-    [
-        Output("blast-sequences-store", "data", allow_duplicate=True),
-        Output("query-text", "helperText"),
-        Output("upload-error-message", "children", allow_duplicate=True),
-    ],
-    [
-        Input("query-text", "value"),
-    ],
-    prevent_initial_call=True,
-)
-def preprocess_text_input(query_text_input):
-    """
-    Process text input as it's entered to show a summary and limit sequences.
-    This doesn't store the sequences for processing yet - that happens when submit is clicked.
-    """
-    if not query_text_input:
-        return None, None, None
-
-    try:
-        # Parse the text input to check for multiple sequences
-        input_type, seq_list, n_seqs, error = check_input(
-            query_text_input=query_text_input,
-            query_file_contents=None,
-            max_sequences=10,
-        )
-
-        # If there's a real error, show it but don't update sequences store
-        if error and isinstance(error, dmc.Alert) and error.color == "red":
-            return None, None, error
-
-        # If we have sequences, create a summary message
-        if seq_list and n_seqs > 0:
-            if n_seqs == 1:
-                helper_text = f"Found 1 sequence: {seq_list[0]['header']} ({len(seq_list[0]['sequence'])} bp)"
-            else:
-                helper_text = f"Found {n_seqs} sequences"
-                if n_seqs > 3:
-                    seq_summary = (
-                        ", ".join([seq["header"] for seq in seq_list[:3]]) + "..."
-                    )
-                else:
-                    seq_summary = ", ".join([seq["header"] for seq in seq_list])
-                helper_text += f" ({seq_summary})"
-
-            # Add warning if we limited the sequences
-            if n_seqs > 10:
-                helper_text += " (only the first 10 will be processed)"
-
-            # Don't store sequences yet - just return helper text
-            return None, helper_text, None
-
-        return None, "No valid sequences found", None
-
-    except Exception as e:
-        logger.error(f"Error preprocessing text input: {e}")
-        return (
-            None,
-            None,
-            dmc.Alert(
-                title="Error",
-                children=f"Error preprocessing sequences: {str(e)}",
-                color="red",
-                variant="filled",
-            ),
-        )
-
-
-@callback(
-    Output("query-text", "value", allow_duplicate=True),
-    Input("blast-fasta-upload", "contents"),
-    prevent_initial_call=True,
-    id="clear-text-on-file-upload",
-)
-def clear_text_on_file_upload(file_contents):
-    """Clear the text area when a file is uploaded"""
-    if file_contents:
-        return ""
-    raise PreventUpdate
-
-
-@callback(
-    [
-        Output("blast-fasta-upload", "contents", allow_duplicate=True),
-        Output("upload-details", "children", allow_duplicate=True),
-    ],
-    Input("query-text", "value"),
-    State("blast-fasta-upload", "contents"),
-    prevent_initial_call=True,
-    id="clear-file-on-text-input",
-)
-def clear_file_on_text_input(text_value, current_file_contents):
-    """Clear the file upload when text is entered"""
-    if text_value and len(text_value.strip()) > 10 and current_file_contents:
-        return None, html.Div(html.P(["Select a FASTA file to upload"]))
-    raise PreventUpdate
 
 
 @callback(
@@ -2278,178 +2312,3 @@ def disable_interval_when_complete(workflow_state):
 
     # Otherwise, keep the interval running
     return False
-
-
-# Add a clientside callback for tab-specific BLAST visualization
-clientside_callback(
-    """
-    function(active_tab, blast_data) {
-        console.log("Tab BlasterJS callback triggered", 
-                    active_tab, 
-                    blast_data ? (blast_data.blast_text ? "has text" : "no text") : "no data");
-        
-        if (!active_tab) {
-            console.warn("No active tab provided");
-            return window.dash_clientside.no_update;
-        }
-        
-        if (!blast_data) {
-            console.warn("No blast data available");
-            return window.dash_clientside.no_update;
-        }
-        
-        if (!blast_data.blast_text) {
-            console.warn("No blast text in data");
-            return window.dash_clientside.no_update;
-        }
-
-        try {
-            // Extract the tab index from the active tab ID
-            const tabIdx = parseInt(active_tab.split("-")[1]);
-            if (isNaN(tabIdx)) {
-                console.error("Invalid tab index:", active_tab);
-                return window.dash_clientside.no_update;
-            }
-
-            // Find the correct container based on active tab
-            const containerId = `blast-container-${tabIdx}`;
-            let container = document.getElementById(containerId);
-            
-            if (!container) {
-                console.log(`No container found with ID: ${containerId}`);
-                // Try fallback options
-                const containers = document.getElementsByClassName('blast-container');
-                if (containers.length > 0) {
-                    console.log("Found container by class instead");
-                    container = containers[0];
-                } else {
-                    const mainContainer = document.getElementById('blast-container');
-                    if (mainContainer) {
-                        console.log("Using main blast-container as fallback");
-                        container = mainContainer;
-                    } else {
-                        console.error("No blast containers found in the DOM");
-                        return window.dash_clientside.no_update;
-                    }
-                }
-            }
-
-            // Only initialize if empty or not initialized yet
-            if (container.children.length === 0 || !container.dataset.initialized) {
-                console.log(`Initializing BlasterJS for tab ${tabIdx}`);
-                
-                // Clear existing content
-                container.innerHTML = '';
-                
-                // Create the title element
-                const titleElement = document.createElement('h2');
-                titleElement.innerHTML = 'BLAST Results';
-                titleElement.style.marginTop = '15px';
-                titleElement.style.marginBottom = '20px';
-                titleElement.style.textAlign = 'left';
-                titleElement.style.width = '100%';
-                
-                // Create unique IDs for this container
-                const uniquePrefix = `blast-${tabIdx}`;
-                const alignmentsDivId = `${uniquePrefix}-multiple-alignments`;
-                const tablesDivId = `${uniquePrefix}-alignments-table`;
-                
-                // Create divs for BlasterJS
-                const alignmentsDiv = document.createElement('div');
-                alignmentsDiv.id = alignmentsDivId;
-                alignmentsDiv.style.textAlign = 'left';
-                alignmentsDiv.style.width = '100%';
-                
-                const tableDiv = document.createElement('div');
-                tableDiv.id = tablesDivId;
-                tableDiv.style.textAlign = 'left';
-                tableDiv.style.width = '100%';
-                
-                // Add elements to the container
-                container.appendChild(titleElement);
-                container.appendChild(alignmentsDiv);
-                container.appendChild(tableDiv);
-                
-                // Add styling
-                const styleEl = document.createElement('style');
-                styleEl.textContent = `
-                    #${alignmentsDivId}, #${tablesDivId} {
-                        text-align: left !important;
-                        margin-left: 0 !important;
-                        padding-left: 0 !important;
-                    }
-                    #${alignmentsDivId} div, #${tablesDivId} div,
-                    #${alignmentsDivId} table, #${tablesDivId} table {
-                        text-align: left !important;
-                        margin-left: 0 !important;
-                    }
-                    .alignment-viewer {
-                        text-align: left !important;
-                    }
-                `;
-                container.appendChild(styleEl);
-                
-                // Validate blast text
-                if (!blast_data.blast_text.trim()) {
-                    console.warn("Empty BLAST text, showing empty results message");
-                    const emptyDiv = document.createElement('div');
-                    emptyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No BLAST results to display</div>';
-                    container.appendChild(emptyDiv);
-                    container.dataset.initialized = "true";
-                    return window.dash_clientside.no_update;
-                }
-                
-                // Initialize BlasterJS
-                try {
-                    // Check if biojs-vis-blasterjs is available
-                    if (typeof require !== 'function') {
-                        console.error("require function not available - can't load BlasterJS");
-                        container.innerHTML += '<div style="color:orange;padding:10px;">Error: BlasterJS library not available</div>';
-                        container.dataset.initialized = "error";
-                        return window.dash_clientside.no_update;
-                    }
-                    
-                    let blasterjs = require("biojs-vis-blasterjs");
-                    if (!blasterjs) {
-                        console.error("Failed to load BlasterJS library");
-                        container.innerHTML += '<div style="color:orange;padding:10px;">Error loading BlasterJS library</div>';
-                        container.dataset.initialized = "error";
-                        return window.dash_clientside.no_update;
-                    }
-                    
-                    let instance = new blasterjs({
-                        string: blast_data.blast_text,
-                        multipleAlignments: alignmentsDivId,
-                        alignmentsTable: tablesDivId
-                    });
-                    
-                    // Mark as initialized
-                    container.dataset.initialized = "true";
-                    
-                    // Apply additional styling
-                    setTimeout(function() {
-                        const tables = container.querySelectorAll('table');
-                        tables.forEach(function(table) {
-                            table.style.marginLeft = '0';
-                            table.style.textAlign = 'left';
-                        });
-                    }, 100);
-                    
-                    console.log(`BlasterJS initialized for tab ${tabIdx}`);
-                } catch (error) {
-                    console.error("Error initializing BlasterJS:", error);
-                    container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
-                    container.dataset.initialized = "error";
-                }
-            }
-        } catch (error) {
-            console.error("Error in tab visualization callback:", error);
-        }
-        
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output("tab-content", "children", allow_duplicate=True),
-    [Input("blast-tabs", "active_tab"), Input("processed-blast-store", "data")],
-    prevent_initial_call=True,
-)

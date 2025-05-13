@@ -1191,3 +1191,155 @@ def run_classification_workflow(upload_data):
         workflow_state["error"] = error_message
         workflow_state["complete"] = True
         return workflow_state
+
+
+def create_classification_card(classification_data):
+    """
+    Create a card displaying classification results from multiple sources
+
+    Args:
+        classification_data: Dictionary containing classification information
+
+    Returns:
+        dmc.Paper component with classification information
+    """
+    from dash_iconify import DashIconify
+    import dash_mantine_components as dmc
+
+    if not classification_data:
+        return None
+
+    title = classification_data.get("title", "Classification Results")
+    source = classification_data.get("source", "Unknown")
+    family = classification_data.get("family")
+    navis = classification_data.get("navis")
+    haplotype = classification_data.get("haplotype")
+    match_type = classification_data.get("match_type")
+    confidence = classification_data.get("confidence", "Low")
+
+    # Define badge colors based on source
+    source_colors = {
+        "exact_match": "green",
+        "contained_match": "teal",
+        "similar_match": "cyan",
+        "blast_hit": "blue",
+        "classification": "violet",
+        "unknown": "gray",
+    }
+
+    # Define icon based on confidence level
+    confidence_icons = {
+        "High": "mdi:shield-check",
+        "Medium": "mdi:shield-half-full",
+        "Low": "mdi:shield-outline",
+    }
+
+    source_color = source_colors.get(source, "gray")
+    confidence_icon = confidence_icons.get(confidence, "mdi:shield-outline")
+
+    # Create list of classification details
+    details = []
+
+    if family:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Text("Family:", fw=700, size="lg"),
+                    dmc.Text(family, size="lg", c="indigo"),
+                ],
+                pos="apart",
+            )
+        )
+
+    if navis:
+        details.append(
+            dmc.Group(
+                [dmc.Text("Navis:", fw=700), dmc.Text(navis, c="blue")], pos="apart"
+            )
+        )
+
+    if haplotype:
+        details.append(
+            dmc.Group(
+                [dmc.Text("Haplotype:", fw=700), dmc.Text(haplotype, c="violet")],
+                pos="apart",
+            )
+        )
+
+    if match_type:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Text("Match Type:", fw=700, size="sm"),
+                    dmc.Text(match_type, c="dimmed", size="sm"),
+                ],
+                pos="apart",
+            )
+        )
+
+    # Create card
+    return dmc.Paper(
+        children=[
+            dmc.Group(
+                [
+                    dmc.Title(title, order=3),
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
+                ],
+                pos="apart",
+            ),
+            dmc.Space(h=10),
+            *details,
+            dmc.Space(h=10),
+            dmc.Group(
+                [
+                    dmc.Text(f"Confidence: {confidence}", size="sm", c="dimmed"),
+                    dmc.ThemeIcon(
+                        DashIconify(icon=confidence_icon, width=16),
+                        size="sm",
+                        variant="light",
+                        color=source_color,
+                    ),
+                ],
+                pos="right",
+            ),
+        ],
+        p="md",
+        withBorder=True,
+        shadow="sm",
+        radius="md",
+        style={"marginBottom": "1rem"},
+    )
+
+
+def create_classification_output(sequence_results):
+    """Create the classification output component"""
+    import dash_html_components as html
+    import dash_mantine_components as dmc
+
+    # Extract classification data
+    classification_data = sequence_results.get("classification")
+
+    if classification_data:
+        return html.Div(
+            [
+                dmc.Title(
+                    "Classification Results", order=2, style={"marginBottom": "20px"}
+                ),
+                create_classification_card(classification_data),
+            ]
+        )
+    else:
+        # No classification available
+        return html.Div(
+            [
+                dmc.Title(
+                    "Classification Results", order=2, style={"marginBottom": "20px"}
+                ),
+                dmc.Alert(
+                    title="No Classification Available",
+                    children="Could not classify this sequence with any available method.",
+                    color="yellow",
+                    variant="light",
+                ),
+            ]
+        )

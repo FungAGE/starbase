@@ -713,3 +713,23 @@ def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
         raise ValueError(f"BLAST database {db} is empty.")
 
     return db
+
+
+def load_blast_text(blast_file):
+    """Load BLAST output as text"""
+    if not blast_file or not os.path.exists(blast_file):
+        return None
+
+    with open(blast_file, "r") as f:
+        return f.read()
+
+
+def blast_family_button(family):
+    import dash_bootstrap_components as dbc
+
+    return dbc.Button(
+        family,
+        color="primary",
+        href=f"/wiki?page={family}",
+        external_link=False,
+    )
