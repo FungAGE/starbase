@@ -55,8 +55,6 @@ external_stylesheets = [
     "https://cdn.jsdelivr.net/npm/@mantine/nprogress@7.11.0/styles.css",
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
-    "https://code.jquery.com/jquery-3.6.0.min.js",
-    "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "/assets/styles.css",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
     "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-grid.css",
@@ -64,6 +62,7 @@ external_stylesheets = [
 ]
 
 external_scripts = [
+    "https://code.jquery.com/jquery-2.2.4.min.js",
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
