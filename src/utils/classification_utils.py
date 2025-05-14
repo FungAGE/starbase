@@ -1,11 +1,22 @@
 import tempfile
 import subprocess
-import logging
 import pandas as pd
 import hashlib
 import os
 import glob
 import signal
+import screed
+from sourmash import (
+    SourmashSignature,
+    MinHash,
+    save_signatures,
+    load_file_as_signatures,
+)
+
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
+
 from src.utils.seq_utils import (
     write_combined_fasta,
     write_multi_fasta,
@@ -19,7 +30,6 @@ import networkx as nx
 from typing import Optional, Tuple, Dict
 from src.database.sql_manager import fetch_ships, fetch_captains
 
-logger = logging.getLogger(__name__)
 
 accession_workflow = """
 ########################################################
@@ -325,12 +335,17 @@ def check_similar_match(
     logger.debug(f"Calculated similarities for {len(similarities)} sequences")
 
     # Check if we have any similarities above threshold
+    query_id = "query_sequence"  # This is the ID used in write_combined_fasta
     if similarities:
-        for seq_id, sim in similarities:
-            logger.debug(f"Similarity to {seq_id}: {sim}")
-            if sim >= threshold:
-                logger.debug(f"Found similar match: {seq_id} (similarity: {sim})")
-                return seq_id
+        for seq_id1, seq_id2, sim in similarities:
+            # Find pairs where one of the sequences is our query
+            if seq_id1 == query_id or seq_id2 == query_id:
+                # The other ID is the match
+                match_id = seq_id2 if seq_id1 == query_id else seq_id1
+                logger.debug(f"Similarity to {match_id}: {sim}")
+                if sim >= threshold:
+                    logger.debug(f"Found similar match: {match_id} (similarity: {sim})")
+                    return match_id
 
     logger.debug("No similar matches found above threshold")
     return None
@@ -862,92 +877,56 @@ def mmseqs_easy_cluster(
                     pass
 
 
-def sourmash_sketch(fasta_path, sig_file, ksize=21, scaled=1000, sketch_type="dna"):
+def sourmash_sketch(fasta_file, seq_type="nucl"):
     """
-    Create sourmash signatures from a FASTA file.
+    Create sourmash signatures directly from a FASTA file without intermediate files.
 
     Args:
-        fasta_path (str): Path to input FASTA file
-        sig_file (str): Path to output signature file
-        ksize (int): k-mer size
-        scaled (int): Scaled factor
-        sketch_type (str): Sketch type (dna, protein)
+        fasta_file (str): Path to the FASTA file containing sequences
+        seq_type (str): Type of sequences, either 'nucl' or 'prot'
 
     Returns:
-        bool: True if successful, False otherwise
+        list: List of (sequence_id, signature) tuples
     """
     try:
-        cmd = [
-            "sourmash",
-            "sketch",
-            sketch_type,
-            "-p",
-            f"k={ksize},scaled={scaled}",
-            "-o",
-            sig_file,
-            fasta_path,
-        ]
+        # Set parameters based on sequence type
+        if seq_type == "nucl":
+            k = 21
+            scaled = 1000
+            is_protein = False
+        else:
+            k = 7
+            scaled = 100
+            is_protein = True
 
-        logger.debug(f"Running sourmash sketch: {' '.join(cmd)}")
+        # Create signatures for each sequence
+        signatures = []
 
-        result = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True
-        )
+        for record in screed.open(fasta_file):
+            # Create MinHash object
+            mh = MinHash(n=0, ksize=k, scaled=scaled, is_protein=is_protein)
 
-        logger.debug(f"sourmash sketch stdout: {result.stdout}")
+            # Add sequence data
+            if is_protein:
+                mh.add_protein(record.sequence)
+            else:
+                mh.add_sequence(record.sequence, force=True)
 
-        if result.stderr:
-            logger.debug(f"sourmash sketch stderr: {result.stderr}")
+            # Create signature
+            sig = SourmashSignature(mh, name=record.name)
+            signatures.append((record.name, sig))
 
-        return os.path.exists(sig_file)
+        return signatures
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"sourmash sketch error: {e.stderr}")
-        return False
     except Exception as e:
-        logger.error(f"Error running sourmash sketch: {e}")
-        return False
-
-
-def sourmash_compare(sig_file, matrix_file, ksize=21):
-    """
-    Compare sourmash signatures and create a CSV similarity matrix.
-
-    Args:
-        sig_file (str): Path to signature file
-        matrix_file (str): Path to output CSV matrix file
-        ksize (int): k-mer size
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        cmd = ["sourmash", "compare", sig_file, "-k", str(ksize), "-o", matrix_file]
-
-        logger.debug(f"Running sourmash compare: {' '.join(cmd)}")
-
-        result = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True
-        )
-
-        logger.debug(f"sourmash compare stdout: {result.stdout}")
-
-        if result.stderr:
-            logger.debug(f"sourmash compare stderr: {result.stderr}")
-
-        return os.path.exists(matrix_file)
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"sourmash compare error: {e.stderr}")
-        return False
-    except Exception as e:
-        logger.error(f"Error running sourmash compare: {e}")
-        return False
+        logger.error(f"Error creating sourmash signatures: {e}")
+        return []
 
 
 def calculate_similarities(fasta_file, seq_type="nucl"):
     """
-    Calculate pairwise similarities between sequences in a FASTA file.
+    Calculate pairwise similarities between sequences in a FASTA file directly
+    using the sourmash API without creating intermediate files.
 
     Args:
         fasta_file (str): Path to the FASTA file containing sequences
@@ -956,113 +935,35 @@ def calculate_similarities(fasta_file, seq_type="nucl"):
     Returns:
         list: List of tuples (seq_id1, seq_id2, similarity)
     """
-    logger.debug(f"Calculating similarities for {fasta_file}, type={seq_type}")
+    logger.debug(f"Directly calculating similarities for {fasta_file}, type={seq_type}")
 
     try:
-        # Set parameters based on sequence type
-        if seq_type == "nucl":
-            k = 21
-            scaled = 1000
-            sketch_type = "dna"
-        else:
-            k = 7
-            scaled = 100
-            sketch_type = "protein"
+        # Get signatures directly
+        signatures = sourmash_sketch(fasta_file, seq_type)
 
-        # Create temporary directory for intermediate files
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Create paths for output files
-            sig_file = os.path.join(tmp_dir, "signatures.sig")
-            matrix_file = os.path.join(tmp_dir, "similarity_matrix.csv")
+        if not signatures:
+            logger.error("Failed to create signatures")
+            return []
 
-            # Generate sketch for the sequences
-            try:
-                result = sourmash_sketch(
-                    fasta_path=fasta_file,
-                    sig_file=sig_file,
-                    ksize=k,
-                    scaled=scaled,
-                    sketch_type=sketch_type,
-                )
+        # Calculate pairwise similarities
+        similarities = []
 
-                if not result:
-                    logger.error("Failed to sketch sequences")
-                    return []
+        for i, (seq_id1, sig1) in enumerate(signatures):
+            for j, (seq_id2, sig2) in enumerate(signatures):
+                # Skip self-comparisons
+                if seq_id1 == seq_id2:
+                    continue
 
-                logger.debug(f"Created sketch file: {sig_file}")
-            except Exception as e:
-                logger.error(f"Error sketching sequences: {e}")
-                return []
+                # Calculate Jaccard similarity directly from signature objects
+                similarity = sig1.jaccard(sig2)
+                similarities.append((seq_id1, seq_id2, similarity))
 
-            # Calculate pairwise similarities
-            try:
-                result = sourmash_compare(
-                    sig_file=sig_file, matrix_file=matrix_file, ksize=k
-                )
-
-                if not result:
-                    logger.error("Failed to calculate similarities")
-                    return []
-
-                logger.debug(f"Created similarity matrix: {matrix_file}")
-            except Exception as e:
-                logger.error(f"Error calculating similarities: {e}")
-                return []
-
-            # Parse similarity matrix
-            try:
-                similarities = []
-
-                with open(matrix_file, "r") as f:
-                    # Skip the header
-                    header = next(f).strip().split(",")
-                    seq_ids = header[1:]  # First column is empty
-
-                    for i, line in enumerate(f):
-                        fields = line.strip().split(",")
-                        seq_id1 = fields[0]
-
-                        for j, sim_str in enumerate(fields[1:]):
-                            seq_id2 = seq_ids[j]
-
-                            # Skip self-comparisons in similarity matrix
-                            if seq_id1 == seq_id2:
-                                continue
-
-                            # Parse similarity value
-                            try:
-                                similarity = float(sim_str)
-                                similarities.append((seq_id1, seq_id2, similarity))
-                            except ValueError:
-                                logger.warning(
-                                    f"Could not parse similarity value: {sim_str}"
-                                )
-
-                logger.debug(f"Parsed {len(similarities)} pairwise similarities")
-                return similarities
-
-            except Exception as e:
-                logger.error(f"Error parsing similarity matrix: {e}")
-                return []
+        logger.debug(f"Calculated {len(similarities)} pairwise similarities")
+        return similarities
 
     except Exception as e:
-        logger.error(f"Unexpected error in calculate_similarities: {e}")
+        logger.error(f"Error in direct similarity calculation: {e}")
         return []
-
-
-def write_similarity_file(similarities, output_file):
-    """Write similarities to output file in starfish format.
-
-    Args:
-        similarities (dict): Nested dictionary of pairwise similarities
-        output_file (str): Path to output file
-    """
-    with open(output_file, "w") as f:
-        for seq1 in sorted(similarities):
-            for seq2 in sorted(similarities[seq1]):
-                # Format: seq1\tseq2\tsimilarity
-                sim = similarities[seq1][seq2]
-                f.write(f"{seq1}\t{seq2}\t{sim:.3f}\n")
 
 
 def cluster_sequences(similarities, threshold=0.95):
