@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Activate conda environment
-source /opt/conda/etc/profile.d/conda.sh
-conda activate starbase
-
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
 
@@ -25,6 +21,18 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Activate conda environment - with fallback if conda not configured
+if [ "$DEV_MODE" = "false" ]; then
+    if command -v conda &> /dev/null; then
+        # If conda exists but not in standard location
+        eval "$(conda shell.bash hook)"
+        conda activate starbase
+    else
+        source /opt/conda/etc/profile.d/conda.sh
+        conda activate starbase 
+    fi
+fi
 
 # Set environment variables based on mode
 export PYTHONPATH=$(pwd)
