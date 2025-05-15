@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Activate conda environment
+source /opt/conda/etc/profile.d/conda.sh
+conda activate starbase
+
 # Start Redis server in the background if not using external Redis
 redis-server --daemonize yes
 

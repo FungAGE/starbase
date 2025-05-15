@@ -1,5 +1,5 @@
 # Select base image
-FROM python:3.9
+FROM condaforge/miniforge3
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="STARBASE is a database and toolkit for exploring large transposable elements in Fungi"
 
@@ -12,8 +12,8 @@ ENV HOME=/home/$USER
 ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
 ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
 
-# Add user to system
-RUN useradd -m -u 1000 $USER
+# Add user to system (using UID 1001 to avoid conflict with existing user)
+RUN useradd -m -u 1001 $USER
 
 # Set working directory
 WORKDIR $HOME/
@@ -23,22 +23,13 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y curl iptables wget redis-server && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Miniconda
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
-    bash miniconda.sh -b -p $HOME/miniconda && \
-    rm miniconda.sh && \
-    echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
-    echo "conda activate starbase" >> $HOME/.bashrc
-
-ENV PATH=$HOME/miniconda/bin:$PATH
-
 # Copy environment file and create conda environment 
 COPY environment.yaml .
 RUN conda env create -f environment.yaml && \
     conda clean -afy
 
 # Set conda environment to activate by default
-ENV PATH=$HOME/miniconda/envs/starbase/bin:$PATH
+ENV PATH=/opt/conda/envs/starbase/bin:$PATH
 ENV CONDA_DEFAULT_ENV=starbase
 
 # Install Node.js, npm, and blasterjs
