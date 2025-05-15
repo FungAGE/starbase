@@ -1022,6 +1022,9 @@ def process_single_sequence(seq_data, evalue_threshold):
     classification_data = None
     blast_df = None
     blast_content = None
+    top_aln_length = None
+    top_evalue = None
+    top_pident = None
 
     # Write sequence to temporary FASTA file
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
@@ -1117,7 +1120,7 @@ def process_single_sequence(seq_data, evalue_threshold):
             "with_sequence": True,
             "dereplicate": True,
         },
-        "fetch_captain_params": {"curated": True, "with_sequence": True},
+        "fetch_captain_params": {"curated": False, "with_sequence": True},
     }
 
     try:
@@ -1172,12 +1175,11 @@ def process_single_sequence(seq_data, evalue_threshold):
                         )
 
                         classification_data = {
-                            "title": "Classification based on",
-                            "source": f"{match_stage}_match",
+                            "source": match_stage,
                             "family": family,
                             "navis": navis,
                             "haplotype": haplotype,
-                            "match_type": f"Matched to {match_result}",
+                            "closest_match": match_result,
                             "confidence": confidence,
                         }
 
@@ -1224,12 +1226,11 @@ def process_single_sequence(seq_data, evalue_threshold):
                             )
 
                             classification_data = {
-                                "title": "Classification based on",
-                                "source": f"{match_stage}_match",
+                                "source": match_stage,
                                 "family": family,
                                 "navis": navis,
                                 "haplotype": haplotype,
-                                "match_type": f"Matched to {match_result}",
+                                "closest_match": match_result,
                                 "confidence": confidence,
                             }
 
@@ -1239,39 +1240,50 @@ def process_single_sequence(seq_data, evalue_threshold):
                     match_result = workflow_result.get("match_result")
 
                     if match_stage == "family" and match_result:
-                        # Family classification found
                         if isinstance(match_result, dict) and "family" in match_result:
                             family_name = match_result["family"]
+                        elif (
+                            isinstance(match_result, tuple)
+                            and len(match_result) > 0
+                            and isinstance(match_result[0], dict)
+                            and "family" in match_result[0]
+                        ):
+                            family_name = match_result[0]["family"]
                         else:
                             family_name = match_result
 
+                        if family_name:
+                            confidence = (
+                                "High"
+                                if top_aln_length > 80 and top_evalue < 0.001
+                                else "Low"
+                            )
+
                         classification_data = {
-                            "title": "Family Classification",
-                            "source": "classification",
+                            "source": "hmmsearch",
                             "family": family_name,
-                            "match_type": "Direct classification",
-                            "confidence": "Medium",
+                            "match_details": f"Captain gene match with length {top_aln_length}, Evalue: {top_evalue}",
+                            "confidence": confidence,
                         }
                     elif match_stage == "navis" and match_result:
-                        # Navis classification found
+                        navis_name = match_result
                         classification_data = {
-                            "title": "Navis Classification",
-                            "source": "classification",
-                            "navis": match_result,
-                            "match_type": "Direct classification",
+                            "source": "captain clustering",
+                            "family": family_name,
+                            "navis": navis_name,
                             "confidence": "Medium",
                         }
                     elif match_stage == "haplotype" and match_result:
-                        # Haplotype classification found
+                        haplotype_name = match_result
                         classification_data = {
-                            "title": "Haplotype Classification",
-                            "source": "classification",
-                            "haplotype": match_result,
-                            "match_type": "Direct classification",
+                            "source": "k-mer similarity",
+                            "family": family_name,
+                            "navis": navis_name,
+                            "haplotype": haplotype_name,
                             "confidence": "Medium",
                         }
     except Exception as e:
-        logger.error(f"Error in classification workflow: {e}")
+        logger.error(f"Error processing classification workflow for sequence: {e}")
 
     # If no classification from workflow, fall back to BLAST results
     if classification_data is None and blast_df is not None:
@@ -1307,12 +1319,11 @@ def process_single_sequence(seq_data, evalue_threshold):
                     )
 
                     classification_data = {
-                        "title": "Classification from BLAST",
                         "source": "blast_hit",
                         "family": top_family,
                         "navis": navis,
                         "haplotype": haplotype,
-                        "match_type": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                        "match_details": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
                         "confidence": "Medium" if top_pident >= 95 else "Low",
                     }
         except Exception as e:
@@ -1351,13 +1362,20 @@ def process_single_sequence(seq_data, evalue_threshold):
                 captain_family, aln_length, evalue = select_ship_family(first_result)
 
                 if captain_family:
-                    confidence = "High" if aln_length > 80 and evalue < 0.001 else "Low"
+                    if aln_length >= 80 and evalue <= 0.001:
+                        confidence = "High"
+                        match_details = f"Captain gene match (length = {aln_length}, e-value = {evalue})"
+                    elif aln_length >= 50:
+                        confidence = "Medium"
+                        match_details = f"Captain gene partial match (length = {aln_length}, e-value = {evalue})"
+                    else:
+                        confidence = "Low"
+                        match_details = f"Captain gene partial match (length = {aln_length}, e-value = {evalue})"
 
                     classification_data = {
-                        "title": "Captain Gene Classification",
                         "source": "hmmsearch",
                         "family": captain_family,
-                        "match_type": f"Captain gene match with length {aln_length}, Evalue: {evalue}",
+                        "match_details": match_details,
                         "confidence": confidence,
                     }
         except Exception as e:
@@ -1367,6 +1385,9 @@ def process_single_sequence(seq_data, evalue_threshold):
     return {
         "blast_file": blast_results_file,
         "blast_content": blast_content,  # Include direct content
+        "blast_df": blast_df.to_dict("records")
+        if isinstance(blast_df, pd.DataFrame)
+        else blast_df,
         "classification": classification_data,
         "processed": True,
         "sequence": query_seq,  # Include sequence for length checks
@@ -1490,7 +1511,6 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                 # Set up workflow state if needed
                 if not skip_classification and sequence_result.get("blast_content"):
-                    # Create upload_data with file contents instead of file paths
                     # Read the file content to include in upload_data
                     fasta_content = None
                     tmp_query_fasta = None
@@ -1536,6 +1556,9 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                                 "fasta": {"content": fasta_content}
                                 if fasta_content
                                 else (tmp_query_fasta or ""),
+                                "blast_df": sequence_result.get(
+                                    "blast_df"
+                                ),  # Include BLAST results
                                 "fetch_ship_params": {
                                     "curated": False,
                                     "with_sequence": True,

@@ -64,8 +64,8 @@ WORKFLOW_STAGES = [
     {"id": "similar", "label": "Checking for similar matches", "color": "violet"},
     # {"id": "denovo", "label": "Running denovo annotation", "color": "orange"},
     {"id": "family", "label": "Running family classification", "color": "green"},
-    {"id": "navis", "label": "Running navis classification", "color": "blue"},
-    {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
+    # {"id": "navis", "label": "Running navis classification", "color": "blue"},
+    # {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
 
@@ -381,6 +381,10 @@ def classify_family(
     tmp_protein_filename = None
     hmmer_dict = None
 
+    logger.debug(
+        f"classify_family called with blast_df type: {type(blast_df)}, length: {len(blast_df) if blast_df is not None else 0}"
+    )
+
     if meta_dict is not None and isinstance(meta_dict, list):
         meta_df = pd.DataFrame(meta_dict)
 
@@ -396,7 +400,6 @@ def classify_family(
         # Sort by evalue (ascending) and pident (descending) to get best hits
         blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
         top_hit = blast_df.iloc[0]
-        logger.debug(f"Top hit: {top_hit}")
 
         top_evalue = float(top_hit["evalue"])
         top_aln_length = int(top_hit["aln_length"])
@@ -443,14 +446,14 @@ def classify_family(
 def classify_navis(
     fasta: str, existing_captains: pd.DataFrame, threads: int = 1
 ) -> str:
-    """Assign navis based on captain sequence clustering."""
-    # Part 2: Navis Assignment
-    # - Compare captain sequence to existing classified captains
-    # - Use mmseqs clustering to group with existing navis
+    """Assign navis based on captain sequence clustering.
+    - Compare captain sequence to existing classified captains
+    - Use mmseqs clustering to group with existing navis
 
-    # Create temporary dir with FASTAs from:
-    # - Captain sequence from new sequence
-    # - All existing classified captain sequences
+    Create temporary dir with FASTAs from:
+    - Captain sequence from new sequence
+    - All existing classified captain sequences
+    """
 
     protein = list(load_fasta_to_dict(fasta).values())[0]
 
@@ -1228,7 +1231,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
     try:
         # Parse parameters for database fetches
         ships_df = fetch_ships(**upload_data.get("fetch_ship_params"))
-        captains_df = fetch_captains(**upload_data.get("fetch_captain_params"))
+        # captains_df = fetch_captains(**upload_data.get("fetch_captain_params"))
 
         fasta_path = upload_data["fasta"]
         if isinstance(fasta_path, dict) and "content" in fasta_path:
@@ -1342,93 +1345,106 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["complete"] = True
                     workflow_state["found_match"] = True
                     workflow_state["match_stage"] = "family"
-                    workflow_state["match_result"] = result
-                    return workflow_state
 
-            if stage_id == "navis":
-                logger.debug("Running navis classification")
-                if captains_df.empty:
-                    logger.warning("No captain data available for navis classification")
-                    workflow_state["stages"][stage_id]["progress"] = 80
-                    workflow_state["stages"][stage_id]["status"] = "skipped"
-                    continue
-
-                result = classify_navis(
-                    fasta=upload_data["fasta"],
-                    existing_captains=captains_df,
-                    threads=1,
-                )
-
-                if result:
-                    logger.debug(f"Found navis classification: {result}")
-                    workflow_state["stages"][stage_id]["progress"] = 90
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["complete"] = True
-                    workflow_state["found_match"] = True
-                    workflow_state["match_stage"] = "navis"
-                    workflow_state["match_result"] = result
-                    return workflow_state
-
-            if stage_id == "haplotype":
-                logger.debug("Running haplotype classification")
-                if captains_df.empty or ships_df.empty:
-                    logger.warning("Missing data for haplotype classification")
-                    workflow_state["stages"][stage_id]["progress"] = 90
-                    workflow_state["stages"][stage_id]["status"] = "skipped"
-                    continue
-
-                # Extract navis value from the first captain record
-                navis_value = None
-                try:
+                    # Simplify the result before setting it in the workflow state
                     if (
-                        not captains_df.empty
-                        and "starship_navis" in captains_df.columns
+                        isinstance(result, tuple)
+                        and len(result) > 0
+                        and isinstance(result[0], dict)
+                        and "family" in result[0]
                     ):
-                        navis_values = captains_df["starship_navis"].dropna().unique()
-                        if len(navis_values) > 0:
-                            navis_value = navis_values[0]
-                            logger.debug(f"Using navis value: {navis_value}")
-                        else:
-                            logger.warning("No non-null navis values found")
+                        # Extract just the family name from the tuple format
+                        workflow_state["match_result"] = result[0]["family"]
+                    elif isinstance(result, dict) and "family" in result:
+                        # Extract just the family name from the dict format
+                        workflow_state["match_result"] = result["family"]
                     else:
-                        logger.warning("No navis column in captains data")
-
-                    if navis_value is None and "starship_navis" in ships_df.columns:
-                        navis_values = ships_df["starship_navis"].dropna().unique()
-                        if len(navis_values) > 0:
-                            navis_value = navis_values[0]
-                            logger.debug(
-                                f"Using navis value from ships_df: {navis_value}"
-                            )
-                except Exception as e:
-                    logger.error(f"Error extracting navis value: {e}")
-
-                if navis_value is None:
-                    logger.warning("No navis value found, using fallback value 'UNK'")
-                    navis_value = "UNK"
-
-                try:
-                    result = classify_haplotype(
-                        fasta=upload_data["fasta"],
-                        existing_ships=ships_df,
-                        navis=navis_value,
-                    )
-
-                    if result:
-                        logger.debug(f"Found haplotype classification: {result}")
-                        workflow_state["stages"][stage_id]["progress"] = 100
-                        workflow_state["stages"][stage_id]["status"] = "complete"
-                        workflow_state["complete"] = True
-                        workflow_state["found_match"] = True
-                        workflow_state["match_stage"] = "haplotype"
                         workflow_state["match_result"] = result
-                        return workflow_state
-                except Exception as e:
-                    logger.error(f"Error in haplotype classification: {e}")
-                    workflow_state["stages"][stage_id]["status"] = "error"
-                    workflow_state["error"] = (
-                        f"Haplotype classification error: {str(e)}"
-                    )
+
+                    return workflow_state
+
+            # if stage_id == "navis":
+            #     logger.debug("Running navis classification")
+            #     if captains_df.empty:
+            #         logger.warning("No captain data available for navis classification")
+            #         workflow_state["stages"][stage_id]["progress"] = 80
+            #         workflow_state["stages"][stage_id]["status"] = "skipped"
+            #     else:
+            #         result = classify_navis(
+            #             fasta=upload_data["fasta"],
+            #             existing_captains=captains_df,
+            #             threads=1,
+            #         )
+
+            #     if result:
+            #         logger.debug(f"Found navis classification: {result}")
+            #         workflow_state["stages"][stage_id]["progress"] = 90
+            #         workflow_state["stages"][stage_id]["status"] = "complete"
+            #         workflow_state["complete"] = True
+            #         workflow_state["found_match"] = True
+            #         workflow_state["match_stage"] = "navis"
+            #         workflow_state["match_result"] = result
+            #         return workflow_state
+
+            # if stage_id == "haplotype":
+            #     logger.debug("Running haplotype classification")
+            #     if captains_df.empty or ships_df.empty:
+            #         logger.warning("Missing data for haplotype classification")
+            #         workflow_state["stages"][stage_id]["progress"] = 90
+            #         workflow_state["stages"][stage_id]["status"] = "skipped"
+            #     else:
+            #         # Extract navis value from the first captain record
+            #         navis_value = None
+            #         try:
+            #             if (
+            #                 not captains_df.empty
+            #                 and "starship_navis" in captains_df.columns
+            #             ):
+            #                 navis_values = captains_df["starship_navis"].dropna().unique()
+            #                 if len(navis_values) > 0:
+            #                     navis_value = navis_values[0]
+            #                     logger.debug(f"Using navis value: {navis_value}")
+            #                 else:
+            #                     logger.warning("No non-null navis values found")
+            #             else:
+            #                 logger.warning("No navis column in captains data")
+
+            #             if navis_value is None and "starship_navis" in ships_df.columns:
+            #                 navis_values = ships_df["starship_navis"].dropna().unique()
+            #                 if len(navis_values) > 0:
+            #                     navis_value = navis_values[0]
+            #                     logger.debug(
+            #                         f"Using navis value from ships_df: {navis_value}"
+            #                     )
+            #         except Exception as e:
+            #             logger.error(f"Error extracting navis value: {e}")
+
+            #     if navis_value is None:
+            #         logger.warning("No navis value found, using fallback value 'UNK'")
+            #         navis_value = "UNK"
+
+            #     try:
+            #         result = classify_haplotype(
+            #             fasta=upload_data["fasta"],
+            #             existing_ships=ships_df,
+            #             navis=navis_value,
+            #         )
+
+            #         if result:
+            #             logger.debug(f"Found haplotype classification: {result}")
+            #             workflow_state["stages"][stage_id]["progress"] = 100
+            #             workflow_state["stages"][stage_id]["status"] = "complete"
+            #             workflow_state["complete"] = True
+            #             workflow_state["found_match"] = True
+            #             workflow_state["match_stage"] = "haplotype"
+            #             workflow_state["match_result"] = result
+            #             return workflow_state
+            #     except Exception as e:
+            #         logger.error(f"Error in haplotype classification: {e}")
+            #         workflow_state["stages"][stage_id]["status"] = "error"
+            #         workflow_state["error"] = (
+            #             f"Haplotype classification error: {str(e)}"
+            #         )
 
             # Mark this stage as complete
             workflow_state["stages"][stage_id]["progress"] = 100
@@ -1464,25 +1480,34 @@ def create_classification_card(classification_data):
     if not classification_data:
         return None
 
-    title = classification_data.get("title", "Classification Results")
     source = classification_data.get("source", "Unknown")
     family = classification_data.get("family")
     navis = classification_data.get("navis")
     haplotype = classification_data.get("haplotype")
-    match_type = classification_data.get("match_type")
+    closest_match = classification_data.get("closest_match")
+    match_details = classification_data.get("match_details")
     confidence = classification_data.get("confidence", "Low")
 
     # Define badge colors based on source
     source_colors = {
-        "exact_match": "green",
-        "contained_match": "teal",
-        "similar_match": "cyan",
+        "exact": "green",
+        "contained": "teal",
+        "similar": "cyan",
         "blast_hit": "blue",
-        "classification": "violet",
+        "hmmsearch": "purple",
+        "captain clustering": "orange",
+        "k-mer similarity": "red",
         "unknown": "gray",
     }
 
-    # Define icon based on confidence level
+    # Define icon and color based on confidence level
+    confidence_colors = {
+        "High": "green",
+        "Medium": "yellow",
+        "Low": "red",
+        "Unknown": "gray",
+    }
+
     confidence_icons = {
         "High": "mdi:shield-check",
         "Medium": "mdi:shield-half-full",
@@ -1490,15 +1515,61 @@ def create_classification_card(classification_data):
     }
 
     source_color = source_colors.get(source, "gray")
+    confidence_color = confidence_colors.get(confidence, "gray")
     confidence_icon = confidence_icons.get(confidence, "mdi:shield-outline")
 
     # Create list of classification details
     details = []
 
-    if family:
+    if closest_match:
         details.append(
             dmc.Group(
                 [
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
+                    dmc.Text(closest_match, fw=700, size="lg"),
+                ],
+                pos="apart",
+            )
+        )
+
+    if confidence:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Text(f"Confidence: {confidence}", fw=700, size="md"),
+                    dmc.ThemeIcon(
+                        DashIconify(icon=confidence_icon, width=16),
+                        size="md",
+                        variant="light",
+                        color=confidence_color,
+                    ),
+                ],
+                pos="right",
+            ),
+        )
+
+    if match_details:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
+                    dmc.Text(match_details, c="dimmed", size="sm"),
+                ],
+                pos="apart",
+            )
+        )
+
+    if family:
+        if isinstance(family, dict) and "family" in family:
+            family = family["family"]
+
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color)
+                    if source
+                    not in ["exact", "contained", "similar", "blast_hit", "hmmsearch"]
+                    else None,
                     dmc.Text("Family:", fw=700, size="lg"),
                     dmc.Text(family, size="lg", c="indigo"),
                 ],
@@ -1509,24 +1580,28 @@ def create_classification_card(classification_data):
     if navis:
         details.append(
             dmc.Group(
-                [dmc.Text("Navis:", fw=700), dmc.Text(navis, c="blue")], pos="apart"
+                [
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color)
+                    if source
+                    not in ["exact", "contained", "similar", "blast_hit", "hmmsearch"]
+                    else None,
+                    dmc.Text("Navis:", fw=700),
+                    dmc.Text(navis, c="blue"),
+                ],
+                pos="apart",
             )
         )
 
     if haplotype:
         details.append(
             dmc.Group(
-                [dmc.Text("Haplotype:", fw=700), dmc.Text(haplotype, c="violet")],
-                pos="apart",
-            )
-        )
-
-    if match_type:
-        details.append(
-            dmc.Group(
                 [
-                    dmc.Text("Match Type:", fw=700, size="sm"),
-                    dmc.Text(match_type, c="dimmed", size="sm"),
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color)
+                    if source
+                    not in ["exact", "contained", "similar", "blast_hit", "hmmsearch"]
+                    else None,
+                    dmc.Text("Haplotype:", fw=700),
+                    dmc.Text(haplotype, c="violet"),
                 ],
                 pos="apart",
             )
@@ -1535,28 +1610,7 @@ def create_classification_card(classification_data):
     # Create card
     return dmc.Paper(
         children=[
-            dmc.Group(
-                [
-                    dmc.Title(title, order=3),
-                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
-                ],
-                pos="apart",
-            ),
-            dmc.Space(h=10),
             *details,
-            dmc.Space(h=10),
-            dmc.Group(
-                [
-                    dmc.Text(f"Confidence: {confidence}", size="sm", c="dimmed"),
-                    dmc.ThemeIcon(
-                        DashIconify(icon=confidence_icon, width=16),
-                        size="sm",
-                        variant="light",
-                        color=source_color,
-                    ),
-                ],
-                pos="right",
-            ),
         ],
         p="md",
         withBorder=True,
