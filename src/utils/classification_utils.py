@@ -926,7 +926,7 @@ def sourmash_sketch(fasta_file, seq_type="nucl"):
         return []
 
 
-def calculate_similarities(fasta_file, seq_type="nucl"):
+def calculate_similarities(fasta_file, seq_type="nucl", restricted_comparisons=None):
     """
     Calculate pairwise similarities between sequences in a FASTA file directly
     using the sourmash API without creating intermediate files.
@@ -934,11 +934,17 @@ def calculate_similarities(fasta_file, seq_type="nucl"):
     Args:
         fasta_file (str): Path to the FASTA file containing sequences
         seq_type (str): Type of sequences, either 'nucl' or 'prot'
+        restricted_comparisons (dict): Dictionary of form {seq_id1: {seq_id2: True}}
+                                       for comparisons to skip
 
     Returns:
-        list: List of tuples (seq_id1, seq_id2, similarity)
+        dict: Nested dictionary of similarities {seq_id1: {seq_id2: similarity}}
     """
     logger.debug(f"Directly calculating similarities for {fasta_file}, type={seq_type}")
+
+    # Initialize restricted comparisons if not provided
+    if restricted_comparisons is None:
+        restricted_comparisons = {}
 
     try:
         # Get signatures directly
@@ -946,27 +952,62 @@ def calculate_similarities(fasta_file, seq_type="nucl"):
 
         if not signatures:
             logger.error("Failed to create signatures")
-            return []
+            return {}
+
+        # Extract all sequence IDs
+        all_seq_ids = [seq_id for seq_id, _ in signatures]
+
+        # Initialize similarity dictionary with zeros
+        similarities = {}
+        for seq_id1 in all_seq_ids:
+            similarities[seq_id1] = {}
+            for seq_id2 in all_seq_ids:
+                if seq_id1 != seq_id2:
+                    similarities[seq_id1][seq_id2] = 0.0
 
         # Calculate pairwise similarities
-        similarities = []
+        observed_comparisons = set()
 
         for i, (seq_id1, sig1) in enumerate(signatures):
-            for j, (seq_id2, sig2) in enumerate(signatures):
-                # Skip self-comparisons
+            for j, (seq_id2, sig2) in enumerate(signatures[i + 1 :], i + 1):
+                # Skip self-comparisons and restricted comparisons
                 if seq_id1 == seq_id2:
+                    continue
+
+                # Check if this comparison is restricted
+                if (
+                    seq_id1 in restricted_comparisons
+                    and seq_id2 in restricted_comparisons[seq_id1]
+                ) or (
+                    seq_id2 in restricted_comparisons
+                    and seq_id1 in restricted_comparisons[seq_id2]
+                ):
+                    logger.debug(
+                        f"Skipping restricted comparison between {seq_id1} and {seq_id2}"
+                    )
                     continue
 
                 # Calculate Jaccard similarity directly from signature objects
                 similarity = sig1.jaccard(sig2)
-                similarities.append((seq_id1, seq_id2, similarity))
 
-        logger.debug(f"Calculated {len(similarities)} pairwise similarities")
+                # Store sorted to ensure consistent keys (like in the Perl version)
+                seq1, seq2 = sorted([seq_id1, seq_id2])
+                similarities[seq1][seq2] = similarity
+                similarities[seq2][seq1] = similarity  # Store symmetrically
+
+                # Mark as observed
+                observed_comparisons.add((seq1, seq2))
+                observed_comparisons.add((seq2, seq1))
+
+        # Ensure all valid comparisons have an entry (already initialized to 0.0)
+        logger.debug(
+            f"Calculated {len(observed_comparisons) / 2} pairwise similarities"
+        )
         return similarities
 
     except Exception as e:
         logger.error(f"Error in direct similarity calculation: {e}")
-        return []
+        return {}
 
 
 def cluster_sequences(similarities, threshold=0.95):
