@@ -1,7 +1,8 @@
 from celery import Celery
-=======
 import os
 import logging
+from celery.schedules import crontab
+
 
 # Redis configuration
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
