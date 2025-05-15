@@ -107,17 +107,12 @@ layout = dmc.Container(
         ],
         # Tab stores
         dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
-        # Timeout stores
-        dcc.Store(id="blast-timeout-store", data=False),
-        dcc.Interval(
-            id="blast-timeout-interval", interval=30000, n_intervals=0
-        ),  # 30 seconds
         # Interval for polling workflow state
         dcc.Interval(
             id="classification-interval",
-            interval=1000,  # 1 second
+            interval=500,  # 500ms for faster initial updates
             disabled=True,
-            max_intervals=300,  # Maximum 5 minutes of polling
+            max_intervals=600,  # Maximum 5 minutes of polling (300s)
         ),
         dcc.Store(id="workflow-state-store", data=None),
         dmc.Space(h=20),
@@ -293,27 +288,18 @@ layout = dmc.Container(
                                         # BLAST results section
                                         dmc.Stack(
                                             [
-                                                dbc.Spinner(
-                                                    children=html.Div(
-                                                        id="blast-container",
-                                                        className="blast-container",
-                                                        style={
-                                                            "width": "100%",
-                                                            "display": "flex",
-                                                            "flexDirection": "column",
-                                                            "minHeight": "300px",
-                                                            "alignItems": "flex-start",
-                                                            "textAlign": "left",
-                                                        },
-                                                    ),
-                                                    color="primary",
-                                                    type="border",
-                                                    fullscreen=False,
-                                                    spinner_style={
-                                                        "width": "3rem",
-                                                        "height": "3rem",
+                                                html.Div(
+                                                    id="blast-container",
+                                                    className="blast-container",
+                                                    style={
+                                                        "width": "100%",
+                                                        "display": "flex",
+                                                        "flexDirection": "column",
+                                                        "minHeight": "300px",
+                                                        "alignItems": "flex-start",
+                                                        "textAlign": "left",
                                                     },
-                                                )
+                                                ),
                                             ]
                                         ),
                                     ],
@@ -2281,6 +2267,7 @@ def update_classification_workflow_state(n_intervals, workflow_state):
     ],
     Input("workflow-state-store", "data"),
     prevent_initial_call=True,
+    id="update-classification-progress-callback",
 )
 def update_classification_progress(workflow_state):
     """Update the classification progress UI based on workflow state"""

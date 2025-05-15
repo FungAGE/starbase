@@ -1233,6 +1233,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
             if stage_id == "exact":
                 logger.debug("Running exact match check")
+
                 result = check_exact_match(
                     fasta=upload_data["fasta"], existing_ships=ships_df
                 )
@@ -1333,7 +1334,6 @@ def run_classification_workflow(upload_data, meta_dict=None):
                         workflow_state["match_result"] = result["family"]
                     else:
                         workflow_state["match_result"] = result
-
                     return workflow_state
 
             # if stage_id == "navis":
