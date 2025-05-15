@@ -45,8 +45,10 @@ def cleanup_cache_task():
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="run_blast_search")
-def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
+def run_blast_search_task(
+    self, query_header, query_seq, query_type, eval_threshold=0.01
+):
     """Celery task to run BLAST search"""
 
     try:
@@ -88,11 +90,14 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_hmmer_search")
-def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
+def run_hmmer_search_task(
+    self, query_header, query_seq, query_type, eval_threshold=0.01
+):
     """Celery task to run HMMER search"""
 
     try:
@@ -128,6 +133,7 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"HMMER search failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
@@ -139,11 +145,12 @@ def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
         return multi_pgv(gff_files, seqs, tmp_file, len_thr, id_thr)
     except Exception as e:
         logger.error(f"Multi PGV failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_single_pgv_task")
-def run_single_pgv_task(gff_file, tmp_file):
+@celery.task(name="run_single_pgv_task", bind=True, max_retries=3, retry_backoff=True)
+def run_single_pgv_task(self, gff_file, tmp_file):
     """Celery task to run `single_pgv`"""
     from src.pages.pgv import single_pgv
 
@@ -151,6 +158,7 @@ def run_single_pgv_task(gff_file, tmp_file):
         return single_pgv(gff_file, tmp_file)
     except Exception as e:
         logger.error(f"Single PGV failed: {str(e)}")
+        self.retry(exc=e, countdown=3)
         return None
 
 
@@ -184,4 +192,5 @@ def run_classification_workflow_task(self, upload_data, meta_dict=None):
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
         logger.exception("Full traceback:")
-        raise
+        self.retry(exc=e, countdown=3)
+        return None
