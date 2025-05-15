@@ -23,11 +23,11 @@ def create_blast_database(fasta_path, dbtype):
         fasta_path,
     ]
 
-    logger.info(f"Creating BLAST database with command: {' '.join(cmd)}")
+    logger.debug(f"Creating BLAST database with command: {' '.join(cmd)}")
 
     try:
         subprocess.run(cmd, check=True)
-        logger.info("BLAST database created successfully.")
+        logger.debug("BLAST database created successfully.")
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to create BLAST database: {e}")
         raise
@@ -62,11 +62,11 @@ def create_diamond_database(fasta_path, threads=2):
         str(threads),
     ]
 
-    logger.info(f"Creating Diamond database with command: {' '.join(cmd)}")
+    logger.debug(f"Creating Diamond database with command: {' '.join(cmd)}")
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info("Diamond database created successfully.")
+        logger.debug("Diamond database created successfully.")
         return diamond_db  # Return the path to the created Diamond database
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to create Diamond database: {e.stderr}")

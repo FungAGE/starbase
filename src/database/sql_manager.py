@@ -181,6 +181,8 @@ def fetch_ships(
             t.family,
             t.`order`,
             f.familyName,
+            j.starship_navis,
+            j.starship_haplotype,
             g.assembly_accession
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
@@ -351,7 +353,6 @@ def fetch_accession_ship(accession_tag):
         session.close()
 
 
-@db_retry_decorator()
 def fetch_captains(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -359,40 +360,32 @@ def fetch_captains(
     Fetch captain data for specified accession tags.
 
     Args:
-        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
+        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all captains.
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
         with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
-
     Returns:
-        pd.DataFrame: DataFrame containing ship data
+        pd.DataFrame: DataFrame containing captain data
     """
     session = StarbaseSession()
 
     query = """
-    WITH valid_ships AS (
+    WITH valid_captains AS (
         SELECT DISTINCT 
-            c.*
-        FROM captains c
-        INNER JOIN joined_ships j ON c.id = j.captainID_new
+            a.id, 
+            a.accession_tag,
+            j.curated_status,
+            j.starshipID,
+            j.captainID,
+            j.captainID_new,
+            c."sequence" 
+        FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
+        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN genomes g ON j.genome_id = g.id
+        LEFT JOIN captains c ON j.captainID_new = c.id
         WHERE 1=1
-    """
-
-    if accession_tags:
-        query += " AND a.accession_tag IN ({})".format(
-            ",".join(f"'{tag}'" for tag in accession_tags)
-        )
-    if curated:
-        query += " AND j.curated_status = 'curated'"
-
-    query += """
-    )
-    SELECT 
-        v.*,
-        s.sequence
-    FROM valid_captains v
-    LEFT JOIN ships s ON s.accession = v.accession_id
     """
 
     if accession_tags:
@@ -406,23 +399,29 @@ def fetch_captains(
         query += """
         )
         SELECT 
-            v.accession_id,
+            v.id,
             v.accession_tag,
             v.curated_status,
-            s.sequence
+            v.starshipID,
+            v.captainID,
+            v.captainID_new,
+            c.sequence
         FROM valid_captains v
-        LEFT JOIN ships s ON s.accession = v.accession_id
-        WHERE s.sequence IS NOT NULL
+        WHERE c.sequence IS NOT NULL
         """
     else:
         query += """
         )
         SELECT 
-            v.accession_id,
+            v.id,
             v.accession_tag,
-            v.curated_status
+            v.curated_status,
+            v.starshipID,
+            v.captainID,
+            v.captainID_new
         FROM valid_captains v
         """
+
     try:
         df = pd.read_sql_query(query, session.bind)
 
@@ -430,10 +429,10 @@ def fetch_captains(
             df = df.drop_duplicates(subset="accession_tag")
 
         if df.empty:
-            logger.warning("Fetched ships DataFrame is empty.")
+            logger.warning("Fetched captains DataFrame is empty.")
         return df
     except Exception as e:
-        logger.error(f"Error fetching ships data: {str(e)}")
+        logger.error(f"Error fetching captains data: {str(e)}")
         raise
     finally:
         session.close()

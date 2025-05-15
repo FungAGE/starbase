@@ -2,7 +2,7 @@ import dash
 from dash import dcc, html, callback, Input, Output, no_update
 import dash_mantine_components as dmc
 import logging
-from src.utils.telemetry import analyze_telemetry
+from src.telemetry.utils import analyze_telemetry
 
 dash.register_page(__name__)
 

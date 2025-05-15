@@ -140,7 +140,7 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             return None, None, None, error_msg
         else:
             seq_type = list(seq_types)[0]
-            logger.info(f"All sequences are {seq_type}")
+            logger.debug(f"All sequences are {seq_type}")
 
         return input_type, seq_list, n_seqs, error
     except Exception as e:
@@ -549,7 +549,7 @@ def parse_gff(contents, filename):
         gff = pd.read_csv(StringIO(decoded.decode("utf-8")), sep="\t")
 
         nanno = len(gff)
-        logger.info(f"Parsed {nanno} annotations from {filename}")
+        logger.debug(f"Parsed {nanno} annotations from {filename}")
         return [
             html.Div(
                 [
@@ -584,7 +584,7 @@ def parse_fasta(contents, filename):
             records.append({"ID": sequence.id, "Sequence": str(sequence.seq)})
             nseq += 1
 
-        logger.info(f"Parsed {nseq} sequences from {filename}")
+        logger.debug(f"Parsed {nseq} sequences from {filename}")
         return [
             html.Div(
                 [

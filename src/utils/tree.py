@@ -481,6 +481,6 @@ def gappa(tmp_tree):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    logging.info(f"Tree output: {out_tree}")
+    logging.debug(f"Tree output: {out_tree}")
 
     return out_tree
