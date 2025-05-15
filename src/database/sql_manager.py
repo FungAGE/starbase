@@ -1,4 +1,3 @@
-import logging
 import pandas as pd
 from src.config.database import StarbaseSession
 from tenacity import (
@@ -13,7 +12,9 @@ from sqlalchemy import text
 from src.config.cache import cache
 from src.config.settings import PHYLOGENY_PATHS
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # Define a common retry decorator for database operations

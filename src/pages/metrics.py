@@ -1,12 +1,13 @@
 import dash
 from dash import dcc, html, callback, Input, Output, no_update
 import dash_mantine_components as dmc
-import logging
 from src.telemetry.utils import analyze_telemetry
+from src.config.logging import get_logger
 
 dash.register_page(__name__)
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 
 def get_metrics_layout():

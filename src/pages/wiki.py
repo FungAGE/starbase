@@ -1,4 +1,3 @@
-import warnings
 import time
 
 import dash
@@ -13,7 +12,6 @@ from dash_iconify import DashIconify
 
 import pandas as pd
 import os
-import logging
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -27,12 +25,11 @@ from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs
 from src.components.callbacks import create_modal_callback
 from src.components.error_boundary import handle_callback_error, create_error_boundary
+from src.config.logging import get_logger
 
 dash.register_page(__name__)
 
-warnings.filterwarnings("ignore")
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_accordion_item(df, papers, category):

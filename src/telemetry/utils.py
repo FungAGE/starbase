@@ -6,8 +6,6 @@ Contains core telemetry functions used throughout the application.
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
-import warnings
-import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 import pandas as pd
@@ -25,8 +23,9 @@ from urllib3.util import Retry
 from sqlalchemy import text
 from src.config.database import TelemetrySession
 
-warnings.filterwarnings("ignore")
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Load environment variables from .env file
 env_path = Path(".") / ".env"

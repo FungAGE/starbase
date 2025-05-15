@@ -1,14 +1,15 @@
+import tempfile
+import os
+import json
+
 from src.config.celery_config import celery
 from src.config.cache import cache, cleanup_old_cache
 from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
-import tempfile
-import logging
-import os
-import json
+from src.config.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Make sure this is at the top level of the module
 __all__ = [
@@ -138,7 +139,7 @@ def run_hmmer_search_task(
 
 
 @celery.task(name="run_multi_pgv_task")
-def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
+def run_multi_pgv_task(self, gff_files, seqs, tmp_file, len_thr, id_thr):
     from src.pages.pgv import multi_pgv
 
     try:

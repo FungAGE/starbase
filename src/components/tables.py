@@ -1,18 +1,14 @@
-import warnings
-import logging
-
 from dash import html
 import pandas as pd
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import dash_ag_grid as dag
 
+from src.config.logging import get_logger
 from src.config.cache import cache
 from src.database.sql_manager import fetch_paper_data
 
-warnings.filterwarnings("ignore")
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def truncate_string(s, length=40):

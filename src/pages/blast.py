@@ -8,7 +8,6 @@ from dash.dependencies import Output, Input, State
 import os
 import base64
 import pandas as pd
-import logging
 import time
 import tempfile
 
@@ -35,9 +34,11 @@ from src.tasks import (
     run_classification_workflow_task,
 )
 
+from src.config.logging import get_logger
+
 dash.register_page(__name__)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 progress_section = dmc.Stack(
     [

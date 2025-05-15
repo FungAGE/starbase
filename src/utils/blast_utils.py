@@ -13,9 +13,10 @@ from src.utils.seq_utils import (
     clean_shipID,
 )
 from src.components.error_boundary import create_error_alert
-import logging
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):

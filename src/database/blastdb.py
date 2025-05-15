@@ -1,13 +1,14 @@
 import subprocess
 import os
 import glob
-import logging
 
 from src.config.cache import cache
 from src.config.settings import BLAST_DB_PATHS
 from src.utils.seq_utils import create_ncbi_style_header, write_fasta
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def create_blast_database(fasta_path, dbtype):
