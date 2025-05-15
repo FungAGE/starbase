@@ -1409,7 +1409,6 @@ def process_single_sequence(seq_data, evalue_threshold):
         State("blast-fasta-upload", "contents"),  # Add file contents as state
     ],
     running=[
-        (Output("submit-button", "loading"), True, False),
         (Output("submit-button", "disabled"), True, False),
     ],
     prevent_initial_call=True,
@@ -2359,27 +2358,45 @@ def update_classification_progress(workflow_state):
 
 
 @callback(
-    Output("classification-interval", "disabled", allow_duplicate=True),
-    Input("workflow-state-store", "data"),
+    [
+        Output("classification-interval", "disabled", allow_duplicate=True),
+        Output("submit-button", "loading", allow_duplicate=True),
+    ],
+    [
+        Input("workflow-state-store", "data"),
+        Input("blast-results-store", "data"),
+    ],
     prevent_initial_call=True,
 )
-def disable_interval_when_complete(workflow_state):
-    """Disable the interval when classification is complete"""
+def disable_interval_when_complete(workflow_state, blast_results):
+    """Disable the interval when classification is complete and manage submit button loading state"""
+
+    # Check if we have valid BLAST results
+    has_valid_results = (
+        blast_results is not None
+        and isinstance(blast_results, dict)
+        and "sequence_results" in blast_results
+    )
+
+    # If no workflow state but we have blast results, maintain loading while we prepare the workflow
     if workflow_state is None:
-        # If no workflow state, keep the interval disabled
-        return True
+        # If we already have blast results but no workflow yet, keep loading
+        if has_valid_results:
+            return True, True
+        # Otherwise, stop loading (something went wrong)
+        return True, False
 
-    # Always disable if complete flag is set
+    # Always disable interval if complete flag is set
     if workflow_state.get("complete", False):
-        return True
+        return True, False
 
-    # Disable if there's an error
+    # Disable interval if there's an error
     if workflow_state.get("error") is not None:
-        return True
+        return True, False
 
-    # Disable if status indicates completion
+    # Disable interval if status indicates completion
     if workflow_state.get("status") in ["complete", "failed", "timeout"]:
-        return True
+        return True, False
 
-    # Otherwise, keep the interval running
-    return False
+    # Otherwise, keep the interval running and button loading
+    return False, True
