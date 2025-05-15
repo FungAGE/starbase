@@ -312,7 +312,7 @@ def check_similar_match(
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
-            return None
+            return None, None
         sequence = list(sequences.values())[0]
 
     # Create temporary FASTA with new and existing sequences
@@ -345,10 +345,10 @@ def check_similar_match(
                 logger.debug(f"Similarity to {match_id}: {sim}")
                 if sim >= threshold:
                     logger.debug(f"Found similar match: {match_id} (similarity: {sim})")
-                    return match_id
+                    return match_id, similarities
 
     logger.debug("No similar matches found above threshold")
-    return None
+    return None, None
 
 
 ########################################################
@@ -503,7 +503,7 @@ def classify_navis(
         return navis_name
 
 
-def classify_haplotype(fasta, existing_ships, navis=None):
+def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
     """
     Classify a sequence by haplotype based on sequence similarity.
 
@@ -591,75 +591,6 @@ def classify_haplotype(fasta, existing_ships, navis=None):
         if missing_columns:
             logger.warning(f"Missing columns in ships DataFrame: {missing_columns}")
 
-        # Count valid sequences (non-null)
-        valid_seqs = filtered_ships["sequence"].dropna().count()
-        logger.debug(f"Found {valid_seqs} valid sequences")
-
-        if valid_seqs == 0:
-            logger.warning("No valid sequences found in filtered ships")
-            return {
-                "haplotype_name": "Novel",
-                "confidence": 0,
-                "note": "No valid sequences for comparison",
-            }
-
-        # Read the FASTA file
-        try:
-            query_seq = list(SeqIO.parse(fasta, "fasta"))
-            if not query_seq:
-                logger.error("No sequences found in the provided FASTA file")
-                return {
-                    "haplotype_name": "Error",
-                    "confidence": 0,
-                    "note": "Invalid FASTA file",
-                }
-            query_seq = query_seq[0]
-            logger.debug(f"Read query sequence of length {len(query_seq)}")
-        except Exception as e:
-            logger.error(f"Error reading FASTA file: {e}")
-            return {
-                "haplotype_name": "Error",
-                "confidence": 0,
-                "note": f"FASTA file error: {str(e)}",
-            }
-
-        # Create a temporary directory for intermediate files
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Create a combined FASTA file with existing ships and the query sequence
-            combined_fasta = os.path.join(tmp_dir, "combined.fasta")
-
-            try:
-                with open(combined_fasta, "w") as f:
-                    # Write query sequence
-                    f.write(f">{query_seq.id}\n{str(query_seq.seq)}\n")
-
-                    # Write ship sequences
-                    for i, row in filtered_ships.iterrows():
-                        if pd.notna(row.get("sequence")):
-                            seq_id = row.get("captainID", f"ship_{i}")
-                            f.write(f">{seq_id}\n{row['sequence']}\n")
-
-                logger.debug(f"Created combined FASTA file at {combined_fasta}")
-            except Exception as e:
-                logger.error(f"Error creating combined FASTA file: {e}")
-                return {
-                    "haplotype_name": "Error",
-                    "confidence": 0,
-                    "note": "Error preparing sequences",
-                }
-
-            # Calculate pairwise similarities
-            try:
-                similarities = calculate_similarities(combined_fasta, seq_type="nucl")
-                logger.debug(f"Calculated {len(similarities)} pairwise similarities")
-            except Exception as e:
-                logger.error(f"Error calculating similarities: {e}")
-                return {
-                    "haplotype_name": "Error",
-                    "confidence": 0,
-                    "note": f"Similarity calculation error: {str(e)}",
-                }
-
             # Cluster sequences
             try:
                 groups = cluster_sequences(similarities, threshold=0.95)
@@ -674,6 +605,7 @@ def classify_haplotype(fasta, existing_ships, navis=None):
 
             # Find the group containing the query sequence
             query_group = None
+            query_seq = SeqIO.read(fasta, "fasta")
             for group in groups:
                 if query_seq.id in group:
                     query_group = group
@@ -1336,7 +1268,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
             if stage_id == "similar":
                 logger.debug("Running similarity match check")
-                result = check_similar_match(
+                result, similarities = check_similar_match(
                     fasta=upload_data["fasta"],
                     existing_ships=ships_df,
                     threshold=0.95,
@@ -1349,7 +1281,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["found_match"] = True
                     workflow_state["match_stage"] = "similar"
                     workflow_state["match_result"] = result
-
+                    workflow_state["similarities"] = similarities
             if stage_id == "family":
                 logger.debug("Running family classification")
                 blast_df = upload_data.get("blast_df")
@@ -1469,6 +1401,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
             #             fasta=upload_data["fasta"],
             #             existing_ships=ships_df,
             #             navis=navis_value,
+            #             similarities=similarities,
             #         )
 
             #         if result:
