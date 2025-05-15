@@ -353,7 +353,6 @@ def fetch_accession_ship(accession_tag):
         session.close()
 
 
-@db_retry_decorator()
 def fetch_captains(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -373,24 +372,19 @@ def fetch_captains(
     query = """
     WITH valid_captains AS (
         SELECT DISTINCT 
-            a.id as accession_id, 
+            a.id, 
             a.accession_tag,
             j.curated_status,
-            j.elementBegin,
-            j.elementEnd,
-            j.contigID,
-            t.name,
-            t.family,
-            t.`order`,
-            f.familyName,
-            j.starship_navis,
-            j.starship_haplotype,
-            j.captainID
+            j.starshipID,
+            j.captainID,
+            j.captainID_new,
+            c."sequence" 
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
         LEFT JOIN taxonomy t ON j.taxid = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN genomes g ON j.genome_id = g.id
+        LEFT JOIN captains c ON j.captainID_new = c.id
         WHERE 1=1
     """
 
@@ -405,35 +399,26 @@ def fetch_captains(
         query += """
         )
         SELECT 
-            v.accession_id,
+            v.id,
             v.accession_tag,
             v.curated_status,
-            v.elementBegin,
-            v.elementEnd,
-            v.contigID,
-            v.name,
-            v.family,
-            v.`order`,
-            v.familyName,
+            v.starshipID,
+            v.captainID,
+            v.captainID_new,
             c.sequence
         FROM valid_captains v
-        LEFT JOIN captains c ON c.id = v.captainID
         WHERE c.sequence IS NOT NULL
         """
     else:
         query += """
         )
         SELECT 
-            v.accession_id,
+            v.id,
             v.accession_tag,
             v.curated_status,
-            v.elementBegin,
-            v.elementEnd,
-            v.contigID,
-            v.name,
-            v.family,
-            v.`order`,
-            v.familyName,
+            v.starshipID,
+            v.captainID,
+            v.captainID_new
         FROM valid_captains v
         """
 
