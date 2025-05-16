@@ -6,7 +6,6 @@ from dash.dependencies import Output, Input, State
 
 import os
 import tempfile
-import logging
 
 from pygenomeviz import GenomeViz
 from pygenomeviz.parser import Gff
@@ -18,7 +17,9 @@ from src.components.callbacks import create_modal_callback
 from src.components.error_boundary import handle_callback_error
 
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
@@ -363,7 +364,7 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 
     for gff in gff_list:
         for seqid, features in gff.get_seqid2features("gene").items():
-            logger.info(f"Processing seqid: {seqid}")
+            logger.debug(f"Processing seqid: {seqid}")
 
             if seqid not in gff.get_seqid2size():
                 logger.error(f"Error: SeqID {seqid} not found in GFF sizes")
@@ -411,7 +412,7 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
 
     if len(align_coords) > 0:
         min_ident = int(min([ac.identity for ac in align_coords if ac.identity]))
-        logger.info(f"Minimum identity: {min_ident}")
+        logger.debug(f"Minimum identity: {min_ident}")
 
         color, inverted_color = "blue", "orange"
         for ac in align_coords:
@@ -436,7 +437,7 @@ def multi_pgv(gff_files, seqs, tmp_file, len_thr=50, id_thr=30):
                 )
                 continue
 
-            logger.info(f"Adding link between {ac.query_link} and {ac.ref_link}")
+            logger.debug(f"Adding link between {ac.query_link} and {ac.ref_link}")
             gv.add_link(
                 ac.query_link,
                 ac.ref_link,
@@ -494,7 +495,7 @@ def load_ship_table(href):
             select_rows=True,
             pg_sz=10,
         )
-        logger.info("Table created successfully")
+        logger.debug("Table created successfully")
         return table, False
 
     except Exception as e:

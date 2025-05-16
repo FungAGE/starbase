@@ -4,13 +4,14 @@ import dash_bootstrap_components as dbc
 from dash_iconify import DashIconify
 from typing import List
 
-import logging
 import traceback
 import pandas as pd
 
 from src.database.sql_manager import fetch_meta_data
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 download_ships_button = dmc.Anchor(

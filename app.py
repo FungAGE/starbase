@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -10,7 +11,6 @@ from dash import Dash, html, dcc, _dash_renderer
 
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button
-from src.utils.telemetry import log_request, get_client_ip, maintain_ip_locations
 from src.config.cache import cache, cleanup_old_cache
 from src.config.database import SubmissionsSession
 from src.config.settings import DB_PATHS
@@ -18,8 +18,13 @@ from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
 from src.config.celery_config import celery
+from src.telemetry.utils import log_request, get_client_ip, update_ip_locations
 
 logger = get_logger(__name__)
+
+# Get the environment
+ENV = os.getenv("ENVIRONMENT", "development")
+IS_DEV = ENV.lower() == "development"
 
 server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
@@ -54,8 +59,6 @@ external_stylesheets = [
     "https://cdn.jsdelivr.net/npm/@mantine/nprogress@7.11.0/styles.css",
     dbc.icons.BOOTSTRAP,
     dbc.themes.BOOTSTRAP,
-    "https://code.jquery.com/jquery-3.6.0.min.js",
-    "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "/assets/styles.css",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/css/tabulator.min.css",
     "https://cdn.jsdelivr.net/npm/ag-grid-community@30.0.0/styles/ag-grid.css",
@@ -63,6 +66,7 @@ external_stylesheets = [
 ]
 
 external_scripts = [
+    "https://code.jquery.com/jquery-2.2.4.min.js",
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
@@ -81,6 +85,16 @@ app = Dash(
     update_title=None,
 )
 
+# Enable dev tools after initialization (only for local development)
+if os.environ.get("DEV_MODE"):
+    app.enable_dev_tools(
+        dev_tools_props_check=True,
+        dev_tools_ui=True,
+        dev_tools_hot_reload=True,
+        dev_tools_silence_routes_logging=False,
+        dev_tools_prune_errors=False,
+    )
+
 DATABASE_URLS = {
     "starbase": f"sqlite:///{DB_PATHS['starbase']}",
     "submissions": f"sqlite:///{DB_PATHS['submissions']}",
@@ -95,6 +109,7 @@ engines = {
         max_overflow=20,
         pool_timeout=30,
         pool_recycle=1800,
+        echo=IS_DEV,  # Only log SQL in development mode
     )
     for name, url in DATABASE_URLS.items()
 }
@@ -107,7 +122,7 @@ def initialize_app():
 
         create_database_indexes()
         cleanup_old_cache()
-        maintain_ip_locations()
+        update_ip_locations()
 
 
 def serve_app_layout():
@@ -177,4 +192,4 @@ with server.app_context():
     initialize_app()
 
 if __name__ == "__main__":
-    app.run_server(debug=False)
+    app.run_server(debug=True)

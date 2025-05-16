@@ -1,12 +1,13 @@
 from dash import html
 import dash_mantine_components as dmc
 import traceback
-import logging
 import functools
 from dash.exceptions import PreventUpdate
 from dash_mantine_components import LoadingOverlay
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def error_boundary(children, id=None):

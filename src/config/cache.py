@@ -25,13 +25,18 @@ cache = Cache(
 
 
 def cleanup_old_cache():
-    """Remove all cache files"""
+    """Remove all cache files and directories"""
     try:
         cleanup_count = 0
         for filename in os.listdir(cache_dir):
             filepath = os.path.join(cache_dir, filename)
-            os.remove(filepath)
+            if os.path.isfile(filepath):
+                os.remove(filepath)
+            elif os.path.isdir(filepath):
+                import shutil
+
+                shutil.rmtree(filepath)  # remove old directories if they exist
             cleanup_count += 1
-        logger.info(f"Cleaned up {cleanup_count} cache files")
+        logger.debug(f"Cleaned up {cleanup_count} cache items")
     except Exception as e:
         logger.error(f"Cache cleanup failed: {str(e)}")

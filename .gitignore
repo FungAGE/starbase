@@ -167,3 +167,6 @@ src/database/db/**
 
 pytest.ini
 .dockerignore
+
+# celery
+celerybeat*

@@ -1,8 +1,9 @@
 from sqlalchemy import text
-import logging
 from src.config.database import StarbaseSession
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def create_database_indexes():
@@ -33,10 +34,10 @@ def create_database_indexes():
 
     try:
         for index_sql in indexes:
-            logger.info(f"Creating index: {index_sql}")
+            logger.debug(f"Creating index: {index_sql}")
             session.execute(text(index_sql))
         session.commit()
-        logger.info("Successfully created all database indexes")
+        logger.debug("Successfully created all database indexes")
     except Exception as e:
         logger.error(f"Error creating indexes: {str(e)}")
         session.rollback()

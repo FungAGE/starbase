@@ -1,5 +1,3 @@
-import warnings
-
 from Bio import Phylo
 import plotly.graph_objs as go
 
@@ -10,10 +8,10 @@ import logging
 
 from src.utils.seq_utils import load_fasta_to_dict
 from src.database.sql_manager import fetch_captain_tree, fetch_sf_data
+from src.config.logging import get_logger
 
-warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 default_highlight_colors = {
@@ -481,6 +479,6 @@ def gappa(tmp_tree):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    logging.info(f"Tree output: {out_tree}")
+    logging.debug(f"Tree output: {out_tree}")
 
     return out_tree

@@ -13,9 +13,10 @@ from src.utils.seq_utils import (
     clean_shipID,
 )
 from src.components.error_boundary import create_error_alert
-import logging
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
@@ -713,3 +714,23 @@ def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
         raise ValueError(f"BLAST database {db} is empty.")
 
     return db
+
+
+def load_blast_text(blast_file):
+    """Load BLAST output as text"""
+    if not blast_file or not os.path.exists(blast_file):
+        return None
+
+    with open(blast_file, "r") as f:
+        return f.read()
+
+
+def blast_family_button(family):
+    import dash_bootstrap_components as dbc
+
+    return dbc.Button(
+        family,
+        color="primary",
+        href=f"/wiki?page={family}",
+        external_link=False,
+    )

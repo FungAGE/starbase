@@ -7,10 +7,11 @@ import requests
 import os
 import sys
 from pathlib import Path
-import logging
 import base64  # Add this import for test_blast_submission
 
-logger = logging.getLogger(__name__)
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Add project root to path if needed
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

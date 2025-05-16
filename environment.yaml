@@ -4,6 +4,8 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - python=3.9
+  - backports.zoneinfo
   - mmseqs2==17.b804f
   - sourmash==3.5.1
   - mcl==22.282
@@ -11,6 +13,8 @@ dependencies:
   - blast==2.16.0
   - hmmer==3.4
   - clustalw==2.1
+  - parmed
+  - pip
   - pip:
     - beautifulsoup4==4.11.1
     - biopython==1.83
@@ -34,6 +38,7 @@ dependencies:
     - Jinja2==3.0.3
     - logomaker==0.8
     - matplotlib==3.7.5
+    - networkx
     - numpy==1.22.1
     - pandas==2.0.3
     - panel==1.2.3

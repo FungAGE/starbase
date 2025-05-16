@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 limiter = Limiter(
     get_remote_address,
     storage_uri="memory://",
-    default_limits=["200 per minute"],
+    default_limits=["500 per minute", "10000 per hour"],
     strategy="fixed-window-elastic-expiry",
 )
 
