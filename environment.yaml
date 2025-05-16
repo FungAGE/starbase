@@ -5,7 +5,6 @@ channels:
   - defaults
 dependencies:
   - python=3.9
-  - backports.zoneinfo
   - mmseqs2==17.b804f
   - sourmash==3.5.1
   - mcl==22.282
@@ -16,6 +15,7 @@ dependencies:
   - parmed
   - pip
   - pip:
+    - backports.zoneinfo
     - beautifulsoup4==4.11.1
     - biopython==1.83
     - dash==2.16.1
@@ -56,3 +56,4 @@ dependencies:
     - Werkzeug<=3.1
     - psutil==5.9.5
     - multiprocess==0.70.14
+    - schedule==1.2.1
