@@ -1544,8 +1544,8 @@ def create_classification_card(classification_data):
                     if source
                     not in ["exact", "contained", "similar", "blast_hit", "hmmsearch"]
                     else None,
-                    dmc.Text("Family:", fw=700, size="lg"),
-                    dmc.Text(family, size="lg", c="indigo"),
+                    dmc.Text("Family:", fw=700),
+                    dmc.Text(family),
                 ],
                 pos="apart",
             )
@@ -1560,7 +1560,7 @@ def create_classification_card(classification_data):
                     not in ["exact", "contained", "similar", "blast_hit", "hmmsearch"]
                     else None,
                     dmc.Text("Navis:", fw=700),
-                    dmc.Text(navis, c="blue"),
+                    dmc.Text(navis),
                 ],
                 pos="apart",
             )
@@ -1575,7 +1575,7 @@ def create_classification_card(classification_data):
                     not in ["exact", "contained", "similar", "blast_hit", "hmmsearch"]
                     else None,
                     dmc.Text("Haplotype:", fw=700),
-                    dmc.Text(haplotype, c="violet"),
+                    dmc.Text(haplotype),
                 ],
                 pos="apart",
             )
