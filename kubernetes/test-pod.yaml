@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: starbase-test
+  labels:
+    app: starbase-test
+spec:
+  containers:
+  - name: starbase
+    image: starbase-test:latest
+    imagePullPolicy: Never
+    ports:
+    - containerPort: 8000
+    env:
+    - name: FLASK_ENV
+      value: "test"
+    - name: TEST_MODE
+      value: "true"
+    - name: DEBUG
+      value: "true"
+    - name: CELERY_SCHEDULE_DIR
+      value: "/tmp/celery"
+    command: ["./start-script.sh"]
+    volumeMounts:
+    - name: starbase-test-db
+      mountPath: /app/src/database/db
+  volumes:
+  - name: starbase-test-db
+    persistentVolumeClaim:
+      claimName: starbase-test-pvc
+  - name: starbase-temp-data
+    persistentVolumeClaim:
+      claimName: starbase-temp-pvc

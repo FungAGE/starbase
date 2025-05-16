@@ -20,7 +20,7 @@ WORKDIR $HOME/
 
 # System dependencies and redis installation
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables wget redis-server && \
+    apt-get install -y gcc build-essential curl iptables wget redis-server && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy environment file and create conda environment 
@@ -51,6 +51,10 @@ COPY ./ ./
 RUN chmod +x start-script.sh && \
     # Ensure all directories and files are owned by starbase user
     chown -R $USER:$USER $HOME/src
+
+RUN mkdir -p /tmp/celery && \
+    chmod 777 /tmp/celery && \
+    chown $USER:$USER /tmp/celery
 
 # Switch to user
 USER $USER
