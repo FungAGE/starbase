@@ -277,32 +277,49 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"sm": 12, "lg": 8},
                     children=[
-                        html.Div(
-                            id="right-column-content",
+                        dmc.Stack(
+                            pos="relative",
                             children=[
-                                # This div will be replaced with tabs when more than one sequence is in query
-                                dmc.Stack(
+                                dmc.LoadingOverlay(
+                                    visible=False,
+                                    id="results-loading-overlay",
+                                    overlayProps={"radius": "sm", "blur": 2},
+                                    loaderProps={
+                                        "variant": "oval",
+                                        "size": "xl",
+                                        "color": "blue",
+                                    },
+                                    zIndex=10,
+                                ),
+                                html.Div(
+                                    id="right-column-content",
                                     children=[
-                                        html.Div(
-                                            id="classification-output", className="mt-4"
-                                        ),
-                                        progress_section,
-                                        # BLAST results section
+                                        # This div will be replaced with tabs when more than one sequence is in query
                                         dmc.Stack(
-                                            [
+                                            children=[
                                                 html.Div(
-                                                    id="blast-container",
-                                                    className="blast-container",
-                                                    style={
-                                                        "width": "100%",
-                                                        "display": "flex",
-                                                        "flexDirection": "column",
-                                                        "minHeight": "300px",
-                                                        "alignItems": "flex-start",
-                                                        "textAlign": "left",
-                                                    },
+                                                    id="classification-output",
+                                                    className="mt-4",
                                                 ),
-                                            ]
+                                                progress_section,
+                                                # BLAST results section
+                                                dmc.Stack(
+                                                    [
+                                                        html.Div(
+                                                            id="blast-container",
+                                                            className="blast-container",
+                                                            style={
+                                                                "width": "100%",
+                                                                "display": "flex",
+                                                                "flexDirection": "column",
+                                                                "minHeight": "300px",
+                                                                "alignItems": "flex-start",
+                                                                "textAlign": "left",
+                                                            },
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
                                         ),
                                     ],
                                 ),
@@ -588,6 +605,31 @@ def update_submission_id(n_clicks):
     if not n_clicks:
         raise PreventUpdate
     return n_clicks  # Use n_clicks as a unique submission ID
+
+
+# Add the clientside callback to immediately set button loading state
+clientside_callback(
+    """
+    function updateLoadingState(n_clicks) {
+        return true;
+    }
+    """,
+    Output("submit-button", "loading", allow_duplicate=True),
+    Input("submit-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+
+# Add a clientside callback to show the loading overlay
+clientside_callback(
+    """
+    function showLoadingOverlay(n_clicks) {
+        return true;
+    }
+    """,
+    Output("results-loading-overlay", "visible", allow_duplicate=True),
+    Input("submit-button", "n_clicks"),
+    prevent_initial_call=True,
+)
 
 
 ########################################################
@@ -1331,7 +1373,8 @@ def process_single_sequence(seq_data, evalue_threshold):
                         "family": top_family,
                         "navis": navis,
                         "haplotype": haplotype,
-                        "match_details": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                        "closest_match": hit_IDs,
+                        "match_details": f"length {top_aln_length}bp with {top_pident:.1f}% identity. E-value: {top_evalue}",
                         "confidence": "Medium" if top_pident >= 95 else "Low",
                     }
         except Exception as e:
@@ -1406,6 +1449,8 @@ def process_single_sequence(seq_data, evalue_threshold):
         Output("blast-results-store", "data"),
         Output("classification-interval", "disabled", allow_duplicate=True),
         Output("workflow-state-store", "data"),
+        Output("submit-button", "loading", allow_duplicate=True),
+        Output("results-loading-overlay", "visible", allow_duplicate=True),
     ],
     [
         Input("submission-id-store", "data"),
@@ -1443,7 +1488,13 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                         "status": "failed",
                         "task_id": str(submission_id),
                     }
-                    return None, True, error_state
+                    return (
+                        None,
+                        True,
+                        error_state,
+                        False,
+                        False,
+                    )  # Set loading to False when done
 
                 logger.debug(
                     f"Successfully parsed {len(direct_seq_list)} sequences directly from file contents"
@@ -1457,7 +1508,13 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                     "status": "failed",
                     "task_id": str(submission_id),
                 }
-                return None, True, error_state
+                return (
+                    None,
+                    True,
+                    error_state,
+                    False,
+                    False,
+                )  # Set loading to False on error too
         else:
             logger.warning("No seq_list or file_contents provided to process_sequences")
             error_state = {
@@ -1466,7 +1523,13 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                 "status": "failed",
                 "task_id": str(submission_id) if submission_id else None,
             }
-            return None, True, error_state
+            return (
+                None,
+                True,
+                error_state,
+                False,
+                False,
+            )  # Set loading to False when done
 
     logger.debug(
         f"Processing sequence submission with ID: {submission_id}, sequences: {len(seq_list)}"
@@ -1546,6 +1609,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                             "task_id": str(submission_id),  # Ensure it's a string
                             "status": "initialized",
                             "complete": False,
+                            "workflow_started": True,
                             "current_stage": None,
                             "current_stage_idx": 0,
                             "error": None,
@@ -1600,7 +1664,13 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
         logger.debug(
             f"Completed process_sequences: has_blast_results={blast_results is not None}, interval_disabled={classification_interval_disabled}"
         )
-        return blast_results, classification_interval_disabled, workflow_state
+        return (
+            blast_results,
+            classification_interval_disabled,
+            workflow_state,
+            False,
+            False,
+        )  # Set loading to False when done
     except Exception as e:
         logger.error(f"Error in process_sequences: {str(e)}", exc_info=True)
         # Return basic data on error
@@ -1610,7 +1680,13 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
             "status": "failed",
             "task_id": str(submission_id) if submission_id else None,
         }
-        return None, True, error_state
+        return (
+            None,
+            True,
+            error_state,
+            False,
+            False,
+        )  # Set loading to False on error too
 
 
 @callback(
@@ -2139,7 +2215,10 @@ def update_single_sequence_classification(blast_results_store):
 
 
 @callback(
-    Output("workflow-state-store", "data", allow_duplicate=True),
+    [
+        Output("workflow-state-store", "data", allow_duplicate=True),
+        Output("results-loading-overlay", "visible", allow_duplicate=True),
+    ],
     [
         # Remove dependency on interval n_intervals
         Input("workflow-state-store", "data"),
@@ -2158,6 +2237,12 @@ def update_classification_workflow_state(workflow_state):
         or workflow_state.get("error") is not None
         or workflow_state.get("workflow_started", False)
     ):
+        # If workflow is complete, also set loading overlay to false
+        if (
+            workflow_state.get("complete", False)
+            or workflow_state.get("error") is not None
+        ):
+            return workflow_state, False
         raise PreventUpdate
 
     # Check if task is running
@@ -2168,7 +2253,7 @@ def update_classification_workflow_state(workflow_state):
         workflow_state["error"] = "Missing task ID"
         workflow_state["complete"] = True
         workflow_state["status"] = "failed"
-        return workflow_state
+        return workflow_state, False
 
     try:
         # Start the classification workflow - ONE TIME ONLY
@@ -2181,7 +2266,7 @@ def update_classification_workflow_state(workflow_state):
                 workflow_state["error"] = "Missing upload data"
                 workflow_state["complete"] = True
                 workflow_state["status"] = "failed"
-                return workflow_state
+                return workflow_state, False
 
             meta_df = fetch_meta_data()
             meta_dict = meta_df.to_dict("records") if meta_df is not None else None
@@ -2215,7 +2300,7 @@ def update_classification_workflow_state(workflow_state):
                     for stage in WORKFLOW_STAGES
                 }
 
-            return workflow_state
+            return workflow_state, False
 
         # Safety check - should never actually get here due to the early returns above
         raise PreventUpdate
@@ -2230,7 +2315,7 @@ def update_classification_workflow_state(workflow_state):
         workflow_state["error"] = str(e)
         workflow_state["status"] = "failed"
         workflow_state["complete"] = True
-        return workflow_state
+        return workflow_state, False
 
 
 @callback(
@@ -2320,10 +2405,7 @@ def update_classification_progress(workflow_state):
 
 
 @callback(
-    [
-        Output("classification-interval", "disabled", allow_duplicate=True),
-        Output("submit-button", "loading", allow_duplicate=True),
-    ],
+    Output("classification-interval", "disabled", allow_duplicate=True),
     [
         Input("workflow-state-store", "data"),
         Input("blast-results-store", "data"),
@@ -2331,37 +2413,6 @@ def update_classification_progress(workflow_state):
     prevent_initial_call=True,
 )
 def disable_interval_when_complete(workflow_state, blast_results):
-    """Disable the interval when classification is complete and manage submit button loading state"""
-
-    # Check if we have valid BLAST results
-    has_valid_results = (
-        blast_results is not None
-        and isinstance(blast_results, dict)
-        and "sequence_results" in blast_results
-    )
-
-    # If no workflow state but we have blast results, maintain loading while we prepare the workflow
-    if workflow_state is None:
-        # If we already have blast results but no workflow yet, keep loading
-        if has_valid_results:
-            return True, True
-        # Otherwise, stop loading (something went wrong)
-        return True, False
-
-    # Always disable the interval regardless of state - we don't need polling anymore
-    # Only manage the submit button loading state
-
-    # Always disable interval if complete flag is set
-    if workflow_state.get("complete", False):
-        return True, False
-
-    # Disable interval if there's an error
-    if workflow_state.get("error") is not None:
-        return True, False
-
-    # Disable interval if status indicates completion
-    if workflow_state.get("status") in ["complete", "failed", "timeout"]:
-        return True, False
-
-    # Even if the workflow is not complete, still disable the interval but keep button loading
-    return True, True
+    """Disable the interval when classification is complete"""
+    # Always disable the interval since we're no longer using polling
+    return True

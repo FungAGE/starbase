@@ -2,7 +2,6 @@ import tempfile
 import os
 import json
 
-from src.config.celery_config import celery
 from src.config.cache import cache, cleanup_old_cache
 from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
@@ -23,9 +22,8 @@ __all__ = [
 ]
 
 
-@celery.task(name="refresh_telemetry")
 def refresh_telemetry_task(ipstack_api_key):
-    """Celery task to refresh telemetry data"""
+    """Task to refresh telemetry data (formerly Celery task)"""
     try:
         update_ip_locations(ipstack_api_key)
         cache.delete("telemetry_data")
@@ -35,9 +33,8 @@ def refresh_telemetry_task(ipstack_api_key):
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="cleanup_cache")
 def cleanup_cache_task():
-    """Celery task to clean up cache files"""
+    """Task to clean up cache files (formerly Celery task)"""
     try:
         cleanup_old_cache()
         return {"status": "success", "message": "Cache cleanup completed"}
@@ -132,28 +129,24 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
         return None
 
 
-@celery.task(name="run_multi_pgv_task")
-def run_multi_pgv_task(self, gff_files, seqs, tmp_file, len_thr, id_thr):
+def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
     from src.pages.pgv import multi_pgv
 
     try:
         return multi_pgv(gff_files, seqs, tmp_file, len_thr, id_thr)
     except Exception as e:
         logger.error(f"Multi PGV failed: {str(e)}")
-        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_single_pgv_task", bind=True, max_retries=3, retry_backoff=True)
-def run_single_pgv_task(self, gff_file, tmp_file):
-    """Celery task to run `single_pgv`"""
+def run_single_pgv_task(gff_file, tmp_file):
+    """Task to run `single_pgv` (formerly Celery task)"""
     from src.pages.pgv import single_pgv
 
     try:
         return single_pgv(gff_file, tmp_file)
     except Exception as e:
         logger.error(f"Single PGV failed: {str(e)}")
-        self.retry(exc=e, countdown=3)
         return None
 
 

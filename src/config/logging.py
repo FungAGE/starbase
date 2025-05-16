@@ -1,7 +1,6 @@
 import logging
 import warnings
 import os
-from celery.signals import setup_logging
 
 ENV = os.getenv("ENVIRONMENT", "development")
 IS_DEV = ENV.lower() == "development"
@@ -21,7 +20,6 @@ if not IS_DEV:
         logger = logging.getLogger(logger_name)
         if logger_name.startswith(
             (
-                "celery",
                 "uvicorn",
                 "werkzeug",
                 "urllib3",
@@ -36,12 +34,6 @@ if not IS_DEV:
             logger.setLevel(logging.INFO)
 
 
-@setup_logging.connect
-def config_loggers(*args, **kwargs):
-    """Configure celery logging to use our custom logger"""
-    return True
-
-
 def configure_third_party_loggers():
     """
     Configure third-party loggers to be less verbose in production
@@ -49,18 +41,6 @@ def configure_third_party_loggers():
     for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.DEBUG if IS_DEV else logging.WARNING)
-
-    for logger_name in [
-        "celery",
-        "celery.task",
-        "celery.worker",
-        "celery.worker.strategy",
-        "celery.app.trace",
-    ]:
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.DEBUG if IS_DEV else logging.WARNING)
-        if not IS_DEV:
-            logger.propagate = False
 
     for logger_name in [
         "sqlalchemy",

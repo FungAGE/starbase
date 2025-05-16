@@ -151,7 +151,6 @@ def run_hmmer(
             )
             logger.debug(f"Diamond search complete. Output file: {protein_filename}")
 
-        logger.debug(f"Running HMMER search on protein sequence: {protein_filename}")
         tmp_hmmer = hmmsearch(
             query_type="prot",  # Always use protein HMM
             input_gene=input_gene,
@@ -161,15 +160,10 @@ def run_hmmer(
         )
         logger.debug(f"HMMER search complete. Output file: {tmp_hmmer}")
 
-        logger.debug("Parsing HMMER results")
         tmp_hmmer_parsed = parse_hmmer(tmp_hmmer)
         logger.debug(f"Parsed HMMER results saved to: {tmp_hmmer_parsed}")
 
         hmmer_results = pd.read_csv(tmp_hmmer_parsed, sep="\t")
-        logger.debug(
-            f"HMMER results loaded into DataFrame with shape: {hmmer_results.shape}"
-        )
-        logger.debug(f"HMMER results columns: {hmmer_results.columns}")
 
         # Return protein_filename only for nucleotide input
         if query_type == "nucl":

@@ -1,43 +1,43 @@
 """
 Telemetry tasks module.
-Contains all Celery tasks related to telemetry.
+Contains tasks related to telemetry (formerly Celery tasks).
 """
 
 import requests
-from src.config.celery_config import celery
 from src.config.settings import IPSTACK_API_KEY
 from src.telemetry.utils import update_ip_locations as _update_ip_locations
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 
-@celery.task(name="src.telemetry.tasks.update_ip_locations")
 def update_ip_locations(api_key=None):
     """
     Update locations for any new IPs in request_logs that aren't in ip_locations.
-    This is run hourly via Celery Beat.
+    This was previously run hourly via Celery Beat.
     """
     if api_key is None:
         api_key = IPSTACK_API_KEY
     return _update_ip_locations(api_key)
 
 
-@celery.task(name="src.telemetry.tasks.refresh_telemetry")
 def refresh_telemetry():
     """
-    Refresh telemetry data as a Celery task.
-    This is run every 15 minutes via Celery Beat.
+    Refresh telemetry data (formerly a Celery task).
+    This was previously run every 15 minutes via Celery Beat.
     """
     try:
         response = requests.post("http://localhost:8000/api/telemetry/refresh")
         return {"status": "success", "response": response.status_code}
     except Exception as e:
+        logger.error(f"Error refreshing telemetry: {str(e)}")
         return {"status": "error", "error": str(e)}
 
 
-@celery.task(name="src.telemetry.tasks.check_cache_status")
 def check_cache_status():
     """
     Check cache status and refresh if needed.
-    This is run every 5 minutes via Celery Beat.
+    This was previously run every 5 minutes via Celery Beat.
     """
     try:
         # First check if cache is healthy
@@ -48,4 +48,5 @@ def check_cache_status():
             return {"status": "refreshed", "response": refresh_response.status_code}
         return {"status": "healthy"}
     except Exception as e:
+        logger.error(f"Error checking cache status: {str(e)}")
         return {"status": "error", "error": str(e)}

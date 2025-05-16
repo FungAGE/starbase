@@ -20,7 +20,7 @@ WORKDIR $HOME/
 
 # System dependencies and redis installation
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables wget redis-server && \
+    apt-get install -y curl iptables wget redis-server build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy environment file and create conda environment 
@@ -39,6 +39,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 
 # Create cache directory
 RUN mkdir -p $HOME/src/database/db/cache && \
+    mkdir -p $HOME/src/database/db && \
     chmod -R 777 $HOME/src/database/db/cache && \
     chown -R $USER:$USER $HOME
 
@@ -48,9 +49,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Copy application code (changes most frequently, so do this last)
 COPY ./ ./
-RUN chmod +x start-script.sh && \
+RUN chmod 755 start-script.sh && \
     # Ensure all directories and files are owned by starbase user
     chown -R $USER:$USER $HOME/src
 
 # Switch to user
 USER $USER
+
+CMD ["bash", "./start-script.sh"]

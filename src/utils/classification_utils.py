@@ -403,7 +403,7 @@ def classify_family(
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
-            return None
+            return None, None
 
     hmmer_dict, tmp_protein_filename = run_hmmer(
         query_type=seq_type,
@@ -413,12 +413,13 @@ def classify_family(
         threads=2,
     )
 
-    if hmmer_dict is not None and len(hmmer_dict) > 0:
+    if hmmer_dict is not None:
         hmmer_df = pd.DataFrame(hmmer_dict)
         if len(hmmer_df) > 0:
             family_name, family_aln_length, family_evalue = select_ship_family(hmmer_df)
             if family_name:
                 family_dict = {
+                    "n_hits": len(hmmer_df),
                     "family": family_name,
                     "aln_length": family_aln_length,
                     "evalue": family_evalue,
@@ -1234,6 +1235,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["match_stage"] = "exact"
                     workflow_state["match_result"] = result
                     workflow_state["complete"] = True
+                    logger.debug(f"Exact match workflow state: {workflow_state}")
                     return workflow_state
 
             if stage_id == "contained":
@@ -1253,6 +1255,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["match_stage"] = "contained"
                     workflow_state["match_result"] = result
                     workflow_state["complete"] = True
+                    logger.debug(f"Contained match workflow state: {workflow_state}")
                     return workflow_state
 
             if stage_id == "similar":
@@ -1271,6 +1274,9 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["match_stage"] = "similar"
                     workflow_state["match_result"] = result
                     workflow_state["similarities"] = similarities
+                    logger.debug(f"Similar match workflow state: {workflow_state}")
+                    return workflow_state
+
             if stage_id == "family":
                 logger.debug("Running family classification")
 
@@ -1294,18 +1300,38 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
                     # Simplify the result before setting it in the workflow state
                     if (
-                        isinstance(result, tuple)
-                        and len(result) > 0
-                        and isinstance(result[0], dict)
-                        and "family" in result[0]
+                        isinstance(family_dict, tuple)
+                        and len(family_dict) > 0
+                        and isinstance(family_dict[0], dict)
+                        and "family" in family_dict[0]
                     ):
-                        # Extract just the family name from the tuple format
-                        workflow_state["match_result"] = result[0]["family"]
-                    elif isinstance(result, dict) and "family" in result:
-                        # Extract just the family name from the dict format
-                        workflow_state["match_result"] = result["family"]
+                        workflow_state["match_result"] = family_dict[0]["family"]
+                    elif isinstance(family_dict, dict) and "family" in family_dict:
+                        workflow_state["match_result"] = family_dict["family"]
                     else:
-                        workflow_state["match_result"] = result
+                        workflow_state["match_result"] = family_dict
+
+                    # Check hits count
+                    n_hits = family_dict.get("n_hits", 0)
+                    if n_hits == 0:
+                        logger.debug("Family matched but with 0 hits (unusual state)")
+
+                    logger.debug(
+                        f"Family classification result: {workflow_state['match_result']}"
+                    )
+                    return workflow_state
+                else:
+                    # Handle the case where no HMMER hits were found
+                    logger.debug(
+                        "No family classification found (HMMER returned no hits)"
+                    )
+                    workflow_state["stages"][stage_id]["progress"] = 100
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    # Mark this as a meaningful "no match" result rather than incomplete
+                    workflow_state["found_match"] = False
+                    workflow_state["match_stage"] = "family"
+                    workflow_state["match_result"] = "No hits found"
+                    workflow_state["complete"] = True
                     return workflow_state
 
             # if stage_id == "navis":
@@ -1396,7 +1422,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
             workflow_state["stages"][stage_id]["progress"] = 100
             workflow_state["stages"][stage_id]["status"] = "complete"
 
-        # Mark workflow as complete
+        # Mark workflow as complete even if no matches were found
         workflow_state["complete"] = True
         return workflow_state
 
@@ -1467,17 +1493,6 @@ def create_classification_card(classification_data):
     # Create list of classification details
     details = []
 
-    if closest_match:
-        details.append(
-            dmc.Group(
-                [
-                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
-                    dmc.Text(closest_match, fw=700, size="lg"),
-                ],
-                pos="apart",
-            )
-        )
-
     if confidence:
         details.append(
             dmc.Group(
@@ -1492,6 +1507,24 @@ def create_classification_card(classification_data):
                 ],
                 pos="right",
             ),
+        )
+
+    if closest_match:
+        if source == "exact":
+            closest_match_text = f"Exact match to {closest_match}"
+        elif source == "contained":
+            closest_match_text = f"Contained in {closest_match}"
+        elif source == "similar":
+            closest_match_text = f"Similar to {closest_match}"
+        else:
+            closest_match_text = f"Closest match: {closest_match}"
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Text(closest_match_text, fw=700, size="lg"),
+                ],
+                pos="apart",
+            )
         )
 
     if match_details:
@@ -1578,13 +1611,16 @@ def create_classification_output(sequence_results):
 
     # Extract classification data
     classification_data = sequence_results.get("classification")
+    classification_title = dmc.Title(
+        "Classification Results",
+        order=2,
+        style={"marginTop": "15px", "marginBottom": "20px"},
+    )
 
     if classification_data:
         return html.Div(
             [
-                dmc.Title(
-                    "Classification Results", order=2, style={"marginBottom": "20px"}
-                ),
+                classification_title,
                 create_classification_card(classification_data),
             ]
         )
@@ -1592,9 +1628,7 @@ def create_classification_output(sequence_results):
         # No classification available
         return html.Div(
             [
-                dmc.Title(
-                    "Classification Results", order=2, style={"marginBottom": "20px"}
-                ),
+                classification_title,
                 dmc.Alert(
                     title="No Classification Available",
                     children="Could not classify this sequence with any available method.",
