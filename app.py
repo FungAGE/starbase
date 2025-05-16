@@ -17,7 +17,6 @@ from src.config.settings import DB_PATHS
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
-from src.config.celery_config import celery
 from src.telemetry.utils import log_request, get_client_ip, update_ip_locations
 
 logger = get_logger(__name__)
@@ -45,9 +44,6 @@ cleanup_old_cache()
 limiter.init_app(server)
 register_routes(server, limiter)
 _dash_renderer._set_react_version("18.2.0")
-
-# Initialize Celery
-celery.conf.update(server.config)
 
 external_stylesheets = [
     "https://cdn.jsdelivr.net/npm/@mantine/core@7.11.0/styles.css",
@@ -119,10 +115,14 @@ def initialize_app():
     """Initialize app components and perform setup tasks."""
     with server.app_context():
         from src.database.migrations import create_database_indexes
+        from src.config.scheduler import run_scheduler
 
         create_database_indexes()
         cleanup_old_cache()
         update_ip_locations()
+
+        # Start the scheduler thread
+        run_scheduler()
 
 
 def serve_app_layout():
