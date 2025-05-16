@@ -46,10 +46,8 @@ def cleanup_cache_task():
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
-def run_blast_search_task(
-    self, query_header, query_seq, query_type, eval_threshold=0.01
-):
+# @celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
+def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
     """Celery task to run BLAST search"""
 
     try:
@@ -91,14 +89,11 @@ def run_blast_search_task(
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
-        self.retry(exc=e, countdown=3)
         return None
 
 
-@celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
-def run_hmmer_search_task(
-    self, query_header, query_seq, query_type, eval_threshold=0.01
-):
+# @celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
+def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
     """Celery task to run HMMER search"""
 
     try:
@@ -134,7 +129,6 @@ def run_hmmer_search_task(
 
     except Exception as e:
         logger.error(f"HMMER search failed: {str(e)}")
-        self.retry(exc=e, countdown=3)
         return None
 
 
@@ -163,12 +157,11 @@ def run_single_pgv_task(self, gff_file, tmp_file):
         return None
 
 
-@celery.task(name="run_classification_workflow_task", bind=True)
-def run_classification_workflow_task(self, upload_data, meta_dict=None):
-    """Celery task to run the classification workflow in the background.
+# @celery.task(name="run_classification_workflow_task", bind=True)
+def run_classification_workflow_task(upload_data, meta_dict=None):
+    """Function to run the classification workflow.
 
-    The workflow itself runs tasks sequentially, but the entire workflow
-    runs as a background task to not block the UI.
+    The workflow runs tasks sequentially.
     """
     from src.utils.classification_utils import run_classification_workflow
 
@@ -193,5 +186,4 @@ def run_classification_workflow_task(self, upload_data, meta_dict=None):
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
         logger.exception("Full traceback:")
-        self.retry(exc=e, countdown=3)
         return None

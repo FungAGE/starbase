@@ -27,7 +27,7 @@ from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
 import networkx as nx
 
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 from src.database.sql_manager import fetch_ships, fetch_captains
 
 
@@ -293,7 +293,7 @@ def check_contained_match(
 
 def check_similar_match(
     fasta: str, existing_ships: pd.DataFrame, threshold: float
-) -> Optional[str]:
+) -> Tuple[Optional[str], Any]:
     """Check for sequences with similarity above threshold using k-mer comparison."""
     logger.debug(f"Starting similarity comparison (threshold={threshold})")
 
@@ -331,21 +331,36 @@ def check_similar_match(
         seq_type="nucl",
     )
 
-    # return best_match
-    logger.debug(f"Calculated similarities for {len(similarities)} sequences")
-
-    # Check if we have any similarities above threshold
+    # Convert similarities dictionary to a list of triplets for processing
+    similarity_triplets = []
     query_id = "query_sequence"  # This is the ID used in write_combined_fasta
-    if similarities:
-        for seq_id1, seq_id2, sim in similarities:
-            # Find pairs where one of the sequences is our query
-            if seq_id1 == query_id or seq_id2 == query_id:
-                # The other ID is the match
-                match_id = seq_id2 if seq_id1 == query_id else seq_id1
-                logger.debug(f"Similarity to {match_id}: {sim}")
-                if sim >= threshold:
-                    logger.debug(f"Found similar match: {match_id} (similarity: {sim})")
-                    return match_id, similarities
+
+    # Check if similarities is a dictionary (new format) or a list (old format)
+    if isinstance(similarities, dict):
+        for seq_id1 in similarities:
+            for seq_id2, sim in similarities[seq_id1].items():
+                if seq_id1 == query_id or seq_id2 == query_id:
+                    # The other ID is the match
+                    match_id = seq_id2 if seq_id1 == query_id else seq_id1
+                    logger.debug(f"Similarity to {match_id}: {sim}")
+                    if sim >= threshold:
+                        logger.debug(
+                            f"Found similar match: {match_id} (similarity: {sim})"
+                        )
+                        return match_id, similarities
+    else:
+        # Handle the case where similarities is already a list of triplets
+        for similarity_tuple in similarities:
+            if len(similarity_tuple) == 3:
+                seq_id1, seq_id2, sim = similarity_tuple
+                if seq_id1 == query_id or seq_id2 == query_id:
+                    match_id = seq_id2 if seq_id1 == query_id else seq_id1
+                    logger.debug(f"Similarity to {match_id}: {sim}")
+                    if sim >= threshold:
+                        logger.debug(
+                            f"Found similar match: {match_id} (similarity: {sim})"
+                        )
+                        return match_id, similarities
 
     logger.debug("No similar matches found above threshold")
     return None, None
@@ -359,7 +374,6 @@ def check_similar_match(
 def classify_family(
     fasta=None,
     seq_type=None,
-    blast_df=None,
     meta_dict=None,
     pident_thresh=90,
     input_eval=0.001,
@@ -381,10 +395,6 @@ def classify_family(
     tmp_protein_filename = None
     hmmer_dict = None
 
-    logger.debug(
-        f"classify_family called with blast_df type: {type(blast_df)}, length: {len(blast_df) if blast_df is not None else 0}"
-    )
-
     if meta_dict is not None and isinstance(meta_dict, list):
         meta_df = pd.DataFrame(meta_dict)
 
@@ -395,35 +405,13 @@ def classify_family(
             logger.error("No sequences found in FASTA file")
             return None
 
-    # Simple selection of top hit using blast or hmmer results
-    if blast_df is not None and len(blast_df) > 0:
-        # Sort by evalue (ascending) and pident (descending) to get best hits
-        blast_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
-        top_hit = blast_df.iloc[0]
-
-        top_evalue = float(top_hit["evalue"])
-        top_aln_length = int(top_hit["aln_length"])
-        top_pident = float(top_hit["pident"])
-
-        if top_pident >= pident_thresh:
-            # look up family name from accession tag
-            hit_accession = top_hit["hit_IDs"]
-            top_family = meta_df[meta_df["accession_tag"] == hit_accession][
-                "familyName"
-            ].iloc[0]
-            family_dict = {
-                "family": top_family,
-                "aln_length": top_aln_length,
-                "evalue": top_evalue,
-            }
-
-        hmmer_dict, tmp_protein_filename = run_hmmer(
-            query_type=seq_type,
-            input_gene="tyr",
-            input_eval=0.01,
-            query_fasta=fasta,
-            threads=2,
-        )
+    hmmer_dict, tmp_protein_filename = run_hmmer(
+        query_type=seq_type,
+        input_gene="tyr",
+        input_eval=0.01,
+        query_fasta=fasta,
+        threads=2,
+    )
 
     if hmmer_dict is not None and len(hmmer_dict) > 0:
         hmmer_df = pd.DataFrame(hmmer_dict)
@@ -1285,35 +1273,19 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["similarities"] = similarities
             if stage_id == "family":
                 logger.debug("Running family classification")
-                blast_df = upload_data.get("blast_df")
-                if blast_df is None:
-                    logger.warning("No blast_df available for family classification")
-                    workflow_state["stages"][stage_id]["progress"] = 50
-                    workflow_state["stages"][stage_id]["status"] = "skipped"
-                    continue
 
-                if isinstance(blast_df, list):
-                    logger.debug("Converting blast_df from list to DataFrame")
-                    blast_df = pd.DataFrame(blast_df)
-
-                if blast_df.empty:
-                    logger.warning("blast_df is empty")
-                    workflow_state["stages"][stage_id]["progress"] = 50
-                    workflow_state["stages"][stage_id]["status"] = "skipped"
-                    continue
-
-                result = classify_family(
+                family_dict, protein_file = classify_family(
                     fasta=upload_data["fasta"],
                     seq_type=upload_data["seq_type"],
-                    blast_df=blast_df,
                     meta_dict=meta_dict,
                     pident_thresh=90,
                     input_eval=0.001,
                     threads=1,
                 )
 
-                if result:
-                    logger.debug(f"Found family classification: {result}")
+                if family_dict:
+                    family_name = family_dict["family"]
+                    logger.debug(f"Found family classification: {family_name}")
                     workflow_state["stages"][stage_id]["progress"] = 70
                     workflow_state["stages"][stage_id]["status"] = "complete"
                     workflow_state["complete"] = True
@@ -1590,7 +1562,12 @@ def create_classification_card(classification_data):
         withBorder=True,
         shadow="sm",
         radius="md",
-        style={"marginBottom": "1rem"},
+        style={
+            "marginBottom": "1rem",
+            "width": "fit-content",
+            "maxWidth": "100%",
+            "display": "inline-block",
+        },
     )
 
 

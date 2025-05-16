@@ -108,12 +108,13 @@ layout = dmc.Container(
         ],
         # Tab stores
         dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
-        # Interval for polling workflow state
+        # Interval for polling workflow state is no longer needed
+        # but kept disabled for backward compatibility
         dcc.Interval(
             id="classification-interval",
-            interval=500,  # 500ms for faster initial updates
-            disabled=True,
-            max_intervals=600,  # Maximum 5 minutes of polling (300s)
+            interval=500,
+            disabled=True,  # Always disabled
+            max_intervals=0,  # Never trigger
         ),
         dcc.Store(id="workflow-state-store", data=None),
         dmc.Space(h=20),
@@ -1028,13 +1029,12 @@ def process_single_sequence(seq_data, evalue_threshold):
 
     try:
         # Run BLAST search
-        blast_task = run_blast_search_task.delay(
+        blast_results = run_blast_search_task(
             query_header=query_header,
             query_seq=query_seq,
             query_type=query_type,
             eval_threshold=evalue_threshold,
         )
-        blast_results = blast_task.get(timeout=300)
 
         # Handle case where blast_results is None or invalid
         if not blast_results:
@@ -1115,11 +1115,10 @@ def process_single_sequence(seq_data, evalue_threshold):
         meta_dict = meta_df.to_dict("records") if meta_df is not None else None
 
         # Run classification workflow
-        classification_task = run_classification_workflow_task.delay(
+        workflow_result = run_classification_workflow_task(
             upload_data=upload_data,
             meta_dict=meta_dict,
         )
-        workflow_result = classification_task.get(timeout=300)
 
         # Check for classification result data first
         if workflow_result is not None:
@@ -1240,6 +1239,21 @@ def process_single_sequence(seq_data, evalue_threshold):
                             family_name = match_result
 
                         if family_name:
+                            # Extract aln_length and evalue from result if available, otherwise use defaults
+                            top_aln_length = 0
+                            top_evalue = 1.0
+
+                            if isinstance(match_result, dict):
+                                top_aln_length = match_result.get("aln_length", 0)
+                                top_evalue = match_result.get("evalue", 1.0)
+                            elif (
+                                isinstance(match_result, tuple)
+                                and len(match_result) > 0
+                                and isinstance(match_result[0], dict)
+                            ):
+                                top_aln_length = match_result[0].get("aln_length", 0)
+                                top_evalue = match_result[0].get("evalue", 1.0)
+
                             confidence = (
                                 "High"
                                 if top_aln_length > 80 and top_evalue < 0.001
@@ -1254,6 +1268,8 @@ def process_single_sequence(seq_data, evalue_threshold):
                         }
                     elif match_stage == "navis" and match_result:
                         navis_name = match_result
+                        # Make sure family_name is defined
+                        family_name = workflow_result.get("family", "Unknown")
                         classification_data = {
                             "source": "captain clustering",
                             "family": family_name,
@@ -1262,6 +1278,9 @@ def process_single_sequence(seq_data, evalue_threshold):
                         }
                     elif match_stage == "haplotype" and match_result:
                         haplotype_name = match_result
+                        # Make sure family_name and navis_name are defined
+                        family_name = workflow_result.get("family", "Unknown")
+                        navis_name = workflow_result.get("navis", "Unknown")
                         classification_data = {
                             "source": "k-mer similarity",
                             "family": family_name,
@@ -1290,7 +1309,9 @@ def process_single_sequence(seq_data, evalue_threshold):
             if top_pident >= 90:
                 # look up family name from accession tag
                 hit_IDs = top_hit["hit_IDs"]
-                meta_df_sub = meta_df[meta_df["accession_tag"].isin(hit_IDs)]
+                # Convert hit_IDs to a list if it's a string
+                hit_IDs_list = [hit_IDs] if isinstance(hit_IDs, str) else hit_IDs
+                meta_df_sub = meta_df[meta_df["accession_tag"].isin(hit_IDs_list)]
 
                 if not meta_df_sub.empty:
                     top_family = meta_df_sub["familyName"].iloc[0]
@@ -1319,13 +1340,12 @@ def process_single_sequence(seq_data, evalue_threshold):
     # If still no classification, try HMMER
     if classification_data is None:
         try:
-            hmmer_task = run_hmmer_search_task.delay(
+            hmmer_results = run_hmmer_search_task(
                 query_header=query_header,
                 query_seq=query_seq,
                 query_type=query_type,
                 eval_threshold=evalue_threshold,
             )
-            hmmer_results = hmmer_task.get(timeout=300)
 
             # Handle the new format with protein_content instead of protein_file
             captain_results = None
@@ -1454,7 +1474,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
     try:
         blast_results = None
-        classification_interval_disabled = True
+        classification_interval_disabled = True  # Always disable the interval
         workflow_state = None
 
         # Process only the first sequence to start
@@ -1492,7 +1512,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                     f"Classification decision: skip={skip_classification}, seq_length={sequence_length}"
                 )
 
-                # Default to disabled
+                # Default to disabled - always
                 classification_interval_disabled = True
 
                 # Set up workflow state if needed
@@ -1557,14 +1577,10 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                             },
                         }
 
-                        # Only enable the interval if we have a proper workflow state
-                        if workflow_state is not None:
-                            logger.debug("Enabling classification interval")
-                            classification_interval_disabled = False
-                        else:
-                            logger.warning(
-                                "Classification enabled but workflow state is None"
-                            )
+                        # Since we're no longer using Celery, we don't need the interval
+                        # always set to disabled since we run synchronously
+                        classification_interval_disabled = True
+
             else:
                 logger.warning(
                     "No sequence result returned from process_single_sequence"
@@ -2125,34 +2141,24 @@ def update_single_sequence_classification(blast_results_store):
 @callback(
     Output("workflow-state-store", "data", allow_duplicate=True),
     [
-        Input("classification-interval", "n_intervals"),
+        # Remove dependency on interval n_intervals
         Input("workflow-state-store", "data"),
     ],
     prevent_initial_call=True,
 )
-def update_classification_workflow_state(n_intervals, workflow_state):
-    """Poll for updated classification workflow state"""
-    # First check if we should skip this update
+def update_classification_workflow_state(workflow_state):
+    """Initialize workflow state (one-time operation)"""
+    # If no workflow state, nothing to do
     if workflow_state is None:
-        logger.warning("Workflow state is None")
-        return {"complete": True, "error": "Missing workflow state", "status": "failed"}
-
-    if workflow_state.get("complete", False):
         raise PreventUpdate
 
-    # Check for timing out after too many intervals (e.g., 300 = 5 minutes with 1s interval)
-    max_intervals = 300  # 5 minutes at 1 second intervals
-    if n_intervals and n_intervals > max_intervals:
-        logger.warning(
-            f"Classification polling timed out after {n_intervals} intervals"
-        )
-        workflow_state = (
-            workflow_state.copy()
-        )  # Create a copy to avoid modifying the input
-        workflow_state["error"] = "Classification timed out"
-        workflow_state["complete"] = True
-        workflow_state["status"] = "timeout"
-        return workflow_state
+    # Return early if workflow is complete, has error, or already started
+    if (
+        workflow_state.get("complete", False)
+        or workflow_state.get("error") is not None
+        or workflow_state.get("workflow_started", False)
+    ):
+        raise PreventUpdate
 
     # Check if task is running
     task_id = workflow_state.get("task_id")
@@ -2165,8 +2171,8 @@ def update_classification_workflow_state(n_intervals, workflow_state):
         return workflow_state
 
     try:
-        # Start the classification workflow task if needed
-        if workflow_state.get("task_id") and not workflow_state.get("celery_task_id"):
+        # Start the classification workflow - ONE TIME ONLY
+        if workflow_state.get("task_id") and not workflow_state.get("workflow_started"):
             # Use the upload_data from the workflow_state
             upload_data = workflow_state.get("upload_data", {})
             if not upload_data:
@@ -2177,74 +2183,42 @@ def update_classification_workflow_state(n_intervals, workflow_state):
                 workflow_state["status"] = "failed"
                 return workflow_state
 
-            # Start the task
             meta_df = fetch_meta_data()
             meta_dict = meta_df.to_dict("records") if meta_df is not None else None
 
-            task = run_classification_workflow_task.delay(
+            logger.debug("Running classification workflow directly (no Celery)")
+            # Run the workflow function directly
+            result = run_classification_workflow_task(
                 upload_data=upload_data, meta_dict=meta_dict
             )
+
+            # Use a copy to modify
             workflow_state = workflow_state.copy()
-            workflow_state["celery_task_id"] = task.id
+
+            # Mark as started so we don't run it again
+            workflow_state["workflow_started"] = True
+
+            # If we got a result back, merge it with the workflow state
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    if value is not None or key not in workflow_state:
+                        workflow_state[key] = value
+
+            # Ensure the status is set properly
+            workflow_state["status"] = "complete"
+            workflow_state["complete"] = True
+
             # Initialize stages if not present
             if "stages" not in workflow_state:
                 workflow_state["stages"] = {
                     stage["id"]: {"progress": 0, "complete": False}
                     for stage in WORKFLOW_STAGES
                 }
+
             return workflow_state
 
-        # Check existing task status
-        celery_task_id = workflow_state.get("celery_task_id")
-        if not celery_task_id:
-            logger.warning("No Celery task ID found in workflow state")
-            workflow_state = workflow_state.copy()
-            workflow_state["error"] = "Missing Celery task ID"
-            workflow_state["complete"] = True
-            workflow_state["status"] = "failed"
-            return workflow_state
-
-        # Get AsyncResult for task
-        task = run_classification_workflow_task.AsyncResult(celery_task_id)
-        task_status = task.status
-
-        # Create a copy of workflow state before modifying
-        workflow_state = workflow_state.copy()
-
-        # Update workflow status based on task state
-        if task_status == "PENDING":
-            workflow_state["status"] = "pending"
-        elif task_status == "STARTED":
-            workflow_state["status"] = "running"
-        elif task_status == "SUCCESS":
-            # Merge the results from the task
-            try:
-                task_result = task.get(timeout=5)  # Add timeout to prevent hanging
-                if isinstance(task_result, dict):
-                    # Make sure we don't overwrite crucial fields with None values
-                    for key, value in task_result.items():
-                        if value is not None or key not in workflow_state:
-                            workflow_state[key] = value
-            except Exception as e:
-                logger.error(f"Error getting task result: {e}")
-
-            workflow_state["status"] = "complete"
-            workflow_state["complete"] = True
-        elif task_status in ("FAILURE", "REVOKED"):
-            workflow_state["status"] = "failed"
-            try:
-                workflow_state["error"] = (
-                    str(task.result) if task.result else "Task failed"
-                )
-            except Exception as e:
-                workflow_state["error"] = f"Error accessing task result: {str(e)}"
-            workflow_state["complete"] = True
-        else:
-            # For unknown status, log it but keep current state
-            logger.warning(f"Unknown task status: {task_status}")
-            workflow_state["status"] = f"unknown ({task_status})"
-
-        return workflow_state
+        # Safety check - should never actually get here due to the early returns above
+        raise PreventUpdate
 
     except Exception as e:
         logger.error(f"Error updating workflow state: {e}")
@@ -2374,6 +2348,9 @@ def disable_interval_when_complete(workflow_state, blast_results):
         # Otherwise, stop loading (something went wrong)
         return True, False
 
+    # Always disable the interval regardless of state - we don't need polling anymore
+    # Only manage the submit button loading state
+
     # Always disable interval if complete flag is set
     if workflow_state.get("complete", False):
         return True, False
@@ -2386,5 +2363,5 @@ def disable_interval_when_complete(workflow_state, blast_results):
     if workflow_state.get("status") in ["complete", "failed", "timeout"]:
         return True, False
 
-    # Otherwise, keep the interval running and button loading
-    return False, True
+    # Even if the workflow is not complete, still disable the interval but keep button loading
+    return True, True
