@@ -1331,7 +1331,8 @@ def process_single_sequence(seq_data, evalue_threshold):
                         "family": top_family,
                         "navis": navis,
                         "haplotype": haplotype,
-                        "match_details": f"BLAST hit length {top_aln_length}bp with {top_pident:.1f}% identity to {hit_IDs}. Evalue: {top_evalue}",
+                        "closest_match": hit_IDs,
+                        "match_details": f"length {top_aln_length}bp with {top_pident:.1f}% identity. E-value: {top_evalue}",
                         "confidence": "Medium" if top_pident >= 95 else "Low",
                     }
         except Exception as e:
@@ -1417,6 +1418,7 @@ def process_single_sequence(seq_data, evalue_threshold):
     ],
     running=[
         (Output("submit-button", "disabled"), True, False),
+        (Output("submit-button", "loading"), True, False),  # Add loading state
     ],
     prevent_initial_call=True,
 )
@@ -1546,6 +1548,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                             "task_id": str(submission_id),  # Ensure it's a string
                             "status": "initialized",
                             "complete": False,
+                            "workflow_started": True,
                             "current_stage": None,
                             "current_stage_idx": 0,
                             "error": None,
@@ -2331,8 +2334,7 @@ def update_classification_progress(workflow_state):
     prevent_initial_call=True,
 )
 def disable_interval_when_complete(workflow_state, blast_results):
-    """Disable the interval when classification is complete and manage submit button loading state"""
-
+    """Control loading states when classification is complete"""
     # Check if we have valid BLAST results
     has_valid_results = (
         blast_results is not None
@@ -2340,7 +2342,7 @@ def disable_interval_when_complete(workflow_state, blast_results):
         and "sequence_results" in blast_results
     )
 
-    # If no workflow state but we have blast results, maintain loading while we prepare the workflow
+    # If no workflow state but we have blast results, keep loading while we prepare the workflow
     if workflow_state is None:
         # If we already have blast results but no workflow yet, keep loading
         if has_valid_results:
@@ -2348,20 +2350,50 @@ def disable_interval_when_complete(workflow_state, blast_results):
         # Otherwise, stop loading (something went wrong)
         return True, False
 
-    # Always disable the interval regardless of state - we don't need polling anymore
-    # Only manage the submit button loading state
-
-    # Always disable interval if complete flag is set
-    if workflow_state.get("complete", False):
+    # If workflow is complete or has error, disable loading
+    if (
+        workflow_state.get("complete", False)
+        or workflow_state.get("error") is not None
+        or workflow_state.get("status") in ["complete", "failed", "timeout"]
+    ):
         return True, False
 
-    # Disable interval if there's an error
-    if workflow_state.get("error") is not None:
-        return True, False
+    # Keep loading visible during processing
+    return True, True
 
-    # Disable interval if status indicates completion
-    if workflow_state.get("status") in ["complete", "failed", "timeout"]:
-        return True, False
 
-    # Even if the workflow is not complete, still disable the interval but keep button loading
+@callback(
+    [
+        Output("blast-results-loading", "visible"),  # Control the overlay
+        Output(
+            "submit-button", "loading", allow_duplicate=True
+        ),  # Add allow_duplicate here
+    ],
+    [
+        Input("submission-id-store", "data"),
+        Input("workflow-state-store", "data"),
+        Input("blast-results-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def toggle_loading_states(submission_id, workflow_state, blast_results):
+    """Show loading indicators when processing but hide when complete"""
+    # If we have a submission ID but no workflow state or blast results yet, show loading
+    if submission_id and (workflow_state is None or blast_results is None):
+        return True, True
+
+    # If workflow state exists but isn't complete, show loading
+    if workflow_state and not workflow_state.get("complete", False):
+        return True, True
+
+    # If we have blast results but they're empty or have error, hide loading
+    if blast_results:
+        if "error" in blast_results or not blast_results.get("sequence_results"):
+            return False, False
+
+    # Otherwise, if workflow is complete or we have results, hide loading
+    if (workflow_state and workflow_state.get("complete", False)) or blast_results:
+        return False, False
+
+    # Default case - keep loading visible
     return True, True
