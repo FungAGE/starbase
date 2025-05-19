@@ -4,7 +4,7 @@
 DEV_MODE=false
 
 # Parse command line arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
         --dev)
             DEV_MODE=true

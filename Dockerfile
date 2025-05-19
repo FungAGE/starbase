@@ -58,4 +58,4 @@ USER $USER
 
 EXPOSE 8000
 
-ENTRYPOINT ["./start-script.sh"]
+ENTRYPOINT ["sh", "/home/starbase/start-script.sh"]
