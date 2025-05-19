@@ -20,7 +20,7 @@ WORKDIR $HOME/
 
 # System dependencies and redis installation
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables wget redis-server && \
+    apt-get install -y curl iptables wget redis-server build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy environment file and create conda environment 
