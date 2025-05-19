@@ -49,8 +49,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Copy application code (changes most frequently, so do this last)
 COPY ./ ./
+
+# Ensure start-script.sh is executable and owned by the starbase user
 RUN chmod 755 start-script.sh && \
-    # Ensure all directories and files are owned by starbase user
+    chown $USER:$USER start-script.sh && \
     chown -R $USER:$USER $HOME/src
 
 # Switch to user
