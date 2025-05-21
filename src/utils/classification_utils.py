@@ -1497,7 +1497,7 @@ def create_classification_card(classification_data):
         details.append(
             dmc.Group(
                 [
-                    dmc.Text(f"Confidence: {confidence}", fw=700, size="md"),
+                    dmc.Text(f"Confidence: {confidence}", fw=700, size="lg"),
                     dmc.ThemeIcon(
                         DashIconify(icon=confidence_icon, width=16),
                         size="md",
@@ -1509,7 +1509,18 @@ def create_classification_card(classification_data):
             ),
         )
 
-    if closest_match:
+    if match_details:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
+                    dmc.Text(match_details, c="dimmed", size="sm"),
+                ],
+                pos="apart",
+            )
+        )
+
+    if closest_match and confidence != "Low":
         if source == "exact":
             closest_match_text = f"Exact match to {closest_match}"
         elif source == "contained":
@@ -1522,17 +1533,6 @@ def create_classification_card(classification_data):
             dmc.Group(
                 [
                     dmc.Text(closest_match_text, fw=700, size="lg"),
-                ],
-                pos="apart",
-            )
-        )
-
-    if match_details:
-        details.append(
-            dmc.Group(
-                [
-                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
-                    dmc.Text(match_details, c="dimmed", size="sm"),
                 ],
                 pos="apart",
             )
@@ -1556,7 +1556,7 @@ def create_classification_card(classification_data):
             )
         )
 
-    if navis:
+    if navis and confidence != "Low":
         details.append(
             dmc.Group(
                 [
@@ -1571,7 +1571,7 @@ def create_classification_card(classification_data):
             )
         )
 
-    if haplotype:
+    if haplotype and confidence == "High":
         details.append(
             dmc.Group(
                 [
