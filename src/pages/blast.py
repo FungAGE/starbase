@@ -36,7 +36,7 @@ from src.tasks import (
 
 from src.config.logging import get_logger
 
-from src.utils.blast_data import BlastClassDict, ClassificationData
+from src.utils.blast_data import BlastData, ClassificationData
 
 dash.register_page(__name__)
 
@@ -1006,45 +1006,6 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         return None, str(e), error_alert, None
 
 
-@callback(
-    [
-        Output("submit-button", "disabled", allow_duplicate=True),
-        Output("submit-button", "children", allow_duplicate=True),
-        Output("upload-error-message", "children", allow_duplicate=True),
-        Output("upload-error-store", "data", allow_duplicate=True),
-    ],
-    [
-        Input("submit-button", "n_clicks"),
-        Input("blast-timeout-interval", "n_intervals"),
-    ],
-    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
-    prevent_initial_call=True,
-)
-def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
-    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-
-    # Default return values
-    button_disabled = False
-    button_text = "Submit BLAST"  # Set default button text
-    error_message = ""
-    error_store = None
-
-    # Handle timeout case
-    if triggered_id == "blast-timeout-interval":
-        if n_clicks and timeout_triggered:
-            button_disabled = True
-            button_text = "Server timeout"
-            error_message = dmc.Alert(
-                title="Request Timeout",
-                children="The server is taking longer than expected to respond. Please try again later.",
-                color="yellow",
-                variant="filled",
-            )
-            error_store = "The server is taking longer than expected to respond. Please try again later."
-
-    return [button_disabled, button_text, error_message, error_store]
-
-
 def process_single_sequence(seq_data, evalue_threshold):
     """Process a single sequence and return structured results"""
 
@@ -1053,8 +1014,8 @@ def process_single_sequence(seq_data, evalue_threshold):
     query_seq = seq_data.get("sequence", "")
     query_type = seq_data.get("type", "nucl")
     query_length = len(query_seq)
-    # Create data class instances instead of dictionaries
-    class_dict = BlastClassDict(
+
+    class_dict = BlastData(
         seq_type=query_type,
         sequence=query_seq,
     )
