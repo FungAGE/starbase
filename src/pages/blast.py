@@ -1052,7 +1052,7 @@ def process_single_sequence(seq_data, evalue_threshold):
     query_header = seq_data.get("header", "query")
     query_seq = seq_data.get("sequence", "")
     query_type = seq_data.get("type", "nucl")
-
+    query_length = len(query_seq)
     # Create data class instances instead of dictionaries
     class_dict = BlastClassDict(
         seq_type=query_type,
@@ -1291,9 +1291,12 @@ def process_single_sequence(seq_data, evalue_threshold):
                         classification_data.haplotype = haplotype
                         classification_data.closest_match = hit_IDs
                         classification_data.match_details = f"length {top_aln_length}bp with {top_pident:.1f}% identity. E-value: {top_evalue}"
-                        classification_data.confidence = (
-                            "Medium" if top_pident >= 95 else "Low"
-                        )
+                        if top_pident >= 90 and top_aln_length > query_length * 0.8:
+                            classification_data.confidence = "High"
+                        elif top_pident >= 50 and top_aln_length > query_length * 0.5:
+                            classification_data.confidence = "Medium"
+                        else:
+                            classification_data.confidence = "Low"
 
             except Exception as e:
                 logger.error(f"Error processing BLAST results: {e}")
