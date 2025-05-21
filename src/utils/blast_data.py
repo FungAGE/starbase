@@ -27,7 +27,7 @@ class ClassificationData:
 
 
 @dataclass
-class BlastClassDict:
+class BlastData:
     seq_type: str
     fetch_ship_params: FetchShipParams = field(default_factory=FetchShipParams)
     fetch_captain_params: FetchCaptainParams = field(default_factory=FetchCaptainParams)
@@ -76,8 +76,8 @@ class BlastClassDict:
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BlastClassDict":
-        """Create a BlastClassDict instance from a dictionary"""
+    def from_dict(cls, data: Dict[str, Any]) -> "BlastData":
+        """Create a BlastData instance from a dictionary"""
         # Handle nested dictionaries
         fetch_ship_params = FetchShipParams(**data.get("fetch_ship_params", {}))
         fetch_captain_params = FetchCaptainParams(
