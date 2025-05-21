@@ -102,3 +102,34 @@ class BlastData:
             classification=classification_data,
             processed=data.get("processed", False),
         )
+
+
+@dataclass
+class WorkflowState:
+    complete: bool = False
+    error: Optional[str] = None
+    found_match: bool = False
+    match_stage: Optional[str] = None
+    match_result: Optional[str] = None
+    stages: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    task_id: str = ""
+    status: str = "initialized"
+    workflow_started: bool = True
+    current_stage: Optional[str] = None
+    current_stage_idx: int = 0
+    start_time: float = 0.0
+    class_dict: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BlastResult:
+    processed: bool = False
+    error: Optional[str] = None
+    sequence_results: Dict[str, BlastData] = field(default_factory=dict)
+
+
+@dataclass
+class MultiBlastData:
+    processed_sequences: List[int] = field(default_factory=list)
+    sequence_results: Dict[str, BlastData] = field(default_factory=dict)
+    total_sequences: int = 0

@@ -36,7 +36,7 @@ from src.tasks import (
 
 from src.config.logging import get_logger
 
-from src.utils.blast_data import BlastData, ClassificationData
+from src.utils.blast_data import BlastData, ClassificationData, WorkflowState
 
 dash.register_page(__name__)
 
@@ -1368,12 +1368,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                 if error or not direct_seq_list or len(direct_seq_list) == 0:
                     logger.warning(f"Failed to parse file contents directly: {error}")
-                    error_state = {
-                        "complete": True,
-                        "error": "Failed to parse sequence data",
-                        "status": "failed",
-                        "task_id": str(submission_id),
-                    }
+                    error_state = WorkflowState(
+                        complete=True,
+                        error="Failed to parse sequence data",
+                        status="failed",
+                        task_id=str(submission_id),
+                    )
                     return (
                         None,
                         True,
@@ -1388,12 +1388,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                 seq_list = direct_seq_list
             except Exception as e:
                 logger.error(f"Error parsing file contents: {e}")
-                error_state = {
-                    "complete": True,
-                    "error": "Error parsing sequence data",
-                    "status": "failed",
-                    "task_id": str(submission_id),
-                }
+                error_state = WorkflowState(
+                    complete=True,
+                    error="Error parsing sequence data",
+                    status="failed",
+                    task_id=str(submission_id),
+                )
                 return (
                     None,
                     True,
@@ -1403,12 +1403,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                 )  # Set loading to False on error too
         else:
             logger.warning("No seq_list or file_contents provided to process_sequences")
-            error_state = {
-                "complete": True,
-                "error": "No sequence data available",
-                "status": "failed",
-                "task_id": str(submission_id) if submission_id else None,
-            }
+            error_state = WorkflowState(
+                complete=True,
+                error="No sequence data available",
+                status="failed",
+                task_id=str(submission_id) if submission_id else None,
+            )
             return (
                 None,
                 True,
@@ -1491,23 +1491,23 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                     if not skip_classification:
                         # Initialize a complete workflow state structure
-                        workflow_state = {
-                            "task_id": str(submission_id),  # Ensure it's a string
-                            "status": "initialized",
-                            "complete": False,
-                            "workflow_started": True,
-                            "current_stage": None,
-                            "current_stage_idx": 0,
-                            "error": None,
-                            "found_match": False,
-                            "match_stage": None,
-                            "match_result": None,
-                            "start_time": time.time(),
-                            "stages": {
+                        workflow_state = WorkflowState(
+                            task_id=str(submission_id),  # Ensure it's a string
+                            status="initialized",
+                            complete=False,
+                            workflow_started=True,
+                            current_stage=None,
+                            current_stage_idx=0,
+                            error=None,
+                            found_match=False,
+                            match_stage=None,
+                            match_result=None,
+                            start_time=time.time(),
+                            stages={
                                 stage["id"]: {"progress": 0, "complete": False}
                                 for stage in WORKFLOW_STAGES
                             },
-                            "class_dict": {
+                            class_dict={
                                 "seq_type": seq_list[0].get("type", "nucl"),
                                 "fasta": {"content": fasta_content}
                                 if fasta_content
@@ -1525,7 +1525,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                                     "with_sequence": True,
                                 },
                             },
-                        }
+                        )
 
                         # Since we're no longer using Celery, we don't need the interval
                         # always set to disabled since we run synchronously
