@@ -151,8 +151,12 @@ class StarshipFeatures(BaseModel):
     captain = relationship("Captains", back_populates="features")
 
 
-class Papers(Base):
+class Papers(BaseModel):
     __tablename__ = "papers"
+    __table_args__ = (
+        CheckConstraint("PublicationYear >= 1900"),
+        CheckConstraint("DOI REGEXP '^10\\.\\d{4,9}/[-._;()/:\\w]+$' OR DOI IS NULL"),
+    )
     id = Column(Integer, primary_key=True)
     Key = Column(String)
     ItemType = Column(String)
