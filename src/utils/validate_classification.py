@@ -15,6 +15,79 @@ from src.utils.classification_utils import (
 )
 
 
+def run_checks(fasta_file, ships_df, accession_tag, seq_type, meta_dict, captains_df):
+    (
+        exact_match_result,
+        contained_match_result,
+        similar_match_result,
+        similarities,
+        family_dict,
+        protein_file,
+        classify_navis_result,
+        classify_haplotype_result,
+    ) = None, None, None, None, None, None, None, None
+
+    exact_match_result = check_exact_match(fasta=fasta_file, existing_ships=ships_df)
+
+    if exact_match_result is None:
+        print(f"No exact match found for {accession_tag}")
+
+        contained_match_result = check_contained_match(
+            fasta=fasta_file,
+            existing_ships=ships_df,
+            min_coverage=0.95,
+            min_identity=0.95,
+        )
+
+    if exact_match_result is None and contained_match_result is None:
+        print(f"No contained match found for {accession_tag}")
+
+        similar_match_result, similarities = check_similar_match(
+            fasta=fasta_file,
+            existing_ships=ships_df,
+            threshold=0.95,
+        )
+
+    if (
+        exact_match_result is None
+        and contained_match_result is None
+        and similar_match_result is None
+    ):
+        family_dict, protein_file = classify_family(
+            fasta=fasta_file,
+            seq_type=seq_type,
+            meta_dict=meta_dict,
+            pident_thresh=90,
+            input_eval=0.001,
+            threads=1,
+        )
+
+        if family_dict is not None:
+            classify_navis_result = classify_navis(
+                fasta=fasta_file,
+                existing_captains=captains_df,
+                threads=1,
+            )
+
+            if classify_navis_result is not None:
+                classify_haplotype_result = classify_haplotype(
+                    fasta=fasta_file,
+                    existing_ships=ships_df,
+                    navis=classify_navis_result,
+                    similarities=similarities,
+                )
+    return (
+        exact_match_result,
+        contained_match_result,
+        similar_match_result,
+        similarities,
+        family_dict,
+        protein_file,
+        classify_navis_result,
+        classify_haplotype_result,
+    )
+
+
 def validate_classification():
     """
     Check if our classification pipeline can recreate the existing classification
@@ -45,17 +118,6 @@ def validate_classification():
     )
 
     for index, row in ships_df.iterrows():
-        (
-            exact_match_result,
-            contained_match_result,
-            similar_match_result,
-            similarities,
-            family_dict,
-            protein_file,
-            classify_navis_result,
-            classify_haplotype_result,
-        ) = None, None, None, None, None, None, None, None
-
         accession_tag = row["accession_tag"]
 
         meta_data_subset = meta_data[meta_data["accession_tag"] == accession_tag]
@@ -71,75 +133,41 @@ def validate_classification():
         seq_type = "nucl"
         # seq_type = guess_seq_type(sequence)
 
-        exact_match_result = check_exact_match(
-            fasta=fasta_file, existing_ships=ships_df
+        (
+            exact_match_result,
+            contained_match_result,
+            similar_match_result,
+            similarities,
+            family_dict,
+            protein_file,
+            classify_navis_result,
+            classify_haplotype_result,
+        ) = run_checks(
+            fasta_file,
+            ships_df,
+            accession_tag,
+            seq_type,
+            meta_dict,
+            captains_df,
         )
-
-        if exact_match_result is None:
-            print(f"No exact match found for {accession_tag}")
-
-            contained_match_result = check_contained_match(
-                fasta=fasta_file,
-                existing_ships=ships_df,
-                min_coverage=0.95,
-                min_identity=0.95,
-            )
-
-        if exact_match_result is None and contained_match_result is None:
-            print(f"No contained match found for {accession_tag}")
-
-            similar_match_result, similarities = check_similar_match(
-                fasta=fasta_file,
-                existing_ships=ships_df,
-                threshold=0.95,
-            )
-
-        if (
-            exact_match_result is None
-            and contained_match_result is None
-            and similar_match_result is None
-        ):
-            family_dict, protein_file = classify_family(
-                fasta=fasta_file,
-                seq_type=seq_type,
-                meta_dict=meta_dict,
-                pident_thresh=90,
-                input_eval=0.001,
-                threads=1,
-            )
-
-            if family_dict is not None:
-                classify_navis_result = classify_navis(
-                    fasta=fasta_file,
-                    existing_captains=captains_df,
-                    threads=1,
-                )
-
-                if classify_navis_result is not None:
-                    classify_haplotype_result = classify_haplotype(
-                        fasta=fasta_file,
-                        existing_ships=ships_df,
-                        navis=classify_navis_result,
-                        similarities=similarities,
-                    )
-    # append results to dataframe
-    results_df = results_df.append(
-        {
-            "accession_tag": accession_tag,
-            "existing_family": existing_family,
-            "existing_navis": existing_navis,
-            "existing_haplotype": existing_haplotype,
-            "exact_match_result": exact_match_result,
-            "contained_match_result": contained_match_result,
-            "similar_match_result": similar_match_result,
-            "similarities": similarities,
-            "family_dict": family_dict,
-            "protein_file": protein_file,
-            "classify_navis_result": classify_navis_result,
-            "classify_haplotype_result": classify_haplotype_result,
-        },
-        ignore_index=True,
-    )
+        # append results to dataframe
+        results_df = results_df.append(
+            {
+                "accession_tag": accession_tag,
+                "existing_family": existing_family,
+                "existing_navis": existing_navis,
+                "existing_haplotype": existing_haplotype,
+                "exact_match_result": exact_match_result,
+                "contained_match_result": contained_match_result,
+                "similar_match_result": similar_match_result,
+                "similarities": similarities,
+                "family_dict": family_dict,
+                "protein_file": protein_file,
+                "classify_navis_result": classify_navis_result,
+                "classify_haplotype_result": classify_haplotype_result,
+            },
+            ignore_index=True,
+        )
 
     return results_df
 
