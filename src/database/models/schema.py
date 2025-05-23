@@ -27,10 +27,10 @@ paper_family_association = Table(
 class Accessions(Base):
     __tablename__ = "accessions"
     id = Column(Integer, primary_key=True)
-    ship_name = Column(String)
-    accession = Column(String, unique=True)
-    accession_tag = Column(String)
-    accession_new = Column(Numeric)
+    ship_name = Column(String, nullable=False)
+    accession = Column(String, unique=True, nullable=False)
+    accession_tag = Column(String, nullable=True)
+    accession_new = Column(Numeric, default=0)
 
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")
@@ -82,11 +82,11 @@ class StarshipFeatures(Base):
     __tablename__ = "starship_features"
     id = Column(Integer, primary_key=True)
     contigID = Column(String(100), nullable=False)
-    starshipID = Column(String(50), nullable=False, index=True)
-    captainID = Column(String(50), nullable=False, index=True)
-    elementBegin = Column(Integer, nullable=False)
-    elementEnd = Column(Integer, nullable=False)
-    elementLength = Column(Integer, nullable=False)
+    starshipID = Column(String, index=True)
+    captainID = Column(String, index=True)
+    elementBegin = Column(Integer)
+    elementEnd = Column(Integer)
+    elementLength = Column(Integer)
     strand = Column(String(1), CheckConstraint("strand IN ('+', '-')"))
     boundaryType = Column(String(10))
     emptySiteID = Column(String(100))
