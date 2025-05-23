@@ -53,21 +53,27 @@ class BaseModel(Base):
 
 class Accessions(BaseModel):
     __tablename__ = "accessions"
-    __table_args__ = (
-        Index("idx_accessions_tag", "accession_tag"),
-        Index("idx_accessions_id", "id"),
-    )
-    id = Column(Integer, primary_key=True)
-    ship_name = Column(String, nullable=False)
-    accession = Column(String, unique=True, nullable=False)
-    accession_tag = Column(String, nullable=True)
-    accession_new = Column(Numeric, default=0)
+    __table_args__ = (Index("idx_accession_tag", "accession_tag"),)
 
-    # Relationships
-    ships = relationship("Ships", back_populates="accession_obj")
-    gff_entries = relationship("Gff", back_populates="accession_obj")
-    joined_ships = relationship("JoinedShips", back_populates="accession_obj")
-    captains = relationship("Captains", back_populates="ship")
+    id = Column(Integer, primary_key=True)
+    ship_name = Column(String(255), nullable=False)
+    accession = Column(String(50), unique=True, nullable=False, index=True)
+    accession_tag = Column(String(50), nullable=True)
+    accession_new = Column(Numeric, default=0, nullable=False)
+
+    # Relationships with cascade delete
+    ships = relationship(
+        "Ships", back_populates="accession_obj", cascade="all, delete-orphan"
+    )
+    gff_entries = relationship(
+        "Gff", back_populates="accession_obj", cascade="all, delete-orphan"
+    )
+    joined_ships = relationship(
+        "JoinedShips", back_populates="accession_obj", cascade="all, delete-orphan"
+    )
+    captains = relationship(
+        "Captains", back_populates="ship", cascade="all, delete-orphan"
+    )
 
 
 class Ships(Base):
