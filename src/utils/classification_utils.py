@@ -84,8 +84,6 @@ def assign_accession(
             - accession: assigned accession number
             - needs_review: True if sequence needs manual review
     """
-    if existing_ships is None:
-        existing_ships = fetch_ships(curated=True)
 
     logger.debug("Starting accession assignment process")
 
