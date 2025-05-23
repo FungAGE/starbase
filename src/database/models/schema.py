@@ -95,7 +95,7 @@ class Captains(Base):
     sequence = Column(Text)
     ship_id = Column(Integer, ForeignKey("accessions.id"))
     reviewed = Column(String)
-
+    evidence = Column(String)
     # Relationships
     ship = relationship("Accessions", back_populates="captains")
     features = relationship("StarshipFeatures", back_populates="captain")
