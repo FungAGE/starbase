@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    Index,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -49,6 +50,10 @@ class BaseModel(Base):
 
 class Accessions(BaseModel):
     __tablename__ = "accessions"
+    __table_args__ = (
+        Index("idx_accessions_tag", "accession_tag"),
+        Index("idx_accessions_id", "id"),
+    )
     id = Column(Integer, primary_key=True)
     ship_name = Column(String, nullable=False)
     accession = Column(String, unique=True, nullable=False)
@@ -64,6 +69,7 @@ class Accessions(BaseModel):
 
 class Ships(Base):
     __tablename__ = "ships"
+    __table_args__ = (Index("idx_ships_accession", "accession_id"),)
     id = Column(Integer, primary_key=True)
     sequence = Column(Text)
     md5 = Column(String(32))
@@ -86,8 +92,12 @@ class Captains(Base):
     features = relationship("StarshipFeatures", back_populates="captain")
 
 
-class Genome(Base):
+class Genome(BaseModel):
     __tablename__ = "genomes"
+    __table_args__ = (
+        Index("idx_genome_taxonomy", "taxonomy_id"),
+        Index("idx_genome_version_source", "version", "genomeSource"),
+    )
 
     id = Column(Integer, primary_key=True)
     ome = Column(String(50))
@@ -166,6 +176,10 @@ class Papers(Base):
 
 class FamilyNames(Base):
     __tablename__ = "family_names"
+    __table_args__ = (
+        Index("idx_family_names_reference", "type_element_reference"),
+        Index("idx_family_names_family", "familyName"),
+    )
     id = Column(Integer, primary_key=True)
     longFamilyID = Column(String)
     oldFamilyID = Column(String)
@@ -209,6 +223,10 @@ class HaplotypeNames(Base):
 
 class Taxonomy(Base):
     __tablename__ = "taxonomy"
+    __table_args__ = (
+        Index("idx_taxonomy_name", "name"),
+        Index("idx_taxonomy_taxid", "taxID"),
+    )
     id = Column(Integer, primary_key=True)
     name = Column(String(100))
     taxID = Column(String(20))
@@ -232,6 +250,7 @@ class Taxonomy(Base):
 
 class Gff(Base):
     __tablename__ = "gff"
+    __table_args__ = (Index("idx_gff_ship_id", "ship_id"),)
     id = Column(Integer, primary_key=True)
     contigID = Column(String)
     accession = Column(String)
@@ -246,8 +265,15 @@ class Gff(Base):
     ship_id = Column(Integer, ForeignKey("accessions.id"))
 
 
-class JoinedShips(Base):
+class JoinedShips(BaseModel):
     __tablename__ = "joined_ships"
+    __table_args__ = (
+        Index("idx_joined_ships_curated", "curated_status"),
+        Index("idx_joined_ships_ship_id", "ship_id"),
+        Index("idx_joined_ships_taxid", "taxid"),
+        Index("idx_joined_ships_ship_family_id", "ship_family_id"),
+        Index("idx_joined_ships_genome_id", "genome_id"),
+    )
     id = Column(Integer, primary_key=True)
     starshipID = Column(String)
     genus = Column(String)
