@@ -151,6 +151,30 @@ class FamilyNames(Base):
     )
 
 
+class NavisNames(Base):
+    __tablename__ = "navis_names"
+    id = Column(Integer, primary_key=True)
+    navis_name = Column(String)
+    previous_navis_name = Column(String)
+    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+
+    # Relationships
+    family = relationship("FamilyNames")
+
+
+class HaplotypeNames(Base):
+    __tablename__ = "haplotype_names"
+    id = Column(Integer, primary_key=True)
+    haplotype_name = Column(String)
+    previous_haplotype_name = Column(String)
+    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
+
+    # Relationships
+    family = relationship("FamilyNames")
+    navis = relationship("NavisNames")
+
+
 class Taxonomy(Base):
     __tablename__ = "taxonomy"
     id = Column(Integer, primary_key=True)
@@ -172,17 +196,6 @@ class Taxonomy(Base):
     genus = Column(VARCHAR)
     species = Column(VARCHAR)
     section = Column(VARCHAR)
-
-
-class NavisHaplotype(Base):
-    __tablename__ = "navis_haplotype"
-    id = Column(Integer, primary_key=True)
-    starship_navis = Column(String)
-    starship_haplotype = Column(String)
-    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
-
-    # Relationships
-    family = relationship("FamilyNames")
 
 
 class Gff(Base):
