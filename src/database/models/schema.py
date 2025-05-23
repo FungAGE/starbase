@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     Index,
+    Boolean,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -46,6 +47,8 @@ class BaseModel(Base):
         onupdate=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         nullable=False,
     )
+    deleted_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False)
 
 
 class Accessions(BaseModel):
