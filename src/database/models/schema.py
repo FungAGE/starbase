@@ -9,10 +9,12 @@ from sqlalchemy import (
     Text,
     CheckConstraint,
     DateTime,
+    Enum,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
+import enum
 
 Base = declarative_base()
 metadata = Base.metadata
@@ -99,7 +101,13 @@ class Genome(Base):
     taxonomy = relationship("Taxonomy", back_populates="genomes")
 
 
-class StarshipFeatures(Base):
+class BoundaryType(enum.Enum):
+    flank = "flank"
+    insert = "insert"
+    unknown = "unknown"
+
+
+class StarshipFeatures(BaseModel):
     __tablename__ = "starship_features"
     id = Column(Integer, primary_key=True)
     contigID = Column(String(100), nullable=False)
@@ -109,7 +117,9 @@ class StarshipFeatures(Base):
     elementEnd = Column(Integer)
     elementLength = Column(Integer)
     strand = Column(String(1), CheckConstraint("strand IN ('+', '-')"))
-    boundaryType = Column(String(10))
+    boundaryType = Column(
+        Enum(BoundaryType), nullable=False, default=BoundaryType.unknown
+    )
     emptySiteID = Column(String(100))
     emptyContig = Column(String(100))
     emptyBegin = Column(Integer)
