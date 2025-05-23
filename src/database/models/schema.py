@@ -6,7 +6,8 @@ from sqlalchemy import (
     Numeric,
     String,
     Table,
-    VARCHAR,
+    Text,
+    CheckConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -41,8 +42,8 @@ class Accessions(Base):
 class Ships(Base):
     __tablename__ = "ships"
     id = Column(Integer, primary_key=True)
-    sequence = Column(String)
-    md5 = Column(String)
+    sequence = Column(Text)
+    md5 = Column(String(32))
     accession_id = Column(Integer, ForeignKey("accessions.id"))
 
     # Relationships
@@ -53,7 +54,7 @@ class Captains(Base):
     __tablename__ = "captains"
     id = Column(Integer, primary_key=True)
     captainID = Column(String, unique=True)
-    sequence = Column(String)
+    sequence = Column(Text)
     ship_id = Column(Integer, ForeignKey("accessions.id"))
     reviewed = Column(String)
 
@@ -80,27 +81,27 @@ class Genome(Base):
 class StarshipFeatures(Base):
     __tablename__ = "starship_features"
     id = Column(Integer, primary_key=True)
-    contigID = Column(String)
-    starshipID = Column(String)
-    captainID = Column(String)
-    elementBegin = Column(String)
-    elementEnd = Column(String)
-    elementLength = Column(String)
-    strand = Column(String)
-    boundaryType = Column(String)
-    emptySiteID = Column(String)
-    emptyContig = Column(String)
-    emptyBegin = Column(String)
-    emptyEnd = Column(String)
-    emptySeq = Column(String)
-    upDR = Column(String)
-    downDR = Column(String)
-    DRedit = Column(String)
-    upTIR = Column(String)
-    downTIR = Column(String)
-    TIRedit = Column(String)
-    nestedInside = Column(String)
-    containNested = Column(String)
+    contigID = Column(String(100), nullable=False)
+    starshipID = Column(String(50), nullable=False, index=True)
+    captainID = Column(String(50), nullable=False, index=True)
+    elementBegin = Column(Integer, nullable=False)
+    elementEnd = Column(Integer, nullable=False)
+    elementLength = Column(Integer, nullable=False)
+    strand = Column(String(1), CheckConstraint("strand IN ('+', '-')"))
+    boundaryType = Column(String(10))
+    emptySiteID = Column(String(100))
+    emptyContig = Column(String(100))
+    emptyBegin = Column(Integer)
+    emptyEnd = Column(Integer)
+    emptySeq = Column(Text)
+    upDR = Column(Text)
+    downDR = Column(Text)
+    DRedit = Column(String(50))
+    upTIR = Column(Text)
+    downTIR = Column(Text)
+    TIRedit = Column(String(50))
+    nestedInside = Column(String(100))
+    containNested = Column(String(100))
     ship_id = Column(Integer, ForeignKey("accessions.id"))
     captain_id = Column(Integer, ForeignKey("captains.id"))
 
@@ -115,16 +116,16 @@ class Papers(Base):
     Key = Column(String)
     ItemType = Column(String)
     PublicationYear = Column(Integer)
-    Author = Column(String)
+    Author = Column(String(255))
     Title = Column(String)
     PublicationTitle = Column(String)
     DOI = Column(String)
     Url = Column(String)
-    AbstractNote = Column(String)
+    AbstractNote = Column(Text)
     Date = Column(String)
     starshipMentioned = Column(String)
     typePaper = Column(String)
-    shortCitation = Column(VARCHAR)
+    shortCitation = Column(String)
 
     # Relationships
     family_names = relationship(
@@ -135,14 +136,14 @@ class Papers(Base):
 class FamilyNames(Base):
     __tablename__ = "family_names"
     id = Column(Integer, primary_key=True)
-    longFamilyID = Column(VARCHAR)
-    oldFamilyID = Column(VARCHAR)
+    longFamilyID = Column(String)
+    oldFamilyID = Column(String)
     clade = Column(Integer)
     newFamilyID = Column(Integer)
-    familyName = Column(VARCHAR)
-    type_element_reference = Column(VARCHAR)
-    notes = Column(VARCHAR)
-    otherFamilyID = Column(VARCHAR)
+    familyName = Column(String)
+    type_element_reference = Column(String)
+    notes = Column(String)
+    otherFamilyID = Column(String)
     paper_id = Column(Integer, ForeignKey("papers.id"))
 
     # Relationships
@@ -178,24 +179,24 @@ class HaplotypeNames(Base):
 class Taxonomy(Base):
     __tablename__ = "taxonomy"
     id = Column(Integer, primary_key=True)
-    name = Column(VARCHAR)
-    taxID = Column(VARCHAR)
-    superkingdom = Column(VARCHAR)
-    clade = Column(VARCHAR)
-    kingdom = Column(VARCHAR)
-    subkingdom = Column(VARCHAR)
-    phylum = Column(VARCHAR)
-    subphylum = Column(VARCHAR)
+    name = Column(String(100))
+    taxID = Column(String(20))
+    superkingdom = Column(String(50))
+    clade = Column(String(50))
+    kingdom = Column(String(50))
+    subkingdom = Column(String(50))
+    phylum = Column(String(50))
+    subphylum = Column(String(50))
     class_ = Column(
-        VARCHAR, name="class"
+        String(50), name="class"
     )  # Using class_ as class is a reserved keyword
-    subclass = Column(VARCHAR)
-    order = Column(VARCHAR)
-    suborder = Column(VARCHAR)
-    family = Column(VARCHAR)
-    genus = Column(VARCHAR)
-    species = Column(VARCHAR)
-    section = Column(VARCHAR)
+    subclass = Column(String(50))
+    order = Column(String(50))
+    suborder = Column(String(50))
+    family = Column(String(50))
+    genus = Column(String(50))
+    species = Column(String(50))
+    section = Column(String(50))
 
 
 class Gff(Base):
