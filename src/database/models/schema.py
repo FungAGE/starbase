@@ -8,9 +8,11 @@ from sqlalchemy import (
     Table,
     Text,
     CheckConstraint,
+    DateTime,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
 
 Base = declarative_base()
 metadata = Base.metadata
@@ -19,12 +21,31 @@ metadata = Base.metadata
 paper_family_association = Table(
     "paper_family_association",
     Base.metadata,
-    Column("paper_id", Integer, ForeignKey("papers.id")),
-    Column("family_id", Integer, ForeignKey("family_names.id")),
+    Column("id", Integer, primary_key=True),
+    Column("paper_id", Integer, ForeignKey("papers.id", ondelete="CASCADE")),
+    Column("family_id", Integer, ForeignKey("family_names.id", ondelete="CASCADE")),
+    Column(
+        "created_at", DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ),
 )
 
 
-class Accessions(Base):
+class BaseModel(Base):
+    """Abstract base model with common fields"""
+
+    __abstract__ = True
+    created_at = Column(
+        DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=False
+    )
+    updated_at = Column(
+        DateTime,
+        default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        onupdate=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        nullable=False,
+    )
+
+
+class Accessions(BaseModel):
     __tablename__ = "accessions"
     id = Column(Integer, primary_key=True)
     ship_name = Column(String, nullable=False)
