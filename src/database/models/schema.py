@@ -3,7 +3,6 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     Integer,
-    Numeric,
     String,
     Table,
     Text,
@@ -57,13 +56,15 @@ class Accessions(BaseModel):
 
     id = Column(Integer, primary_key=True)
     ship_name = Column(String(255), nullable=False)
-    accession = Column(String(50), unique=True, nullable=False, index=True)
-    accession_tag = Column(String(50), nullable=True)
-    accession_new = Column(Numeric, default=0, nullable=False)
+    accession_tag = Column(String(50), nullable=True, index=True)
+    accession = Column(String(50), nullable=False)
+    created_at = Column(DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    updated_at = Column(DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    is_deleted = Column(Boolean, default=False)
 
     # Relationships with cascade delete
     ships = relationship(
-        "Ships", back_populates="accession_obj", cascade="all, delete-orphan"
+        "Ships", back_populates="accession", cascade="all, delete-orphan"
     )
     gff_entries = relationship(
         "Gff", back_populates="accession_obj", cascade="all, delete-orphan"
@@ -80,12 +81,13 @@ class Ships(Base):
     __tablename__ = "ships"
     __table_args__ = (Index("idx_ships_accession", "accession_id"),)
     id = Column(Integer, primary_key=True)
+    accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=False)
     sequence = Column(Text)
     md5 = Column(String(32))
-    accession_id = Column(Integer, ForeignKey("accessions.id"))
+    sequence_length = Column(Integer)
 
-    # Relationships
-    accession_obj = relationship("Accessions", back_populates="ships")
+    # Relationship
+    accession = relationship("Accessions", back_populates="ships")
 
 
 class Captains(Base):

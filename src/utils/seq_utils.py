@@ -11,6 +11,8 @@ from dash import html
 import dash_mantine_components as dmc
 from typing import Dict
 import os
+import hashlib
+
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -749,3 +751,10 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
         write_fasta({seq_id: seq}, tmp_fasta)
     logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
     return tmp_fasta_dir
+
+
+def generate_checksum(sequence):
+    """Generate checksum from sequence"""
+    clean_sequence = "".join(sequence.upper().split())
+    sequence_hash = hashlib.md5(clean_sequence.encode()).hexdigest()
+    return sequence_hash
