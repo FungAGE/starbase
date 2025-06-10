@@ -1,4 +1,4 @@
-import argparse
+import tempfile
 import pysam
 import pandas as pd
 from collections import defaultdict
@@ -290,7 +290,7 @@ def analyze_flank_pairs(
             final_hits.append(
                 {
                     "genome_file": genome_file,
-                    "query_names": queries,  # Now a list of query names
+                    "query_names": queries,
                     "target_name": base_hit["target_name"],
                     "first_start": base_hit["first_start"],
                     "first_end": base_hit["first_end"],
@@ -299,35 +299,87 @@ def analyze_flank_pairs(
                     "insert_size": base_hit["insert_size"],
                     "total_length": base_hit["total_length"],
                     "orientation": base_hit["orientation"],
-                    "num_queries": len(queries),  # Add count of matching queries
+                    "num_queries": len(queries),
                 }
             )
 
     return pd.DataFrame(final_hits)
 
 
-def process_genome_batch(
-    genome_dir: str,
-    query_fasta: str,
-    output_dir: str,
+def process_genome(
+    ship_fasta: str,
+    genome_fasta: str,
+    mmi_file: str,
+    preset: str,
+    flank_size: int = 5000,
+    max_gap: Optional[int] = None,
+):
+    """Process ships against a single genome using minimap2"""
+    try:
+        sam_file = tempfile.NamedTemporaryFile(delete=False).name
+        subprocess.run(
+            [
+                "minimap2",
+                "-t",
+                "1",
+                "-ax",
+                preset,
+                "--end-bonus",
+                "100",
+                "-O",
+                "5,56",
+                "-E",
+                "4,1",
+                "-z",
+                "400",
+                "-B",
+                "2",
+                mmi_file,
+                ship_fasta,
+                genome_fasta,
+                "-o",
+                sam_file,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        # Process alignments
+        alignment_result = process_minimap2_alignments(sam_file, flank_size=flank_size)
+
+        if not alignment_result.empty:
+            paired_results = analyze_flank_pairs(
+                alignment_result, genome_fasta, max_gap=max_gap
+            )
+            return paired_results
+
+    finally:
+        if os.path.exists(sam_file):
+            os.remove(sam_file)
+
+    return None
+
+
+# TODO: handle creation of ship fasta
+# TODO: parallelize genome search in batches
+def process_genome_search(
+    ship_dict: dict,
+    genome_fasta: str,
     flank_size: int = 5000,
     max_gap: Optional[int] = None,
     seq_div: str = "0.1",
     threads: int = 20,
-    batch_size: int = 10,
-    test_genomes: int = None,
 ):
     """
-    Process multiple genomes against a set of query sequences
+    Process a genome against a set of query sequences
 
     Parameters:
     -----------
-    genome_dir : str
-        Directory containing genome FASTA files
-    query_fasta : str
-        FASTA file containing all query sequences
-    output_dir : str
-        Directory for output files
+    ship_dict : dict
+        Dictionary containing ship sequences
+    genome_fasta : str
+        FASTA file containing a genome sequence
     seq_div : str
         Amount of sequence divergence to tolerate (default: 0.1)
     flank_size : int
@@ -336,29 +388,7 @@ def process_genome_batch(
         Maximum allowed gap between flanking hits. If None, uses query length for each query
     threads : int
         Number of threads to use (default: 20)
-    batch_size : int
-        Number of genomes to process in parallel
-
-    Additional Parameters:
-    -----------
-    test_genomes : int | None
-        If set, only process this many genomes (for testing)
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from tqdm import tqdm
-
-    os.makedirs(output_dir, exist_ok=True)
-    results_file = os.path.join(output_dir, "all_alignments.tsv")
-
-    # Get lists of genome files with optional subsetting
-    genome_files = [
-        f for f in os.listdir(genome_dir) if f.endswith((".fa", ".fasta", ".fna"))
-    ]
-
-    # Subset for testing if requested
-    if test_genomes:
-        genome_files = genome_files[:test_genomes]
-        logger.info(f"Testing with {test_genomes} genomes")
 
     if seq_div == "0.1":
         preset = "asm5"
@@ -369,180 +399,26 @@ def process_genome_batch(
     else:
         preset = "asm5"
 
-    total_genomes = len(genome_files)
+    mmi_file = tempfile.NamedTemporaryFile(delete=False).name
 
-    # Write header to results file if it doesn't exist
-    if not os.path.exists(results_file):
-        with open(results_file, "w") as f:
-            f.write(
-                "genome_file\tquery_names\ttarget_name\tfirst_start\tfirst_end\tlast_start\tlast_end\tinsert_size\ttotal_length\torientation\tnum_queries\n"
-            )
-
-    def process_genome(genome: str, mmi_file: str):
-        """Process queries against a single genome"""
-        try:
-            # Direct use of query_fasta instead of combining multiple files
-            sam_file = os.path.join(output_dir, f"temp_{genome}_all.sam")
-            subprocess.run(
-                [
-                    "minimap2",
-                    "-t",
-                    "1",
-                    "-ax",
-                    preset,
-                    "--end-bonus",
-                    "100",
-                    "-O",
-                    "5,56",
-                    "-E",
-                    "4,1",
-                    "-z",
-                    "400",
-                    "-B",
-                    "2",
-                    mmi_file,
-                    query_fasta,
-                    "-o",
-                    sam_file,
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-
-            # Process alignments
-            alignment_result = process_minimap2_alignments(
-                sam_file, flank_size=flank_size
-            )
-
-            if not alignment_result.empty:
-                paired_results = analyze_flank_pairs(
-                    alignment_result, genome, max_gap=max_gap
-                )
-                return paired_results
-
-        finally:
-            if os.path.exists(sam_file):
-                os.remove(sam_file)
-
+    minimap2_index = subprocess.run(
+        [
+            "minimap2",
+            "-t",
+            str(threads),
+            "-d",
+            mmi_file,
+            genome_fasta,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if minimap2_index.returncode != 0:
+        logger.error(f"Minimap2 index failed for {genome_fasta}")
         return None
 
-    # Process genomes in batches
-    pbar = tqdm(total=total_genomes, desc="Processing genome/query combinations")
-
-    for i in range(0, len(genome_files), batch_size):
-        batch_genomes = genome_files[i : i + batch_size]
-
-        # Create indices for this batch using multiple threads
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            index_futures = []
-            for genome in batch_genomes:
-                genome_path = os.path.join(genome_dir, genome)
-                mmi_file = os.path.join(output_dir, f"{genome}.mmi")
-
-                if not os.path.exists(mmi_file):
-                    future = executor.submit(
-                        subprocess.run,
-                        [
-                            "minimap2",
-                            "-t",
-                            str(max(1, threads // len(batch_genomes))),
-                            "-d",
-                            mmi_file,
-                            genome_path,
-                        ],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    index_futures.append(future)
-
-            # Wait for all indexing to complete
-            for future in as_completed(index_futures):
-                future.result()
-
-        # Process alignments using thread pool
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = []
-
-            for genome in batch_genomes:
-                mmi_file = os.path.join(output_dir, f"{genome}.mmi")
-                futures.append(executor.submit(process_genome, genome, mmi_file))
-
-            # Process results as they complete
-            for future in as_completed(futures):
-                paired_results = future.result()
-                if paired_results is not None and not paired_results.empty:
-                    with open(results_file, "a") as f:
-                        for _, hit in paired_results.iterrows():
-                            query_names_str = ",".join(
-                                hit["query_names"]
-                            )  # Join query names with commas
-                            f.write(
-                                f"{hit['genome_file']}\t{query_names_str}\t{hit['target_name']}\t{hit['first_start']}\t{hit['first_end']}\t{hit['last_start']}\t{hit['last_end']}\t{hit['insert_size']}\t{hit['total_length']}\t{hit['orientation']}\t{hit['num_queries']}\n"
-                            )
-                pbar.update(1)
-
-        # Clean up indices from previous batch
-        if i + batch_size < len(genome_files):
-            for genome in batch_genomes:
-                mmi_file = os.path.join(output_dir, f"{genome}.mmi")
-                if os.path.exists(mmi_file):
-                    os.remove(mmi_file)
-
-    pbar.close()
-    logger.info(f"\nAll processing complete! Results written to: {results_file}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Search for sequences across multiple genome assemblies"
+    paired_results = process_genome(
+        ship_dict, genome_fasta, mmi_file, preset, flank_size, max_gap
     )
-    parser.add_argument(
-        "--genome_dir", required=True, help="Directory containing genome FASTA files"
-    )
-    parser.add_argument(
-        "--query_fasta", required=True, help="FASTA file containing all query sequences"
-    )
-    parser.add_argument(
-        "--flank_size",
-        type=int,
-        default=5000,
-        help="Flank size around alignments (default: 5000)",
-    )
-    parser.add_argument(
-        "--max_gap", type=int, help="Maximum gap between flanks (default: query length)"
-    )
-    parser.add_argument(
-        "--output_dir", default="minimap_alignments", help="Output directory"
-    )
-    parser.add_argument(
-        "--threads", type=int, default=20, help="Number of threads for minimap2"
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=10,
-        help="Number of genomes to process in parallel",
-    )
-    parser.add_argument(
-        "--seq_div",
-        type=str,
-        default="0.1",
-        help="Amount of sequence divergence to tolerate",
-    )
-    parser.add_argument(
-        "--test_genomes", type=int, help="Number of genomes to test (for debugging)"
-    )
-    args = parser.parse_args()
 
-    process_genome_batch(
-        genome_dir=args.genome_dir,
-        query_fasta=args.query_fasta,
-        output_dir=args.output_dir,
-        flank_size=args.flank_size,
-        max_gap=args.max_gap,
-        seq_div=args.seq_div,
-        threads=args.threads,
-        batch_size=args.batch_size,
-        test_genomes=args.test_genomes,
-    )
+    return paired_results
