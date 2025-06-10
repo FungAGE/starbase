@@ -59,6 +59,7 @@ classifcation pipeline that should be used:
 
 # Define our workflow stages with their colors
 WORKFLOW_STAGES = [
+    {"id": "minimap", "label": "Searching genomes", "color": "gray"},
     {"id": "exact", "label": "Checking for exact matches", "color": "green"},
     {"id": "contained", "label": "Checking for contained matches", "color": "blue"},
     {"id": "similar", "label": "Checking for similar matches", "color": "violet"},
@@ -142,6 +143,27 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 ########################################################
 # sequence matching functions
 ########################################################
+
+
+def search_genome(query_fasta, ships_df):
+    from src.utils.minimap import process_genome_batch
+
+    ship_dict = load_fasta_to_dict(ships_df["sequence"].iloc[0])
+
+    try:
+        return process_genome_batch(
+            ship_dict,
+            query_fasta,
+            flank_size=5000,
+            max_gap=None,
+            seq_div="0.1",
+            threads=2,
+            batch_size=10,
+            test_genomes=None,
+        )
+    except Exception as e:
+        logger.error(f"Search genome failed: {str(e)}")
+        return None
 
 
 def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]:
@@ -1211,6 +1233,21 @@ def run_classification_workflow(upload_data, meta_dict=None):
             workflow_state["stages"][stage_id]["status"] = "running"
 
             logger.debug(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
+
+            if stage_id == "minimap":
+                logger.debug("Running minimap search")
+                result = search_genome(upload_data.fasta_file)
+
+                if result:
+                    logger.debug(f"Found minimap search: {result}")
+                    workflow_state["stages"][stage_id]["progress"] = 100
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "minimap"
+                    workflow_state["match_result"] = result
+                    workflow_state["complete"] = True
+                    logger.debug(f"Minimap search workflow state: {workflow_state}")
+                    return workflow_state
 
             if stage_id == "exact":
                 logger.debug("Running exact match check")
