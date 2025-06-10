@@ -59,8 +59,7 @@ def create_accession_table(old_engine, num_rows=10):
     query = f"""
     SELECT 
         ship_name,
-        accession_tag,
-        accession_tag as accession
+        accession_tag
     FROM accessions 
     LIMIT {num_rows}
     """
@@ -86,33 +85,156 @@ def create_starship_features_table(old_engine, num_rows=10):
     return df
 
 
+def fetch_captains_for_migration(
+    old_engine,
+    accession_tags=None,
+    curated=False,
+    dereplicate=True,
+    with_sequence=False,
+):
+    """
+    Migration-specific version of fetch_captains that works with the old database schema.
+    This function directly queries the old database without using SQLAlchemy session.
+
+    Args:
+        old_engine: Database engine for the old database
+        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all captains.
+        curated (bool, optional): If True, only fetch curated ships.
+        dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
+        with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
+    Returns:
+        pd.DataFrame: DataFrame containing captain data
+    """
+
+    # First, let's try a simpler query to see what tables and columns exist
+    if with_sequence:
+        query = """
+        SELECT DISTINCT 
+            a.id, 
+            a.accession_tag,
+            j.curated_status,
+            j.starshipID,
+            j.captainID,
+            j.captainID_new,
+            c.sequence
+        FROM joined_ships j
+        INNER JOIN accessions a ON j.ship_id = a.id
+        LEFT JOIN captains c ON j.captainID_new = c.id
+        WHERE 1=1
+        """
+    else:
+        query = """
+        SELECT DISTINCT 
+            a.id, 
+            a.accession_tag,
+            j.curated_status,
+            j.starshipID,
+            j.captainID,
+            j.captainID_new
+        FROM joined_ships j
+        INNER JOIN accessions a ON j.ship_id = a.id
+        WHERE 1=1
+        """
+
+    if accession_tags:
+        query += " AND a.accession_tag IN ({})".format(
+            ",".join(f"'{tag}'" for tag in accession_tags)
+        )
+    if curated:
+        query += " AND j.curated_status = 'curated'"
+
+    if with_sequence:
+        query += " AND (c.sequence IS NOT NULL)"
+
+    try:
+        df = pd.read_sql_query(query, old_engine)
+
+        if dereplicate:
+            df = df.drop_duplicates(subset="accession_tag")
+
+        if df.empty:
+            logger.warning("Fetched captains DataFrame is empty.")
+        return df
+    except Exception as e:
+        logger.error(f"Error fetching captains data for migration: {str(e)}")
+        # If the above query fails, try a simpler fallback
+        try:
+            fallback_query = """
+            SELECT DISTINCT 
+                a.id, 
+                a.accession_tag,
+                j.curated_status,
+                j.starshipID,
+                j.captainID,
+                j.captainID_new
+            FROM joined_ships j
+            INNER JOIN accessions a ON j.ship_id = a.id
+            WHERE 1=1
+            """
+
+            if accession_tags:
+                fallback_query += " AND a.accession_tag IN ({})".format(
+                    ",".join(f"'{tag}'" for tag in accession_tags)
+                )
+            if curated:
+                fallback_query += " AND j.curated_status = 'curated'"
+
+            df = pd.read_sql_query(fallback_query, old_engine)
+
+            # Add empty sequence column if requested
+            if with_sequence:
+                df["sequence"] = None
+
+            if dereplicate:
+                df = df.drop_duplicates(subset="accession_tag")
+
+            return df
+        except Exception as fallback_error:
+            logger.error(f"Fallback query also failed: {str(fallback_error)}")
+            raise e
+
+
 # TODO: get accession tags another way, instead of from input
-def create_captain_table(new_engine):
+def create_captain_table(old_engine, new_engine):
     """Create captain table"""
 
     # get accession tags from new database
-    query = "SELECT accession_tag FROM accessions"
-    accession_tags_df = pd.read_sql(query, new_engine)
-    accession_tags = accession_tags_df["accession_tag"].tolist()
+    query = "SELECT id, accession_tag FROM accessions"
+    accessions_df = pd.read_sql(query, new_engine)
+    accession_tags = accessions_df["accession_tag"].tolist()
 
-    # use existing method to get captain table
-    from src.database.sql_manager import fetch_captains
-
-    df = fetch_captains(
+    df = fetch_captains_for_migration(
+        old_engine=old_engine,
         accession_tags=accession_tags,
         curated=False,
         dereplicate=False,
         with_sequence=True,
     )
 
-    # add checksum to dataframe
-    df["md5"] = df["sequence"].apply(generate_checksum)
+    # Map accession_tag to ship_id (foreign key)
+    # Rename the id column in accessions_df to avoid conflicts
+    accessions_df = accessions_df.rename(columns={"id": "accession_id"})
+    df = pd.merge(df, accessions_df, on="accession_tag", how="inner")
 
-    # count the length of the sequence
-    df["sequence_length"] = df["sequence"].apply(len)
+    # Select and rename columns to match the schema
+    # Schema columns: id, captain_name, sequence, accession_id, reviewed, evidence
+    df_mapped = pd.DataFrame(
+        {
+            "captain_name": df.get(
+                "captainID", df.get("captainID_new", "unknown")
+            ),  # Use available captain ID
+            "sequence": df["sequence"],
+            "accession_id": df["accession_id"],  # Now this should work
+            "reviewed": df.get(
+                "curated_status", "not curated"
+            ),  # Map curated_status to reviewed
+            "evidence": df.get(
+                "evidence", "unknown"
+            ),  # Use evidence if available, otherwise default
+        }
+    )
 
-    # write to new captain table
-    df.to_sql("captain", new_engine, if_exists="append", index=False)
+    return df_mapped
 
 
 def create_classification_table(old_engine, new_engine, num_rows=10):
@@ -131,11 +253,15 @@ def migrate_table(
     try:
         # Handle transformation
         if transform_func:
-            # Check if function expects one or two arguments
+            # Check function signature to determine how to call it
             params = signature(transform_func).parameters
-            if len(params) == 2:  # Function expects both engines
+            param_names = list(params.keys())
+
+            # Check if function expects new_engine as a parameter
+            if "new_engine" in param_names:
                 df = transform_func(old_engine, new_engine)
-            else:  # Function expects only old_engine
+            else:
+                # Function only expects old_engine (and possibly num_rows)
                 df = transform_func(old_engine)
 
         # Write to new table
@@ -282,7 +408,7 @@ def main():
     logger.info("Migrating accessions table...")
     rows_migrated = migrate_table(
         old_engine=old_engine,
-        new_engine=None,
+        new_engine=new_engine,
         table_name="accessions",
         transform_func=create_accession_table,
     )
