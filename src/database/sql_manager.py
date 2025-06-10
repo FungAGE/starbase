@@ -406,9 +406,9 @@ def fetch_captains(
             v.starshipID,
             v.captainID,
             v.captainID_new,
-            c.sequence
+            v.sequence
         FROM valid_captains v
-        WHERE c.sequence IS NOT NULL
+        WHERE v.sequence IS NOT NULL
         """
     else:
         query += """
