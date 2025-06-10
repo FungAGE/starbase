@@ -20,31 +20,19 @@ import enum
 Base = declarative_base()
 metadata = Base.metadata
 
-# Association tables for many-to-many relationships
-paper_family_association = Table(
-    "paper_family_association",
-    Base.metadata,
-    Column("id", Integer, primary_key=True),
-    Column("paper_id", Integer, ForeignKey("papers.id", ondelete="CASCADE")),
-    Column("family_id", Integer, ForeignKey("family_names.id", ondelete="CASCADE")),
-    Column(
-        "created_at", DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ),
-)
-
 
 class BaseModel(Base):
     """Abstract base model with common fields"""
 
     __abstract__ = True
     created_at = Column(
-        DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=False
+        DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=True
     )
     updated_at = Column(
         DateTime,
         default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         onupdate=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        nullable=False,
+        nullable=True,
     )
     deleted_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False)
@@ -57,50 +45,41 @@ class Accessions(BaseModel):
     id = Column(Integer, primary_key=True)
     ship_name = Column(String(255), nullable=False)
     accession_tag = Column(String(50), nullable=True, index=True)
-    accession = Column(String(50), nullable=False)
-    created_at = Column(DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    updated_at = Column(DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    is_deleted = Column(Boolean, default=False)
 
-    # Relationships with cascade delete
-    ships = relationship(
-        "Ships", back_populates="accession", cascade="all, delete-orphan"
-    )
-    gff_entries = relationship(
-        "Gff", back_populates="accession_obj", cascade="all, delete-orphan"
-    )
-    joined_ships = relationship(
-        "JoinedShips", back_populates="accession_obj", cascade="all, delete-orphan"
-    )
-    captains = relationship(
-        "Captains", back_populates="ship", cascade="all, delete-orphan"
-    )
+    # One-way relationships - remove all back_populates
+    ships = relationship("Ships", cascade="all, delete-orphan")
+    captains = relationship("Captains", cascade="all, delete-orphan")
+    starship_features = relationship("StarshipFeatures")
+    gff_entries = relationship("Gff", cascade="all, delete-orphan")
+    classifications = relationship("Classification")
 
 
-class Ships(Base):
+class Ships(BaseModel):
     __tablename__ = "ships"
     __table_args__ = (Index("idx_ships_accession", "accession_id"),)
     id = Column(Integer, primary_key=True)
-    accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=False)
     sequence = Column(Text)
     md5 = Column(String(32))
     sequence_length = Column(Integer)
+    evidence = Column(String(50))
+    source = Column(String(50))
+    curated_status = Column(String(50))
+    orphan = Column(String(50))
+    accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=False)
+    captain_id = Column(Integer, ForeignKey("captains.id"))
+    tax_id = Column(Integer, ForeignKey("taxonomy.id"))
+    genome_id = Column(Integer, ForeignKey("genomes.id"))
+    classification_id = Column(Integer, ForeignKey("classification.id"))
 
-    # Relationship
-    accession = relationship("Accessions", back_populates="ships")
 
-
-class Captains(Base):
+class Captains(BaseModel):
     __tablename__ = "captains"
     id = Column(Integer, primary_key=True)
-    captainID = Column(String, unique=True)
+    captain_name = Column(String(50), unique=True)
     sequence = Column(Text)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
+    accession_id = Column(Integer, ForeignKey("accessions.id"))
     reviewed = Column(String)
     evidence = Column(String)
-    # Relationships
-    ship = relationship("Accessions", back_populates="captains")
-    features = relationship("StarshipFeatures", back_populates="captain")
 
 
 class Genome(BaseModel):
@@ -119,8 +98,6 @@ class Genome(BaseModel):
     biosample = Column(String(50))
     acquisition_date = Column(Integer)
 
-    taxonomy = relationship("Taxonomy", back_populates="genomes")
-
 
 class BoundaryType(enum.Enum):
     flank = "flank"
@@ -131,9 +108,9 @@ class BoundaryType(enum.Enum):
 class StarshipFeatures(BaseModel):
     __tablename__ = "starship_features"
     id = Column(Integer, primary_key=True)
-    contigID = Column(String(100), nullable=False)
-    starshipID = Column(String, index=True)
-    captainID = Column(String, index=True)
+    accession_id = Column(Integer, ForeignKey("accessions.id"))
+    captain_id = Column(Integer, ForeignKey("captains.id"))
+    contig = Column(String(100), nullable=False)
     elementBegin = Column(Integer)
     elementEnd = Column(Integer)
     elementLength = Column(Integer)
@@ -154,15 +131,29 @@ class StarshipFeatures(BaseModel):
     TIRedit = Column(String(50))
     nestedInside = Column(String(100))
     containNested = Column(String(100))
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
-    captain_id = Column(Integer, ForeignKey("captains.id"))
+    dr = Column(String)
+    tir = Column(String)
+    target = Column(String)
+    spok = Column(String)
+    ars = Column(String)
+    other = Column(String)
+    hgt = Column(String)
 
-    # Relationships
-    accession = relationship("Accessions", back_populates="starship_features")
-    captain = relationship("Captains", back_populates="features")
+
+# Association tables for many-to-many relationships
+paper_family_association = Table(
+    "paper_family_association",
+    Base.metadata,
+    Column("id", Integer, primary_key=True),
+    Column("paper_id", Integer, ForeignKey("papers.id", ondelete="CASCADE")),
+    Column("family_id", Integer, ForeignKey("family_names.id", ondelete="CASCADE")),
+    Column(
+        "created_at", DateTime, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ),
+)
 
 
-class Papers(BaseModel):
+class Papers(Base):
     __tablename__ = "papers"
     __table_args__ = (
         CheckConstraint("PublicationYear >= 1900"),
@@ -189,7 +180,7 @@ class Papers(BaseModel):
     )
 
 
-class FamilyNames(Base):
+class FamilyNames(BaseModel):
     __tablename__ = "family_names"
     __table_args__ = (
         Index("idx_family_names_reference", "type_element_reference"),
@@ -206,37 +197,25 @@ class FamilyNames(Base):
     otherFamilyID = Column(String)
     paper_id = Column(Integer, ForeignKey("papers.id"))
 
-    # Relationships
-    papers = relationship(
-        "Papers", secondary=paper_family_association, back_populates="family_names"
-    )
 
-
-class NavisNames(Base):
+class NavisNames(BaseModel):
     __tablename__ = "navis_names"
     id = Column(Integer, primary_key=True)
     navis_name = Column(String)
     previous_navis_name = Column(String)
-    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
-
-    # Relationships
-    family = relationship("FamilyNames")
+    family_id = Column(Integer, ForeignKey("family_names.id"))
 
 
-class HaplotypeNames(Base):
+class HaplotypeNames(BaseModel):
     __tablename__ = "haplotype_names"
     id = Column(Integer, primary_key=True)
     haplotype_name = Column(String)
     previous_haplotype_name = Column(String)
-    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
-    ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
-
-    # Relationships
-    family = relationship("FamilyNames")
-    navis = relationship("NavisNames")
+    family_id = Column(Integer, ForeignKey("family_names.id"))
+    navis_id = Column(Integer, ForeignKey("navis_names.id"))
 
 
-class Taxonomy(Base):
+class Taxonomy(BaseModel):
     __tablename__ = "taxonomy"
     __table_args__ = (
         Index("idx_taxonomy_name", "name"),
@@ -261,14 +240,18 @@ class Taxonomy(Base):
     genus = Column(String(50))
     species = Column(String(50))
     section = Column(String(50))
+    strain = Column(String(50))
+    ship = relationship("Ships", back_populates="tax")
+    genome = relationship("Genome", back_populates="tax")
+    classification = relationship("Classification", back_populates="tax")
 
 
 class Gff(Base):
     __tablename__ = "gff"
-    __table_args__ = (Index("idx_gff_ship_id", "ship_id"),)
+    __table_args__ = (Index("idx_gff_accession_id", "accession_id"),)
     id = Column(Integer, primary_key=True)
-    contigID = Column(String)
-    accession = Column(String)
+    contig = Column(String(100))
+    accession_id = Column(Integer, ForeignKey("accessions.id"))
     source = Column(String)
     type = Column(String)
     start = Column(Integer)
@@ -277,63 +260,22 @@ class Gff(Base):
     strand = Column(String)
     score = Column(String)
     attributes = Column(String)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
 
 
-class JoinedShips(BaseModel):
-    __tablename__ = "joined_ships"
-    __table_args__ = (
-        Index("idx_joined_ships_curated", "curated_status"),
-        Index("idx_joined_ships_ship_id", "ship_id"),
-        Index("idx_joined_ships_taxid", "taxid"),
-        Index("idx_joined_ships_ship_family_id", "ship_family_id"),
-        Index("idx_joined_ships_genome_id", "genome_id"),
-    )
+class Classification(BaseModel):
+    __tablename__ = "classification"
     id = Column(Integer, primary_key=True)
-    starshipID = Column(String)
-    genus = Column(String)
-    species = Column(String)
-    strain = Column(String)
-    evidence = Column(String)
-    source = Column(String)
-    contigID = Column(String)
-    captainID = Column(String)
-    elementBegin = Column(Integer)
-    elementEnd = Column(Integer)
-    size = Column(Integer)
-    strand = Column(String)
-    boundaryType = Column(String)
-    emptySiteID = Column(String)
-    emptyContig = Column(String)
-    emptyBegin = Column(Integer)
-    emptyEnd = Column(Integer)
-    emptySeq = Column(String)
-    upDR = Column(String)
-    downDR = Column(String)
-    DRedit = Column(String)
-    upTIR = Column(String)
-    downTIR = Column(String)
-    TIRedit = Column(String)
-    nestedInside = Column(String)
-    containNested = Column(String)
-    dr = Column(String)
-    tir = Column(String)
-    starship_navis = Column(String)
-    starship_haplotype = Column(String)
-    target = Column(String)
-    spok = Column(String)
-    ars = Column(String)
-    other = Column(String)
-    hgt = Column(String)
-    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
-    curated_status = Column(String)
-    taxid = Column(Integer)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
-    genome_id = Column(String)
-    ome = Column(String)
-    orphan = Column(String)
-    captainID_new = Column(Integer)
+    accession_id = Column(Integer, ForeignKey("accessions.id"))
+    taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
+    genome_id = Column(Integer, ForeignKey("genomes.id"))
+    family_id = Column(Integer, ForeignKey("family_names.id"))
+    navis_id = Column(Integer, ForeignKey("navis_names.id"))
+    haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
 
     # Relationships
-    accession_obj = relationship("Accessions", back_populates="joined_ships")
-    family = relationship("FamilyNames")
+    accession = relationship("Accessions", back_populates="classification")
+    taxonomy = relationship("Taxonomy", back_populates="classification")
+    genome = relationship("Genome", back_populates="classification")
+    family = relationship("FamilyNames", back_populates="classification")
+    navis = relationship("NavisNames", back_populates="classification")
+    haplotype = relationship("HaplotypeNames", back_populates="classification")
