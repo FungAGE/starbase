@@ -545,13 +545,11 @@ def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
                             tmp_gffs.append(tmp_gff)
 
                         if len(selected_rows) > 1 and len(selected_rows) <= 4:
-                            message = run_multi_pgv_task.delay(
+                            message = run_multi_pgv_task(
                                 tmp_gffs, tmp_fas, tmp_pgv, len_thr, id_thr
                             )
-                            message = message.get(timeout=300)
                         elif len(selected_rows) == 1:
-                            message = run_single_pgv_task.delay(tmp_gffs[0], tmp_pgv)
-                            message = message.get(timeout=300)
+                            message = run_single_pgv_task(tmp_gffs[0], tmp_pgv)
                         else:
                             output = html.P("Please select between 1 and 4 Starships.")
                             return output, None

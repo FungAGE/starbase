@@ -1,6 +1,18 @@
-from sqlalchemy import Column, Integer, String, Numeric, VARCHAR, ForeignKey, Table
+# coding: utf-8
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Table,
+    VARCHAR,
+)
 from sqlalchemy.orm import relationship
-from src.config.database import Base
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+metadata = Base.metadata
 
 # Association tables for many-to-many relationships
 paper_family_association = Table(
@@ -48,6 +60,21 @@ class Captains(Base):
     # Relationships
     ship = relationship("Accessions", back_populates="captains")
     features = relationship("StarshipFeatures", back_populates="captain")
+
+
+class Genome(Base):
+    __tablename__ = "genomes"
+
+    id = Column(Integer, primary_key=True)
+    ome = Column(String(50))
+    taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
+    version = Column(String(50))
+    genomeSource = Column(String(50))
+    citation = Column(String(50))
+    biosample = Column(String(50))
+    acquisition_date = Column(Integer)
+
+    taxonomy = relationship("Taxonomy", back_populates="genomes")
 
 
 class StarshipFeatures(Base):
@@ -156,6 +183,22 @@ class NavisHaplotype(Base):
 
     # Relationships
     family = relationship("FamilyNames")
+
+
+class Gff(Base):
+    __tablename__ = "gff"
+    id = Column(Integer, primary_key=True)
+    contigID = Column(String)
+    accession = Column(String)
+    source = Column(String)
+    type = Column(String)
+    start = Column(Integer)
+    end = Column(Integer)
+    phase = Column(Integer)
+    strand = Column(String)
+    score = Column(String)
+    attributes = Column(String)
+    ship_id = Column(Integer, ForeignKey("accessions.id"))
 
 
 class JoinedShips(Base):

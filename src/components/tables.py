@@ -53,53 +53,27 @@ def table_error(e):
     )
 
 
-# Common AG Grid configuration
+# Common AG Grid configuration - simplified for stability
 DEFAULT_GRID_OPTIONS = {
     "pagination": True,
     "paginationAutoPageSize": False,
-    "domLayout": "autoHeight",
-    "tooltipShowDelay": 0,
-    "tooltipHideDelay": 1000,
+    "domLayout": "normal",  # Changed from autoHeight to avoid sizing issues
+    "tooltipShowDelay": 500,
+    "tooltipHideDelay": 2000,
     "enableCellTextSelection": True,
-    "ensureDomOrder": True,
-    "suppressRowClickSelection": True,
-    "rowMultiSelectWithClick": False,
-    "onFirstDataRendered": """function(params) { 
-        try { 
-            if(params.api && !params.api.isDestroyed()) { 
-                setTimeout(function() { 
-                    if(params.api && !params.api.isDestroyed()) { 
-                        params.api.sizeColumnsToFit(); 
-                    }
-                }, 50); 
-            }
-        } catch(e) { 
-            console.log('Grid sizing warning:', e); 
-        }
-    }""",
-    "onGridReady": """function(params) {
-        try {
-            if (!window.gridApis) window.gridApis = {};
-            window.gridApis[params.api.gridOptionsWrapper.gridOptions.domLayoutAutoHeight] = params.api;
-            
-            // Initialize grid with safer timing
-            setTimeout(function() {
-                if(params.api && !params.api.isDestroyed()) {
-                    params.api.sizeColumnsToFit();
-                }
-            }, 100);
-        } catch(e) {
-            console.log('Grid ready warning:', e);
-        }
-    }""",
-    "rowHeight": 48,
-    "headerHeight": 48,
-    "suppressRowHoverHighlight": False,
-    "suppressHorizontalScroll": False,
     "suppressPropertyNamesCheck": True,
-    "suppressReactUi": False,
     "suppressLoadingOverlay": True,
     "suppressNoRowsOverlay": True,
+    "rowHeight": 48,
+    "headerHeight": 48,
+    # Simplified grid ready handler
+    "onGridReady": """function(params) {
+        try {
+            console.log('Grid ready:', params.api ? 'API available' : 'API missing');
+        } catch(e) {
+            console.error('Grid ready error:', e);
+        }
+    }""",
 }
 
 DEFAULT_COL_DEF = {
@@ -153,20 +127,40 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     else:
         grid_columns = [{"field": col} for col in df.columns]
 
+    # Simplified stable grid options
     grid_options = {
-        **DEFAULT_GRID_OPTIONS,
-        "rowSelection": "multiple" if select_rows else None,
+        "pagination": True,
         "paginationPageSize": pg_sz or 10,
+        "suppressPropertyNamesCheck": True,
+        "rowHeight": 48,
+        "headerHeight": 48,
     }
+
+    # Only add selection-related options if selection is enabled
+    if select_rows:
+        grid_options.update(
+            {
+                "rowSelection": "multiple",
+                "suppressRowClickSelection": True,  # Only select via checkbox
+            }
+        )
 
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
         rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
-        defaultColDef=DEFAULT_COL_DEF,
+        defaultColDef={
+            "resizable": True,
+            "minWidth": 100,
+        },
         dashGridOptions=grid_options,
         className="ag-theme-alpine",
-        style={"width": "100%", "height": "100%"},
+        style={
+            "width": "100%",
+            "height": "500px",  # Fixed height for stability
+            "border": "1px solid #dee2e6",
+            "borderRadius": "4px",
+        },
         persistence=True,
         persistence_type="memory",
     )
@@ -189,21 +183,26 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     # Convert column format to AG Grid format
     if columns:
         grid_columns = []
-        for col in columns:
+        for i, col in enumerate(columns):
             col_def = {
                 "field": col.get("id") or col.get("field"),
                 "headerName": col.get("name")
                 or col.get("headerName")
                 or col.get("field", "").replace("_", " ").title(),
                 "flex": 1,
+                "sortable": True,
+                "filter": True,
             }
 
             # Add checkboxes for the first column if selection is enabled
-            if select_rows and col == columns[0]:
+            if select_rows and i == 0:
                 col_def.update(
                     {
                         "checkboxSelection": True,
                         "headerCheckboxSelection": True,
+                        "width": 180,
+                        "minWidth": 150,
+                        "flex": 0,
                     }
                 )
 
@@ -212,40 +211,54 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
-                        "cellClass": "clickable-cell",
                     }
                 )
 
             grid_columns.append(col_def)
     else:
         grid_columns = [
-            {"field": col, "headerName": col.replace("_", " ").title()}
+            {
+                "field": col,
+                "headerName": col.replace("_", " ").title(),
+                "sortable": True,
+            }
             for col in df.columns
         ]
 
+    # Simplified grid options
     grid_options = {
-        **DEFAULT_GRID_OPTIONS,
-        "rowSelection": "multiple" if select_rows else None,
-        "suppressRowClickSelection": True,  # Don't select rows when clicking cells
-        "rowMultiSelectWithClick": False,  # Don't allow multi-select with clicks
+        "pagination": True,
         "paginationPageSize": pg_sz or 10,
-        "sortable": True,
-        "sort": [{"colId": "familyName", "sort": "asc"}],
+        "suppressPropertyNamesCheck": True,
+        "rowHeight": 48,
+        "headerHeight": 48,
     }
+
+    # Only add selection-related options if selection is enabled
+    if select_rows:
+        grid_options.update(
+            {
+                "rowSelection": "multiple",
+                "suppressRowClickSelection": True,
+            }
+        )
 
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
         rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
-        defaultColDef=DEFAULT_COL_DEF,
+        defaultColDef={
+            "resizable": True,
+            "minWidth": 100,
+        },
         dashGridOptions=grid_options,
         className="ag-theme-alpine",
-        style={"width": "100%", "height": "100%"},
-        rowSelection="multiple"
-        if select_rows
-        else None,  # Add this property at component level
-        persistence=True,
-        persistence_type="memory",
+        style={
+            "width": "100%",
+            "height": "450px",  # Increased height for better usability
+            "border": "1px solid #dee2e6",
+            "borderRadius": "4px",
+        },
     )
 
 
@@ -309,10 +322,24 @@ def make_paper_table():
             id="papers-table",
             columnDefs=columns,
             rowData=row_data,
-            defaultColDef=DEFAULT_COL_DEF,
-            dashGridOptions=DEFAULT_GRID_OPTIONS,
+            defaultColDef={
+                "resizable": True,
+                "minWidth": 100,
+            },
+            dashGridOptions={
+                "pagination": True,
+                "paginationPageSize": 10,
+                "suppressPropertyNamesCheck": True,
+                "rowHeight": 48,
+                "headerHeight": 48,
+            },
             className="ag-theme-alpine",
-            style={"width": "100%", "height": "100%"},
+            style={
+                "width": "100%",
+                "height": "500px",
+                "border": "1px solid #dee2e6",
+                "borderRadius": "4px",
+            },
             persistence=True,
             persistence_type="memory",
         ),
@@ -330,38 +357,40 @@ def make_dl_table(df, id, table_columns):
     else:
         row_data = df  # Assume it's already in records format
 
-    columns = [
-        {
+    columns = []
+    for i, col in enumerate(table_columns):
+        col_def = {
             "field": col["id"],
             "headerName": col["name"],
             "flex": 1,
-            "checkboxSelection": col["id"]
-            == "accession_tag",  # Add checkbox to first column
-            "headerCheckboxSelection": col["id"]
-            == "accession_tag",  # Add header checkbox
-            "headerCheckboxSelectionFilteredOnly": col["id"]
-            == "accession_tag",  # Only select filtered rows
-            **(
-                {"cellStyle": {"cursor": "pointer", "color": "#1976d2"}}
-                if col["id"] == "accession_tag"
-                else {}
-            ),
-            **({"sort": "asc", "sortIndex": 0} if col["id"] == "accession_tag" else {}),
+            "sortable": True,
+            "filter": True,
         }
-        for col in table_columns
-    ]
 
+        # Add checkbox to first column (accession_tag)
+        if col["id"] == "accession_tag":
+            col_def.update(
+                {
+                    "checkboxSelection": True,
+                    "headerCheckboxSelection": True,
+                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                    "width": 180,
+                    "minWidth": 150,
+                    "flex": 0,
+                }
+            )
+
+        columns.append(col_def)
+
+    # Simplified stable grid options
     grid_options = {
-        **DEFAULT_GRID_OPTIONS,
-        "rowSelection": "multiple",
-        "suppressRowClickSelection": True,  # Prevent row selection on click
-        "rowMultiSelectWithClick": False,  # Require checkbox for selection
-        "suppressRowDeselection": True,  # Maintain selection when clicking elsewhere
+        "pagination": True,
         "paginationPageSize": 25,
-        # Add these options for filtered selection
-        "suppressHeaderCheckboxSelection": False,  # Enable header checkbox
-        "headerCheckboxSelectionFilteredOnly": True,  # Only select filtered rows
-        "headerCheckboxSelection": True,  # Enable header checkbox selection
+        "suppressPropertyNamesCheck": True,
+        "rowHeight": 48,
+        "headerHeight": 48,
+        "rowSelection": "multiple",
+        "suppressRowClickSelection": True,  # Only select via checkbox
     }
 
     return html.Div(
@@ -369,10 +398,18 @@ def make_dl_table(df, id, table_columns):
             id=id,
             columnDefs=columns,
             rowData=row_data,
-            defaultColDef=DEFAULT_COL_DEF,
+            defaultColDef={
+                "resizable": True,
+                "minWidth": 100,
+            },
             dashGridOptions=grid_options,
             className="ag-theme-alpine",
-            style={"width": "100%", "height": "100%"},
+            style={
+                "width": "100%",
+                "height": "600px",  # Fixed height for better stability
+                "border": "1px solid #dee2e6",
+                "borderRadius": "4px",
+            },
             persistence=True,
             persistence_type="memory",
         )
@@ -405,10 +442,23 @@ def make_wiki_table(n_ships, max_size, min_size):
         id="wiki-summary-table",
         columnDefs=columns,
         rowData=data,
-        defaultColDef=DEFAULT_COL_DEF,
-        dashGridOptions={**DEFAULT_GRID_OPTIONS, "paginationPageSize": 10},
+        defaultColDef={
+            "resizable": True,
+            "minWidth": 100,
+        },
+        dashGridOptions={
+            "pagination": False,
+            "suppressPropertyNamesCheck": True,
+            "rowHeight": 48,
+            "headerHeight": 48,
+        },
         className="ag-theme-alpine",
-        style={"width": "100%", "height": "100%"},
+        style={
+            "width": "100%",
+            "height": "192px",
+            "border": "1px solid #dee2e6",
+            "borderRadius": "4px",
+        },
         persistence=True,
         persistence_type="memory",
     )

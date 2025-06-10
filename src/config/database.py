@@ -1,14 +1,11 @@
 from src.config.settings import DB_PATHS
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 import os
 
 # Get the environment
 ENV = os.getenv("ENVIRONMENT", "development")
 IS_DEV = ENV.lower() == "development"
-
-# Create base class for declarative models
-Base = declarative_base()
 
 
 def create_db_engine(db_path):

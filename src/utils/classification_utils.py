@@ -29,7 +29,7 @@ import networkx as nx
 
 from typing import Optional, Tuple, Dict, Any
 from src.database.sql_manager import fetch_ships, fetch_captains
-
+from src.utils.blast_data import WorkflowState
 
 accession_workflow = """
 ########################################################
@@ -84,8 +84,6 @@ def assign_accession(
             - accession: assigned accession number
             - needs_review: True if sequence needs manual review
     """
-    if existing_ships is None:
-        existing_ships = fetch_ships(curated=True)
 
     logger.debug("Starting accession assignment process")
 
@@ -1179,35 +1177,29 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
 def run_classification_workflow(upload_data, meta_dict=None):
     """Run the classification workflow and return results."""
     # Initialize workflow state object
-    workflow_state = {
-        "complete": False,
-        "error": None,
-        "found_match": False,
-        "match_stage": None,
-        "match_result": None,
-        "stages": {
-            stage["id"]: {"progress": 0, "complete": False} for stage in WORKFLOW_STAGES
-        },
-    }
+    workflow_state = WorkflowState()
 
     try:
         # Parse parameters for database fetches
-        ships_df = fetch_ships(**upload_data.get("fetch_ship_params"))
-        # captains_df = fetch_captains(**upload_data.get("fetch_captain_params"))
+        ships_df = fetch_ships(
+            curated=upload_data.fetch_ship_params.curated,
+            with_sequence=upload_data.fetch_ship_params.with_sequence,
+            dereplicate=upload_data.fetch_ship_params.dereplicate,
+        )
+        # captains_df = fetch_captains(upload_data.fetch_captain_params.curated,
+        #                             upload_data.fetch_captain_params.with_sequence)
 
-        fasta_path = upload_data["fasta"]
+        fasta_path = upload_data.fasta_file
         if isinstance(fasta_path, dict) and "content" in fasta_path:
             tmp_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
             with open(tmp_file, "w") as f:
                 f.write(fasta_path["content"])
-            upload_data["fasta"] = tmp_file
+            upload_data.fasta_file = tmp_file
             fasta_path = tmp_file
 
         # Make sure blast_df is serializable
-        if "blast_df" in upload_data and isinstance(
-            upload_data["blast_df"], pd.DataFrame
-        ):
-            upload_data["blast_df"] = upload_data["blast_df"].to_dict("records")
+        if upload_data.blast_df and isinstance(upload_data.blast_df, pd.DataFrame):
+            upload_data.blast_df = upload_data.blast_df.to_dict("records")
 
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
@@ -1224,7 +1216,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
                 logger.debug("Running exact match check")
 
                 result = check_exact_match(
-                    fasta=upload_data["fasta"], existing_ships=ships_df
+                    fasta=upload_data.fasta_file, existing_ships=ships_df
                 )
 
                 if result:
@@ -1241,7 +1233,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
             if stage_id == "contained":
                 logger.debug("Running contained match check")
                 result = check_contained_match(
-                    fasta=upload_data["fasta"],
+                    fasta=upload_data.fasta_file,
                     existing_ships=ships_df,
                     min_coverage=0.95,
                     min_identity=0.95,
@@ -1261,7 +1253,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
             if stage_id == "similar":
                 logger.debug("Running similarity match check")
                 result, similarities = check_similar_match(
-                    fasta=upload_data["fasta"],
+                    fasta=upload_data.fasta_file,
                     existing_ships=ships_df,
                     threshold=0.95,
                 )
@@ -1281,8 +1273,8 @@ def run_classification_workflow(upload_data, meta_dict=None):
                 logger.debug("Running family classification")
 
                 family_dict, protein_file = classify_family(
-                    fasta=upload_data["fasta"],
-                    seq_type=upload_data["seq_type"],
+                    fasta=upload_data.fasta_file,
+                    seq_type=upload_data.seq_type,
                     meta_dict=meta_dict,
                     pident_thresh=90,
                     input_eval=0.001,
@@ -1342,7 +1334,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
             #         workflow_state["stages"][stage_id]["status"] = "skipped"
             #     else:
             #         result = classify_navis(
-            #             fasta=upload_data["fasta"],
+            #             fasta=upload_data.fasta_file,
             #             existing_captains=captains_df,
             #             threads=1,
             #         )
@@ -1396,7 +1388,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
             #     try:
             #         result = classify_haplotype(
-            #             fasta=upload_data["fasta"],
+            #             fasta=upload_data.fasta_file,
             #             existing_ships=ships_df,
             #             navis=navis_value,
             #             similarities=similarities,
@@ -1497,7 +1489,7 @@ def create_classification_card(classification_data):
         details.append(
             dmc.Group(
                 [
-                    dmc.Text(f"Confidence: {confidence}", fw=700, size="md"),
+                    dmc.Text(f"Confidence: {confidence}", fw=700, size="lg"),
                     dmc.ThemeIcon(
                         DashIconify(icon=confidence_icon, width=16),
                         size="md",
@@ -1509,7 +1501,18 @@ def create_classification_card(classification_data):
             ),
         )
 
-    if closest_match:
+    if match_details:
+        details.append(
+            dmc.Group(
+                [
+                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
+                    dmc.Text(match_details, c="dimmed", size="sm"),
+                ],
+                pos="apart",
+            )
+        )
+
+    if closest_match and confidence != "Low":
         if source == "exact":
             closest_match_text = f"Exact match to {closest_match}"
         elif source == "contained":
@@ -1522,17 +1525,6 @@ def create_classification_card(classification_data):
             dmc.Group(
                 [
                     dmc.Text(closest_match_text, fw=700, size="lg"),
-                ],
-                pos="apart",
-            )
-        )
-
-    if match_details:
-        details.append(
-            dmc.Group(
-                [
-                    dmc.Badge(source.replace("_", " ").title(), color=source_color),
-                    dmc.Text(match_details, c="dimmed", size="sm"),
                 ],
                 pos="apart",
             )
@@ -1556,7 +1548,7 @@ def create_classification_card(classification_data):
             )
         )
 
-    if navis:
+    if navis and confidence != "Low":
         details.append(
             dmc.Group(
                 [
@@ -1571,7 +1563,7 @@ def create_classification_card(classification_data):
             )
         )
 
-    if haplotype:
+    if haplotype and confidence == "High":
         details.append(
             dmc.Group(
                 [

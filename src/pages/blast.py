@@ -36,6 +36,8 @@ from src.tasks import (
 
 from src.config.logging import get_logger
 
+from src.utils.blast_data import BlastData, ClassificationData, WorkflowState
+
 dash.register_page(__name__)
 
 logger = get_logger(__name__)
@@ -1004,70 +1006,32 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         return None, str(e), error_alert, None
 
 
-@callback(
-    [
-        Output("submit-button", "disabled", allow_duplicate=True),
-        Output("submit-button", "children", allow_duplicate=True),
-        Output("upload-error-message", "children", allow_duplicate=True),
-        Output("upload-error-store", "data", allow_duplicate=True),
-    ],
-    [
-        Input("submit-button", "n_clicks"),
-        Input("blast-timeout-interval", "n_intervals"),
-    ],
-    [State("blast-timeout-store", "data"), State("blast-sequences-store", "data")],
-    prevent_initial_call=True,
-)
-def handle_blast_timeout(n_clicks, n_intervals, timeout_triggered, seq_list):
-    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-
-    # Default return values
-    button_disabled = False
-    button_text = "Submit BLAST"  # Set default button text
-    error_message = ""
-    error_store = None
-
-    # Handle timeout case
-    if triggered_id == "blast-timeout-interval":
-        if n_clicks and timeout_triggered:
-            button_disabled = True
-            button_text = "Server timeout"
-            error_message = dmc.Alert(
-                title="Request Timeout",
-                children="The server is taking longer than expected to respond. Please try again later.",
-                color="yellow",
-                variant="filled",
-            )
-            error_store = "The server is taking longer than expected to respond. Please try again later."
-
-    return [button_disabled, button_text, error_message, error_store]
-
-
 def process_single_sequence(seq_data, evalue_threshold):
     """Process a single sequence and return structured results"""
+
+    # extract from seq_data
     query_header = seq_data.get("header", "query")
     query_seq = seq_data.get("sequence", "")
     query_type = seq_data.get("type", "nucl")
+    query_length = len(query_seq)
 
-    classification_data = None
-    blast_df = None
-    blast_content = None
-    top_aln_length = None
-    top_evalue = None
-    top_pident = None
+    class_dict = BlastData(
+        seq_type=query_type,
+        sequence=query_seq,
+    )
+
+    classification_data = ClassificationData()
 
     # Write sequence to temporary FASTA file
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
     if not tmp_query_fasta:
-        logger.error("Failed to write temporary FASTA file")
-        return {
-            "blast_file": None,
-            "blast_content": None,
-            "classification": None,
-            "processed": False,
-            "sequence": query_seq,
-            "error": "Failed to create temporary file",
-        }
+        error_message = "Failed to create temporary file"
+        logger.error(error_message)
+        class_dict.error = error_message
+
+    # fetch metadata
+    meta_df = fetch_meta_data()
+    meta_dict = meta_df.to_dict("records") if meta_df is not None else None
 
     try:
         # Run BLAST search
@@ -1081,8 +1045,6 @@ def process_single_sequence(seq_data, evalue_threshold):
         # Handle case where blast_results is None or invalid
         if not blast_results:
             logger.warning("BLAST search returned no results")
-            blast_results_file = None
-            blast_content = None
         elif isinstance(blast_results, dict) and "content" in blast_results:
             # Handle the new format (content-based instead of file path)
             blast_content = blast_results["content"]
@@ -1113,69 +1075,50 @@ def process_single_sequence(seq_data, evalue_threshold):
             else:
                 blast_results_file = None
                 blast_content = None
-    except Exception as e:
-        logger.error(f"Error running BLAST search: {e}")
-        blast_results_file = None
-        blast_content = None
 
-    if (blast_results_file and os.path.exists(blast_results_file)) or blast_content:
+        # Update class_dict with blast results
+        class_dict.blast_file = blast_results_file
+        class_dict.blast_content = blast_content
+
         # Process either with file or direct content
         if blast_results_file and os.path.exists(blast_results_file):
             blast_tsv = parse_blast_xml(blast_results_file)
             if blast_tsv and os.path.exists(blast_tsv):
                 blast_df = pd.read_csv(blast_tsv, sep="\t")
                 if len(blast_df) == 0:
-                    logger.debug("No BLAST hits found")
-    else:
-        # If BLAST search failed, return basic structure with error
-        return {
-            "blast_file": None,
-            "blast_content": None,
-            "classification": None,
-            "processed": False,
-            "sequence": query_seq,
-            "error": "BLAST search failed",
-        }
+                    error_message = "No BLAST hits found"
+                    logger.debug(error_message)
 
-    # Prepare upload data for classification
-    upload_data = {
-        "seq_type": query_type,
-        "fasta": tmp_query_fasta,
-        "blast_df": blast_df.to_dict("records")
-        if isinstance(blast_df, pd.DataFrame)
-        else blast_df,
-        "fetch_ship_params": {
-            "curated": False,
-            "with_sequence": True,
-            "dereplicate": True,
-        },
-        "fetch_captain_params": {"curated": False, "with_sequence": True},
-    }
-
-    try:
-        meta_df = fetch_meta_data()
-        meta_dict = meta_df.to_dict("records") if meta_df is not None else None
-
-        # Run classification workflow
-        workflow_result = run_classification_workflow_task(
-            upload_data=upload_data,
-            meta_dict=meta_dict,
+        # append to class_dict
+        class_dict.fasta_file = tmp_query_fasta
+        class_dict.blast_df = (
+            blast_df.to_dict("records")
+            if isinstance(blast_df, pd.DataFrame)
+            else blast_df
         )
 
-        # Check for classification result data first
-        if workflow_result is not None:
-            result_type = workflow_result.get("type")
+        try:
+            # Run classification workflow
+            workflow_result = run_classification_workflow_task(
+                class_dict=class_dict,
+                meta_dict=meta_dict,
+            )
 
-            if result_type == "match" and workflow_result.get("match_stage") in [
-                "exact",
-                "contained",
-                "similar",
-            ]:
-                # Handle exact/contained/similar matches
+            # Check for classification result data first
+            if workflow_result and workflow_result.get("complete", False):
                 match_stage = workflow_result.get("match_stage")
                 match_result = workflow_result.get("match_result")
+                found_match = workflow_result.get("found_match", False)
 
-                if match_result:
+                classification_data.source = match_stage
+                classification_data.closest_match = match_result
+
+                # Handle exact/contained/similar matches
+                if found_match and match_stage in [
+                    "exact",
+                    "contained",
+                    "similar",
+                ]:
                     meta_df_sub = meta_df[meta_df["accession_tag"] == match_result]
 
                     if not meta_df_sub.empty:
@@ -1184,6 +1127,114 @@ def process_single_sequence(seq_data, evalue_threshold):
                             if "familyName" in meta_df_sub.columns
                             else None
                         )
+                        classification_data.family = family
+
+                        navis = (
+                            meta_df_sub["starship_navis"].iloc[0]
+                            if "starship_navis" in meta_df_sub.columns
+                            else None
+                        )
+                        classification_data.navis = navis
+
+                        haplotype = (
+                            meta_df_sub["starship_haplotype"].iloc[0]
+                            if "starship_haplotype" in meta_df_sub.columns
+                            else None
+                        )
+                        classification_data.haplotype = haplotype
+
+                        # Set confidence based on match type
+                        if match_stage in ["exact", "contained", "similar"]:
+                            classification_data.confidence = "High"
+                        else:
+                            classification_data.confidence = "Low"
+
+                # Check for family/navis/haplotype classification from workflow
+                if match_stage == "family" and match_result:
+                    if isinstance(match_result, dict) and "family" in match_result:
+                        family_name = match_result["family"]
+                    elif (
+                        isinstance(match_result, tuple)
+                        and len(match_result) > 0
+                        and isinstance(match_result[0], dict)
+                        and "family" in match_result[0]
+                    ):
+                        family_name = match_result[0]["family"]
+                    else:
+                        family_name = match_result
+
+                    if family_name:
+                        # Extract aln_length and evalue from result if available, otherwise use defaults
+                        top_aln_length = 0
+                        top_evalue = 1.0
+
+                        if isinstance(match_result, dict):
+                            top_aln_length = match_result.get("aln_length", 0)
+                            top_evalue = match_result.get("evalue", 1.0)
+                        elif (
+                            isinstance(match_result, tuple)
+                            and len(match_result) > 0
+                            and isinstance(match_result[0], dict)
+                        ):
+                            top_aln_length = match_result[0].get("aln_length", 0)
+                            top_evalue = match_result[0].get("evalue", 1.0)
+
+                        classification_data.source = "hmmsearch"
+                        classification_data.family = family_name
+                        classification_data.match_details = f"Captain gene match with length {top_aln_length}, Evalue: {top_evalue}"
+                        classification_data.confidence = (
+                            "High"
+                            if top_aln_length > 80 and top_evalue < 0.001
+                            else "Low"
+                        )
+
+                if match_stage == "navis" and match_result:
+                    navis_name = match_result
+                    # Make sure family_name is defined
+                    family_name = workflow_result.get("family", "Unknown")
+                    classification_data.source = "captain clustering"
+                    classification_data.family = family_name
+                    classification_data.navis = navis_name
+                    classification_data.confidence = "Medium"
+
+                if match_stage == "haplotype" and match_result:
+                    haplotype_name = match_result
+                    # Make sure family_name and navis_name are defined
+                    family_name = workflow_result.get("family", "Unknown")
+                    navis_name = workflow_result.get("navis", "Unknown")
+                    classification_data.source = "k-mer similarity"
+                    classification_data.family = family_name
+                    classification_data.navis = navis_name
+                    classification_data.haplotype = haplotype_name
+                    classification_data.confidence = "Medium"
+
+        except Exception as e:
+            logger.error(f"Error processing classification workflow for sequence: {e}")
+
+        # If no classification from workflow, fall back to BLAST results
+        if classification_data.source is None and blast_df is not None:
+            # Process the BLAST results
+            try:
+                # Sort by evalue (ascending) and pident (descending) to get best hits
+                blast_df = blast_df.sort_values(
+                    ["evalue", "pident"], ascending=[True, False]
+                )
+                top_hit = blast_df.iloc[0]
+                logger.debug(f"Top hit: {top_hit}")
+
+                top_evalue = float(top_hit["evalue"])
+                top_aln_length = int(top_hit["aln_length"])
+                top_pident = float(top_hit["pident"])
+
+                if top_pident >= 90:
+                    # look up family name from accession tag
+                    hit_IDs = top_hit["hit_IDs"]
+                    # Convert hit_IDs to a list if it's a string
+                    hit_IDs_list = [hit_IDs] if isinstance(hit_IDs, str) else hit_IDs
+                    meta_df_sub = meta_df[meta_df["accession_tag"].isin(hit_IDs_list)]
+
+                    if not meta_df_sub.empty:
+                        top_family = meta_df_sub["familyName"].iloc[0]
                         navis = (
                             meta_df_sub["starship_navis"].iloc[0]
                             if "starship_navis" in meta_df_sub.columns
@@ -1195,253 +1246,88 @@ def process_single_sequence(seq_data, evalue_threshold):
                             else None
                         )
 
-                        # Set confidence based on match type
-                        confidence = (
-                            "High"
-                            if match_stage == "exact"
-                            else ("Medium" if match_stage == "contained" else "Low")
-                        )
-
-                        classification_data = {
-                            "source": match_stage,
-                            "family": family,
-                            "navis": navis,
-                            "haplotype": haplotype,
-                            "closest_match": match_result,
-                            "confidence": confidence,
-                        }
-
-            # Alternatively if classification state is available and shows a completed process
-            elif workflow_result and workflow_result.get("complete", False):
-                # Process based on classification state (existing logic)
-
-                # Check for workflow-based classification (highest priority)
-                if workflow_result.get("match_stage") in [
-                    "exact",
-                    "contained",
-                    "similar",
-                ]:
-                    match_stage = workflow_result.get("match_stage")
-                    match_result = workflow_result.get("match_result")
-
-                    if match_result:
-                        # Get metadata for the matched ship
-                        meta_df_sub = meta_df[meta_df["accession_tag"] == match_result]
-
-                        if not meta_df_sub.empty:
-                            # We found metadata for this match
-                            family = (
-                                meta_df_sub["familyName"].iloc[0]
-                                if "familyName" in meta_df_sub.columns
-                                else None
-                            )
-                            navis = (
-                                meta_df_sub["starship_navis"].iloc[0]
-                                if "starship_navis" in meta_df_sub.columns
-                                else None
-                            )
-                            haplotype = (
-                                meta_df_sub["starship_haplotype"].iloc[0]
-                                if "starship_haplotype" in meta_df_sub.columns
-                                else None
-                            )
-
-                            # Set confidence based on match type
-                            confidence = (
-                                "High"
-                                if match_stage == "exact"
-                                else ("Medium" if match_stage == "contained" else "Low")
-                            )
-
-                            classification_data = {
-                                "source": match_stage,
-                                "family": family,
-                                "navis": navis,
-                                "haplotype": haplotype,
-                                "closest_match": match_result,
-                                "confidence": confidence,
-                            }
-
-                # Check for family/navis/haplotype classification from workflow
-                elif workflow_result.get("found_match", False):
-                    match_stage = workflow_result.get("match_stage")
-                    match_result = workflow_result.get("match_result")
-
-                    if match_stage == "family" and match_result:
-                        if isinstance(match_result, dict) and "family" in match_result:
-                            family_name = match_result["family"]
-                        elif (
-                            isinstance(match_result, tuple)
-                            and len(match_result) > 0
-                            and isinstance(match_result[0], dict)
-                            and "family" in match_result[0]
-                        ):
-                            family_name = match_result[0]["family"]
+                        classification_data.source = "blast_hit"
+                        classification_data.family = top_family
+                        classification_data.navis = navis
+                        classification_data.haplotype = haplotype
+                        classification_data.closest_match = hit_IDs
+                        classification_data.match_details = f"length {top_aln_length}bp with {top_pident:.1f}% identity. E-value: {top_evalue}"
+                        if top_pident >= 90 and top_aln_length > query_length * 0.8:
+                            classification_data.confidence = "High"
+                        elif top_pident >= 50 and top_aln_length > query_length * 0.5:
+                            classification_data.confidence = "Medium"
                         else:
-                            family_name = match_result
+                            classification_data.confidence = "Low"
 
-                        if family_name:
-                            # Extract aln_length and evalue from result if available, otherwise use defaults
-                            top_aln_length = 0
-                            top_evalue = 1.0
+            except Exception as e:
+                logger.error(f"Error processing BLAST results: {e}")
 
-                            if isinstance(match_result, dict):
-                                top_aln_length = match_result.get("aln_length", 0)
-                                top_evalue = match_result.get("evalue", 1.0)
-                            elif (
-                                isinstance(match_result, tuple)
-                                and len(match_result) > 0
-                                and isinstance(match_result[0], dict)
-                            ):
-                                top_aln_length = match_result[0].get("aln_length", 0)
-                                top_evalue = match_result[0].get("evalue", 1.0)
+        # If still no classification, try HMMER
+        if classification_data.source is None:
+            try:
+                hmmer_results = run_hmmer_search_task(
+                    query_header=query_header,
+                    query_seq=query_seq,
+                    query_type=query_type,
+                    eval_threshold=evalue_threshold,
+                )
 
-                            confidence = (
-                                "High"
-                                if top_aln_length > 80 and top_evalue < 0.001
-                                else "Low"
-                            )
+                # Handle the new format with protein_content instead of protein_file
+                captain_results = None
+                if hmmer_results:
+                    captain_results = hmmer_results.get("results")
 
-                        classification_data = {
-                            "source": "hmmsearch",
-                            "family": family_name,
-                            "match_details": f"Captain gene match with length {top_aln_length}, Evalue: {top_evalue}",
-                            "confidence": confidence,
-                        }
-                    elif match_stage == "navis" and match_result:
-                        navis_name = match_result
-                        # Make sure family_name is defined
-                        family_name = workflow_result.get("family", "Unknown")
-                        classification_data = {
-                            "source": "captain clustering",
-                            "family": family_name,
-                            "navis": navis_name,
-                            "confidence": "Medium",
-                        }
-                    elif match_stage == "haplotype" and match_result:
-                        haplotype_name = match_result
-                        # Make sure family_name and navis_name are defined
-                        family_name = workflow_result.get("family", "Unknown")
-                        navis_name = workflow_result.get("navis", "Unknown")
-                        classification_data = {
-                            "source": "k-mer similarity",
-                            "family": family_name,
-                            "navis": navis_name,
-                            "haplotype": haplotype_name,
-                            "confidence": "Medium",
-                        }
+                    # If we need the protein file for something else, recreate it
+                    if (
+                        "protein_content" in hmmer_results
+                        and hmmer_results["protein_content"]
+                    ):
+                        protein_temp_file = tempfile.NamedTemporaryFile(
+                            suffix=".faa", delete=False
+                        ).name
+                        with open(protein_temp_file, "w") as f:
+                            f.write(hmmer_results["protein_content"])
+                        # If needed: hmmer_results["protein_file"] = protein_temp_file
+
+                if captain_results and len(captain_results) > 0:
+                    first_result = captain_results[0]  # Get just the first dictionary
+                    captain_family, aln_length, evalue = select_ship_family(
+                        first_result
+                    )
+
+                    if captain_family:
+                        if aln_length >= 80 and evalue <= 0.001:
+                            classification_data.source = "hmmsearch"
+                            classification_data.family = captain_family
+                            classification_data.match_details = f"Captain gene match (length = {aln_length}, e-value = {evalue})"
+                            classification_data.confidence = "High"
+                        elif aln_length >= 50:
+                            classification_data.source = "hmmsearch"
+                            classification_data.family = captain_family
+                            classification_data.match_details = f"Captain gene partial match (length = {aln_length}, e-value = {evalue})"
+                            classification_data.confidence = "Medium"
+                        else:
+                            classification_data.source = "hmmsearch"
+                            classification_data.family = captain_family
+                            classification_data.match_details = f"Captain gene partial match (length = {aln_length}, e-value = {evalue})"
+                            classification_data.confidence = "Low"
+
+            except Exception as e:
+                logger.error(f"Error processing HMMER results: {e}")
+
+        # Update classification data
+        if classification_data.source:
+            class_dict.classification = classification_data
+
+        class_dict.processed = True
+
+        # Return structured results - convert to dict for backward compatibility
+        return class_dict.to_dict()
+
     except Exception as e:
-        logger.error(f"Error processing classification workflow for sequence: {e}")
-
-    # If no classification from workflow, fall back to BLAST results
-    if classification_data is None and blast_df is not None:
-        # Process the BLAST results
-        try:
-            # Sort by evalue (ascending) and pident (descending) to get best hits
-            blast_df = blast_df.sort_values(
-                ["evalue", "pident"], ascending=[True, False]
-            )
-            top_hit = blast_df.iloc[0]
-            logger.debug(f"Top hit: {top_hit}")
-
-            top_evalue = float(top_hit["evalue"])
-            top_aln_length = int(top_hit["aln_length"])
-            top_pident = float(top_hit["pident"])
-
-            if top_pident >= 90:
-                # look up family name from accession tag
-                hit_IDs = top_hit["hit_IDs"]
-                # Convert hit_IDs to a list if it's a string
-                hit_IDs_list = [hit_IDs] if isinstance(hit_IDs, str) else hit_IDs
-                meta_df_sub = meta_df[meta_df["accession_tag"].isin(hit_IDs_list)]
-
-                if not meta_df_sub.empty:
-                    top_family = meta_df_sub["familyName"].iloc[0]
-                    navis = (
-                        meta_df_sub["starship_navis"].iloc[0]
-                        if "starship_navis" in meta_df_sub.columns
-                        else None
-                    )
-                    haplotype = (
-                        meta_df_sub["starship_haplotype"].iloc[0]
-                        if "starship_haplotype" in meta_df_sub.columns
-                        else None
-                    )
-
-                    classification_data = {
-                        "source": "blast_hit",
-                        "family": top_family,
-                        "navis": navis,
-                        "haplotype": haplotype,
-                        "closest_match": hit_IDs,
-                        "match_details": f"length {top_aln_length}bp with {top_pident:.1f}% identity. E-value: {top_evalue}",
-                        "confidence": "Medium" if top_pident >= 95 else "Low",
-                    }
-        except Exception as e:
-            logger.error(f"Error processing BLAST results: {e}")
-
-    # If still no classification, try HMMER
-    if classification_data is None:
-        try:
-            hmmer_results = run_hmmer_search_task(
-                query_header=query_header,
-                query_seq=query_seq,
-                query_type=query_type,
-                eval_threshold=evalue_threshold,
-            )
-
-            # Handle the new format with protein_content instead of protein_file
-            captain_results = None
-            if hmmer_results:
-                captain_results = hmmer_results.get("results")
-
-                # If we need the protein file for something else, recreate it
-                if (
-                    "protein_content" in hmmer_results
-                    and hmmer_results["protein_content"]
-                ):
-                    protein_temp_file = tempfile.NamedTemporaryFile(
-                        suffix=".faa", delete=False
-                    ).name
-                    with open(protein_temp_file, "w") as f:
-                        f.write(hmmer_results["protein_content"])
-                    # If needed: hmmer_results["protein_file"] = protein_temp_file
-
-            if captain_results and len(captain_results) > 0:
-                first_result = captain_results[0]  # Get just the first dictionary
-                captain_family, aln_length, evalue = select_ship_family(first_result)
-
-                if captain_family:
-                    if aln_length >= 80 and evalue <= 0.001:
-                        confidence = "High"
-                        match_details = f"Captain gene match (length = {aln_length}, e-value = {evalue})"
-                    elif aln_length >= 50:
-                        confidence = "Medium"
-                        match_details = f"Captain gene partial match (length = {aln_length}, e-value = {evalue})"
-                    else:
-                        confidence = "Low"
-                        match_details = f"Captain gene partial match (length = {aln_length}, e-value = {evalue})"
-
-                    classification_data = {
-                        "source": "hmmsearch",
-                        "family": captain_family,
-                        "match_details": match_details,
-                        "confidence": confidence,
-                    }
-        except Exception as e:
-            logger.error(f"Error processing HMMER results: {e}")
-
-    # Return structured results
-    return {
-        "blast_file": blast_results_file,
-        "blast_content": blast_content,  # Include direct content
-        "blast_df": blast_df.to_dict("records")
-        if isinstance(blast_df, pd.DataFrame)
-        else blast_df,
-        "classification": classification_data,
-        "processed": True,
-        "sequence": query_seq,  # Include sequence for length checks
-    }
+        class_dict.error = str(e)
+        logger.error(f"Error in process_single_sequence: {e}")
+        return class_dict.to_dict()
 
 
 @callback(
@@ -1482,12 +1368,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                 if error or not direct_seq_list or len(direct_seq_list) == 0:
                     logger.warning(f"Failed to parse file contents directly: {error}")
-                    error_state = {
-                        "complete": True,
-                        "error": "Failed to parse sequence data",
-                        "status": "failed",
-                        "task_id": str(submission_id),
-                    }
+                    error_state = WorkflowState(
+                        complete=True,
+                        error="Failed to parse sequence data",
+                        status="failed",
+                        task_id=str(submission_id),
+                    )
                     return (
                         None,
                         True,
@@ -1502,12 +1388,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                 seq_list = direct_seq_list
             except Exception as e:
                 logger.error(f"Error parsing file contents: {e}")
-                error_state = {
-                    "complete": True,
-                    "error": "Error parsing sequence data",
-                    "status": "failed",
-                    "task_id": str(submission_id),
-                }
+                error_state = WorkflowState(
+                    complete=True,
+                    error="Error parsing sequence data",
+                    status="failed",
+                    task_id=str(submission_id),
+                )
                 return (
                     None,
                     True,
@@ -1517,12 +1403,12 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                 )  # Set loading to False on error too
         else:
             logger.warning("No seq_list or file_contents provided to process_sequences")
-            error_state = {
-                "complete": True,
-                "error": "No sequence data available",
-                "status": "failed",
-                "task_id": str(submission_id) if submission_id else None,
-            }
+            error_state = WorkflowState(
+                complete=True,
+                error="No sequence data available",
+                status="failed",
+                task_id=str(submission_id) if submission_id else None,
+            )
             return (
                 None,
                 True,
@@ -1580,7 +1466,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                 # Set up workflow state if needed
                 if not skip_classification and sequence_result.get("blast_content"):
-                    # Read the file content to include in upload_data
+                    # Read the file content to include in class_dict
                     fasta_content = None
                     tmp_query_fasta = None
 
@@ -1605,23 +1491,23 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                     if not skip_classification:
                         # Initialize a complete workflow state structure
-                        workflow_state = {
-                            "task_id": str(submission_id),  # Ensure it's a string
-                            "status": "initialized",
-                            "complete": False,
-                            "workflow_started": True,
-                            "current_stage": None,
-                            "current_stage_idx": 0,
-                            "error": None,
-                            "found_match": False,
-                            "match_stage": None,
-                            "match_result": None,
-                            "start_time": time.time(),
-                            "stages": {
+                        workflow_state = WorkflowState(
+                            task_id=str(submission_id),  # Ensure it's a string
+                            status="initialized",
+                            complete=False,
+                            workflow_started=True,
+                            current_stage=None,
+                            current_stage_idx=0,
+                            error=None,
+                            found_match=False,
+                            match_stage=None,
+                            match_result=None,
+                            start_time=time.time(),
+                            stages={
                                 stage["id"]: {"progress": 0, "complete": False}
                                 for stage in WORKFLOW_STAGES
                             },
-                            "upload_data": {
+                            class_dict={
                                 "seq_type": seq_list[0].get("type", "nucl"),
                                 "fasta": {"content": fasta_content}
                                 if fasta_content
@@ -1639,7 +1525,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                                     "with_sequence": True,
                                 },
                             },
-                        }
+                        )
 
                         # Since we're no longer using Celery, we don't need the interval
                         # always set to disabled since we run synchronously
@@ -2258,15 +2144,11 @@ def update_classification_workflow_state(workflow_state):
     try:
         # Start the classification workflow - ONE TIME ONLY
         if workflow_state.get("task_id") and not workflow_state.get("workflow_started"):
-            # Use the upload_data from the workflow_state
-            upload_data = workflow_state.get("upload_data", {})
-            if not upload_data:
-                logger.error("No upload_data found in workflow state")
-                workflow_state = workflow_state.copy()
-                workflow_state["error"] = "Missing upload data"
-                workflow_state["complete"] = True
-                workflow_state["status"] = "failed"
-                return workflow_state, False
+            # Use the class_dict from the workflow_state
+            workflow_state = workflow_state.copy()
+            workflow_state["error"] = "Missing upload data"
+            workflow_state["complete"] = True
+            workflow_state["status"] = "failed"
 
             meta_df = fetch_meta_data()
             meta_dict = meta_df.to_dict("records") if meta_df is not None else None
@@ -2274,7 +2156,7 @@ def update_classification_workflow_state(workflow_state):
             logger.debug("Running classification workflow directly (no Celery)")
             # Run the workflow function directly
             result = run_classification_workflow_task(
-                upload_data=upload_data, meta_dict=meta_dict
+                class_dict=workflow_state, meta_dict=meta_dict
             )
 
             # Use a copy to modify
