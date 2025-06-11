@@ -273,6 +273,15 @@ def ensure_fasta_header(text, default_header=">query"):
     return text
 
 
+def seq_processing_error_alert(error):
+    return dmc.Alert(
+        title="Error Processing Sequence",
+        children=error,
+        color="red",
+        variant="filled",
+    )
+
+
 def parse_fasta_from_text(text, format="fasta", max_sequences=10):
     """
     Parses a (multi) FASTA sequence from a text string.
@@ -372,13 +381,9 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
         return (
             None,
             None,
-            dmc.Alert(
-                title="Error Processing Sequence",
-                color="red",
-                children=[
-                    "An unexpected error occurred while processing the sequence. ",
-                    "Please check the format and try again.",
-                ],
+            seq_processing_error_alert(
+                "An unexpected error occurred while processing the sequence. "
+                "Please check the format and try again."
             ),
         )
 

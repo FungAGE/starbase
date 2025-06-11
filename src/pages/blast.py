@@ -15,6 +15,7 @@ from src.config.cache import cache
 from src.utils.seq_utils import (
     check_input,
     write_temp_fasta,
+    seq_processing_error_alert,
 )
 from src.utils.blast_utils import (
     create_no_matches_alert,
@@ -961,12 +962,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
                 error_alert = (
                     error
                     if not isinstance(error, str)
-                    else dmc.Alert(
-                        title="Error Processing Sequence",
-                        children=error,
-                        color="red",
-                        variant="filled",
-                    )
+                    else seq_processing_error_alert(error)
                 )
                 return (
                     None,
@@ -1666,12 +1662,7 @@ def render_tab_content(active_tab, results_store):
 
     # Check for errors in the results
     if "error" in sequence_results:
-        return dmc.Alert(
-            title="Error Processing Sequence",
-            children=sequence_results["error"],
-            color="red",
-            variant="filled",
-        )
+        return seq_processing_error_alert(sequence_results["error"])
 
     # Render classification results
     classification_output = create_classification_output(sequence_results)
