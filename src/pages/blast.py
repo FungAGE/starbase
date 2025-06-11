@@ -1466,8 +1466,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 
                 # Set up workflow state if needed
                 if not skip_classification and sequence_result.get("blast_content"):
-                    # Read the file content to include in class_dict
-                    fasta_content = None
+                    # Write the file content to include in class_dict
                     tmp_query_fasta = None
 
                     try:
@@ -1475,46 +1474,34 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                             seq_list[0].get("header", "query"),
                             seq_list[0].get("sequence", ""),
                         )
-
-                        if tmp_query_fasta and os.path.exists(tmp_query_fasta):
-                            with open(tmp_query_fasta, "r") as f:
-                                fasta_content = f.read()
-                            logger.debug(
-                                f"Successfully read temp FASTA file: {tmp_query_fasta}"
-                            )
-                        else:
-                            logger.warning("Failed to create or access temp FASTA file")
                     except Exception as e:
-                        logger.error(f"Error reading temp FASTA file: {e}")
-                        # If we can't read the file, skip classification
+                        logger.error(f"Error writing FASTA to temp file: {e}")
+                        # If we can't write the file, skip classification
                         skip_classification = True
 
                     if not skip_classification:
-                        # Initialize a complete workflow state structure
-                        workflow_state = WorkflowState(
-                            task_id=str(submission_id),  # Ensure it's a string
-                            status="initialized",
-                            complete=False,
-                            workflow_started=True,
-                            current_stage=None,
-                            current_stage_idx=0,
-                            error=None,
-                            found_match=False,
-                            match_stage=None,
-                            match_result=None,
-                            start_time=time.time(),
-                            stages={
+                        # Initialize a workflow state structure for Dash (without large data)
+                        workflow_state = {
+                            "task_id": str(submission_id),
+                            "status": "initialized",
+                            "complete": False,
+                            "workflow_started": False,  # Will be set to True when processing starts
+                            "current_stage": None,
+                            "current_stage_idx": 0,
+                            "error": None,
+                            "found_match": False,
+                            "match_stage": None,
+                            "match_result": None,
+                            "start_time": time.time(),
+                            "stages": {
                                 stage["id"]: {"progress": 0, "complete": False}
                                 for stage in WORKFLOW_STAGES
                             },
-                            class_dict={
+                            "class_dict": {
                                 "seq_type": seq_list[0].get("type", "nucl"),
-                                "fasta": {"content": fasta_content}
-                                if fasta_content
-                                else (tmp_query_fasta or ""),
-                                "blast_df": sequence_result.get(
-                                    "blast_df"
-                                ),  # Include BLAST results
+                                "fasta_file": tmp_query_fasta,
+                                "has_blast_results": sequence_result.get("blast_df")
+                                is not None,
                                 "fetch_ship_params": {
                                     "curated": False,
                                     "with_sequence": True,
@@ -1525,7 +1512,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
                                     "with_sequence": True,
                                 },
                             },
-                        )
+                        }
 
                         # Since we're no longer using Celery, we don't need the interval
                         # always set to disabled since we run synchronously
@@ -2144,11 +2131,25 @@ def update_classification_workflow_state(workflow_state):
     try:
         # Start the classification workflow - ONE TIME ONLY
         if workflow_state.get("task_id") and not workflow_state.get("workflow_started"):
-            # Use the class_dict from the workflow_state
-            workflow_state = workflow_state.copy()
-            workflow_state["error"] = "Missing upload data"
-            workflow_state["complete"] = True
-            workflow_state["status"] = "failed"
+            class_dict = workflow_state.get("class_dict", {})
+
+            from src.utils.blast_data import (
+                BlastData,
+                FetchShipParams,
+                FetchCaptainParams,
+            )
+
+            upload_data = BlastData(
+                seq_type=class_dict.get("seq_type", "nucl"),
+                fetch_ship_params=FetchShipParams(
+                    **class_dict.get("fetch_ship_params", {})
+                ),
+                fetch_captain_params=FetchCaptainParams(
+                    **class_dict.get("fetch_captain_params", {})
+                ),
+                fasta_file=class_dict.get("fasta_file"),
+                blast_df=None,  # We don't need blast results for classification workflow
+            )
 
             meta_df = fetch_meta_data()
             meta_dict = meta_df.to_dict("records") if meta_df is not None else None
@@ -2156,7 +2157,7 @@ def update_classification_workflow_state(workflow_state):
             logger.debug("Running classification workflow directly (no Celery)")
             # Run the workflow function directly
             result = run_classification_workflow_task(
-                class_dict=workflow_state, meta_dict=meta_dict
+                class_dict=upload_data, meta_dict=meta_dict
             )
 
             # Use a copy to modify
