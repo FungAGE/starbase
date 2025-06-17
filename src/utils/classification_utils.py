@@ -1176,6 +1176,8 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
 
 def run_classification_workflow(upload_data, meta_dict=None):
     """Run the classification workflow and return results."""
+    import pandas as pd
+
     # Initialize workflow state as dictionary for Dash compatibility
     workflow_state = {
         "complete": False,
@@ -1444,6 +1446,68 @@ def run_classification_workflow(upload_data, meta_dict=None):
             workflow_state["stages"][stage_id]["progress"] = 100
             workflow_state["stages"][stage_id]["status"] = "complete"
 
+        # If no classification found through our methods, try BLAST results as a final fallback
+        if not workflow_state.get("found_match", False) and upload_data.blast_df:
+            logger.debug(
+                "No classification found through workflow methods, trying BLAST fallback"
+            )
+            try:
+                # Convert blast_df back to DataFrame if it's a list of records
+                if isinstance(upload_data.blast_df, list):
+                    import pandas as pd
+
+                    blast_df = pd.DataFrame(upload_data.blast_df)
+                else:
+                    blast_df = upload_data.blast_df
+
+                if not blast_df.empty:
+                    # Sort by evalue (ascending) and pident (descending) to get best hits
+                    blast_df = blast_df.sort_values(
+                        ["evalue", "pident"], ascending=[True, False]
+                    )
+                    top_hit = blast_df.iloc[0]
+
+                    top_evalue = float(top_hit["evalue"])
+                    top_aln_length = int(top_hit["aln_length"])
+                    top_pident = float(top_hit["pident"])
+
+                    if top_pident >= 90:
+                        hit_IDs = top_hit["hit_IDs"]
+                        # Convert hit_IDs to a list if it's a string
+                        hit_IDs_list = (
+                            [hit_IDs] if isinstance(hit_IDs, str) else hit_IDs
+                        )
+
+                        # Look up metadata for this hit
+                        if meta_dict:
+                            meta_df = pd.DataFrame(meta_dict)
+                            meta_df_sub = meta_df[
+                                meta_df["accession_tag"].isin(hit_IDs_list)
+                            ]
+
+                            if not meta_df_sub.empty:
+                                top_family = meta_df_sub["familyName"].iloc[0]
+
+                                workflow_state["found_match"] = True
+                                workflow_state["match_stage"] = "blast_hit"
+                                workflow_state["match_result"] = {
+                                    "source": "blast_hit",
+                                    "family": top_family,
+                                    "closest_match": hit_IDs,
+                                    "match_details": f"BLAST hit with {top_pident:.1f}% identity (length {top_aln_length}bp, E-value: {top_evalue})",
+                                    "confidence": "High"
+                                    if top_pident >= 90 and top_aln_length > 1000
+                                    else "Medium"
+                                    if top_pident >= 70
+                                    else "Low",
+                                }
+
+                                logger.debug(
+                                    f"Found BLAST-based classification: {top_family}"
+                                )
+            except Exception as e:
+                logger.error(f"Error processing BLAST fallback: {e}")
+
         # Mark workflow as complete even if no matches were found
         workflow_state["complete"] = True
         return workflow_state
@@ -1626,7 +1690,7 @@ def create_classification_card(classification_data):
     )
 
 
-def create_classification_output(sequence_results):
+def create_classification_output(sequence_results, workflow_state=None):
     """Create the classification output component"""
     import dash_html_components as html
     import dash_mantine_components as dmc
@@ -1647,15 +1711,106 @@ def create_classification_output(sequence_results):
             ]
         )
     else:
-        # No classification available
-        return html.Div(
-            [
-                classification_title,
-                dmc.Alert(
-                    title="No Classification Available",
-                    children="Could not classify this sequence with any available method.",
-                    color="yellow",
-                    variant="light",
-                ),
-            ]
-        )
+        # Check if workflow is still running
+        if workflow_state and not workflow_state.get("complete", False):
+            # Calculate progress from workflow state
+            progress = 0
+            current_stage_text = "Starting classification..."
+
+            if workflow_state.get("current_stage_idx") is not None:
+                try:
+                    stage_idx = int(workflow_state.get("current_stage_idx", 0))
+                    total_stages = 6  # Number of workflow stages
+
+                    # Get current stage progress
+                    current_stage = workflow_state.get("current_stage")
+                    stages_dict = workflow_state.get("stages", {})
+
+                    if current_stage and current_stage in stages_dict:
+                        stage_data = stages_dict[current_stage]
+                        stage_progress = (
+                            stage_data.get("progress", 0)
+                            if isinstance(stage_data, dict)
+                            else 0
+                        )
+                    else:
+                        stage_progress = 0
+
+                    # Calculate overall progress
+                    progress = int(
+                        (stage_idx / total_stages) * 100
+                        + (stage_progress / total_stages)
+                    )
+                    progress = max(0, min(100, progress))
+
+                    # Get current stage text
+                    stage_labels = {
+                        "exact": "Checking for exact matches",
+                        "contained": "Checking for contained matches",
+                        "similar": "Checking for similar matches",
+                        "family": "Running family classification",
+                        "navis": "Running navis classification",
+                        "haplotype": "Running haplotype classification",
+                    }
+                    current_stage_text = stage_labels.get(
+                        current_stage,
+                        f"Processing {current_stage}"
+                        if current_stage
+                        else "Running classification...",
+                    )
+
+                except (ValueError, ZeroDivisionError, TypeError):
+                    progress = 0
+
+            # Handle case where workflow started but current_stage info is missing
+            if not current_stage_text or current_stage_text == "Processing None":
+                current_stage_text = "Running comprehensive classification..."
+
+            # Workflow is still running - show progress bar and loader
+            return html.Div(
+                [
+                    classification_title,
+                    dmc.Stack(
+                        [
+                            dmc.Group(
+                                [
+                                    dmc.Loader(size="sm", color="blue"),
+                                    dmc.Text(
+                                        "Classification In Progress",
+                                        size="lg",
+                                        fw=500,
+                                        c="blue",
+                                    ),
+                                ],
+                                gap="md",
+                                align="center",
+                            ),
+                            dmc.Progress(
+                                value=progress,
+                                color="blue",
+                                size="lg",
+                                animated=True,
+                                striped=True,
+                                style={"width": "100%"},
+                            ),
+                            dmc.Text(
+                                current_stage_text, size="sm", c="dimmed", ta="center"
+                            ),
+                        ],
+                        gap="sm",
+                    ),
+                ]
+            )
+        else:
+            # Workflow is complete but no classification available
+            return html.Div(
+                [
+                    classification_title,
+                    dmc.Alert(
+                        title="No Classification Available",
+                        children="Could not classify this sequence with any available method.",
+                        color="yellow",
+                        variant="light",
+                    ),
+                ]
+            )

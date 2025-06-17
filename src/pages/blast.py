@@ -1202,8 +1202,19 @@ def process_single_sequence(seq_data, evalue_threshold):
         except Exception as e:
             logger.error(f"Error processing classification workflow for sequence: {e}")
 
-        # If no classification from workflow, fall back to BLAST results
-        if classification_data.source is None and blast_df is not None:
+        # Don't process BLAST results here since classification workflow will handle everything
+        # The classification workflow will run in the update_classification_workflow_state callback
+        # and will use BLAST results as part of its comprehensive classification process
+
+        # Only use BLAST fallback if sequence is too short for classification workflow
+        sequence_length = len(query_seq)
+        skip_classification = sequence_length < 5000
+
+        if (
+            skip_classification
+            and classification_data.source is None
+            and blast_df is not None
+        ):
             # Process the BLAST results
             try:
                 # Sort by evalue (ascending) and pident (descending) to get best hits
@@ -1253,8 +1264,8 @@ def process_single_sequence(seq_data, evalue_threshold):
             except Exception as e:
                 logger.error(f"Error processing BLAST results: {e}")
 
-        # If still no classification, try HMMER
-        if classification_data.source is None:
+        # If still no classification and sequence is too short for workflow, try HMMER
+        if skip_classification and classification_data.source is None:
             try:
                 hmmer_results = run_hmmer_search_task(
                     query_header=query_header,
@@ -1659,8 +1670,10 @@ def render_tab_content(active_tab, results_store):
     if "error" in sequence_results:
         return seq_processing_error_alert(sequence_results["error"])
 
-    # Render classification results
-    classification_output = create_classification_output(sequence_results)
+    # Render classification results (workflow state not available for tabbed interface)
+    classification_output = create_classification_output(
+        sequence_results, workflow_state=None
+    )
 
     # Render BLAST results
     blast_container = create_blast_container(sequence_results, tab_id=tab_idx)
@@ -2054,10 +2067,13 @@ clientside_callback(
 ########################################################
 @callback(
     Output("classification-output", "children"),
-    Input("blast-results-store", "data"),
+    [
+        Input("blast-results-store", "data"),
+        Input("workflow-state-store", "data"),
+    ],
     prevent_initial_call=True,
 )
-def update_single_sequence_classification(blast_results_store):
+def update_single_sequence_classification(blast_results_store, workflow_state):
     """Update classification output for single sequence submissions"""
     from src.utils.classification_utils import create_classification_output
 
@@ -2069,8 +2085,82 @@ def update_single_sequence_classification(blast_results_store):
     if not sequence_results:
         return None
 
+    # Check if we have workflow results that should override the initial classification
+    if (
+        workflow_state
+        and workflow_state.get("complete", False)
+        and workflow_state.get("found_match", False)
+    ):
+        # Update sequence_results with workflow classification data
+        match_result = workflow_state.get("match_result")
+        if isinstance(match_result, dict):
+            # Use workflow results
+            sequence_results = sequence_results.copy()
+            sequence_results["classification"] = match_result
+        elif workflow_state.get("match_stage") and workflow_state.get("match_result"):
+            # Convert simple workflow results to classification format and look up metadata
+            sequence_results = sequence_results.copy()
+            match_stage = workflow_state.get("match_stage")
+            match_accession = workflow_state.get("match_result")
+
+            # Create base classification
+            classification_data = {
+                "source": match_stage,
+                "closest_match": match_accession,
+                "confidence": "High"
+                if match_stage in ["exact", "contained"]
+                else "Medium",
+            }
+
+            # Look up additional metadata for the matched accession
+            try:
+                meta_df = fetch_meta_data()
+                if meta_df is not None and not meta_df.empty:
+                    meta_match = meta_df[meta_df["accession_tag"] == match_accession]
+                    if not meta_match.empty:
+                        # Add family information
+                        if "familyName" in meta_match.columns:
+                            family = meta_match["familyName"].iloc[0]
+                            if family and family != "None":
+                                classification_data["family"] = family
+
+                        # Add navis information
+                        if "starship_navis" in meta_match.columns:
+                            navis = meta_match["starship_navis"].iloc[0]
+                            if navis and navis != "None":
+                                classification_data["navis"] = navis
+
+                        # Add haplotype information
+                        if "starship_haplotype" in meta_match.columns:
+                            haplotype = meta_match["starship_haplotype"].iloc[0]
+                            if haplotype and haplotype != "None":
+                                classification_data["haplotype"] = haplotype
+
+                        # Add match details
+                        if match_stage == "exact":
+                            classification_data["match_details"] = (
+                                f"Exact sequence match to {match_accession}"
+                            )
+                        elif match_stage == "contained":
+                            classification_data["match_details"] = (
+                                f"Query sequence contained within {match_accession}"
+                            )
+                        elif match_stage == "similar":
+                            classification_data["match_details"] = (
+                                f"High similarity to {match_accession}"
+                            )
+                        else:
+                            classification_data["match_details"] = (
+                                f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
+                            )
+
+            except Exception as e:
+                logger.error(f"Error looking up metadata for {match_accession}: {e}")
+
+            sequence_results["classification"] = classification_data
+
     # Create the classification output using the existing function
-    return create_classification_output(sequence_results)
+    return create_classification_output(sequence_results, workflow_state)
 
 
 @callback(
@@ -2082,9 +2172,12 @@ def update_single_sequence_classification(blast_results_store):
         # Remove dependency on interval n_intervals
         Input("workflow-state-store", "data"),
     ],
+    [
+        State("blast-results-store", "data"),
+    ],
     prevent_initial_call=True,
 )
-def update_classification_workflow_state(workflow_state):
+def update_classification_workflow_state(workflow_state, blast_results_store):
     """Initialize workflow state (one-time operation)"""
     # If no workflow state, nothing to do
     if workflow_state is None:
@@ -2125,6 +2218,13 @@ def update_classification_workflow_state(workflow_state):
                 FetchCaptainParams,
             )
 
+            # Extract BLAST data from the blast_results_store
+            blast_df = None
+            if blast_results_store and "sequence_results" in blast_results_store:
+                sequence_results = blast_results_store["sequence_results"].get("0")
+                if sequence_results and "blast_df" in sequence_results:
+                    blast_df = sequence_results["blast_df"]
+
             upload_data = BlastData(
                 seq_type=class_dict.get("seq_type", "nucl"),
                 fetch_ship_params=FetchShipParams(
@@ -2134,7 +2234,7 @@ def update_classification_workflow_state(workflow_state):
                     **class_dict.get("fetch_captain_params", {})
                 ),
                 fasta_file=class_dict.get("fasta_file"),
-                blast_df=None,  # We don't need blast results for classification workflow
+                blast_df=blast_df,  # Pass BLAST results to the workflow
             )
 
             meta_df = fetch_meta_data()
