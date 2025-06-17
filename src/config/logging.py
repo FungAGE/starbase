@@ -69,17 +69,15 @@ def get_logger(name: str, level=None):
     Args:
         name: Logger name
         level: Optional level override (defaults to environment-based level)
+
+    Returns:
+        A logger that uses the root logger's handlers to avoid duplication
     """
     logger = logging.getLogger(name)
     logger.setLevel(level or DEFAULT_LOG_LEVEL)
 
-    if not logger.handlers:
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(level or DEFAULT_LOG_LEVEL)
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+    # DON'T add handlers - let messages propagate to root logger
+    # This prevents duplicate log messages
+    # The root logger already has the appropriate handler configured
 
     return logger
