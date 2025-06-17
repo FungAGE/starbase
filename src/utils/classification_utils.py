@@ -59,13 +59,13 @@ classifcation pipeline that should be used:
 
 # Define our workflow stages with their colors
 WORKFLOW_STAGES = [
-    {"id": "exact", "label": "Checking for exact matches", "color": "green"},
-    {"id": "contained", "label": "Checking for contained matches", "color": "blue"},
-    {"id": "similar", "label": "Checking for similar matches", "color": "violet"},
-    # {"id": "denovo", "label": "Running denovo annotation", "color": "orange"},
+    {"id": "exact", "label": "Checking for exact matches", "color": "red"},
+    {"id": "contained", "label": "Checking for contained matches", "color": "orange"},
+    {"id": "similar", "label": "Checking for similar matches", "color": "yellow"},
+    # {"id": "denovo", "label": "Running denovo annotation", "color": "pink"},
     {"id": "family", "label": "Running family classification", "color": "green"},
-    # {"id": "navis", "label": "Running navis classification", "color": "blue"},
-    # {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
+    {"id": "navis", "label": "Running navis classification", "color": "blue"},
+    {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
 
@@ -1176,8 +1176,28 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
 
 def run_classification_workflow(upload_data, meta_dict=None):
     """Run the classification workflow and return results."""
-    # Initialize workflow state object
-    workflow_state = WorkflowState()
+    # Initialize workflow state as dictionary for Dash compatibility
+    workflow_state = {
+        "complete": False,
+        "error": None,
+        "found_match": False,
+        "match_stage": None,
+        "match_result": None,
+        "stages": {
+            stage["id"]: {"progress": 0, "status": "pending"}
+            for stage in WORKFLOW_STAGES
+        },
+        "task_id": "",
+        "status": "initialized",
+        "workflow_started": True,
+        "current_stage": None,
+        "current_stage_idx": 0,
+        "start_time": 0.0,
+        "class_dict": {},
+    }
+
+    # Initialize similarities to None to avoid NameError in haplotype stage
+    similarities = None
 
     try:
         # Parse parameters for database fetches
@@ -1186,8 +1206,10 @@ def run_classification_workflow(upload_data, meta_dict=None):
             with_sequence=upload_data.fetch_ship_params.with_sequence,
             dereplicate=upload_data.fetch_ship_params.dereplicate,
         )
-        # captains_df = fetch_captains(upload_data.fetch_captain_params.curated,
-        #                             upload_data.fetch_captain_params.with_sequence)
+        captains_df = fetch_captains(
+            curated=upload_data.fetch_captain_params.curated,
+            with_sequence=upload_data.fetch_captain_params.with_sequence,
+        )
 
         fasta_path = upload_data.fasta_file
         if isinstance(fasta_path, dict) and "content" in fasta_path:
@@ -1227,7 +1249,9 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["match_stage"] = "exact"
                     workflow_state["match_result"] = result
                     workflow_state["complete"] = True
-                    logger.debug(f"Exact match workflow state: {workflow_state}")
+                    logger.debug(
+                        f"Exact match found - stage: {workflow_state['match_stage']}, result: {workflow_state['match_result']}"
+                    )
                     return workflow_state
 
             if stage_id == "contained":
@@ -1247,7 +1271,9 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["match_stage"] = "contained"
                     workflow_state["match_result"] = result
                     workflow_state["complete"] = True
-                    logger.debug(f"Contained match workflow state: {workflow_state}")
+                    logger.debug(
+                        f"Contained match found - stage: {workflow_state['match_stage']}, result: {workflow_state['match_result']}"
+                    )
                     return workflow_state
 
             if stage_id == "similar":
@@ -1265,8 +1291,10 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["found_match"] = True
                     workflow_state["match_stage"] = "similar"
                     workflow_state["match_result"] = result
-                    workflow_state["similarities"] = similarities
-                    logger.debug(f"Similar match workflow state: {workflow_state}")
+                    # Don't store similarities in workflow_state to avoid serialization issues
+                    logger.debug(
+                        f"Similar match found - stage: {workflow_state['match_stage']}, result: {workflow_state['match_result']}, similarities: {len(similarities) if similarities else 0} entries"
+                    )
                     return workflow_state
 
             if stage_id == "family":
@@ -1326,89 +1354,91 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["complete"] = True
                     return workflow_state
 
-            # if stage_id == "navis":
-            #     logger.debug("Running navis classification")
-            #     if captains_df.empty:
-            #         logger.warning("No captain data available for navis classification")
-            #         workflow_state["stages"][stage_id]["progress"] = 80
-            #         workflow_state["stages"][stage_id]["status"] = "skipped"
-            #     else:
-            #         result = classify_navis(
-            #             fasta=upload_data.fasta_file,
-            #             existing_captains=captains_df,
-            #             threads=1,
-            #         )
+            if stage_id == "navis":
+                logger.debug("Running navis classification")
+                if captains_df.empty:
+                    logger.warning("No captain data available for navis classification")
+                    workflow_state["stages"][stage_id]["progress"] = 80
+                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                else:
+                    result = classify_navis(
+                        fasta=upload_data.fasta_file,
+                        existing_captains=captains_df,
+                        threads=1,
+                    )
 
-            #     if result:
-            #         logger.debug(f"Found navis classification: {result}")
-            #         workflow_state["stages"][stage_id]["progress"] = 90
-            #         workflow_state["stages"][stage_id]["status"] = "complete"
-            #         workflow_state["complete"] = True
-            #         workflow_state["found_match"] = True
-            #         workflow_state["match_stage"] = "navis"
-            #         workflow_state["match_result"] = result
-            #         return workflow_state
+                if result:
+                    logger.debug(f"Found navis classification: {result}")
+                    workflow_state["stages"][stage_id]["progress"] = 90
+                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state["found_match"] = True
+                    workflow_state["match_stage"] = "navis"
+                    workflow_state["match_result"] = result
+                    workflow_state["complete"] = True
+                    return workflow_state
 
-            # if stage_id == "haplotype":
-            #     logger.debug("Running haplotype classification")
-            #     if captains_df.empty or ships_df.empty:
-            #         logger.warning("Missing data for haplotype classification")
-            #         workflow_state["stages"][stage_id]["progress"] = 90
-            #         workflow_state["stages"][stage_id]["status"] = "skipped"
-            #     else:
-            #         # Extract navis value from the first captain record
-            #         navis_value = None
-            #         try:
-            #             if (
-            #                 not captains_df.empty
-            #                 and "starship_navis" in captains_df.columns
-            #             ):
-            #                 navis_values = captains_df["starship_navis"].dropna().unique()
-            #                 if len(navis_values) > 0:
-            #                     navis_value = navis_values[0]
-            #                     logger.debug(f"Using navis value: {navis_value}")
-            #                 else:
-            #                     logger.warning("No non-null navis values found")
-            #             else:
-            #                 logger.warning("No navis column in captains data")
+            if stage_id == "haplotype":
+                logger.debug("Running haplotype classification")
+                if captains_df.empty or ships_df.empty:
+                    logger.warning("Missing data for haplotype classification")
+                    workflow_state["stages"][stage_id]["progress"] = 90
+                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                else:
+                    # Extract navis value from the first captain record
+                    navis_value = None
+                    try:
+                        if (
+                            not captains_df.empty
+                            and "starship_navis" in captains_df.columns
+                        ):
+                            navis_values = (
+                                captains_df["starship_navis"].dropna().unique()
+                            )
+                            if len(navis_values) > 0:
+                                navis_value = navis_values[0]
+                                logger.debug(f"Using navis value: {navis_value}")
+                            else:
+                                logger.warning("No non-null navis values found")
+                        else:
+                            logger.warning("No navis column in captains data")
 
-            #             if navis_value is None and "starship_navis" in ships_df.columns:
-            #                 navis_values = ships_df["starship_navis"].dropna().unique()
-            #                 if len(navis_values) > 0:
-            #                     navis_value = navis_values[0]
-            #                     logger.debug(
-            #                         f"Using navis value from ships_df: {navis_value}"
-            #                     )
-            #         except Exception as e:
-            #             logger.error(f"Error extracting navis value: {e}")
+                        if navis_value is None and "starship_navis" in ships_df.columns:
+                            navis_values = ships_df["starship_navis"].dropna().unique()
+                            if len(navis_values) > 0:
+                                navis_value = navis_values[0]
+                                logger.debug(
+                                    f"Using navis value from ships_df: {navis_value}"
+                                )
+                    except Exception as e:
+                        logger.error(f"Error extracting navis value: {e}")
 
-            #     if navis_value is None:
-            #         logger.warning("No navis value found, using fallback value 'UNK'")
-            #         navis_value = "UNK"
+                if navis_value is None:
+                    logger.warning("No navis value found, using fallback value 'UNK'")
+                    navis_value = "UNK"
 
-            #     try:
-            #         result = classify_haplotype(
-            #             fasta=upload_data.fasta_file,
-            #             existing_ships=ships_df,
-            #             navis=navis_value,
-            #             similarities=similarities,
-            #         )
+                try:
+                    result = classify_haplotype(
+                        fasta=upload_data.fasta_file,
+                        existing_ships=ships_df,
+                        navis=navis_value,
+                        similarities=similarities,
+                    )
 
-            #         if result:
-            #             logger.debug(f"Found haplotype classification: {result}")
-            #             workflow_state["stages"][stage_id]["progress"] = 100
-            #             workflow_state["stages"][stage_id]["status"] = "complete"
-            #             workflow_state["complete"] = True
-            #             workflow_state["found_match"] = True
-            #             workflow_state["match_stage"] = "haplotype"
-            #             workflow_state["match_result"] = result
-            #             return workflow_state
-            #     except Exception as e:
-            #         logger.error(f"Error in haplotype classification: {e}")
-            #         workflow_state["stages"][stage_id]["status"] = "error"
-            #         workflow_state["error"] = (
-            #             f"Haplotype classification error: {str(e)}"
-            #         )
+                    if result:
+                        logger.debug(f"Found haplotype classification: {result}")
+                        workflow_state["stages"][stage_id]["progress"] = 100
+                        workflow_state["stages"][stage_id]["status"] = "complete"
+                        workflow_state["complete"] = True
+                        workflow_state["found_match"] = True
+                        workflow_state["match_stage"] = "haplotype"
+                        workflow_state["match_result"] = result
+                        return workflow_state
+                except Exception as e:
+                    logger.error(f"Error in haplotype classification: {e}")
+                    workflow_state["stages"][stage_id]["status"] = "error"
+                    workflow_state["error"] = (
+                        f"Haplotype classification error: {str(e)}"
+                    )
 
             # Mark this stage as complete
             workflow_state["stages"][stage_id]["progress"] = 100
