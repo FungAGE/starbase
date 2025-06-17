@@ -1027,7 +1027,6 @@ def process_single_sequence(seq_data, evalue_threshold):
 
     # fetch metadata
     meta_df = fetch_meta_data()
-    meta_dict = meta_df.to_dict("records") if meta_df is not None else None
 
     try:
         # Run BLAST search
@@ -1094,11 +1093,7 @@ def process_single_sequence(seq_data, evalue_threshold):
         )
 
         try:
-            # Run classification workflow
-            workflow_result = run_classification_workflow_task(
-                class_dict=class_dict,
-                meta_dict=meta_dict,
-            )
+            workflow_result = None
 
             # Check for classification result data first
             if workflow_result and workflow_result.get("complete", False):
