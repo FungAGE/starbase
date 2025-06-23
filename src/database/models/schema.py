@@ -3,7 +3,6 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     Integer,
-    Numeric,
     String,
     Table,
     VARCHAR,
@@ -27,9 +26,7 @@ class Accessions(Base):
     __tablename__ = "accessions"
     id = Column(Integer, primary_key=True)
     ship_name = Column(String)
-    accession = Column(String, unique=True)
-    accession_tag = Column(String)
-    accession_new = Column(Numeric)
+    accession_tag = Column(String, unique=True)
 
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")
