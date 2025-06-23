@@ -35,6 +35,11 @@ class TaskManager:
         task_id = str(uuid.uuid4())
 
         try:
+            # Log task submission for debugging
+            logger.debug(
+                f"Submitting task {task_func.name} with args types: {[type(arg).__name__ for arg in args]}"
+            )
+
             # Submit the task to Celery
             async_result = task_func.delay(*args, **kwargs)
 

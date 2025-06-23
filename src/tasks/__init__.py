@@ -168,10 +168,34 @@ def run_classification_workflow_task(self, class_dict, meta_dict=None):
     The workflow runs tasks sequentially.
     """
     from src.utils.classification_utils import run_classification_workflow
+    from src.utils.blast_data import BlastData, FetchShipParams, FetchCaptainParams
 
     try:
+        # Handle serialization: if class_dict is already a BlastData object, use it
+        # If it's a dict (from Celery serialization), reconstruct the BlastData object
+        if isinstance(class_dict, dict):
+            # Reconstruct BlastData from serialized dict
+            upload_data = BlastData(
+                seq_type=class_dict.get("seq_type", "nucl"),
+                fetch_ship_params=FetchShipParams(
+                    **class_dict.get("fetch_ship_params", {})
+                ),
+                fetch_captain_params=FetchCaptainParams(
+                    **class_dict.get("fetch_captain_params", {})
+                ),
+                fasta_file=class_dict.get("fasta_file"),
+                blast_df=class_dict.get("blast_df"),
+            )
+        elif hasattr(class_dict, "fetch_ship_params"):
+            # Already a BlastData object
+            upload_data = class_dict
+        else:
+            # Fallback: try to convert whatever we have
+            logger.warning(f"Unexpected class_dict type: {type(class_dict)}")
+            upload_data = class_dict
+
         # Run the sequential workflow
-        result = run_classification_workflow(class_dict, meta_dict)
+        result = run_classification_workflow(upload_data, meta_dict)
 
         # Test JSON serialization before returning
         try:

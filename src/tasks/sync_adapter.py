@@ -109,7 +109,28 @@ def run_classification_workflow_sync(
     """Run classification workflow task synchronously or asynchronously based on configuration."""
     from src.tasks import run_classification_workflow_task
 
-    return run_task_sync(run_classification_workflow_task, class_dict, meta_dict)
+    # For synchronous execution, we need to ensure the class_dict is properly formatted
+    # If it's a BlastData object, convert to dict for consistent handling
+    if hasattr(class_dict, "__dict__"):
+        # Convert BlastData object to dict for serialization compatibility
+        class_dict_serialized = {
+            "seq_type": getattr(class_dict, "seq_type", "nucl"),
+            "fasta_file": getattr(class_dict, "fasta_file", None),
+            "blast_df": getattr(class_dict, "blast_df", None),
+            "fetch_ship_params": getattr(class_dict.fetch_ship_params, "__dict__", {})
+            if hasattr(class_dict, "fetch_ship_params")
+            else {},
+            "fetch_captain_params": getattr(
+                class_dict.fetch_captain_params, "__dict__", {}
+            )
+            if hasattr(class_dict, "fetch_captain_params")
+            else {},
+        }
+        return run_task_sync(
+            run_classification_workflow_task, class_dict_serialized, meta_dict
+        )
+    else:
+        return run_task_sync(run_classification_workflow_task, class_dict, meta_dict)
 
 
 def run_multi_pgv_sync(
