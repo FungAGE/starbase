@@ -2,6 +2,7 @@ import tempfile
 import os
 import json
 
+from src.config.celery_config import celery
 from src.config.cache import cache, cleanup_old_cache
 from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
@@ -22,8 +23,9 @@ __all__ = [
 ]
 
 
-def refresh_telemetry_task(ipstack_api_key):
-    """Task to refresh telemetry data (formerly Celery task)"""
+@celery.task(name="refresh_telemetry_task", bind=True)
+def refresh_telemetry_task(self, ipstack_api_key):
+    """Task to refresh telemetry data"""
     try:
         update_ip_locations(ipstack_api_key)
         cache.delete("telemetry_data")
@@ -33,8 +35,9 @@ def refresh_telemetry_task(ipstack_api_key):
         return {"status": "error", "message": str(e)}
 
 
-def cleanup_cache_task():
-    """Task to clean up cache files (formerly Celery task)"""
+@celery.task(name="cleanup_cache_task", bind=True)
+def cleanup_cache_task(self):
+    """Task to clean up cache files"""
     try:
         cleanup_old_cache()
         return {"status": "success", "message": "Cache cleanup completed"}
@@ -43,8 +46,10 @@ def cleanup_cache_task():
         return {"status": "error", "message": str(e)}
 
 
-# @celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
-def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
+def run_blast_search_task(
+    self, query_header, query_seq, query_type, eval_threshold=0.01
+):
     """Celery task to run BLAST search"""
 
     try:
@@ -86,11 +91,14 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
-        return None
+        # Retry the task if an exception occurs
+        raise self.retry(exc=e, countdown=60, max_retries=3)
 
 
-# @celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
-def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
+def run_hmmer_search_task(
+    self, query_header, query_seq, query_type, eval_threshold=0.01
+):
     """Celery task to run HMMER search"""
 
     try:
@@ -126,33 +134,36 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"HMMER search failed: {str(e)}")
-        return None
+        # Retry the task if an exception occurs
+        raise self.retry(exc=e, countdown=60, max_retries=3)
 
 
-def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
+@celery.task(name="run_multi_pgv_task", bind=True, max_retries=2)
+def run_multi_pgv_task(self, gff_files, seqs, tmp_file, len_thr, id_thr):
     from src.pages.pgv import multi_pgv
 
     try:
         return multi_pgv(gff_files, seqs, tmp_file, len_thr, id_thr)
     except Exception as e:
         logger.error(f"Multi PGV failed: {str(e)}")
-        return None
+        raise self.retry(exc=e, countdown=30, max_retries=2)
 
 
-def run_single_pgv_task(gff_file, tmp_file):
-    """Task to run `single_pgv` (formerly Celery task)"""
+@celery.task(name="run_single_pgv_task", bind=True, max_retries=2)
+def run_single_pgv_task(self, gff_file, tmp_file):
+    """Task to run `single_pgv`"""
     from src.pages.pgv import single_pgv
 
     try:
         return single_pgv(gff_file, tmp_file)
     except Exception as e:
         logger.error(f"Single PGV failed: {str(e)}")
-        return None
+        raise self.retry(exc=e, countdown=30, max_retries=2)
 
 
-# @celery.task(name="run_classification_workflow_task", bind=True)
-def run_classification_workflow_task(class_dict, meta_dict=None):
-    """Function to run the classification workflow.
+@celery.task(name="run_classification_workflow_task", bind=True, max_retries=1)
+def run_classification_workflow_task(self, class_dict, meta_dict=None):
+    """Task to run the classification workflow.
 
     The workflow runs tasks sequentially.
     """
@@ -179,4 +190,11 @@ def run_classification_workflow_task(class_dict, meta_dict=None):
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
         logger.exception("Full traceback:")
-        return None
+        # Classification workflow is complex, only retry once
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=120, max_retries=1)
+        return {
+            "complete": True,
+            "error": f"Classification workflow failed after retries: {str(e)}",
+            "status": "failed",
+        }
