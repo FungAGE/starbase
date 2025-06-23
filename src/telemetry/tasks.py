@@ -1,9 +1,10 @@
 """
 Telemetry tasks module.
-Contains tasks related to telemetry (formerly Celery tasks).
+Contains tasks related to telemetry.
 """
 
 import requests
+from src.config.celery_config import celery
 from src.config.settings import IPSTACK_API_KEY
 from src.telemetry.utils import update_ip_locations as _update_ip_locations
 from src.config.logging import get_logger
@@ -11,20 +12,26 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
-def update_ip_locations(api_key=None):
+@celery.task(name="update_ip_locations", bind=True)
+def update_ip_locations(self, api_key=None):
     """
     Update locations for any new IPs in request_logs that aren't in ip_locations.
-    This was previously run hourly via Celery Beat.
+    This runs hourly via Celery Beat.
     """
-    if api_key is None:
-        api_key = IPSTACK_API_KEY
-    return _update_ip_locations(api_key)
+    try:
+        if api_key is None:
+            api_key = IPSTACK_API_KEY
+        return _update_ip_locations(api_key)
+    except Exception as e:
+        logger.error(f"Error updating IP locations: {str(e)}")
+        return {"status": "error", "error": str(e)}
 
 
-def refresh_telemetry():
+@celery.task(name="refresh_telemetry", bind=True)
+def refresh_telemetry(self):
     """
-    Refresh telemetry data (formerly a Celery task).
-    This was previously run every 15 minutes via Celery Beat.
+    Refresh telemetry data.
+    This runs every 15 minutes via Celery Beat.
     """
     try:
         response = requests.post("http://localhost:8000/api/telemetry/refresh")
@@ -34,10 +41,11 @@ def refresh_telemetry():
         return {"status": "error", "error": str(e)}
 
 
-def check_cache_status():
+@celery.task(name="check_cache_status", bind=True)
+def check_cache_status(self):
     """
     Check cache status and refresh if needed.
-    This was previously run every 5 minutes via Celery Beat.
+    This runs every 5 minutes via Celery Beat.
     """
     try:
         # First check if cache is healthy
