@@ -29,10 +29,10 @@ from src.components.callbacks import (
 )
 from src.database.sql_manager import fetch_meta_data
 from src.utils.classification_utils import WORKFLOW_STAGES
-from src.tasks import (
-    run_blast_search_task,
-    run_hmmer_search_task,
-    run_classification_workflow_task,
+from src.tasks.sync_adapter import (
+    run_blast_search_sync,
+    run_hmmer_search_sync,
+    run_classification_workflow_sync,
 )
 
 from src.config.logging import get_logger
@@ -1030,7 +1030,7 @@ def process_single_sequence(seq_data, evalue_threshold):
 
     try:
         # Run BLAST search
-        blast_results = run_blast_search_task(
+        blast_results = run_blast_search_sync(
             query_header=query_header,
             query_seq=query_seq,
             query_type=query_type,
@@ -1267,7 +1267,7 @@ def process_single_sequence(seq_data, evalue_threshold):
         # If still no classification and sequence is too short for workflow, try HMMER
         if skip_classification and classification_data.source is None:
             try:
-                hmmer_results = run_hmmer_search_task(
+                hmmer_results = run_hmmer_search_sync(
                     query_header=query_header,
                     query_seq=query_seq,
                     query_type=query_type,
@@ -2240,9 +2240,9 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
             meta_df = fetch_meta_data()
             meta_dict = meta_df.to_dict("records") if meta_df is not None else None
 
-            logger.debug("Running classification workflow directly (no Celery)")
-            # Run the workflow function directly
-            result = run_classification_workflow_task(
+            logger.debug("Running classification workflow")
+            # Run the workflow function via sync adapter
+            result = run_classification_workflow_sync(
                 class_dict=upload_data, meta_dict=meta_dict
             )
 
