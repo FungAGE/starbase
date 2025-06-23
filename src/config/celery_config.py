@@ -71,16 +71,20 @@ if not IS_DEV:
 # Configure periodic tasks
 celery.conf.beat_schedule = {
     "update-ip-locations-hourly": {
-        "task": "src.telemetry.tasks.update_ip_locations",
+        "task": "update_ip_locations",
         "schedule": crontab(minute=0),  # Every hour at minute 0
     },
     "refresh-telemetry-every-15min": {
-        "task": "src.telemetry.tasks.refresh_telemetry",
+        "task": "refresh_telemetry",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
     },
     "check-cache-status-every-5min": {
-        "task": "src.telemetry.tasks.check_cache_status",
+        "task": "check_cache_status",
         "schedule": crontab(minute="*/5"),  # Every 5 minutes
+    },
+    "cleanup-cache-hourly": {
+        "task": "cleanup_cache_task",
+        "schedule": crontab(minute=0),  # Every hour at minute 0
     },
 }
 
