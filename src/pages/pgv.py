@@ -287,48 +287,6 @@ def write_tmp(data, seqid, file_type, temp_dir):
     return file_path
 
 
-# def load_gff(accession):
-
-#     df = cache.get(f"accession_gff_{accession}")
-#     if df is None:
-#         df = fetch_accession_gff(accession)
-
-#     if df.empty:
-#         logger.error(f"No GFF records found for accession: {accession}")
-#     else:
-#         # Identify the rows where 'end' is less than 'start'
-#         mask = df["end"] < df["start"]
-
-#         # Swap the 'start' and 'end' values where the mask is True
-#         df.loc[mask, ["start", "end"]] = df.loc[mask, ["end", "start"]].values
-
-#         # TODO: find a way to implement this
-#         # # flip coordinates to favour captain order in starship
-#         # df["priority"] = df["attributes"].str.contains("tyr").astype(int)
-
-#         # df_sorted = df.sort_values(
-#         #     by=["priority", "start", "end"], ascending=[False, True, True]
-#         # ).drop(columns="priority")
-
-#     return df
-
-
-# def load_fa(accession):
-#     df = cache.get("all_ships")
-#     if df is None:
-#         df = fetch_ships()
-
-#     if isinstance(accession, str):
-#         df = df[df["accession_tag"] == accession]
-#     else:
-#         df = df[df["accession_tag"].isin(accession)]
-
-#     if df.empty:
-#         logger.error(f"No fasta records found for accession: {accession}")
-
-#     return df
-
-
 def single_pgv(gff_file, tmp_file):
     gff = Gff(gff_file)
 
