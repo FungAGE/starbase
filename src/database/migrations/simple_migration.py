@@ -227,10 +227,10 @@ class SimpleMigration:
                 """
                 SELECT DISTINCT 
                     j.captainID as captain_id,
-                    j.captainID_new,
+                    j.captain_id,
                     'joined_ships' as source_method
                 FROM joined_ships j
-                WHERE j.captainID IS NOT NULL OR j.captainID_new IS NOT NULL
+                WHERE j.captainID IS NOT NULL OR j.captain_id IS NOT NULL
                 """,
                 # Approach 3: Any table with captain in the name
                 """

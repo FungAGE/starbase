@@ -217,11 +217,11 @@ class SimpleMigrationDebug:
                     "query": """
                     SELECT DISTINCT 
                         a.accession_tag,
-                        COALESCE(j.captainID_new, j.captainID) as captain_name,
+                        COALESCE(j.captain_id, j.captainID) as captain_name,
                         c.sequence
                     FROM joined_ships j
                     INNER JOIN accessions a ON j.ship_id = a.id
-                    LEFT JOIN captains c ON j.captainID_new = c.id
+                    LEFT JOIN captains c ON j.captain_id = c.id
                     WHERE c.sequence IS NOT NULL
                     """,
                 },

@@ -115,11 +115,11 @@ def fetch_captains_for_migration(
             j.curated_status,
             j.starshipID,
             j.captainID,
-            j.captainID_new,
+            j.captain_id,
             c.sequence
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN captains c ON j.captainID_new = c.id
+        LEFT JOIN captains c ON j.captain_id = c.id
         WHERE 1=1
         """
     else:
@@ -130,7 +130,7 @@ def fetch_captains_for_migration(
             j.curated_status,
             j.starshipID,
             j.captainID,
-            j.captainID_new
+            j.captain_id
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
         WHERE 1=1
@@ -166,7 +166,7 @@ def fetch_captains_for_migration(
                 j.curated_status,
                 j.starshipID,
                 j.captainID,
-                j.captainID_new
+                j.captain_id
             FROM joined_ships j
             INNER JOIN accessions a ON j.ship_id = a.id
             WHERE 1=1
@@ -221,7 +221,7 @@ def create_captain_table(old_engine, new_engine):
     df_mapped = pd.DataFrame(
         {
             "captain_name": df.get(
-                "captainID", df.get("captainID_new", "unknown")
+                "captainID", df.get("captain_id", "unknown")
             ),  # Use available captain ID
             "sequence": df["sequence"],
             "accession_id": df["accession_id"],  # Now this should work

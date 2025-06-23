@@ -123,7 +123,7 @@ class CaptainSequenceUpdater:
                     SELECT sequence 
                     FROM ships 
                     LEFT JOIN joined_ships ON ships.id = joined_ships.ship_id
-                    LEFT JOIN captains ON joined_ships.captainID_new = captains.id
+                    LEFT JOIN captains ON joined_ships.captain_id = captains.id
                     WHERE captains.captainID = ? AND captains.sequence IS NULL
                     """
                     cursor.execute(query, (target_header,))
@@ -199,7 +199,7 @@ class CaptainSequenceUpdater:
             accession_id,
             captainID_c,
             captainID_j,
-            captainID_new,
+            captain_id,
             starshipID,
             ship_id_int,
             existing_sequence,
@@ -218,8 +218,8 @@ class CaptainSequenceUpdater:
                 resolved_ship_id = result[0]
             else:
                 cursor.execute(
-                    "SELECT ship_id FROM joined_ships WHERE captainID_new = ?",
-                    (captainID_new,),
+                    "SELECT ship_id FROM joined_ships WHERE captain_id = ?",
+                    (captain_id,),
                 )
                 result = cursor.fetchone()
                 if result:
@@ -257,7 +257,7 @@ class CaptainSequenceUpdater:
             cursor.execute(
                 """
                 UPDATE joined_ships 
-                SET captainID_new = ? 
+                SET captain_id = ? 
                 WHERE ship_id = ?
             """,
                 (captain_row_id, accession_id),
@@ -275,10 +275,10 @@ class CaptainSequenceUpdater:
 
             # Query for rows with missing sequences
             query = """
-            SELECT a.accession_tag, a.id, c.captainID, j.captainID, j.captainID_new, 
+            SELECT a.accession_tag, a.id, c.captainID, j.captainID, j.captain_id, 
                    j.starshipID, c.ship_id, c.sequence, c.id
             FROM captains c
-            JOIN joined_ships j ON c.id = j.captainID_new
+            JOIN joined_ships j ON c.id = j.captain_id
             JOIN accessions a ON c.ship_id = a.id
             WHERE c.sequence IS NULL OR c.ship_id IS NULL
             """
@@ -296,7 +296,7 @@ class CaptainSequenceUpdater:
                     accession_id,
                     captainID_c,
                     captainID_j,
-                    captainID_new,
+                    captain_id,
                     starshipID,
                     ship_id_int,
                     existing_sequence,
