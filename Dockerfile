@@ -57,16 +57,24 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && npm install -g biojs-vis-blasterjs
 
 # Create cron and cache directories and set up logging (combined directory creation)
-RUN mkdir -p /var/run/crond /var/log/cron $HOME/cron $HOME/src/database/db/cache && \
-    touch /var/log/cron/cron.log && \
-    # Create crontab file for supercronic
-    echo "0 * * * * cd $HOME && python -m src.utils.telemetry update_ip_locations >> $HOME/cron/cron.log 2>&1" > $HOME/cron/crontab && \
-    echo "*/15 * * * * cd $HOME && curl -X POST http://localhost:8000/api/refresh-telemetry >> $HOME/cron/cron.log 2>&1" >> $HOME/cron/crontab && \
-    # Add cache check to crontab
-    echo "*/5 * * * * curl -f http://localhost:8000/api/cache/status || curl -X POST http://localhost:8000/api/cache/refresh" >> $HOME/cron/crontab && \
-    # Set permissions for all directories
-    chown -R $USER:$USER $HOME /var/run/crond /var/log/cron && \
-    chmod -R 777 $HOME/src/database/db/cache
+RUN mkdir -p /var/run/crond /var/log/cron /home/starbase/cron /home/starbase/src/database/db /home/starbase/logs /home/starbase/tmp &&\
+    groupadd -g 1000 starbase_group &&\
+    usermod -a -G starbase_group starbase &&\
+    chown starbase:starbase_group /home/starbase &&\
+    chown -R starbase:starbase_group /home/starbase/cron /home/starbase/logs /home/starbase/tmp /home/starbase/src &&\
+    chmod -R 775 /home/starbase/cron /home/starbase/logs /home/starbase/tmp /home/starbase/src/database/db &&\
+    \
+    # Start Redis server in background for single-pod deployments
+    mkdir -p /var/lib/redis /var/log/redis &&\
+    chown starbase:starbase_group /var/lib/redis /var/log/redis &&\
+    \
+    # Install python packages from conda environment
+    cd /home/starbase &&\
+    conda run -n starbase pip install python-dotenv alembic sqlalchemy fastapi gunicorn uvloop httptools &&\
+    # Remove unnecessary packages
+    conda clean -afy &&\
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* &&\
+    apt-get clean
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -74,9 +82,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Copy application code (changes most frequently, so do this last)
 COPY ./ ./
-RUN chmod +x start-script.sh && \
-    # Ensure all directories and files are owned by starbase user
-    chown -R $USER:$USER $HOME/src
+RUN chmod +x start-script.sh &&\
+    chown -R starbase:starbase /home/starbase/src
 
 # Switch to user
 USER $USER
