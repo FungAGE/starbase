@@ -115,14 +115,10 @@ def initialize_app():
     """Initialize app components and perform setup tasks."""
     with server.app_context():
         from src.database.migrations import create_database_indexes
-        from src.config.scheduler import run_scheduler
 
         create_database_indexes()
         cleanup_old_cache()
         update_ip_locations()
-
-        # Start the scheduler thread
-        run_scheduler()
 
 
 def serve_app_layout():
