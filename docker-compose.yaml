@@ -1,6 +1,21 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: starbase_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   app:
     build:
       context: .
@@ -12,11 +27,56 @@ services:
       - FLASK_ENV=dev
       - PYTHONPATH=/home/starbase:/home/starbase/src
       - PYTHONNOUSERSITE=1  # Prevent loading packages from user site
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - .:/home/starbase:rw
       - ./src/database/db:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: always
-    command: ["./start-script.sh"]
+    command: ["./start-script.sh", "--role", "web"]
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: starbase_celery_worker
+    environment:
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONNOUSERSITE=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_CONCURRENCY=2
+    volumes:
+      - .:/home/starbase:rw
+      - ./src/database/db:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    command: ["./start-script.sh", "--role", "worker"]
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: starbase_celery_beat
+    environment:
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONNOUSERSITE=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/home/starbase:rw
+      - ./src/database/db:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    command: ["./start-script.sh", "--role", "beat"]
+
   unit-tests:
     build:
       context: .
@@ -24,7 +84,15 @@ services:
     container_name: starbase_tests
     environment:
       - PYTHONPATH=/home/starbase:/home/starbase/src
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - .:/home/starbase
       - ./src/database/db:/home/starbase/src/database/db
+    depends_on:
+      redis:
+        condition: service_healthy
     command: ["pytest", "-v"]
+
+volumes:
+  redis_data:
