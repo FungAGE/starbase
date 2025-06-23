@@ -52,14 +52,15 @@ def fetch_meta_data(curated=False, accession_tag=None):
 
     meta_query = """
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
-           j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, j.captainID,
-           j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
+           j.ome, sf.elementLength, sf.upDR, sf.downDR, f.familyName, f.type_element_reference, sf.contigID, sf.captainID,
+           sf.elementBegin, sf.elementEnd, t.`order`, t.family, t.name, 
            g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
     FROM joined_ships j
-    INNER JOIN taxonomy t ON j.taxid = t.id
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN taxonomy t ON j.tax_id = t.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
+    LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
     """
 
     params = []
@@ -123,8 +124,8 @@ def fetch_download_data(curated=True, dereplicate=False):
     query = """
     SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
-    INNER JOIN taxonomy t ON j.taxid = t.id
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN taxonomy t ON j.tax_id = t.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
@@ -186,8 +187,8 @@ def fetch_ships(
             j.starship_haplotype,
             g.assembly_accession
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
+        INNER JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         WHERE 1=1
@@ -266,8 +267,8 @@ def fetch_ship_table(curated=False):
         f.familyName,
         t.name
     FROM joined_ships js
-    LEFT JOIN accessions a ON js.ship_id = a.id
-    LEFT JOIN taxonomy t ON js.taxid = t.id
+    LEFT JOIN accessions a ON js.accession_id = a.id
+    LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
     LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
@@ -323,7 +324,7 @@ def fetch_accession_ship(accession_tag):
     gff_query = """
     SELECT g.*
     FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
+    LEFT JOIN accessions a ON g.accession_id = a.id
     WHERE a.accession_tag = :accession_tag
     """
 
@@ -378,14 +379,14 @@ def fetch_captains(
             j.curated_status,
             j.starshipID,
             j.captainID,
-            j.captainID_new,
+            j.captain_id,
             c."sequence" 
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
+        INNER JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN genomes g ON j.genome_id = g.id
-        LEFT JOIN captains c ON j.captainID_new = c.id
+        LEFT JOIN captains c ON j.captain_id = c.id
         WHERE 1=1
     """
 
@@ -405,7 +406,7 @@ def fetch_captains(
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.captainID_new,
+            v.captain_id,
             v.sequence
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
@@ -419,7 +420,7 @@ def fetch_captains(
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.captainID_new
+            v.captain_id
         FROM valid_captains v
         """
 
@@ -469,7 +470,7 @@ def get_database_stats():
             session.execute("""
             SELECT COUNT(DISTINCT a.accession_tag) 
             FROM accessions a
-            LEFT JOIN joined_ships j ON j.ship_id = a.id
+            LEFT JOIN joined_ships j ON j.accession_id = a.id
             WHERE j.curated_status = 'curated'
         """).scalar()
             or 0
@@ -479,7 +480,7 @@ def get_database_stats():
             session.execute("""
             SELECT COUNT(DISTINCT a.accession_tag) 
             FROM accessions a
-            LEFT JOIN joined_ships j ON j.ship_id = a.id
+            LEFT JOIN joined_ships j ON j.accession_id = a.id
             WHERE j.curated_status != 'curated' OR j.curated_status IS NULL
         """).scalar()
             or 0

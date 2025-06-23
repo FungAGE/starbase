@@ -42,7 +42,7 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
             g.assembly_accession
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         WHERE 1=1
