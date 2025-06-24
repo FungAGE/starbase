@@ -51,13 +51,16 @@ def fetch_meta_data(curated=False, accession_tag=None):
     session = StarbaseSession()
 
     meta_query = """
-    SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
-           j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, j.captainID,
-           j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
-           g.ome, g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, n.navis_name, h.haplotype_name, g.assembly_accession
+    SELECT j.curated_status, j.starshipID,
+           a.accession_tag, 
+           t.taxID, t.strain, t.`order`, t.family, t.name, 
+           sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd, 
+           f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+           g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
     FROM joined_ships j
-    INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
+    LEFT JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN starship_features sf ON a.id = sf.accession_id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN navis_names n ON j.ship_navis_id = n.id
     LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
