@@ -276,7 +276,6 @@ def fetch_ship_table(curated=False):
     -- Filter for ships that have sequence data
     LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
     LEFT JOIN gff g ON g.ship_id = a.id
-    WHERE js.orphan IS NULL
     """
 
     if curated:
