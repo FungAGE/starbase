@@ -54,11 +54,13 @@ def fetch_meta_data(curated=False, accession_tag=None):
     SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
            j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, j.captainID,
            j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
-           g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
+           g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, n.navis_name, h.haplotype_name, g.assembly_accession
     FROM joined_ships j
     INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+    LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     """
 
@@ -182,13 +184,15 @@ def fetch_ships(
             t.family,
             t.`order`,
             f.familyName,
-            j.starship_navis,
-            j.starship_haplotype,
+            n.navis_name,
+            h.haplotype_name,
             g.assembly_accession
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
         LEFT JOIN taxonomy t ON j.taxid = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         WHERE 1=1
     """
