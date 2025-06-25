@@ -31,20 +31,18 @@ def fetch_ships(accession_tags=None, curated=False, dereplicate=True):
             a.id as accession_id, 
             a.accession_tag,
             j.curated_status,
-            j.elementBegin,
-            j.elementEnd,
-            j.contigID,
-            t.species,
-            t.genus,
-            t.family,
-            t.`order`,
-            f.familyName,
+            sf.elementBegin, sf.elementEnd, sf.contigID,
+            t.name, t.family, t.`order`,
+            f.familyName, n.navis_name, h.haplotype_name,
             g.assembly_accession
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
+        LEFT JOIN starship_features sf ON a.id = sf.accession_id
         WHERE 1=1
     """
 
