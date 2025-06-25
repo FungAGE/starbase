@@ -38,8 +38,17 @@ def create_accordion_item(df, papers, category):
     else:
         filtered_meta_df = df[df["familyName"] == category]
         n_ships = len(filtered_meta_df["accession_tag"].dropna().unique())
-        min_size = min(filtered_meta_df["size"].dropna())
-        max_size = max(filtered_meta_df["size"].dropna())
+
+        element_lengths = pd.to_numeric(
+            filtered_meta_df["elementLength"], errors="coerce"
+        ).dropna()
+
+        if len(element_lengths) == 0:
+            min_size = 0
+            max_size = 0
+        else:
+            min_size = int(element_lengths.min())
+            max_size = int(element_lengths.max())
         upDRs = filtered_meta_df["upDR"].dropna().tolist()
         downDRs = filtered_meta_df["downDR"].dropna().tolist()
         filtered_papers_df = papers[papers["familyName"] == category]
@@ -384,9 +393,9 @@ def load_paper_data(url):
                 paper_df = fetch_paper_data()
             logger.debug(f"Paper data query returned {len(paper_df)} rows.")
             return paper_df.to_dict("records")
-        except SQLAlchemyError:
+        except SQLAlchemyError as e:
             logger.error(
-                "Error occurred while executing the paper data query.", exc_info=True
+                f"Error occurred while executing the paper data query: {str(e)}"
             )
             return []
 
@@ -437,8 +446,8 @@ def create_accordion(cached_meta, cached_papers):
             always_open=False,
             active_item=[],
         )
-    except Exception:
-        logger.error("Error occurred while creating the accordion.", exc_info=True)
+    except Exception as e:
+        logger.error(f"Error occurred while creating the accordion: {str(e)}")
         raise
 
 
@@ -492,7 +501,7 @@ def create_search_results(filtered_meta, cached_meta):
             },
             {"field": "name", "headerName": "Species", "flex": 1},
             {
-                "field": "size",
+                "field": "elementLength",
                 "headerName": "Element Length (bp)",
                 "flex": 1,
                 "type": "numericColumn",
@@ -505,8 +514,8 @@ def create_search_results(filtered_meta, cached_meta):
         filtered_meta_df["n_genomes"] = pd.to_numeric(
             filtered_meta_df["n_genomes"], errors="coerce"
         )
-        filtered_meta_df["size"] = pd.to_numeric(
-            filtered_meta_df["size"], errors="coerce"
+        filtered_meta_df["elementLength"] = pd.to_numeric(
+            filtered_meta_df["elementLength"], errors="coerce"
         )
 
         # Fill NA values
@@ -536,7 +545,7 @@ def create_search_results(filtered_meta, cached_meta):
         )
 
     except Exception as e:
-        logger.error(f"Error in create_search_results: {str(e)}", exc_info=True)
+        logger.error(f"Error in create_search_results: {str(e)}")
         return dmc.Alert(
             f"An error occurred while loading the results: {str(e)}",
             color="red",
@@ -616,7 +625,7 @@ def update_search_options(
 
         return taxonomy_data, family_data, navis_data, haplotype_data
     except Exception as e:
-        logger.error(f"Error in update_search_options: {str(e)}", exc_info=True)
+        logger.error(f"Error in update_search_options: {str(e)}")
         empty_data = []
         return empty_data, empty_data, empty_data, empty_data
 
@@ -687,7 +696,7 @@ def handle_search(
         )
 
     except Exception as e:
-        logger.error(f"Error in handle_search: {str(e)}", exc_info=True)
+        logger.error(f"Error in handle_search: {str(e)}")
         return None, [], [], [], []
 
 

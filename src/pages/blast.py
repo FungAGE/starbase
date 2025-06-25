@@ -1547,7 +1547,7 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
             False,
         )  # Set loading to False when done
     except Exception as e:
-        logger.error(f"Error in process_sequences: {str(e)}", exc_info=True)
+        logger.error(f"Error in process_sequences: {str(e)}")
         # Return basic data on error
         error_state = {
             "complete": True,
