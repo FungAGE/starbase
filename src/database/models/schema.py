@@ -38,6 +38,46 @@ class BaseModel(Base):
     is_deleted = Column(Boolean, default=False)
 
 
+# NEW: JoinedShips model - the main table that was missing
+class JoinedShips(BaseModel):
+    __tablename__ = "joined_ships"
+    __table_args__ = (
+        Index("idx_joined_ships_starshipid", "starshipID"),
+        Index("idx_joined_ships_family", "ship_family_id"),
+        Index("idx_joined_ships_navis", "ship_navis_id"),
+        Index("idx_joined_ships_haplotype", "ship_haplotype_id"),
+        Index("idx_joined_ships_taxonomy", "tax_id"),
+        Index("idx_joined_ships_genome", "genome_id"),
+    )
+
+    # Primary key - add auto-increment id
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    starshipID = Column(String, index=True)
+
+    # Data columns
+    evidence = Column(String)
+    source = Column(String)
+    curated_status = Column(String)
+
+    # Foreign key columns
+    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    tax_id = Column(Integer, ForeignKey("taxonomy.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
+    genome_id = Column(Integer, ForeignKey("genomes.id"))
+    captain_id = Column(Integer, ForeignKey("captains.id"))
+    ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
+    ship_haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
+
+    # Relationships
+    family = relationship("FamilyNames", back_populates="joined_ships")
+    taxonomy = relationship("Taxonomy", back_populates="joined_ships")
+    ship = relationship("Ships", back_populates="joined_ships")
+    genome = relationship("Genome", back_populates="joined_ships")
+    captain = relationship("Captains", back_populates="joined_ships")
+    navis = relationship("NavisNames", back_populates="joined_ships")
+    haplotype = relationship("HaplotypeNames", back_populates="joined_ships")
+
+
 class Accessions(BaseModel):
     __tablename__ = "accessions"
     __table_args__ = (Index("idx_accession_tag", "accession_tag"),)
@@ -46,12 +86,18 @@ class Accessions(BaseModel):
     ship_name = Column(String(255), nullable=False)
     accession_tag = Column(String(50), nullable=True, index=True)
 
-    # One-way relationships - remove all back_populates
-    ships = relationship("Ships", cascade="all, delete-orphan")
-    captains = relationship("Captains", cascade="all, delete-orphan")
-    starship_features = relationship("StarshipFeatures")
-    gff_entries = relationship("Gff", cascade="all, delete-orphan")
-    classifications = relationship("Classification")
+    # Relationships
+    ships = relationship(
+        "Ships", back_populates="accession", cascade="all, delete-orphan"
+    )
+    captains = relationship(
+        "Captains", back_populates="accession", cascade="all, delete-orphan"
+    )
+    starship_features = relationship("StarshipFeatures", back_populates="accession")
+    gff_entries = relationship(
+        "Gff", back_populates="accession", cascade="all, delete-orphan"
+    )
+    classifications = relationship("Classification", back_populates="accession")
 
 
 class Ships(BaseModel):
@@ -61,42 +107,54 @@ class Ships(BaseModel):
     sequence = Column(Text)
     md5 = Column(String(32))
     sequence_length = Column(Integer)
-    evidence = Column(String(50))
-    source = Column(String(50))
-    curated_status = Column(String(50))
-    orphan = Column(String(50))
+    header = Column(String)
+    accession = Column(String)  # Keep for backward compatibility
     accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=False)
-    captain_id = Column(Integer, ForeignKey("captains.id"))
-    tax_id = Column(Integer, ForeignKey("taxonomy.id"))
-    genome_id = Column(Integer, ForeignKey("genomes.id"))
-    classification_id = Column(Integer, ForeignKey("classification.id"))
+
+    # Relationships
+    accession = relationship("Accessions", back_populates="ships")
+    joined_ships = relationship("JoinedShips", back_populates="ship")
 
 
 class Captains(BaseModel):
     __tablename__ = "captains"
+
     id = Column(Integer, primary_key=True)
+    captainID = Column(String(50))  # Match database column name
     captain_name = Column(String(50), unique=True)
     sequence = Column(Text)
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     accession_id = Column(Integer, ForeignKey("accessions.id"))
     reviewed = Column(String)
     evidence = Column(String)
 
+    # Relationships
+    accession = relationship("Accessions", back_populates="captains")
+    joined_ships = relationship("JoinedShips", back_populates="captain")
 
-class Genome(BaseModel):
+
+class Genome(BaseModel):  # Keep class name for compatibility but matches genomes table
     __tablename__ = "genomes"
     __table_args__ = (
-        Index("idx_genome_taxonomy", "taxonomy_id"),
-        Index("idx_genome_version_source", "version", "genomeSource"),
+        Index("idx_genomes_ome", "ome"),
+        Index("idx_genomes_source", "genomeSource"),
     )
 
     id = Column(Integer, primary_key=True)
     ome = Column(String(50))
-    taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
+    genus = Column(String(50))
+    species = Column(String(50))
+    strain = Column(String(50))
     version = Column(String(50))
     genomeSource = Column(String(50))
     citation = Column(String(50))
     biosample = Column(String(50))
     acquisition_date = Column(Integer)
+    assembly_accession = Column(Text)
+
+    # Relationships
+    joined_ships = relationship("JoinedShips", back_populates="genome")
+    classifications = relationship("Classification", back_populates="genome")
 
 
 class BoundaryType(enum.Enum):
@@ -138,6 +196,9 @@ class StarshipFeatures(BaseModel):
     ars = Column(String)
     other = Column(String)
     hgt = Column(String)
+
+    # Relationships
+    accession = relationship("Accessions", back_populates="starship_features")
 
 
 # Association tables for many-to-many relationships
@@ -197,22 +258,46 @@ class FamilyNames(BaseModel):
     otherFamilyID = Column(String)
     paper_id = Column(Integer, ForeignKey("papers.id"))
 
+    # Relationships
+    papers = relationship(
+        "Papers", secondary=paper_family_association, back_populates="family_names"
+    )
+    navis_names = relationship("NavisNames", back_populates="family")
+    haplotype_names = relationship("HaplotypeNames", back_populates="family")
+    joined_ships = relationship("JoinedShips", back_populates="family")
+    classifications = relationship("Classification", back_populates="family")
+
 
 class NavisNames(BaseModel):
     __tablename__ = "navis_names"
+
     id = Column(Integer, primary_key=True)
     navis_name = Column(String)
     previous_navis_name = Column(String)
+    ship_family_id = Column(String)  # Keep for backward compatibility
     family_id = Column(Integer, ForeignKey("family_names.id"))
+
+    # Relationships
+    family = relationship("FamilyNames", back_populates="navis_names")
+    haplotype_names = relationship("HaplotypeNames", back_populates="navis")
+    joined_ships = relationship("JoinedShips", back_populates="navis")
+    classifications = relationship("Classification", back_populates="navis")
 
 
 class HaplotypeNames(BaseModel):
     __tablename__ = "haplotype_names"
+
     id = Column(Integer, primary_key=True)
     haplotype_name = Column(String)
     previous_haplotype_name = Column(String)
     family_id = Column(Integer, ForeignKey("family_names.id"))
     navis_id = Column(Integer, ForeignKey("navis_names.id"))
+
+    # Relationships
+    family = relationship("FamilyNames", back_populates="haplotype_names")
+    navis = relationship("NavisNames", back_populates="haplotype_names")
+    joined_ships = relationship("JoinedShips", back_populates="haplotype")
+    classifications = relationship("Classification", back_populates="haplotype")
 
 
 class Taxonomy(BaseModel):
@@ -240,31 +325,59 @@ class Taxonomy(BaseModel):
     genus = Column(String(50))
     species = Column(String(50))
     section = Column(String(50))
+    species_group = Column(String(50))
+    subgenus = Column(String(50))
     strain = Column(String(50))
-    ship = relationship("Ships", back_populates="tax")
-    genome = relationship("Genome", back_populates="tax")
-    classification = relationship("Classification", back_populates="tax")
+
+    # Relationships
+    joined_ships = relationship("JoinedShips", back_populates="taxonomy")
+    classifications = relationship("Classification", back_populates="taxonomy")
 
 
 class Gff(Base):
     __tablename__ = "gff"
-    __table_args__ = (Index("idx_gff_accession_id", "accession_id"),)
+    __table_args__ = (
+        Index("idx_gff_accession_id", "accession_id"),
+        Index("idx_gff_ship_id", "ship_id"),
+    )
+
     id = Column(Integer, primary_key=True)
     contig = Column(String(100))
     accession_id = Column(Integer, ForeignKey("accessions.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     source = Column(String)
     type = Column(String)
     start = Column(Integer)
     end = Column(Integer)
-    phase = Column(Integer)
+    phase = Column(String)
     strand = Column(String)
     score = Column(String)
     attributes = Column(String)
 
+    # Relationships
+    accession = relationship("Accessions", back_populates="gff_entries")
+
 
 class Classification(BaseModel):
     __tablename__ = "classification"
+
     id = Column(Integer, primary_key=True)
+    Family = Column(String)
+    Species = Column(String)
+    Strain = Column(String)
+    Code = Column(String)
+    Navis = Column(String)
+    Size = Column(Integer)
+    DR = Column(String)
+    aTIR = Column(String)
+    Target = Column(String)
+    Spok = Column(String)
+    ARS = Column(String)
+    Other = Column(String)
+    HGT = Column(String)
+    taxID = Column(String)
+
+    # Foreign keys
     accession_id = Column(Integer, ForeignKey("accessions.id"))
     taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
     genome_id = Column(Integer, ForeignKey("genomes.id"))
@@ -273,9 +386,9 @@ class Classification(BaseModel):
     haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
 
     # Relationships
-    accession = relationship("Accessions", back_populates="classification")
-    taxonomy = relationship("Taxonomy", back_populates="classification")
-    genome = relationship("Genome", back_populates="classification")
-    family = relationship("FamilyNames", back_populates="classification")
-    navis = relationship("NavisNames", back_populates="classification")
-    haplotype = relationship("HaplotypeNames", back_populates="classification")
+    accession = relationship("Accessions", back_populates="classifications")
+    taxonomy = relationship("Taxonomy", back_populates="classifications")
+    genome = relationship("Genome", back_populates="classifications")
+    family = relationship("FamilyNames", back_populates="classifications")
+    navis = relationship("NavisNames", back_populates="classifications")
+    haplotype = relationship("HaplotypeNames", back_populates="classifications")
