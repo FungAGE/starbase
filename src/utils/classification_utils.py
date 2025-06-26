@@ -68,6 +68,32 @@ WORKFLOW_STAGES = [
     {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
+# Define badge colors based on source
+source_colors = {
+    "exact": "green",
+    "contained": "teal",
+    "similar": "cyan",
+    "blast_hit": "blue",
+    "hmmsearch": "purple",
+    "captain clustering": "orange",
+    "k-mer similarity": "red",
+    "unknown": "gray",
+}
+
+# Define icon and color based on confidence level
+confidence_colors = {
+    "High": "green",
+    "Medium": "yellow",
+    "Low": "red",
+    "Unknown": "gray",
+}
+
+confidence_icons = {
+    "High": "mdi:shield-check",
+    "Medium": "mdi:shield-half-full",
+    "Low": "mdi:shield-outline",
+}
+
 
 def assign_accession(
     sequence: str, existing_ships: pd.DataFrame = None, threshold: float = 0.95
@@ -1544,32 +1570,6 @@ def create_classification_card(classification_data):
     match_details = classification_data.get("match_details")
     confidence = classification_data.get("confidence", "Low")
 
-    # Define badge colors based on source
-    source_colors = {
-        "exact": "green",
-        "contained": "teal",
-        "similar": "cyan",
-        "blast_hit": "blue",
-        "hmmsearch": "purple",
-        "captain clustering": "orange",
-        "k-mer similarity": "red",
-        "unknown": "gray",
-    }
-
-    # Define icon and color based on confidence level
-    confidence_colors = {
-        "High": "green",
-        "Medium": "yellow",
-        "Low": "red",
-        "Unknown": "gray",
-    }
-
-    confidence_icons = {
-        "High": "mdi:shield-check",
-        "Medium": "mdi:shield-half-full",
-        "Low": "mdi:shield-outline",
-    }
-
     source_color = source_colors.get(source, "gray")
     confidence_color = confidence_colors.get(confidence, "gray")
     confidence_icon = confidence_icons.get(confidence, "mdi:shield-outline")
@@ -1740,15 +1740,9 @@ def create_classification_output(sequence_results, workflow_state=None):
                         + (stage_progress / total_stages)
                     )
                     progress = max(0, min(100, progress))
-
-                    # Get current stage text
+                    # get stage label from WORKFLOW_STAGES
                     stage_labels = {
-                        "exact": "Checking for exact matches",
-                        "contained": "Checking for contained matches",
-                        "similar": "Checking for similar matches",
-                        "family": "Running family classification",
-                        "navis": "Running navis classification",
-                        "haplotype": "Running haplotype classification",
+                        stage["id"]: stage["label"] for stage in WORKFLOW_STAGES
                     }
                     current_stage_text = stage_labels.get(
                         current_stage,
