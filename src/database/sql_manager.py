@@ -406,7 +406,6 @@ def fetch_captains(
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.captain_id,
             v.sequence
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
@@ -420,7 +419,6 @@ def fetch_captains(
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.captain_id
         FROM valid_captains v
         """
 
