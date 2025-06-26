@@ -572,15 +572,15 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
         if family:
             meta_data = meta_data[meta_data["familyName"].isin(family)]
         if navis:
-            meta_data = meta_data[meta_data["starship_navis"].isin(navis)]
+            meta_data = meta_data[meta_data["navis_name"].isin(navis)]
         if haplotype:
-            meta_data = meta_data[meta_data["starship_haplotype"].isin(haplotype)]
+            meta_data = meta_data[meta_data["haplotype_name"].isin(haplotype)]
 
         return {
             "taxonomy": sorted(meta_data["name"].dropna().unique()),
             "family": sorted(meta_data["familyName"].dropna().unique()),
-            "navis": sorted(meta_data["starship_navis"].dropna().unique()),
-            "haplotype": sorted(meta_data["starship_haplotype"].dropna().unique()),
+            "navis": sorted(meta_data["navis_name"].dropna().unique()),
+            "haplotype": sorted(meta_data["haplotype_name"].dropna().unique()),
         }
     except Exception as e:
         logger.error(f"Error in get_filtered_options: {str(e)}")
@@ -682,9 +682,9 @@ def handle_search(
         if family and len(family) > 0:
             df = df[df["familyName"].isin(family)]
         if navis and len(navis) > 0:
-            df = df[df["starship_navis"].isin(navis)]
+            df = df[df["navis_name"].isin(navis)]
         if haplotype and len(haplotype) > 0:
-            df = df[df["starship_haplotype"].isin(haplotype)]
+            df = df[df["haplotype_name"].isin(haplotype)]
 
         # Return filtered data and keep current filter values
         return (

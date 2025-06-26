@@ -484,7 +484,7 @@ def classify_navis(
             )
             return None
 
-        navis_name = matching_captains["starship_navis"].iloc[0]
+        navis_name = matching_captains["navis_name"].iloc[0]
         logger.debug(f"Found navis name: {navis_name}")
 
         return navis_name
@@ -546,9 +546,9 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 "note": "No ships data available",
             }
 
-        # Check if starship_navis column exists
-        if navis is not None and "starship_navis" in existing_ships.columns:
-            filtered_ships = existing_ships[existing_ships["starship_navis"] == navis]
+        # Check if navis_name column exists
+        if navis is not None and "navis_name" in existing_ships.columns:
+            filtered_ships = existing_ships[existing_ships["navis_name"] == navis]
             logger.debug(f"Filtered to {len(filtered_ships)} ships with navis={navis}")
             if filtered_ships.empty:
                 logger.warning(
@@ -558,7 +558,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
         else:
             if navis is not None:
                 logger.warning(
-                    "No starship_navis column in ships DataFrame, using all ships"
+                    "No navis_name column in ships DataFrame, using all ships"
                 )
             filtered_ships = existing_ships
 
@@ -571,7 +571,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 "note": "Missing sequence data",
             }
 
-        required_columns = ["sequence", "captainID", "starship_haplotype"]
+        required_columns = ["sequence", "captainID", "haplotype_name"]
         missing_columns = [
             col for col in required_columns if col not in filtered_ships.columns
         ]
@@ -621,7 +621,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
             # Get haplotypes for these ships
             ship_haplotypes = filtered_ships[
                 filtered_ships["captainID"].isin(ship_ids)
-            ]["starship_haplotype"].dropna()
+            ]["haplotype_name"].dropna()
 
             if ship_haplotypes.empty:
                 logger.warning("No haplotype information for clustered ships")
@@ -1391,11 +1391,9 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     try:
                         if (
                             not captains_df.empty
-                            and "starship_navis" in captains_df.columns
+                            and "navis_name" in captains_df.columns
                         ):
-                            navis_values = (
-                                captains_df["starship_navis"].dropna().unique()
-                            )
+                            navis_values = captains_df["navis_name"].dropna().unique()
                             if len(navis_values) > 0:
                                 navis_value = navis_values[0]
                                 logger.debug(f"Using navis value: {navis_value}")
@@ -1404,8 +1402,8 @@ def run_classification_workflow(upload_data, meta_dict=None):
                         else:
                             logger.warning("No navis column in captains data")
 
-                        if navis_value is None and "starship_navis" in ships_df.columns:
-                            navis_values = ships_df["starship_navis"].dropna().unique()
+                        if navis_value is None and "navis_name" in ships_df.columns:
+                            navis_values = ships_df["navis_name"].dropna().unique()
                             if len(navis_values) > 0:
                                 navis_value = navis_values[0]
                                 logger.debug(

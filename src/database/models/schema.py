@@ -174,8 +174,8 @@ class Taxonomy(Base):
 class NavisHaplotype(Base):
     __tablename__ = "navis_haplotype"
     id = Column(Integer, primary_key=True)
-    starship_navis = Column(String)
-    starship_haplotype = Column(String)
+    navis_name = Column(String)
+    haplotype_name = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
 
     # Relationships
@@ -229,8 +229,8 @@ class JoinedShips(Base):
     containNested = Column(String)
     dr = Column(String)
     tir = Column(String)
-    starship_navis = Column(String)
-    starship_haplotype = Column(String)
+    navis_name = Column(String)
+    haplotype_name = Column(String)
     target = Column(String)
     spok = Column(String)
     ars = Column(String)
