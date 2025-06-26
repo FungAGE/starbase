@@ -53,37 +53,6 @@ def table_error(e):
     )
 
 
-# Common AG Grid configuration - simplified for stability
-DEFAULT_GRID_OPTIONS = {
-    "pagination": True,
-    "paginationAutoPageSize": False,
-    "domLayout": "normal",  # Changed from autoHeight to avoid sizing issues
-    "tooltipShowDelay": 500,
-    "tooltipHideDelay": 2000,
-    "enableCellTextSelection": True,
-    "suppressPropertyNamesCheck": True,
-    "suppressLoadingOverlay": True,
-    "suppressNoRowsOverlay": True,
-    "rowHeight": 48,
-    "headerHeight": 48,
-    # Simplified grid ready handler
-    "onGridReady": """function(params) {
-        try {
-            console.log('Grid ready:', params.api ? 'API available' : 'API missing');
-        } catch(e) {
-            console.error('Grid ready error:', e);
-        }
-    }""",
-}
-
-DEFAULT_COL_DEF = {
-    "resizable": True,
-    "sortable": True,
-    "filter": True,
-    "minWidth": 100,
-}
-
-
 def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
     Specific table constructor for ship data with accession tag handling.
@@ -151,6 +120,8 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
         defaultColDef={
             "resizable": True,
+            "sortable": True,
+            "filter": True,
             "minWidth": 100,
         },
         dashGridOptions=grid_options,
