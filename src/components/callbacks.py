@@ -14,6 +14,110 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
+def safe_get_value(df, column, index=0, default="N/A", format_func=None):
+    """
+    Safely extract a value from a DataFrame, handling NA/Null values.
+
+    Args:
+        df: DataFrame to extract from
+        column: Column name
+        index: Row index (default 0)
+        default: Default value if NA/Null (default "N/A")
+        format_func: Optional function to format the value
+
+    Returns:
+        Formatted value or default
+    """
+    try:
+        if column not in df.columns:
+            return default
+
+        value = df[column].iloc[index]
+
+        # Check for various forms of null/empty values
+        if (
+            pd.isna(value)
+            or value is None
+            or value == ""
+            or str(value).lower() in ["nan", "none", "null"]
+        ):
+            return default
+
+        # Apply formatting function if provided
+        if format_func and callable(format_func):
+            try:
+                return format_func(value)
+            except (ValueError, TypeError):
+                return default
+
+        return str(value)
+
+    except (IndexError, KeyError):
+        return default
+
+
+def safe_get_numeric(df, column, index=0, default="N/A"):
+    """Helper for numeric values"""
+    return safe_get_value(df, column, index, default, lambda x: str(int(float(x))))
+
+
+def safe_get_position(df, begin_col, end_col, index=0, default="N/A"):
+    """Helper for position ranges"""
+    begin = safe_get_value(df, begin_col, index, None, lambda x: int(float(x)))
+    end = safe_get_value(df, end_col, index, None, lambda x: int(float(x)))
+
+    if begin != "N/A" and end != "N/A" and begin is not None and end is not None:
+        return f"{begin} - {end}"
+    return default
+
+
+def create_table_cells(df, column, format_func=None, default="N/A"):
+    """
+    Create table cells for all rows in a DataFrame column, handling NA values.
+
+    Args:
+        df: DataFrame
+        column: Column name
+        format_func: Optional formatting function
+        default: Default value for NA/Null
+
+    Returns:
+        List of html.Td elements
+    """
+    cells = []
+    for i in range(len(df)):
+        value = safe_get_value(df, column, i, default, format_func)
+        cells.append(html.Td(value))
+    return cells
+
+
+def create_position_cells(df, begin_col, end_col, default="N/A"):
+    """Create table cells for position ranges"""
+    cells = []
+    for i in range(len(df)):
+        position = safe_get_position(df, begin_col, end_col, i, default)
+        cells.append(html.Td(position))
+    return cells
+
+
+def create_genome_headers(df):
+    """
+    Create table headers for genome columns, using assembly_accession if available,
+    otherwise fallback to genome numbers.
+    """
+    headers = []
+    for i in range(len(df)):
+        # Try to get assembly accession as header
+        header_value = safe_get_value(df, "assembly_accession", i, default="")
+
+        # If no assembly accession, use genome number
+        if not header_value or header_value == "N/A":
+            header_value = f"Genome {i + 1}"
+
+        headers.append(html.Th(header_value, style={"backgroundColor": "#f8f9fa"}))
+    return headers
+
+
 download_ships_button = dmc.Anchor(
     dmc.Button(
         [
@@ -147,6 +251,53 @@ def create_accession_modal(accession):
                 ]
             ), f"Accession: {accession}"
 
+        # Validate modal_data
+        if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
+            logger.warning("Invalid or empty modal_data received")
+            return dmc.Alert(
+                title="Invalid Data",
+                color="red",
+                children="Invalid modal data received",
+            ), f"Error: {accession}"
+
+        # Log data info for debugging
+        logger.debug(
+            f"Modal data shape: {modal_data.shape}, columns: {list(modal_data.columns)}"
+        )
+
+        # Check for required columns
+        required_columns = ["starshipID", "familyName"]
+        missing_columns = [
+            col for col in required_columns if col not in modal_data.columns
+        ]
+        if missing_columns:
+            logger.warning(f"Missing required columns: {missing_columns}")
+            return dmc.Alert(
+                title="Missing Data",
+                color="red",
+                children=f"Missing required columns: {missing_columns}",
+            ), f"Error: {accession}"
+
+        # create variables for each data used in the sections of the modal
+        starshipID = safe_get_value(modal_data, "starshipID")
+        curated_status = safe_get_value(modal_data, "curated_status", default="unknown")
+        badge_color = "green" if curated_status == "curated" else "yellow"
+        familyName = safe_get_value(modal_data, "familyName")
+        genomes_present = str(len(modal_data))
+        navis_name = safe_get_value(modal_data, "navis_name")
+        haplotype_name = safe_get_value(modal_data, "haplotype_name")
+        order = safe_get_value(modal_data, "order")
+        species_name = safe_get_value(modal_data, "name")
+        strain_name = safe_get_value(modal_data, "strain")
+        tax_id = safe_get_numeric(modal_data, "taxID")
+        assembly_accession = safe_get_value(
+            modal_data, "assembly_accession", default=""
+        )
+        genome_source = safe_get_value(modal_data, "genomeSource", default="")
+        contig_id = safe_get_value(modal_data, "contigID", default="")
+        element_length = safe_get_numeric(modal_data, "elementLength", default="")
+        element_position = safe_get_position(modal_data, "elementBegin", "elementEnd")
+
         # Basic ship information section
         ship_info = dmc.Paper(
             p="md",
@@ -160,42 +311,40 @@ def create_accession_modal(accession):
                         dmc.Group(
                             [
                                 dmc.Text("starshipID:", fw=700),
-                                dmc.Text(modal_data["starshipID"].iloc[0]),
+                                dmc.Text(starshipID),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Curation Status:", fw=700),
                                 dmc.Badge(
-                                    modal_data["curated_status"].iloc[0],
-                                    color="green"
-                                    if modal_data["curated_status"].iloc[0] == "curated"
-                                    else "yellow",
+                                    curated_status,
+                                    color=badge_color,
                                 ),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Starship Family:", fw=700),
-                                dmc.Text(modal_data["familyName"].iloc[0]),
+                                dmc.Text(familyName),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Genomes Present:", fw=700),
-                                dmc.Badge(str(len(modal_data)), color="blue"),
+                                dmc.Badge(str(genomes_present), color="blue"),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Starship Navis:", fw=700),
-                                dmc.Text(modal_data["starship_navis"].iloc[0]),
+                                dmc.Text(navis_name),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Starship Haplotype:", fw=700),
-                                dmc.Text(modal_data["starship_haplotype"].iloc[0]),
+                                dmc.Text(haplotype_name),
                             ]
                         ),
                     ],
@@ -216,41 +365,39 @@ def create_accession_modal(accession):
                         dmc.Group(
                             [
                                 dmc.Text("Order:", fw=700),
-                                dmc.Text(modal_data["order"].iloc[0]),
+                                dmc.Text(order),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Family:", fw=700),
-                                dmc.Text(modal_data["family"].iloc[0]),
+                                dmc.Text(familyName),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Species:", fw=700),
-                                dmc.Text(modal_data["name"].iloc[0]),
+                                dmc.Text(species_name),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Strain:", fw=700),
-                                dmc.Text(modal_data["strain"].iloc[0]),
+                                dmc.Text(strain_name),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("NCBI Taxonomy ID:", fw=700),
                                 dmc.Anchor(
-                                    str(
-                                        int(modal_data["taxID"].iloc[0])
-                                        if isinstance(
-                                            modal_data["taxID"].iloc[0], (float, int)
-                                        )
-                                        else modal_data["taxID"].iloc[0]
-                                    ),
-                                    href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={int(modal_data['taxID'].iloc[0]) if isinstance(modal_data['taxID'].iloc[0], (float, int)) else modal_data['taxID'].iloc[0]}",
-                                    target="_blank",
-                                ),
+                                    tax_id,
+                                    href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
+                                    if tax_id != "N/A"
+                                    else "#",
+                                    target="_blank" if tax_id != "N/A" else None,
+                                )
+                                if tax_id != "N/A"
+                                else dmc.Text(tax_id),
                             ]
                         ),
                     ],
@@ -278,15 +425,7 @@ def create_accession_modal(accession):
                                                 "Field",
                                                 style={"backgroundColor": "#f8f9fa"},
                                             ),
-                                            *[
-                                                html.Th(
-                                                    f"{modal_data['assembly_accession'].iloc[i] if 'assembly_accession' in modal_data else f'Genome {i + 1}'}",
-                                                    style={
-                                                        "backgroundColor": "#f8f9fa"
-                                                    },
-                                                )
-                                                for i in range(len(modal_data))
-                                            ],
+                                            *create_genome_headers(modal_data),
                                         ]
                                     )
                                 ),
@@ -295,58 +434,37 @@ def create_accession_modal(accession):
                                         html.Tr(
                                             [
                                                 html.Td("Genome Source"),
-                                                *[
-                                                    html.Td(
-                                                        modal_data["genomeSource"].iloc[
-                                                            i
-                                                        ]
-                                                    )
-                                                    for i in range(len(modal_data))
-                                                ],
+                                                *create_table_cells(
+                                                    modal_data, "genomeSource"
+                                                ),
                                             ]
                                         ),
                                         html.Tr(
                                             [
                                                 html.Td("ContigID"),
-                                                *[
-                                                    html.Td(
-                                                        modal_data["contigID"].iloc[i]
-                                                    )
-                                                    for i in range(len(modal_data))
-                                                ],
+                                                *create_table_cells(
+                                                    modal_data, "contigID"
+                                                ),
                                             ]
                                         ),
                                         html.Tr(
                                             [
                                                 html.Td("Element Position"),
-                                                *[
-                                                    html.Td(
-                                                        f"{int(modal_data['elementBegin'].iloc[i])} - {int(modal_data['elementEnd'].iloc[i])}"
-                                                        if pd.notna(
-                                                            modal_data[
-                                                                "elementBegin"
-                                                            ].iloc[i]
-                                                        )
-                                                        and pd.notna(
-                                                            modal_data[
-                                                                "elementEnd"
-                                                            ].iloc[i]
-                                                        )
-                                                        else ""
-                                                    )
-                                                    for i in range(len(modal_data))
-                                                ],
+                                                *create_position_cells(
+                                                    modal_data,
+                                                    "elementBegin",
+                                                    "elementEnd",
+                                                ),
                                             ]
                                         ),
                                         html.Tr(
                                             [
                                                 html.Td("Size"),
-                                                *[
-                                                    html.Td(
-                                                        f"{int(modal_data['size'].iloc[i])} bp"
-                                                    )
-                                                    for i in range(len(modal_data))
-                                                ],
+                                                *create_table_cells(
+                                                    modal_data,
+                                                    "elementLength",
+                                                    format_func=lambda x: f"{int(float(x))} bp",
+                                                ),
                                             ]
                                         ),
                                     ]
@@ -363,40 +481,35 @@ def create_accession_modal(accession):
                         dmc.Group(
                             [
                                 dmc.Text("Assembly Accession:", fw=700),
-                                dmc.Text(
-                                    modal_data["assembly_accession"].iloc[0]
-                                    if "assembly_accession" in modal_data
-                                    else ""
-                                ),
+                                dmc.Text(assembly_accession or "N/A"),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Genome Source:", fw=700),
-                                dmc.Text(modal_data["genomeSource"].iloc[0]),
+                                dmc.Text(genome_source or "N/A"),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("ContigID:", fw=700),
-                                dmc.Text(modal_data["contigID"].iloc[0]),
+                                dmc.Text(contig_id or "N/A"),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Element Position:", fw=700),
-                                dmc.Text(
-                                    f"{int(modal_data['elementBegin'].iloc[0])} - {int(modal_data['elementEnd'].iloc[0])}"
-                                    if pd.notna(modal_data["elementBegin"].iloc[0])
-                                    and pd.notna(modal_data["elementEnd"].iloc[0])
-                                    else ""
-                                ),
+                                dmc.Text(element_position),
                             ]
                         ),
                         dmc.Group(
                             [
                                 dmc.Text("Size:", fw=700),
-                                dmc.Text(f"{int(modal_data['size'].iloc[0])} bp"),
+                                dmc.Text(
+                                    f"{element_length} bp"
+                                    if element_length != "N/A"
+                                    else "N/A"
+                                ),
                             ]
                         ),
                     ],
