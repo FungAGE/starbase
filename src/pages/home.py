@@ -7,7 +7,6 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from src.components.tables import make_paper_table
-from src.components.callbacks import download_ships_card
 from src.database.sql_engine import check_database_connection
 from src.database.sql_manager import get_database_stats
 
@@ -99,7 +98,7 @@ def create_feature_button(label, href, icon):
 
 working_buttons = [
     create_feature_button("BLAST Search", "/blast", "mdi:dna"),
-    create_feature_button("Browse Wiki", "/wiki", "mdi:book-open-variant"),
+    create_feature_button("Browse Wiki and Download", "/wiki", "mdi:book-open-variant"),
     create_feature_button(
         html.Div(
             [
@@ -333,9 +332,6 @@ def create_features_section():
                     ),
                     dmc.GridCol(
                         [developing_features_card], span={"base": 12, "sm": 6, "lg": 4}
-                    ),
-                    dmc.GridCol(
-                        [download_ships_card], span={"base": 12, "sm": 6, "lg": 4}
                     ),
                     dmc.GridCol(
                         [create_stats_section()], span={"base": 12, "sm": 6, "lg": 4}
