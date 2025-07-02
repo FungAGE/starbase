@@ -6,5 +6,4 @@ PGV_URL=/pgv
 SUBMIT_URL=/submit
 ABOUT_URL=/about
 STARFISH_URL=/starfish
-DL_URL=/download
 METRICS_URL=/metrics

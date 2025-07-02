@@ -53,90 +53,6 @@ def table_error(e):
     )
 
 
-def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
-    """
-    Specific table constructor for ship data with accession tag handling.
-
-    Args:
-        df (pd.DataFrame): Ship data to display
-        id (str): Unique identifier for the table
-        columns (list): Column definitions
-        select_rows (bool): Enable row selection
-        pg_sz (int): Number of rows per page
-    """
-    # Handle empty or None DataFrame
-    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        if columns:
-            df = pd.DataFrame(columns=[col["field"] for col in columns])
-        else:
-            df = pd.DataFrame()
-
-    # Create column definitions
-    if columns:
-        grid_columns = []
-        for col in columns:
-            col_def = {
-                "field": col["field"],
-                "headerName": col["name"]
-                if "name" in col
-                else col["field"].replace("_", " ").title(),
-                "flex": 1,
-            }
-
-            # Add special styling for accession_tag
-            if col["field"] == "accession_tag":
-                col_def.update(
-                    {
-                        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
-                        "cellClass": "clickable-cell",
-                    }
-                )
-
-            grid_columns.append(col_def)
-    else:
-        grid_columns = [{"field": col} for col in df.columns]
-
-    # Simplified stable grid options
-    grid_options = {
-        "pagination": True,
-        "paginationPageSize": pg_sz or 10,
-        "suppressPropertyNamesCheck": True,
-        "rowHeight": 48,
-        "headerHeight": 48,
-    }
-
-    # Only add selection-related options if selection is enabled
-    if select_rows:
-        grid_options.update(
-            {
-                "rowSelection": "multiple",
-                "suppressRowClickSelection": True,  # Only select via checkbox
-            }
-        )
-
-    return dag.AgGrid(
-        id=id,
-        columnDefs=grid_columns,
-        rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
-        defaultColDef={
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-            "minWidth": 100,
-        },
-        dashGridOptions=grid_options,
-        className="ag-theme-alpine",
-        style={
-            "width": "100%",
-            "height": "500px",  # Fixed height for stability
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
-        },
-        persistence=True,
-        persistence_type="memory",
-    )
-
-
 def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
     Specific table constructor for ship data using AG Grid.
@@ -319,8 +235,14 @@ def make_paper_table():
 
 
 def make_dl_table(df, id, table_columns):
-    """Table for displaying download data."""
-    # Ensure we have a valid data structure
+    """
+    Specific table constructor for ship data with accession tag handling and download options.
+
+    Args:
+        df (pd.DataFrame): Ship data to display
+        id (str): Unique identifier for the table
+        table_columns (list): Column definitions
+    """    # Ensure we have a valid data structure
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):

@@ -89,7 +89,6 @@ BLAST_URL = os.getenv("BLAST_URL", "/blast")
 ABOUT_URL = os.getenv("ABOUT_URL", "/about")
 PGV_URL = os.getenv("PGV_URL", "/pgv")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
-DL_URL = os.getenv("DL_URL", "/download")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 
 # API Keys
