@@ -51,7 +51,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     session = StarbaseSession()
 
     meta_query = """
-    SELECT j.curated_status, j.starshipID,
+    SELECT j.curated_status, j.starshipID, j.ship_id,
            a.accession_tag, 
            t.taxID, t.strain, t.`order`, t.family, t.name, 
            sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd, 
