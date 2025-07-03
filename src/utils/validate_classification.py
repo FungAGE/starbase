@@ -125,8 +125,8 @@ def validate_classification():
 
         # get existing classification information
         existing_family = meta_data_subset["familyName"].values[0]
-        existing_navis = meta_data_subset["starship_navis"].values[0]
-        existing_haplotype = meta_data_subset["starship_haplotype"].values[0]
+        existing_navis = meta_data_subset["navis_name"].values[0]
+        existing_haplotype = meta_data_subset["haplotype_name"].values[0]
 
         sequence = row["sequence"]
         fasta_file = write_temp_fasta(accession_tag, sequence)

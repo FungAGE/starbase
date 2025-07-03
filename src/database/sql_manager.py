@@ -51,14 +51,24 @@ def fetch_meta_data(curated=False, accession_tag=None):
     session = StarbaseSession()
 
     meta_query = """
-    SELECT j.ship_family_id, j.curated_status, t.taxID, j.starshipID,
-           j.ome, j.size, j.upDR, j.downDR, f.familyName, f.type_element_reference, j.contigID, j.captainID,
-           j.elementBegin, j.elementEnd, t.`order`, t.family, t.name, 
-           g.version, g.genomeSource, g.citation, a.accession_tag, j.strain, j.starship_navis, j.starship_haplotype, g.assembly_accession
+    SELECT j.curated_status, j.starshipID, j.ship_id,
+           a.accession_tag, a.version_tag,
+           CASE 
+               WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+               THEN a.accession_tag || '.' || a.version_tag
+               ELSE a.accession_tag
+           END as accession_display,
+           t.taxID, t.strain, t.`order`, t.family, t.name, 
+           sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd, 
+           f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+           g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
     FROM joined_ships j
-    INNER JOIN taxonomy t ON j.taxid = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
+    LEFT JOIN taxonomy t ON j.tax_id = t.id
+    LEFT JOIN starship_features sf ON a.id = sf.accession_id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+    LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     """
 
@@ -121,15 +131,21 @@ def fetch_download_data(curated=True, dereplicate=False):
     session = StarbaseSession()
 
     query = """
-    SELECT a.accession_tag, f.familyName, p.shortCitation, t.`order`, t.family, t.name 
+    SELECT a.accession_tag, a.version_tag, 
+           CASE 
+               WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+               THEN a.accession_tag || '.' || a.version_tag
+               ELSE a.accession_tag
+           END as accession_display,
+           f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
-    INNER JOIN taxonomy t ON j.taxid = t.id
+    LEFT JOIN taxonomy t ON j.tax_id = t.id
     INNER JOIN accessions a ON j.ship_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
     -- Only show entries that have sequences
-    INNER JOIN ships s ON s.accession = a.id
+    INNER JOIN ships s ON s.accession_id = a.id
     WHERE 1=1
     """
 
@@ -173,23 +189,25 @@ def fetch_ships(
     WITH valid_ships AS (
         SELECT DISTINCT 
             a.id as accession_id, 
-            a.accession_tag,
+            a.accession_tag, a.version_tag,
+            CASE 
+                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+                THEN a.accession_tag || '.' || a.version_tag
+                ELSE a.accession_tag
+            END as accession_display,
             j.curated_status,
-            j.elementBegin,
-            j.elementEnd,
-            j.contigID,
-            t.name,
-            t.family,
-            t.`order`,
-            f.familyName,
-            j.starship_navis,
-            j.starship_haplotype,
+            sf.elementBegin, sf.elementEnd, sf.contigID,
+            t.name, t.family, t.`order`,
+            f.familyName, n.navis_name, h.haplotype_name,
             g.assembly_accession
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
+        LEFT JOIN starship_features sf ON a.id = sf.accession_id
         WHERE 1=1
     """
 
@@ -206,6 +224,8 @@ def fetch_ships(
         SELECT 
             v.accession_id,
             v.accession_tag,
+            v.version_tag,
+            v.accession_display,
             v.curated_status,
             v.elementBegin,
             v.elementEnd,
@@ -215,9 +235,10 @@ def fetch_ships(
             v.`order`,
             v.familyName,
             v.assembly_accession,
-            s.sequence
+            s.sequence,
+            s.md5
         FROM valid_ships v
-        LEFT JOIN ships s ON s.accession = v.accession_id
+        LEFT JOIN ships s ON s.accession_id = v.accession_id
         WHERE s.sequence IS NOT NULL
         """
     else:
@@ -226,6 +247,8 @@ def fetch_ships(
         SELECT 
             v.accession_id,
             v.accession_tag,
+            v.version_tag,
+            v.accession_display,
             v.curated_status,
             v.elementBegin,
             v.elementEnd,
@@ -262,17 +285,21 @@ def fetch_ship_table(curated=False):
 
     query = """
     SELECT DISTINCT 
-        a.accession_tag,
+        a.accession_tag, a.version_tag,
+        CASE 
+            WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+            THEN a.accession_tag || '.' || a.version_tag
+            ELSE a.accession_tag
+        END as accession_display,
         f.familyName,
         t.name
     FROM joined_ships js
     LEFT JOIN accessions a ON js.ship_id = a.id
-    LEFT JOIN taxonomy t ON js.taxid = t.id
+    LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
-    LEFT JOIN ships s ON s.accession = a.id AND s.sequence IS NOT NULL
+    LEFT JOIN ships s ON s.accession_id = a.id AND s.sequence IS NOT NULL
     LEFT JOIN gff g ON g.ship_id = a.id
-    WHERE js.orphan IS NULL
     """
 
     if curated:
@@ -316,7 +343,7 @@ def fetch_accession_ship(accession_tag):
     sequence_query = """
     SELECT s.sequence
     FROM ships s
-    LEFT JOIN accessions a ON s.accession = a.id
+    LEFT JOIN accessions a ON s.accession_id = a.id
     WHERE a.accession_tag = :accession_tag
     """
 
@@ -375,17 +402,25 @@ def fetch_captains(
         SELECT DISTINCT 
             a.id, 
             a.accession_tag,
+            a.version_tag,
+            CASE 
+                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+                THEN a.accession_tag || '.' || a.version_tag
+                ELSE a.accession_tag
+            END as accession_display,
             j.curated_status,
             j.starshipID,
-            j.captainID,
-            j.captainID_new,
-            c."sequence" 
+            sf.captainID,
+            c."sequence",
+            n.navis_name
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
-        LEFT JOIN taxonomy t ON j.taxid = t.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
         LEFT JOIN genomes g ON j.genome_id = g.id
-        LEFT JOIN captains c ON j.captainID_new = c.id
+        LEFT JOIN captains c ON j.captain_id = c.id
+        LEFT JOIN starship_features sf ON a.id = sf.accession_id
         WHERE 1=1
     """
 
@@ -402,11 +437,13 @@ def fetch_captains(
         SELECT 
             v.id,
             v.accession_tag,
+            v.version_tag,
+            v.accession_display,
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.captainID_new,
-            v.sequence
+            v.sequence,
+            v.navis_name
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
         """
@@ -416,10 +453,12 @@ def fetch_captains(
         SELECT 
             v.id,
             v.accession_tag,
+            v.version_tag,
+            v.accession_display,
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.captainID_new
+            v.navis_name
         FROM valid_captains v
         """
 

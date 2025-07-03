@@ -38,8 +38,17 @@ def create_accordion_item(df, papers, category):
     else:
         filtered_meta_df = df[df["familyName"] == category]
         n_ships = len(filtered_meta_df["accession_tag"].dropna().unique())
-        min_size = min(filtered_meta_df["size"].dropna())
-        max_size = max(filtered_meta_df["size"].dropna())
+
+        element_lengths = pd.to_numeric(
+            filtered_meta_df["elementLength"], errors="coerce"
+        ).dropna()
+
+        if len(element_lengths) == 0:
+            min_size = 0
+            max_size = 0
+        else:
+            min_size = int(element_lengths.min())
+            max_size = int(element_lengths.max())
         upDRs = filtered_meta_df["upDR"].dropna().tolist()
         downDRs = filtered_meta_df["downDR"].dropna().tolist()
         filtered_papers_df = papers[papers["familyName"] == category]
@@ -212,38 +221,6 @@ layout = create_error_boundary(
                                     ),
                                 ],
                             ),
-                            # Navis Search
-                            dmc.GridCol(
-                                span={"lg": 3, "md": 6, "sm": 12},
-                                children=[
-                                    dmc.MultiSelect(
-                                        id="navis-search",
-                                        label="Navis",
-                                        placeholder="Search by navis...",
-                                        searchable=True,
-                                        clearable=True,
-                                        nothingFoundMessage="No options found",
-                                        data=[],  # Will be populated by callback
-                                        value=[],  # Initialize with empty list
-                                    ),
-                                ],
-                            ),
-                            # Haplotype Search
-                            dmc.GridCol(
-                                span={"lg": 3, "md": 6, "sm": 12},
-                                children=[
-                                    dmc.MultiSelect(
-                                        id="haplotype-search",
-                                        label="Haplotype",
-                                        placeholder="Search by haplotype...",
-                                        searchable=True,
-                                        clearable=True,
-                                        nothingFoundMessage="No options found",
-                                        data=[],  # Will be populated by callback
-                                        value=[],  # Initialize with empty list
-                                    ),
-                                ],
-                            ),
                         ],
                         gutter="xl",
                     ),
@@ -384,9 +361,9 @@ def load_paper_data(url):
                 paper_df = fetch_paper_data()
             logger.debug(f"Paper data query returned {len(paper_df)} rows.")
             return paper_df.to_dict("records")
-        except SQLAlchemyError:
+        except SQLAlchemyError as e:
             logger.error(
-                "Error occurred while executing the paper data query.", exc_info=True
+                f"Error occurred while executing the paper data query: {str(e)}"
             )
             return []
 
@@ -437,8 +414,8 @@ def create_accordion(cached_meta, cached_papers):
             always_open=False,
             active_item=[],
         )
-    except Exception:
-        logger.error("Error occurred while creating the accordion.", exc_info=True)
+    except Exception as e:
+        logger.error(f"Error occurred while creating the accordion: {str(e)}")
         raise
 
 
@@ -462,8 +439,13 @@ def create_search_results(filtered_meta, cached_meta):
                 "No results match your search criteria.", color="blue", variant="filled"
             )
 
-        # Calculate the count for each accession_tag
-        genome_counts = df.groupby("accession_tag").size().reset_index(name="n_genomes")
+        # Calculate the count for unique ship_ids for each accession_tag
+        # TODO: eventually accession_tag should be the correct column to use for deduplication
+        genome_counts = (
+            df.groupby("accession_tag")["ship_id"]
+            .nunique()
+            .reset_index(name="n_genomes")
+        )
 
         # Remove duplicates and merge with counts
         filtered_meta_df = df.drop_duplicates(subset=["accession_tag"]).merge(
@@ -492,7 +474,7 @@ def create_search_results(filtered_meta, cached_meta):
             },
             {"field": "name", "headerName": "Species", "flex": 1},
             {
-                "field": "size",
+                "field": "elementLength",
                 "headerName": "Element Length (bp)",
                 "flex": 1,
                 "type": "numericColumn",
@@ -505,8 +487,8 @@ def create_search_results(filtered_meta, cached_meta):
         filtered_meta_df["n_genomes"] = pd.to_numeric(
             filtered_meta_df["n_genomes"], errors="coerce"
         )
-        filtered_meta_df["size"] = pd.to_numeric(
-            filtered_meta_df["size"], errors="coerce"
+        filtered_meta_df["elementLength"] = pd.to_numeric(
+            filtered_meta_df["elementLength"], errors="coerce"
         )
 
         # Fill NA values
@@ -536,7 +518,7 @@ def create_search_results(filtered_meta, cached_meta):
         )
 
     except Exception as e:
-        logger.error(f"Error in create_search_results: {str(e)}", exc_info=True)
+        logger.error(f"Error in create_search_results: {str(e)}")
         return dmc.Alert(
             f"An error occurred while loading the results: {str(e)}",
             color="red",
@@ -551,7 +533,7 @@ toggle_modal = create_modal_callback(
 
 # Add this cache decorator for common filter combinations
 @cache.memoize()
-def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None):
+def get_filtered_options(taxonomy=None, family=None):
     """Cache-friendly version of option filtering"""
     try:
         meta_data = cache.get("meta_data")
@@ -562,63 +544,45 @@ def get_filtered_options(taxonomy=None, family=None, navis=None, haplotype=None)
             meta_data = meta_data[meta_data["name"].isin(taxonomy)]
         if family:
             meta_data = meta_data[meta_data["familyName"].isin(family)]
-        if navis:
-            meta_data = meta_data[meta_data["starship_navis"].isin(navis)]
-        if haplotype:
-            meta_data = meta_data[meta_data["starship_haplotype"].isin(haplotype)]
 
         return {
             "taxonomy": sorted(meta_data["name"].dropna().unique()),
             "family": sorted(meta_data["familyName"].dropna().unique()),
-            "navis": sorted(meta_data["starship_navis"].dropna().unique()),
-            "haplotype": sorted(meta_data["starship_haplotype"].dropna().unique()),
         }
     except Exception as e:
         logger.error(f"Error in get_filtered_options: {str(e)}")
-        return {"taxonomy": [], "family": [], "navis": [], "haplotype": []}
+        return {"taxonomy": [], "family": []}
 
 
 @callback(
     [
         Output("taxonomy-search", "data"),
         Output("family-search", "data"),
-        Output("navis-search", "data"),
-        Output("haplotype-search", "data"),
     ],
     [
         Input("taxonomy-search", "value"),
         Input("family-search", "value"),
-        Input("navis-search", "value"),
-        Input("haplotype-search", "value"),
         Input("meta-data", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
-def update_search_options(
-    taxonomy_val, family_val, navis_val, haplotype_val, meta_data
-):
+def update_search_options(taxonomy_val, family_val, meta_data):
     if not meta_data:
-        empty_data = []
-        return empty_data, empty_data, empty_data, empty_data
+        return [], []
 
     try:
         # Get filtered options from cache if possible
-        options = get_filtered_options(
-            taxonomy_val, family_val, navis_val, haplotype_val
-        )
+        options = get_filtered_options(taxonomy_val, family_val)
 
         # Format options for Mantine MultiSelect
         taxonomy_data = [{"value": x, "label": x} for x in options["taxonomy"]]
         family_data = [{"value": x, "label": x} for x in options["family"]]
-        navis_data = [{"value": x, "label": x} for x in options["navis"]]
-        haplotype_data = [{"value": x, "label": x} for x in options["haplotype"]]
 
-        return taxonomy_data, family_data, navis_data, haplotype_data
+        return taxonomy_data, family_data
     except Exception as e:
-        logger.error(f"Error in update_search_options: {str(e)}", exc_info=True)
-        empty_data = []
-        return empty_data, empty_data, empty_data, empty_data
+        logger.error(f"Error in update_search_options: {str(e)}")
+        return [], []
 
 
 @callback(
@@ -626,8 +590,6 @@ def update_search_options(
         Output("filtered-meta-data", "data"),
         Output("taxonomy-search", "value"),
         Output("family-search", "value"),
-        Output("navis-search", "value"),
-        Output("haplotype-search", "value"),
     ],
     [
         Input("apply-search", "n_clicks"),
@@ -636,16 +598,12 @@ def update_search_options(
     [
         State("taxonomy-search", "value"),
         State("family-search", "value"),
-        State("navis-search", "value"),
-        State("haplotype-search", "value"),
         State("meta-data", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
-def handle_search(
-    search_clicks, reset_clicks, taxonomy, family, navis, haplotype, original_data
-):
+def handle_search(search_clicks, reset_clicks, taxonomy, family, original_data):
     if not original_data:
         raise PreventUpdate
 
@@ -658,11 +616,11 @@ def handle_search(
     # Clear relevant caches on reset
     if triggered_id == "reset-search":
         cache.delete_memoized(get_filtered_options)
-        return None, [], [], [], []
+        return None, [], []
 
     # If no search clicked or no filters selected, prevent update
-    if not search_clicks or not any([taxonomy, family, navis, haplotype]):
-        return None, [], [], [], []
+    if not search_clicks or not any([taxonomy, family]):
+        return None, [], []
 
     try:
         df = pd.DataFrame(original_data)
@@ -672,23 +630,17 @@ def handle_search(
             df = df[df["name"].isin(taxonomy)]
         if family and len(family) > 0:
             df = df[df["familyName"].isin(family)]
-        if navis and len(navis) > 0:
-            df = df[df["starship_navis"].isin(navis)]
-        if haplotype and len(haplotype) > 0:
-            df = df[df["starship_haplotype"].isin(haplotype)]
 
         # Return filtered data and keep current filter values
         return (
             df.to_dict("records"),
             taxonomy or [],
             family or [],
-            navis or [],
-            haplotype or [],
         )
 
     except Exception as e:
-        logger.error(f"Error in handle_search: {str(e)}", exc_info=True)
-        return None, [], [], [], []
+        logger.error(f"Error in handle_search: {str(e)}")
+        return None, [], []
 
 
 @callback(
@@ -714,6 +666,9 @@ def update_search_sunburst(filtered_meta, meta_data):
         df = pd.DataFrame(data_to_use)
         if df.empty:
             return dmc.Text("No results to display", size="lg", c="dimmed")
+
+        # Deduplicate data to match table processing
+        df = df.drop_duplicates(subset=["accession_tag"])
 
         # Create sunburst plot with cache busting parameter
         sunburst_figure = create_sunburst_plot(

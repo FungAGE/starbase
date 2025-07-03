@@ -96,11 +96,13 @@ def create_dbs():
 
     ship_sequences_dict = {}
     for index, row in ship_sequences.iterrows():
-        accession = row["accession_tag"]
-        accession_metadata = ship_metadata.loc[accession]
-        accession = create_ncbi_style_header(accession_metadata)
+        accession_tag = row["accession_tag"]
+        accession_metadata = ship_metadata.loc[accession_tag]
+        # Use create_ncbi_style_header which properly handles accession_display
+        header = create_ncbi_style_header(accession_metadata)
         sequence = row["sequence"]
-        ship_sequences_dict[accession] = sequence
+        if header:  # Only add if header creation succeeded
+            ship_sequences_dict[header] = sequence
 
     write_fasta(ship_sequences_dict, ship_fasta_path)
     create_blast_database(ship_fasta_path, "nucl")

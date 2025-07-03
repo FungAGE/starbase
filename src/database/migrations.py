@@ -14,8 +14,10 @@ def create_database_indexes():
         # joined_ships indexes
         "CREATE INDEX IF NOT EXISTS idx_joined_ships_curated ON joined_ships(curated_status)",
         "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_id ON joined_ships(ship_id)",
-        "CREATE INDEX IF NOT EXISTS idx_joined_ships_taxid ON joined_ships(taxid)",
+        "CREATE INDEX IF NOT EXISTS idx_joined_ships_tax_id ON joined_ships(tax_id)",
         "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_family_id ON joined_ships(ship_family_id)",
+        "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_navis_id ON joined_ships(ship_navis_id)",
+        "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_haplotype_id ON joined_ships(ship_haplotype_id)",
         "CREATE INDEX IF NOT EXISTS idx_joined_ships_genome_id ON joined_ships(genome_id)",
         # accessions indexes
         "CREATE INDEX IF NOT EXISTS idx_accessions_tag ON accessions(accession_tag)",
@@ -27,7 +29,7 @@ def create_database_indexes():
         "CREATE INDEX IF NOT EXISTS idx_family_names_reference ON family_names(type_element_reference)",
         "CREATE INDEX IF NOT EXISTS idx_family_names_family ON family_names(familyName)",
         # ships indexes
-        "CREATE INDEX IF NOT EXISTS idx_ships_accession ON ships(accession)",
+        "CREATE INDEX IF NOT EXISTS idx_ships_accession_id ON ships(accession_id)",
         # gff indexes
         "CREATE INDEX IF NOT EXISTS idx_gff_ship_id ON gff(ship_id)",
     ]

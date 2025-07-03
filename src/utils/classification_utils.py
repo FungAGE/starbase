@@ -22,6 +22,7 @@ from src.utils.seq_utils import (
     write_multi_fasta,
     create_tmp_fasta_dir,
     load_fasta_to_dict,
+    clean_sequence,
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
@@ -67,6 +68,32 @@ WORKFLOW_STAGES = [
     {"id": "navis", "label": "Running navis classification", "color": "blue"},
     {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
+
+# Define badge colors based on source
+source_colors = {
+    "exact": "green",
+    "contained": "teal",
+    "similar": "cyan",
+    "blast_hit": "blue",
+    "hmmsearch": "purple",
+    "captain clustering": "orange",
+    "k-mer similarity": "red",
+    "unknown": "gray",
+}
+
+# Define icon and color based on confidence level
+confidence_colors = {
+    "High": "green",
+    "Medium": "yellow",
+    "Low": "red",
+    "Unknown": "gray",
+}
+
+confidence_icons = {
+    "High": "mdi:shield-check",
+    "Medium": "mdi:shield-half-full",
+    "Low": "mdi:shield-outline",
+}
 
 
 def assign_accession(
@@ -144,47 +171,91 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 ########################################################
 
 
+def generate_md5_hash(sequence: str) -> str:
+    """Generate an MD5 hash of a sequence."""
+    if sequence is None:
+        logger.error("Cannot generate MD5 hash for None sequence")
+        return None
+    return hashlib.md5(sequence.encode()).hexdigest()
+
+
 def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
-    # fasta should be a file path
+    sequence = None
+
+    # Handle both file paths and direct sequence strings
     if os.path.exists(fasta):
         logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None
-        sequence = list(sequences.values())[0]
-
-    # Normalize sequence by removing whitespace and making uppercase
-    clean_sequence = "".join(sequence.upper().split())
-    sequence_hash = hashlib.md5(clean_sequence.encode()).hexdigest()
-    logger.debug(
-        f"Query sequence hash: {sequence_hash} (sequence length: {len(clean_sequence)})"
-    )
-
-    # Calculate hashes for existing sequences, skipping None values
-    existing_hashes = {}
-    skipped_count = 0
-    for acc, seq in zip(existing_ships["accession_tag"], existing_ships["sequence"]):
-        if seq is None:
-            skipped_count += 1
-            logger.warning(f"Skipping null sequence for accession {acc}")
-            continue
-
-        # Normalize sequence the same way
-        clean_db_seq = "".join(seq.upper().split())
-        existing_hashes[hashlib.md5(clean_db_seq.encode()).hexdigest()] = acc
-
-    if skipped_count > 0:
-        logger.warning(f"Skipped {skipped_count} sequences due to null values")
-
-    logger.debug(f"Compared against {len(existing_hashes)} valid sequences")
-    match = existing_hashes.get(sequence_hash)
-    if match:
-        logger.debug(f"Found exact hash match: {match}")
+        # Get all sequences from the file (as a list)
+        sequence_list = list(sequences.values())
     else:
-        logger.debug("No exact match found")
-    return match
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        sequence_list = [fasta]
+
+    if not sequence_list:
+        logger.error("No sequence provided")
+        return None
+
+    # generate md5 for query sequence(s)
+    query_md5 = {}
+    for seq in sequence_list:
+        if seq is None:
+            logger.warning("Skipping None sequence")
+            continue
+        clean_seq = clean_sequence(seq)
+        if clean_seq is None:
+            logger.warning(f"clean_sequence returned None for sequence: {seq[:50]}...")
+            continue
+        md5_hash = generate_md5_hash(clean_seq)
+        if md5_hash is None:
+            logger.warning(
+                f"generate_md5_hash returned None for sequence: {seq[:50]}..."
+            )
+            continue
+        query_md5[seq] = md5_hash
+
+    # collect existing md5 in dict
+    # Create reverse mapping: md5 -> accession_display (includes version)
+    existing_hashes = {}
+    sequences_without_md5 = []
+
+    for _, row in existing_ships.iterrows():
+        # Use accession_display if available, otherwise fall back to accession_tag
+        accession_display = row.get("accession_display", row.get("accession_tag"))
+
+        if row.get("md5") is not None and accession_display is not None:
+            existing_hashes[row["md5"]] = accession_display
+        elif row.get("sequence") is not None and accession_display is not None:
+            # Calculate MD5 on the fly for sequences without stored MD5
+            clean_seq = clean_sequence(row["sequence"])
+            if clean_seq:
+                calculated_md5 = generate_md5_hash(clean_seq)
+                if calculated_md5:
+                    existing_hashes[calculated_md5] = accession_display
+                    sequences_without_md5.append(accession_display)
+
+    logger.debug(f"Found {len(existing_hashes)} existing MD5 hashes in database")
+    if sequences_without_md5:
+        logger.debug(
+            f"Calculated MD5 for {len(sequences_without_md5)} sequences on-the-fly"
+        )
+    logger.debug(f"Query MD5 hashes: {list(query_md5.values())}")
+
+    # Check if query hash exists in database
+    for seq, md5 in query_md5.items():
+        logger.debug(f"Checking query MD5: {md5}")
+        match = existing_hashes.get(md5)
+        if match:
+            logger.debug(f"Found exact hash match: {match}")
+            return match
+
+    logger.debug("No exact match found")
+    return None
 
 
 def check_contained_match(
@@ -213,6 +284,14 @@ def check_contained_match(
             logger.error("No sequences found in FASTA file")
             return None
         sequence = list(sequences.values())[0]
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        sequence = fasta
+
+    if not sequence:
+        logger.error("No sequence provided")
+        return None
 
     query_len = len(sequence)
 
@@ -229,7 +308,11 @@ def check_contained_match(
             logger.debug("Writing reference sequences to temporary file")
             for _, row in existing_ships.iterrows():
                 if row["sequence"] is not None and len(row["sequence"]) >= query_len:
-                    ref_file.write(f">{row['accession_tag']}\n{row['sequence']}\n")
+                    # Use accession_display if available, otherwise fall back to accession_tag
+                    accession_display = row.get(
+                        "accession_display", row.get("accession_tag")
+                    )
+                    ref_file.write(f">{accession_display}\n{row['sequence']}\n")
                     ref_count += 1
             ref_file.flush()
             logger.debug(f"Written {ref_count} reference sequences for comparison")
@@ -261,17 +344,31 @@ def check_contained_match(
                         f"Found containing match: {ref_name} "
                         f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
                     )
-                    containing_matches.append(
+
+                    # Find the sequence length using either accession_display or accession_tag
+                    matching_rows = existing_ships[
                         (
-                            identity * coverage,  # score for sorting
-                            len(
-                                existing_ships[
-                                    existing_ships["accession_tag"] == ref_name
-                                ]["sequence"].iloc[0]
-                            ),  # length for tiebreaking
-                            ref_name,
+                            existing_ships.get(
+                                "accession_display", existing_ships.get("accession_tag")
+                            )
+                            == ref_name
                         )
-                    )
+                    ]
+                    if matching_rows.empty:
+                        # Fallback to accession_tag only
+                        matching_rows = existing_ships[
+                            existing_ships["accession_tag"] == ref_name
+                        ]
+
+                    if not matching_rows.empty:
+                        sequence_length = len(matching_rows["sequence"].iloc[0])
+                        containing_matches.append(
+                            (
+                                identity * coverage,  # score for sorting
+                                sequence_length,  # length for tiebreaking
+                                ref_name,
+                            )
+                        )
 
             logger.debug(f"Processed {alignment_count} alignments from minimap2")
 
@@ -300,7 +397,9 @@ def check_similar_match(
         existing_ships,
         tmp_fasta_all_ships,
         sequence_col="sequence",
-        id_col="accession_tag",
+        id_col="accession_display"
+        if "accession_display" in existing_ships.columns
+        else "accession_tag",
     )
 
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
@@ -312,6 +411,14 @@ def check_similar_match(
             logger.error("No sequences found in FASTA file")
             return None, None
         sequence = list(sequences.values())[0]
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        sequence = fasta
+
+    if not sequence:
+        logger.error("No sequence provided")
+        return None, None
 
     # Create temporary FASTA with new and existing sequences
     write_combined_fasta(
@@ -319,7 +426,9 @@ def check_similar_match(
         existing_ships,
         fasta_path=tmp_fasta,
         sequence_col="sequence",
-        id_col="accession_tag",
+        id_col="accession_display"
+        if "accession_display" in existing_ships.columns
+        else "accession_tag",
     )
     logger.debug(f"Created temporary FASTA file: {tmp_fasta}")
 
@@ -402,6 +511,12 @@ def classify_family(
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None, None
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        # For classify_family, we need to create a temporary file if we have a sequence string
+        # but since run_hmmer expects a file path, this will be handled by run_hmmer itself
+        pass
 
     hmmer_dict, tmp_protein_filename = run_hmmer(
         query_type=seq_type,
@@ -475,16 +590,24 @@ def classify_navis(
         return None
     else:
         # Look up the navis name from the cluster representative
+        # Try both captainID and accession_display if available
         matching_captains = existing_captains[
             existing_captains["captainID"] == cluster_rep
         ]
+
+        # If not found and accession_display column exists, try that too
+        if matching_captains.empty and "accession_display" in existing_captains.columns:
+            matching_captains = existing_captains[
+                existing_captains["accession_display"] == cluster_rep
+            ]
+
         if matching_captains.empty:
             logger.warning(
                 f"No matching captain found for cluster representative: {cluster_rep}"
             )
             return None
 
-        navis_name = matching_captains["starship_navis"].iloc[0]
+        navis_name = matching_captains["navis_name"].iloc[0]
         logger.debug(f"Found navis name: {navis_name}")
 
         return navis_name
@@ -546,9 +669,9 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 "note": "No ships data available",
             }
 
-        # Check if starship_navis column exists
-        if navis is not None and "starship_navis" in existing_ships.columns:
-            filtered_ships = existing_ships[existing_ships["starship_navis"] == navis]
+        # Check if navis_name column exists
+        if navis is not None and "navis_name" in existing_ships.columns:
+            filtered_ships = existing_ships[existing_ships["navis_name"] == navis]
             logger.debug(f"Filtered to {len(filtered_ships)} ships with navis={navis}")
             if filtered_ships.empty:
                 logger.warning(
@@ -558,7 +681,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
         else:
             if navis is not None:
                 logger.warning(
-                    "No starship_navis column in ships DataFrame, using all ships"
+                    "No navis_name column in ships DataFrame, using all ships"
                 )
             filtered_ships = existing_ships
 
@@ -571,7 +694,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 "note": "Missing sequence data",
             }
 
-        required_columns = ["sequence", "captainID", "starship_haplotype"]
+        required_columns = ["sequence", "captainID", "haplotype_name"]
         missing_columns = [
             col for col in required_columns if col not in filtered_ships.columns
         ]
@@ -621,7 +744,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
             # Get haplotypes for these ships
             ship_haplotypes = filtered_ships[
                 filtered_ships["captainID"].isin(ship_ids)
-            ]["starship_haplotype"].dropna()
+            ]["haplotype_name"].dropna()
 
             if ship_haplotypes.empty:
                 logger.warning("No haplotype information for clustered ships")
@@ -1391,11 +1514,9 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     try:
                         if (
                             not captains_df.empty
-                            and "starship_navis" in captains_df.columns
+                            and "navis_name" in captains_df.columns
                         ):
-                            navis_values = (
-                                captains_df["starship_navis"].dropna().unique()
-                            )
+                            navis_values = captains_df["navis_name"].dropna().unique()
                             if len(navis_values) > 0:
                                 navis_value = navis_values[0]
                                 logger.debug(f"Using navis value: {navis_value}")
@@ -1404,8 +1525,8 @@ def run_classification_workflow(upload_data, meta_dict=None):
                         else:
                             logger.warning("No navis column in captains data")
 
-                        if navis_value is None and "starship_navis" in ships_df.columns:
-                            navis_values = ships_df["starship_navis"].dropna().unique()
+                        if navis_value is None and "navis_name" in ships_df.columns:
+                            navis_values = ships_df["navis_name"].dropna().unique()
                             if len(navis_values) > 0:
                                 navis_value = navis_values[0]
                                 logger.debug(
@@ -1542,35 +1663,10 @@ def create_classification_card(classification_data):
     family = classification_data.get("family")
     navis = classification_data.get("navis")
     haplotype = classification_data.get("haplotype")
+    # TODO: update this to be the accession_display (accession_tag and version_tag)
     closest_match = classification_data.get("closest_match")
     match_details = classification_data.get("match_details")
     confidence = classification_data.get("confidence", "Low")
-
-    # Define badge colors based on source
-    source_colors = {
-        "exact": "green",
-        "contained": "teal",
-        "similar": "cyan",
-        "blast_hit": "blue",
-        "hmmsearch": "purple",
-        "captain clustering": "orange",
-        "k-mer similarity": "red",
-        "unknown": "gray",
-    }
-
-    # Define icon and color based on confidence level
-    confidence_colors = {
-        "High": "green",
-        "Medium": "yellow",
-        "Low": "red",
-        "Unknown": "gray",
-    }
-
-    confidence_icons = {
-        "High": "mdi:shield-check",
-        "Medium": "mdi:shield-half-full",
-        "Low": "mdi:shield-outline",
-    }
 
     source_color = source_colors.get(source, "gray")
     confidence_color = confidence_colors.get(confidence, "gray")
@@ -1742,15 +1838,9 @@ def create_classification_output(sequence_results, workflow_state=None):
                         + (stage_progress / total_stages)
                     )
                     progress = max(0, min(100, progress))
-
-                    # Get current stage text
+                    # get stage label from WORKFLOW_STAGES
                     stage_labels = {
-                        "exact": "Checking for exact matches",
-                        "contained": "Checking for contained matches",
-                        "similar": "Checking for similar matches",
-                        "family": "Running family classification",
-                        "navis": "Running navis classification",
-                        "haplotype": "Running haplotype classification",
+                        stage["id"]: stage["label"] for stage in WORKFLOW_STAGES
                     }
                     current_stage_text = stage_labels.get(
                         current_stage,

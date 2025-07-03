@@ -17,11 +17,36 @@ logger = get_logger(__name__)
 
 
 def clean_sequence(seq):
-    valid_nucleotides = {"A", "T", "C", "G"}
+    if seq is None:
+        return None
+
+    # Remove any content within parentheses
     seq = re.sub(r"\(.*?\)", "", seq)
     seq = seq.upper()
-    if all(nuc in valid_nucleotides for nuc in seq):
-        return seq
+
+    # Remove any non-nucleotide characters (keep IUPAC codes)
+    valid_nucleotides = {
+        "A",
+        "T",
+        "C",
+        "G",
+        "N",
+        "R",
+        "Y",
+        "S",
+        "W",
+        "K",
+        "M",
+        "B",
+        "D",
+        "H",
+        "V",
+    }
+    cleaned_seq = "".join(nuc for nuc in seq if nuc in valid_nucleotides)
+
+    # Return the cleaned sequence if it's not empty
+    if cleaned_seq:
+        return cleaned_seq
     else:
         return None
 
@@ -638,8 +663,21 @@ def clean_contigIDs(string):
 def create_ncbi_style_header(row):
     try:
         clean_contig = clean_contigIDs(row["contigID"])
+
+        # Use accession_display if available, otherwise combine accession_tag and version_tag
+        if "accession_display" in row and pd.notnull(row["accession_display"]):
+            accession_with_version = row["accession_display"]
+        elif (
+            "version_tag" in row
+            and pd.notnull(row["version_tag"])
+            and row["version_tag"] != ""
+        ):
+            accession_with_version = f"{row['accession_tag']}.{row['version_tag']}"
+        else:
+            accession_with_version = row["accession_tag"]
+
         return (
-            f">{row['accession_tag']} "
+            f">{accession_with_version} "
             f"[organism={row['name']}] "
             f"[lineage=Fungi; {row['order']}; {row['family']}] "
             f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
@@ -740,9 +778,15 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
 
     # append existing sequences to dict
     if existing_ships is not None and not existing_ships.empty:
+        # Use accession_display if available, otherwise fall back to accession_tag
+        if "accession_display" in existing_ships.columns:
+            id_col = "accession_display"
+        else:
+            id_col = "accession_tag"
+
         sequences = {
             **fasta_sequences,
-            **dict(zip(existing_ships["accession_tag"], existing_ships["sequence"])),
+            **dict(zip(existing_ships[id_col], existing_ships["sequence"])),
         }
     else:
         sequences = fasta_sequences
