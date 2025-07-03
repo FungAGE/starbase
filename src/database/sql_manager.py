@@ -235,7 +235,8 @@ def fetch_ships(
             v.`order`,
             v.familyName,
             v.assembly_accession,
-            s.sequence
+            s.sequence,
+            s.md5
         FROM valid_ships v
         LEFT JOIN ships s ON s.accession_id = v.accession_id
         WHERE s.sequence IS NOT NULL
@@ -401,14 +402,22 @@ def fetch_captains(
         SELECT DISTINCT 
             a.id, 
             a.accession_tag,
+            a.version_tag,
+            CASE 
+                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+                THEN a.accession_tag || '.' || a.version_tag
+                ELSE a.accession_tag
+            END as accession_display,
             j.curated_status,
             j.starshipID,
             sf.captainID,
-            c."sequence" 
+            c."sequence",
+            n.navis_name
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         LEFT JOIN captains c ON j.captain_id = c.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
@@ -428,10 +437,13 @@ def fetch_captains(
         SELECT 
             v.id,
             v.accession_tag,
+            v.version_tag,
+            v.accession_display,
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.sequence
+            v.sequence,
+            v.navis_name
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
         """
@@ -441,9 +453,12 @@ def fetch_captains(
         SELECT 
             v.id,
             v.accession_tag,
+            v.version_tag,
+            v.accession_display,
             v.curated_status,
             v.starshipID,
-            v.captainID
+            v.captainID,
+            v.navis_name
         FROM valid_captains v
         """
 

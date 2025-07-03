@@ -173,6 +173,9 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 
 def generate_md5_hash(sequence: str) -> str:
     """Generate an MD5 hash of a sequence."""
+    if sequence is None:
+        logger.error("Cannot generate MD5 hash for None sequence")
+        return None
     return hashlib.md5(sequence.encode()).hexdigest()
 
 
@@ -187,102 +190,72 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None
-        sequence = list(sequences.values())[0]
-        logger.debug(f"Loaded sequence from file, length: {len(sequence)}")
+        # Get all sequences from the file (as a list)
+        sequence_list = list(sequences.values())
     else:
         # If fasta is not a file path, treat it as a sequence string
         logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
-        sequence = fasta
+        sequence_list = [fasta]
 
-    if not sequence:
+    if not sequence_list:
         logger.error("No sequence provided")
         return None
 
-    # check for missing md5s, and add them if missing
-    for idx, row in existing_ships.iterrows():
-        if row["md5"] is None:
-            logger.warning(f"Missing md5 for {row['accession_tag']}")
-            # Normalize sequence by removing whitespace and making uppercase
-            clean_sequence = clean_sequence(sequence)
-            sequence_hash = generate_md5_hash(clean_sequence)
-            existing_ships.at[idx, "md5"] = sequence_hash
-            logger.debug(f"Added md5 for {row['accession_tag']}: {sequence_hash}")
-
-    # Calculate hashes for existing sequences, skipping None values
-    existing_hashes = {}
-    hash_to_accession_debug = {}  # For debugging
-    skipped_count = 0
-    duplicate_hashes = 0
-
-    for acc, seq in zip(existing_ships["accession_tag"], existing_ships["sequence"]):
+    # generate md5 for query sequence(s)
+    query_md5 = {}
+    for seq in sequence_list:
         if seq is None:
-            skipped_count += 1
-            logger.warning(f"Skipping null sequence for accession {acc}")
+            logger.warning("Skipping None sequence")
             continue
-
-        clean_db_seq = clean_sequence(seq)
-        db_hash = generate_md5_hash(seq)
-
-        # Check for duplicate hashes
-        if db_hash in existing_hashes:
-            duplicate_hashes += 1
-            previous_acc = existing_hashes[db_hash]
+        clean_seq = clean_sequence(seq)
+        if clean_seq is None:
+            logger.warning(f"clean_sequence returned None for sequence: {seq[:50]}...")
+            continue
+        md5_hash = generate_md5_hash(clean_seq)
+        if md5_hash is None:
             logger.warning(
-                f"Duplicate hash detected! Hash {db_hash} maps to both {previous_acc} and {acc}"
+                f"generate_md5_hash returned None for sequence: {seq[:50]}..."
             )
-            # Store both accessions for debugging
-            if db_hash not in hash_to_accession_debug:
-                hash_to_accession_debug[db_hash] = [previous_acc]
-            hash_to_accession_debug[db_hash].append(acc)
-        else:
-            hash_to_accession_debug[db_hash] = [acc]
+            continue
+        query_md5[seq] = md5_hash
 
-        existing_hashes[db_hash] = acc
+    # collect existing md5 in dict
+    # Create reverse mapping: md5 -> accession_display (includes version)
+    existing_hashes = {}
+    sequences_without_md5 = []
 
-        # Log details for the specific accession mentioned by user
-        if acc == "SBS000228":
-            logger.debug(
-                f"SBS000228 hash: {db_hash}, sequence length: {len(clean_db_seq)}"
-            )
-            logger.debug(f"SBS000228 first 50 chars: {clean_db_seq[:50]}...")
+    for _, row in existing_ships.iterrows():
+        # Use accession_display if available, otherwise fall back to accession_tag
+        accession_display = row.get("accession_display", row.get("accession_tag"))
 
-    if skipped_count > 0:
-        logger.warning(f"Skipped {skipped_count} sequences due to null values")
+        if row.get("md5") is not None and accession_display is not None:
+            existing_hashes[row["md5"]] = accession_display
+        elif row.get("sequence") is not None and accession_display is not None:
+            # Calculate MD5 on the fly for sequences without stored MD5
+            clean_seq = clean_sequence(row["sequence"])
+            if clean_seq:
+                calculated_md5 = generate_md5_hash(clean_seq)
+                if calculated_md5:
+                    existing_hashes[calculated_md5] = accession_display
+                    sequences_without_md5.append(accession_display)
 
-    if duplicate_hashes > 0:
-        logger.warning(f"Found {duplicate_hashes} duplicate hashes in database")
-
-    logger.debug(f"Compared against {len(existing_hashes)} valid sequences")
+    logger.debug(f"Found {len(existing_hashes)} existing MD5 hashes in database")
+    if sequences_without_md5:
+        logger.debug(
+            f"Calculated MD5 for {len(sequences_without_md5)} sequences on-the-fly"
+        )
+    logger.debug(f"Query MD5 hashes: {list(query_md5.values())}")
 
     # Check if query hash exists in database
-    match = existing_hashes.get(sequence_hash)
-    if match:
-        logger.debug(f"Found exact hash match: {match}")
-        # Additional verification - check if this accession actually has this hash
-        if sequence_hash in hash_to_accession_debug:
-            all_accessions = hash_to_accession_debug[sequence_hash]
-            if len(all_accessions) > 1:
-                logger.warning(
-                    f"Hash {sequence_hash} matches multiple accessions: {all_accessions}"
-                )
-            logger.debug(
-                f"Hash {sequence_hash} verification - all matching accessions: {all_accessions}"
-            )
-        else:
-            logger.error(
-                f"Inconsistency detected! Hash {sequence_hash} returned match {match} but not found in debug mapping"
-            )
-    else:
-        logger.debug("No exact match found")
-        # For debugging, show some nearby hashes
-        all_hashes = list(existing_hashes.keys())
-        logger.debug(
-            f"Query hash {sequence_hash} not found in {len(all_hashes)} database hashes"
-        )
-        if all_hashes:
-            logger.debug(f"First few database hashes: {all_hashes[:5]}")
+    for seq, md5 in query_md5.items():
+        logger.debug(f"Checking query MD5: {md5}")
+        match = existing_hashes.get(md5)
+        if match:
+            logger.debug(f"Found exact hash match: {match}")
+            return match
 
-    return match
+    logger.debug("No exact match found")
+    return None
 
 
 def check_contained_match(
@@ -311,6 +284,14 @@ def check_contained_match(
             logger.error("No sequences found in FASTA file")
             return None
         sequence = list(sequences.values())[0]
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        sequence = fasta
+
+    if not sequence:
+        logger.error("No sequence provided")
+        return None
 
     query_len = len(sequence)
 
@@ -327,7 +308,11 @@ def check_contained_match(
             logger.debug("Writing reference sequences to temporary file")
             for _, row in existing_ships.iterrows():
                 if row["sequence"] is not None and len(row["sequence"]) >= query_len:
-                    ref_file.write(f">{row['accession_tag']}\n{row['sequence']}\n")
+                    # Use accession_display if available, otherwise fall back to accession_tag
+                    accession_display = row.get(
+                        "accession_display", row.get("accession_tag")
+                    )
+                    ref_file.write(f">{accession_display}\n{row['sequence']}\n")
                     ref_count += 1
             ref_file.flush()
             logger.debug(f"Written {ref_count} reference sequences for comparison")
@@ -359,17 +344,31 @@ def check_contained_match(
                         f"Found containing match: {ref_name} "
                         f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
                     )
-                    containing_matches.append(
+
+                    # Find the sequence length using either accession_display or accession_tag
+                    matching_rows = existing_ships[
                         (
-                            identity * coverage,  # score for sorting
-                            len(
-                                existing_ships[
-                                    existing_ships["accession_tag"] == ref_name
-                                ]["sequence"].iloc[0]
-                            ),  # length for tiebreaking
-                            ref_name,
+                            existing_ships.get(
+                                "accession_display", existing_ships.get("accession_tag")
+                            )
+                            == ref_name
                         )
-                    )
+                    ]
+                    if matching_rows.empty:
+                        # Fallback to accession_tag only
+                        matching_rows = existing_ships[
+                            existing_ships["accession_tag"] == ref_name
+                        ]
+
+                    if not matching_rows.empty:
+                        sequence_length = len(matching_rows["sequence"].iloc[0])
+                        containing_matches.append(
+                            (
+                                identity * coverage,  # score for sorting
+                                sequence_length,  # length for tiebreaking
+                                ref_name,
+                            )
+                        )
 
             logger.debug(f"Processed {alignment_count} alignments from minimap2")
 
@@ -398,7 +397,9 @@ def check_similar_match(
         existing_ships,
         tmp_fasta_all_ships,
         sequence_col="sequence",
-        id_col="accession_tag",
+        id_col="accession_display"
+        if "accession_display" in existing_ships.columns
+        else "accession_tag",
     )
 
     tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
@@ -410,6 +411,14 @@ def check_similar_match(
             logger.error("No sequences found in FASTA file")
             return None, None
         sequence = list(sequences.values())[0]
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        sequence = fasta
+
+    if not sequence:
+        logger.error("No sequence provided")
+        return None, None
 
     # Create temporary FASTA with new and existing sequences
     write_combined_fasta(
@@ -417,7 +426,9 @@ def check_similar_match(
         existing_ships,
         fasta_path=tmp_fasta,
         sequence_col="sequence",
-        id_col="accession_tag",
+        id_col="accession_display"
+        if "accession_display" in existing_ships.columns
+        else "accession_tag",
     )
     logger.debug(f"Created temporary FASTA file: {tmp_fasta}")
 
@@ -500,6 +511,12 @@ def classify_family(
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None, None
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        # For classify_family, we need to create a temporary file if we have a sequence string
+        # but since run_hmmer expects a file path, this will be handled by run_hmmer itself
+        pass
 
     hmmer_dict, tmp_protein_filename = run_hmmer(
         query_type=seq_type,
@@ -573,9 +590,17 @@ def classify_navis(
         return None
     else:
         # Look up the navis name from the cluster representative
+        # Try both captainID and accession_display if available
         matching_captains = existing_captains[
             existing_captains["captainID"] == cluster_rep
         ]
+
+        # If not found and accession_display column exists, try that too
+        if matching_captains.empty and "accession_display" in existing_captains.columns:
+            matching_captains = existing_captains[
+                existing_captains["accession_display"] == cluster_rep
+            ]
+
         if matching_captains.empty:
             logger.warning(
                 f"No matching captain found for cluster representative: {cluster_rep}"
@@ -1638,6 +1663,7 @@ def create_classification_card(classification_data):
     family = classification_data.get("family")
     navis = classification_data.get("navis")
     haplotype = classification_data.get("haplotype")
+    # TODO: update this to be the accession_display (accession_tag and version_tag)
     closest_match = classification_data.get("closest_match")
     match_details = classification_data.get("match_details")
     confidence = classification_data.get("confidence", "Low")
