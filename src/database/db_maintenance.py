@@ -350,7 +350,7 @@ def check_contained_sequences_and_version_tag():
     """
     # Import required functions (you'll need to add these imports at the top of the file)
     try:
-        from ..utils.sequence_utils import write_temp_fasta, check_contained_match
+        from ..utils.seq_utils import write_temp_fasta, check_contained_match
     except ImportError:
         print(
             "❌ Error: write_temp_fasta and check_contained_match functions not found"
