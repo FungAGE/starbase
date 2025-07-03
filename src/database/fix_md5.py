@@ -1,8 +1,11 @@
 """
-STARBASE MD5 HASH VERIFICATION & REPAIR TOOL
-=============================================
+STARBASE DATABASE MAINTENANCE TOOL
+===================================
 
-This script safely verifies and repairs MD5 hashes in the Starbase SQLite database.
+This script safely maintains and repairs the Starbase SQLite database with multiple operations:
+
+1. MD5 HASH VERIFICATION & REPAIR
+2. CONTAINED SEQUENCE DETECTION & VERSION MANAGEMENT
 
 SAFETY FEATURES:
 - Creates a timestamped backup copy of the database before any operations
@@ -21,6 +24,8 @@ Or run directly from src/database/:
 FUNCTIONS:
 - create_backup_database(): Creates timestamped backup copy
 - check_md5sum(): Main verification and repair logic
+- check_contained_sequences_and_version_tag(): Check for sequences contained within longer sequences
+- update_version_tag(): Update version tags for contained sequences
 - replace_original_with_backup(): Helper to replace original (use with caution)
 - examine_backup_summary(): Shows summary of changes made
 - cleanup_backup_database(): Optionally removes backup file
@@ -43,7 +48,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from ..config.database import StarbaseSession
 from ..utils.seq_utils import clean_sequence
-from ..utils.classification_utils import generate_md5_hash, generate_new_accession
+from ..utils.classification_utils import (
+    generate_md5_hash,
+    generate_new_accession,
+)
 
 # Global variable to hold the backup session factory
 BackupSession = None
@@ -334,6 +342,169 @@ def check_ships_missing_accession_tags():
     session.close()
 
 
+def check_contained_sequences_and_version_tag():
+    """
+    Accessions have a version tag at the end. This is assigned based on either manual curation or detection of a sequence that has different/updated element boundary.
+    This function uses the `check_contained_match` function to check if a sequence is contained within a previous sequence in the database.
+    If it is, then the version tag is assigned a new version tag, and flagged for review.
+    """
+    # Import required functions (you'll need to add these imports at the top of the file)
+    try:
+        from ..utils.sequence_utils import write_temp_fasta, check_contained_match
+    except ImportError:
+        print(
+            "❌ Error: write_temp_fasta and check_contained_match functions not found"
+        )
+        print("Please ensure these functions are available in ..utils.sequence_utils")
+        return
+
+    session = get_database_session()
+
+    try:
+        query = """
+        SELECT s.accession_tag, s.sequence, s.md5, s.sequence_length
+        FROM ships s
+        INNER JOIN accessions a ON s.accession_id = a.id
+        WHERE s.sequence IS NOT NULL AND s.sequence != ''
+        """
+        ships_df = pd.read_sql_query(query, session.bind)
+
+        if ships_df.empty:
+            print("No ships with sequences found.")
+            return
+
+        # Deduplicate by md5 to avoid processing identical sequences
+        unique_ships_df = ships_df.drop_duplicates(subset=["md5"])
+        unique_ships_df["new_version_tag"] = None
+
+        print(f"Checking {len(unique_ships_df)} unique sequences for containment...")
+
+        for idx, row in unique_ships_df.iterrows():
+            accession_tag = row["accession_tag"]
+            seq = row["sequence"]
+            seq_len = row["sequence_length"]
+
+            # Skip if sequence is empty
+            if pd.isna(seq) or not seq:
+                print(f"Warning: Empty sequence for {accession_tag}")
+                continue
+
+            # Create subset of longer sequences to check against
+            subset_ships_df = unique_ships_df[
+                unique_ships_df["sequence_length"] > seq_len
+            ]
+
+            if subset_ships_df.empty:
+                print(f"No longer sequences to check against for {accession_tag}")
+                continue
+
+            try:
+                # Write sequence to temporary fasta file
+                tmp_fasta = write_temp_fasta(accession_tag, seq)
+
+                # Check if sequence is contained within a longer sequence
+                contained_match = check_contained_match(
+                    tmp_fasta, subset_ships_df, threshold=0.95
+                )
+
+                if contained_match:
+                    print(
+                        f"Sequence {accession_tag} is contained within {contained_match}"
+                    )
+                    update_version_tag(accession_tag)
+                else:
+                    print(
+                        f"Sequence {accession_tag} is not contained within any previous sequence"
+                    )
+
+                # Clean up temporary file
+                if os.path.exists(tmp_fasta):
+                    os.remove(tmp_fasta)
+
+            except Exception as e:
+                print(f"Error processing {accession_tag}: {e}")
+                continue
+
+    except Exception as e:
+        print(f"Error in check_contained_sequences_and_version_tag: {e}")
+    finally:
+        session.close()
+
+
+def update_version_tag(accession_tag):
+    """
+    Update the version tag for an accession.
+    Accessions look like this: SBS000001.1
+    The version tag is the number after the dot.
+    This function will increment the version tag by 1.
+    """
+    from sqlalchemy import text
+
+    session = get_database_session()
+
+    try:
+        # Parse current version from accession_tag
+        if "." in accession_tag:
+            base_accession, current_version = accession_tag.rsplit(".", 1)
+            try:
+                current_version = int(current_version)
+                new_version = current_version + 1
+            except ValueError:
+                print(
+                    f"Warning: Cannot parse version from {accession_tag}, defaulting to version 2"
+                )
+                new_version = 2
+                base_accession = accession_tag
+        else:
+            # No version tag exists, start with version 2
+            base_accession = accession_tag
+            new_version = 2
+
+        # Create new accession tag
+        new_accession_tag = f"{base_accession}.{new_version}"
+
+        # Check if new accession already exists
+        check_query = """
+        SELECT COUNT(*) as count FROM accessions WHERE accession_tag = :new_accession_tag
+        """
+        existing = session.execute(
+            text(check_query), {"new_accession_tag": new_accession_tag}
+        ).scalar()
+
+        if existing > 0:
+            print(f"Warning: Accession {new_accession_tag} already exists")
+            return False
+
+        # Update the accession tag
+        update_query = """
+        UPDATE accessions 
+        SET accession_tag = :new_accession_tag 
+        WHERE accession_tag = :old_accession_tag
+        """
+        result = session.execute(
+            text(update_query),
+            {
+                "new_accession_tag": new_accession_tag,
+                "old_accession_tag": accession_tag,
+            },
+        )
+
+        if result.rowcount > 0:
+            session.commit()
+            print(f"Updated {accession_tag} -> {new_accession_tag}")
+            return True
+        else:
+            print(f"Warning: No rows updated for {accession_tag}")
+            return False
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error updating version tag for {accession_tag}: {e}")
+        return False
+    finally:
+        session.close()
+
+
 def check_md5sum():
     """
     1. Generate dictionary of existing md5hash values
@@ -550,57 +721,6 @@ def check_md5sum():
     print("MD5 hash checking and fixing completed.")
 
 
-def main():
-    """
-    Main function to run MD5 hash checking and fixing.
-    """
-    print("Starting MD5 hash checking and fixing process...")
-    print("=" * 60)
-
-    try:
-        print("✓ All required modules imported successfully.")
-
-        # Disable SQLAlchemy logging to reduce noise
-        disable_sqlalchemy_logging()
-
-        # Create backup database
-        print("\n1. Creating backup database...")
-        create_backup_database()
-
-        # Run the MD5 checking process on backup
-        print("\n2. Running MD5 hash verification and fixing on backup database...")
-        check_md5sum()
-
-        print("\n" + "=" * 60)
-        print("✓ MD5 hash checking and fixing completed successfully!")
-        print("\nIMPORTANT:")
-        print(f"  - All changes were made to the backup database: {BACKUP_DB_PATH}")
-        print(f"  - Original database remains unchanged: {ORIGINAL_DB_PATH}")
-        print("\nNext steps:")
-        print("  1. Review the backup database and any generated CSV files")
-        print(
-            "  2. If satisfied with results, you can replace the original with the backup"
-        )
-        print("  3. Or use the backup for further testing")
-
-    except ImportError as e:
-        print(f"❌ Error importing required modules: {e}")
-        print("Please ensure all required modules are available in the src/ directory.")
-    except Exception as e:
-        print(f"❌ Error during MD5 checking process: {e}")
-        raise
-    finally:
-        # Offer to cleanup backup
-        if BACKUP_DB_PATH:
-            print("\n📄 To examine the backup database, you can use:")
-            print(f"   sqlite3 {BACKUP_DB_PATH}")
-            print("\n📄 To replace original with backup (ONLY if you're satisfied):")
-            print(
-                '   python -c "from fix_md5 import replace_original_with_backup; replace_original_with_backup()"'
-            )
-        cleanup_backup_database()
-
-
 def replace_original_with_backup():
     """
     Helper function to replace the original database with the backup.
@@ -677,14 +797,18 @@ def examine_backup_summary():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("         STARBASE MD5 HASH VERIFICATION & REPAIR TOOL")
+    print("         STARBASE DATABASE MAINTENANCE TOOL")
     print("=" * 60)
     print()
+    print("Available operations:")
+    print("  1. MD5 hash verification and repair")
+    print("  2. Check contained sequences and update versions")
+    print("  3. Both operations")
+    print()
     print("This script will:")
-    print("  1. Create a backup copy of your database")
-    print("  2. Verify MD5 hashes for all sequences")
-    print("  3. Fix any mismatches or duplicates")
-    print("  4. Work ONLY on the backup (original stays safe)")
+    print("  - Create a backup copy of your database")
+    print("  - Work ONLY on the backup (original stays safe)")
+    print("  - Generate reports for review")
     print()
     print("SAFETY FEATURES:")
     print("  ✓ Original database will NOT be modified")
@@ -693,10 +817,80 @@ if __name__ == "__main__":
     print("  ✓ CSV reports generated for review")
     print()
 
-    # Add safety prompt
-    response = input("Continue with MD5 verification and repair? (y/N): ")
+    # Get user choice
+    choice = input("Select operation (1/2/3) or press Enter for MD5 only: ").strip()
+
+    if choice == "":
+        choice = "1"
+
+    if choice not in ["1", "2", "3"]:
+        print("Invalid choice. Exiting.")
+        exit(1)
+
+    # Confirm operation
+    operations = {
+        "1": "MD5 hash verification and repair",
+        "2": "Check contained sequences and update versions",
+        "3": "Both MD5 checking and containment analysis",
+    }
+
+    print(f"\nYou selected: {operations[choice]}")
+    response = input("Continue? (y/N): ")
+
     if response.lower() in ["y", "yes"]:
-        main()
+        try:
+            print("✓ All required modules imported successfully.")
+
+            # Disable SQLAlchemy logging to reduce noise
+            disable_sqlalchemy_logging()
+
+            # Create backup database
+            print("\n1. Creating backup database...")
+            create_backup_database()
+
+            # Run selected operations
+            if choice in ["1", "3"]:
+                print(
+                    "\n2. Running MD5 hash verification and fixing on backup database..."
+                )
+                check_md5sum()
+
+            if choice in ["2", "3"]:
+                print("\n3. Running containment checking and version updates...")
+                check_contained_sequences_and_version_tag()
+
+            print("\n" + "=" * 60)
+            print("✓ Database maintenance completed successfully!")
+            print("\nIMPORTANT:")
+            print(f"  - All changes were made to the backup database: {BACKUP_DB_PATH}")
+            print(f"  - Original database remains unchanged: {ORIGINAL_DB_PATH}")
+            print("\nNext steps:")
+            print("  1. Review the backup database and any generated CSV files")
+            print(
+                "  2. If satisfied with results, you can replace the original with the backup"
+            )
+            print("  3. Or use the backup for further testing")
+
+        except ImportError as e:
+            print(f"❌ Error importing required modules: {e}")
+            print(
+                "Please ensure all required modules are available in the src/ directory."
+            )
+        except Exception as e:
+            print(f"❌ Error during database maintenance: {e}")
+            raise
+        finally:
+            # Offer to cleanup backup
+            if BACKUP_DB_PATH:
+                print("\n📄 To examine the backup database, you can use:")
+                print(f"   sqlite3 {BACKUP_DB_PATH}")
+                print(
+                    "\n📄 To replace original with backup (ONLY if you're satisfied):"
+                )
+                print(
+                    '   python -c "from src.database.fix_md5 import replace_original_with_backup; replace_original_with_backup()"'
+                )
+            cleanup_backup_database()
     else:
         print("Operation cancelled.")
         print()
