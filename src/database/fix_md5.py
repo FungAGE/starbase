@@ -309,6 +309,31 @@ def update_database(
         session.close()
 
 
+def check_ships_missing_accession_tags():
+    """
+    Add accession tags for (new) ships that don't have one yet
+    """
+    session = get_database_session()
+    query = """
+    SELECT id, accession_tag FROM ships WHERE accession_tag IS NULL
+    """
+    ships_df = pd.read_sql_query(query, session.bind)
+    print(f"Found {len(ships_df)} ships missing accession tags")
+    # assign new accessions to ships based on md5 hash
+    ships_df["new_accession"] = None
+    for idx, row in ships_df.iterrows():
+        accession_tag = generate_new_accession(ships_df)
+        print(f"Adding accession tag {accession_tag} to ship {row['id']}")
+        update_database(
+            old_accession_tag=row["id"],
+            new_accession_tag=accession_tag,
+            old_md5sum=row["md5"],
+            new_md5sum=accession_tag,
+        )
+    print(f"Added {len(ships_df)} accession tags to ships")
+    session.close()
+
+
 def check_md5sum():
     """
     1. Generate dictionary of existing md5hash values
