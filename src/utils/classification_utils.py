@@ -22,6 +22,7 @@ from src.utils.seq_utils import (
     write_multi_fasta,
     create_tmp_fasta_dir,
     load_fasta_to_dict,
+    clean_sequence,
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
@@ -170,9 +171,16 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 ########################################################
 
 
+def generate_md5_hash(sequence: str) -> str:
+    """Generate an MD5 hash of a sequence."""
+    return hashlib.md5(sequence.encode()).hexdigest()
+
+
 def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]:
     """Check if sequence exactly matches an existing sequence using MD5 hash."""
-    # fasta should be a file path
+    sequence = None
+
+    # Handle both file paths and direct sequence strings
     if os.path.exists(fasta):
         logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
@@ -180,36 +188,100 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
             logger.error("No sequences found in FASTA file")
             return None
         sequence = list(sequences.values())[0]
+        logger.debug(f"Loaded sequence from file, length: {len(sequence)}")
+    else:
+        # If fasta is not a file path, treat it as a sequence string
+        logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
+        sequence = fasta
 
-    # Normalize sequence by removing whitespace and making uppercase
-    clean_sequence = "".join(sequence.upper().split())
-    sequence_hash = hashlib.md5(clean_sequence.encode()).hexdigest()
-    logger.debug(
-        f"Query sequence hash: {sequence_hash} (sequence length: {len(clean_sequence)})"
-    )
+    if not sequence:
+        logger.error("No sequence provided")
+        return None
+
+    # check for missing md5s, and add them if missing
+    for idx, row in existing_ships.iterrows():
+        if row["md5"] is None:
+            logger.warning(f"Missing md5 for {row['accession_tag']}")
+            # Normalize sequence by removing whitespace and making uppercase
+            clean_sequence = clean_sequence(sequence)
+            sequence_hash = generate_md5_hash(clean_sequence)
+            existing_ships.at[idx, "md5"] = sequence_hash
+            logger.debug(f"Added md5 for {row['accession_tag']}: {sequence_hash}")
 
     # Calculate hashes for existing sequences, skipping None values
     existing_hashes = {}
+    hash_to_accession_debug = {}  # For debugging
     skipped_count = 0
+    duplicate_hashes = 0
+
     for acc, seq in zip(existing_ships["accession_tag"], existing_ships["sequence"]):
         if seq is None:
             skipped_count += 1
             logger.warning(f"Skipping null sequence for accession {acc}")
             continue
 
-        # Normalize sequence the same way
-        clean_db_seq = "".join(seq.upper().split())
-        existing_hashes[hashlib.md5(clean_db_seq.encode()).hexdigest()] = acc
+        clean_db_seq = clean_sequence(seq)
+        db_hash = generate_md5_hash(seq)
+
+        # Check for duplicate hashes
+        if db_hash in existing_hashes:
+            duplicate_hashes += 1
+            previous_acc = existing_hashes[db_hash]
+            logger.warning(
+                f"Duplicate hash detected! Hash {db_hash} maps to both {previous_acc} and {acc}"
+            )
+            # Store both accessions for debugging
+            if db_hash not in hash_to_accession_debug:
+                hash_to_accession_debug[db_hash] = [previous_acc]
+            hash_to_accession_debug[db_hash].append(acc)
+        else:
+            hash_to_accession_debug[db_hash] = [acc]
+
+        existing_hashes[db_hash] = acc
+
+        # Log details for the specific accession mentioned by user
+        if acc == "SBS000228":
+            logger.debug(
+                f"SBS000228 hash: {db_hash}, sequence length: {len(clean_db_seq)}"
+            )
+            logger.debug(f"SBS000228 first 50 chars: {clean_db_seq[:50]}...")
 
     if skipped_count > 0:
         logger.warning(f"Skipped {skipped_count} sequences due to null values")
 
+    if duplicate_hashes > 0:
+        logger.warning(f"Found {duplicate_hashes} duplicate hashes in database")
+
     logger.debug(f"Compared against {len(existing_hashes)} valid sequences")
+
+    # Check if query hash exists in database
     match = existing_hashes.get(sequence_hash)
     if match:
         logger.debug(f"Found exact hash match: {match}")
+        # Additional verification - check if this accession actually has this hash
+        if sequence_hash in hash_to_accession_debug:
+            all_accessions = hash_to_accession_debug[sequence_hash]
+            if len(all_accessions) > 1:
+                logger.warning(
+                    f"Hash {sequence_hash} matches multiple accessions: {all_accessions}"
+                )
+            logger.debug(
+                f"Hash {sequence_hash} verification - all matching accessions: {all_accessions}"
+            )
+        else:
+            logger.error(
+                f"Inconsistency detected! Hash {sequence_hash} returned match {match} but not found in debug mapping"
+            )
     else:
         logger.debug("No exact match found")
+        # For debugging, show some nearby hashes
+        all_hashes = list(existing_hashes.keys())
+        logger.debug(
+            f"Query hash {sequence_hash} not found in {len(all_hashes)} database hashes"
+        )
+        if all_hashes:
+            logger.debug(f"First few database hashes: {all_hashes[:5]}")
+
     return match
 
 
