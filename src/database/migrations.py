@@ -29,7 +29,7 @@ def create_database_indexes():
         "CREATE INDEX IF NOT EXISTS idx_family_names_reference ON family_names(type_element_reference)",
         "CREATE INDEX IF NOT EXISTS idx_family_names_family ON family_names(familyName)",
         # ships indexes
-        "CREATE INDEX IF NOT EXISTS idx_ships_accession ON ships(accession)",
+        "CREATE INDEX IF NOT EXISTS idx_ships_accession_id ON ships(accession_id)",
         # gff indexes
         "CREATE INDEX IF NOT EXISTS idx_gff_ship_id ON gff(ship_id)",
     ]
