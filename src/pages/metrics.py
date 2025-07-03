@@ -62,11 +62,12 @@ def get_metrics_layout():
                                             id="date-range-picker",
                                             label="Date Range",
                                             placeholder="Select date range",
+                                            type="range",
                                             value=[
                                                 (
                                                     datetime.now() - timedelta(days=14)
-                                                ).date(),
-                                                datetime.now().date(),
+                                                ).strftime("%Y-%m-%d"),
+                                                datetime.now().strftime("%Y-%m-%d"),
                                             ],
                                             style={"flex": 1},
                                         ),
@@ -78,7 +79,13 @@ def get_metrics_layout():
                                         ),
                                     ],
                                     align="end",
-                                )
+                                ),
+                                dmc.Text(
+                                    id="date-range-display",
+                                    size="sm",
+                                    c="dimmed",
+                                    style={"marginTop": "10px"},
+                                ),
                             ],
                             p="md",
                             radius="md",
@@ -340,6 +347,18 @@ def display_metrics_page(pathname):
     if pathname == "/metrics":
         return get_metrics_layout()
     return no_update
+
+
+# Callback to display selected date range
+@callback(Output("date-range-display", "children"), Input("date-range-picker", "value"))
+def update_date_range_display(date_range):
+    if date_range:
+        if isinstance(date_range, list) and len(date_range) == 2:
+            start_date, end_date = date_range
+            return f"Selected range: {start_date} to {end_date}"
+        else:
+            return f"Selected date: {date_range}"
+    return "No date range selected"
 
 
 # Set up the page layout structure
