@@ -1,12 +1,11 @@
 import dash
-from dash import dcc, html, callback, Input, Output, no_update, State
+from dash import dcc, html, callback, Input, Output, no_update
 import dash_mantine_components as dmc
 from src.telemetry.utils import analyze_telemetry
 from src.config.logging import get_logger
 import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime, timedelta
-import pandas as pd
+import traceback
 
 dash.register_page(__name__)
 
@@ -43,50 +42,49 @@ def get_metrics_layout():
                                     "Live Data",
                                     color="green",
                                     variant="light",
-                                    size="lg"
-                                )
+                                    size="lg",
+                                ),
                             ],
                             justify="space-between",
-                            align="center"
+                            align="center",
                         ),
-                        
                         dmc.Text(
                             "Real-time insights into visitor behavior and platform usage",
                             size="lg",
-                            c="dimmed"
+                            c="dimmed",
                         ),
-                        
                         # Date range picker
                         dmc.Paper(
                             [
                                 dmc.Group(
                                     [
-                                        dmc.DateRangePicker(
+                                        dmc.DatePicker(
                                             id="date-range-picker",
                                             label="Date Range",
                                             placeholder="Select date range",
                                             value=[
-                                                (datetime.now() - timedelta(days=14)).date(),
-                                                datetime.now().date()
+                                                (
+                                                    datetime.now() - timedelta(days=14)
+                                                ).date(),
+                                                datetime.now().date(),
                                             ],
-                                            style={"flex": 1}
+                                            style={"flex": 1},
                                         ),
                                         dmc.Button(
                                             "Refresh",
                                             id="refresh-btn",
                                             variant="light",
-                                            leftSection="🔄"
-                                        )
+                                            leftSection="🔄",
+                                        ),
                                     ],
-                                    align="end"
+                                    align="end",
                                 )
                             ],
                             p="md",
                             radius="md",
                             withBorder=True,
-                            style={"marginTop": "20px"}
+                            style={"marginTop": "20px"},
                         ),
-                        
                         # Key metrics cards
                         dmc.Grid(
                             style={"paddingTop": "20px"},
@@ -97,33 +95,30 @@ def get_metrics_layout():
                                             [
                                                 dmc.Group(
                                                     [
-                                                        dmc.Text(
-                                                            "👥",
-                                                            size="xl"
-                                                        ),
+                                                        dmc.Text("👥", size="xl"),
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
                                                                     f"{telemetry_data['unique_users']:,}",
                                                                     size="xl",
-                                                                    fw="bold"
+                                                                    fw="bold",
                                                                 ),
                                                                 dmc.Text(
                                                                     "Total Unique Users",
                                                                     size="sm",
-                                                                    c="dimmed"
-                                                                )
+                                                                    c="dimmed",
+                                                                ),
                                                             ],
-                                                            gap=0
-                                                        )
+                                                            gap=0,
+                                                        ),
                                                     ],
-                                                    align="center"
+                                                    align="center",
                                                 )
                                             ],
                                             p="lg",
                                             radius="md",
                                             withBorder=True,
-                                            style={"borderLeft": "4px solid #6366f1"}
+                                            style={"borderLeft": "4px solid #6366f1"},
                                         )
                                     ],
                                     span={"base": 12, "sm": 6, "md": 3},
@@ -134,33 +129,30 @@ def get_metrics_layout():
                                             [
                                                 dmc.Group(
                                                     [
-                                                        dmc.Text(
-                                                            "📊",
-                                                            size="xl"
-                                                        ),
+                                                        dmc.Text("📊", size="xl"),
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
                                                                     f"{telemetry_data['total_requests']:,}",
                                                                     size="xl",
-                                                                    fw="bold"
+                                                                    fw="bold",
                                                                 ),
                                                                 dmc.Text(
                                                                     "Total Page Views",
                                                                     size="sm",
-                                                                    c="dimmed"
-                                                                )
+                                                                    c="dimmed",
+                                                                ),
                                                             ],
-                                                            gap=0
-                                                        )
+                                                            gap=0,
+                                                        ),
                                                     ],
-                                                    align="center"
+                                                    align="center",
                                                 )
                                             ],
                                             p="lg",
                                             radius="md",
                                             withBorder=True,
-                                            style={"borderLeft": "4px solid #10b981"}
+                                            style={"borderLeft": "4px solid #10b981"},
                                         )
                                     ],
                                     span={"base": 12, "sm": 6, "md": 3},
@@ -171,33 +163,30 @@ def get_metrics_layout():
                                             [
                                                 dmc.Group(
                                                     [
-                                                        dmc.Text(
-                                                            "🌍",
-                                                            size="xl"
-                                                        ),
+                                                        dmc.Text("🌍", size="xl"),
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
                                                                     f"{len(telemetry_data.get('locations', []))}",
                                                                     size="xl",
-                                                                    fw="bold"
+                                                                    fw="bold",
                                                                 ),
                                                                 dmc.Text(
                                                                     "Countries",
                                                                     size="sm",
-                                                                    c="dimmed"
-                                                                )
+                                                                    c="dimmed",
+                                                                ),
                                                             ],
-                                                            gap=0
-                                                        )
+                                                            gap=0,
+                                                        ),
                                                     ],
-                                                    align="center"
+                                                    align="center",
                                                 )
                                             ],
                                             p="lg",
                                             radius="md",
                                             withBorder=True,
-                                            style={"borderLeft": "4px solid #f59e0b"}
+                                            style={"borderLeft": "4px solid #f59e0b"},
                                         )
                                     ],
                                     span={"base": 12, "sm": 6, "md": 3},
@@ -208,40 +197,36 @@ def get_metrics_layout():
                                             [
                                                 dmc.Group(
                                                     [
-                                                        dmc.Text(
-                                                            "⚡",
-                                                            size="xl"
-                                                        ),
+                                                        dmc.Text("⚡", size="xl"),
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
                                                                     "Live",
                                                                     size="xl",
-                                                                    fw="bold"
+                                                                    fw="bold",
                                                                 ),
                                                                 dmc.Text(
                                                                     "Auto-refresh",
                                                                     size="sm",
-                                                                    c="dimmed"
-                                                                )
+                                                                    c="dimmed",
+                                                                ),
                                                             ],
-                                                            gap=0
-                                                        )
+                                                            gap=0,
+                                                        ),
                                                     ],
-                                                    align="center"
+                                                    align="center",
                                                 )
                                             ],
                                             p="lg",
                                             radius="md",
                                             withBorder=True,
-                                            style={"borderLeft": "4px solid #ef4444"}
+                                            style={"borderLeft": "4px solid #ef4444"},
                                         )
                                     ],
                                     span={"base": 12, "sm": 6, "md": 3},
                                 ),
                             ],
                         ),
-                        
                         # Charts
                         dmc.Grid(
                             [
@@ -254,8 +239,8 @@ def get_metrics_layout():
                                                     figure=time_series_fig,
                                                     config={
                                                         "displayModeBar": False,
-                                                        "responsive": True
-                                                    }
+                                                        "responsive": True,
+                                                    },
                                                 )
                                             ],
                                             p="md",
@@ -274,8 +259,8 @@ def get_metrics_layout():
                                                     figure=endpoints_fig,
                                                     config={
                                                         "displayModeBar": False,
-                                                        "responsive": True
-                                                    }
+                                                        "responsive": True,
+                                                    },
                                                 )
                                             ],
                                             p="md",
@@ -298,8 +283,8 @@ def get_metrics_layout():
                                                     figure=map_fig,
                                                     config={
                                                         "displayModeBar": False,
-                                                        "responsive": True
-                                                    }
+                                                        "responsive": True,
+                                                    },
                                                 )
                                             ],
                                             p="md",
@@ -320,10 +305,45 @@ def get_metrics_layout():
         return layout
     except Exception as e:
         logger.error(f"Error creating metrics layout: {str(e)}")
-        return html.Div("Error loading metrics")
+        # Create a more informative error layout
+        error_layout = dmc.Container(
+            [
+                dmc.Alert(
+                    title="Error Loading Metrics",
+                    children=[
+                        dmc.Text(
+                            f"An error occurred while loading the metrics dashboard: {str(e)}"
+                        ),
+                        dmc.Text(
+                            "Please check the logs for more details.",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                        dmc.Code(
+                            traceback.format_exc(),
+                            block=True,
+                            style={"marginTop": "10px"},
+                        ),
+                    ],
+                    color="red",
+                    style={"marginTop": "20px"},
+                )
+            ],
+            size="xl",
+        )
+        return error_layout
 
 
-layout = get_metrics_layout()
+# Make the layout dynamic by using a callback
+@callback(Output("metrics-content", "children"), Input("url", "pathname"))
+def display_metrics_page(pathname):
+    if pathname == "/metrics":
+        return get_metrics_layout()
+    return no_update
+
+
+# Set up the page layout structure
+layout = html.Div(id="metrics-content")
 
 
 @callback(
@@ -335,19 +355,19 @@ layout = get_metrics_layout()
     [
         Input("telemetry-refresh-interval", "n_intervals"),
         Input("refresh-btn", "n_clicks"),
-        Input("date-range-picker", "value")
+        Input("date-range-picker", "value"),
     ],
-    prevent_initial_call=True
+    prevent_initial_call=True,
 )
 def refresh_telemetry(_, __, date_range):
     try:
         telemetry_data = analyze_telemetry()
-        
+
         # Use the modern figures directly from analyze_telemetry
         time_series_fig = telemetry_data.get("time_series", go.Figure())
         endpoints_fig = telemetry_data.get("endpoints", go.Figure())
         map_fig = telemetry_data.get("map", go.Figure())
-        
+
         return time_series_fig, endpoints_fig, map_fig
     except Exception as e:
         logger.error(f"Error refreshing telemetry: {str(e)}")
