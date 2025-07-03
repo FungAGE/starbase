@@ -1121,15 +1121,15 @@ def process_single_sequence(seq_data, evalue_threshold):
                         classification_data.family = family
 
                         navis = (
-                            meta_df_sub["starship_navis"].iloc[0]
-                            if "starship_navis" in meta_df_sub.columns
+                            meta_df_sub["navis_name"].iloc[0]
+                            if "navis_name" in meta_df_sub.columns
                             else None
                         )
                         classification_data.navis = navis
 
                         haplotype = (
-                            meta_df_sub["starship_haplotype"].iloc[0]
-                            if "starship_haplotype" in meta_df_sub.columns
+                            meta_df_sub["haplotype_name"].iloc[0]
+                            if "haplotype_name" in meta_df_sub.columns
                             else None
                         )
                         classification_data.haplotype = haplotype
@@ -1238,13 +1238,13 @@ def process_single_sequence(seq_data, evalue_threshold):
                     if not meta_df_sub.empty:
                         top_family = meta_df_sub["familyName"].iloc[0]
                         navis = (
-                            meta_df_sub["starship_navis"].iloc[0]
-                            if "starship_navis" in meta_df_sub.columns
+                            meta_df_sub["navis_name"].iloc[0]
+                            if "navis_name" in meta_df_sub.columns
                             else None
                         )
                         haplotype = (
-                            meta_df_sub["starship_haplotype"].iloc[0]
-                            if "starship_haplotype" in meta_df_sub.columns
+                            meta_df_sub["haplotype_name"].iloc[0]
+                            if "haplotype_name" in meta_df_sub.columns
                             else None
                         )
 
@@ -1576,41 +1576,208 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
 )
 def process_additional_sequence(active_tab, results_store, seq_list, evalue_threshold):
     """Process a sequence when its tab is selected if not already processed"""
-    if not active_tab or not results_store or not seq_list:
-        raise PreventUpdate
+    try:
+        if not active_tab or not results_store or not seq_list:
+            logger.warning(
+                f"Missing data for tab processing: active_tab={active_tab is not None}, results_store={results_store is not None}, seq_list={seq_list is not None}"
+            )
+            raise PreventUpdate
 
-    # Extract tab index from tab id (e.g., "tab-2" -> 2)
-    tab_idx = int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+        # Extract tab index from tab id (e.g., "tab-2" -> 2)
+        try:
+            tab_idx = (
+                int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+            )
+        except (ValueError, IndexError) as e:
+            logger.error(f"Invalid tab format '{active_tab}': {e}")
+            raise PreventUpdate
 
-    # Check if this sequence has already been processed
-    processed_sequences = results_store.get("processed_sequences", [])
-
-    if tab_idx in processed_sequences:
-        # Already processed this sequence
-        raise PreventUpdate
-
-    # Ensure tab_idx is valid
-    if tab_idx >= len(seq_list):
-        logger.error(
-            f"Tab index {tab_idx} out of range (seq_list length: {len(seq_list)})"
+        # Check if this sequence has already been processed
+        processed_sequences = results_store.get("processed_sequences", [])
+        logger.debug(
+            f"Tab {tab_idx} clicked. Processed sequences: {processed_sequences}"
         )
+
+        if tab_idx in processed_sequences:
+            # Already processed this sequence
+            logger.debug(f"Tab {tab_idx} already processed, skipping")
+            raise PreventUpdate
+
+        # Ensure tab_idx is valid
+        if tab_idx >= len(seq_list):
+            logger.error(
+                f"Tab index {tab_idx} out of range (seq_list length: {len(seq_list)})"
+            )
+            raise PreventUpdate
+
+        # Process this sequence
+        logger.info(
+            f"Processing sequence for tab {tab_idx}: {seq_list[tab_idx].get('header', 'unknown')[:50]}..."
+        )
+        sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
+
+        if not sequence_result:
+            logger.error(
+                f"Failed to process sequence for tab {tab_idx} - no result returned"
+            )
+            raise PreventUpdate
+
+        if sequence_result.get("error"):
+            logger.error(
+                f"Error processing sequence for tab {tab_idx}: {sequence_result.get('error')}"
+            )
+
+        # Check if this sequence should get classification workflow (≥5000bp)
+        sequence_length = len(seq_list[tab_idx].get("sequence", ""))
+        should_classify = sequence_length >= 5000
+
+        if should_classify and sequence_result.get("blast_content"):
+            logger.info(
+                f"Running classification workflow for tab {tab_idx} (length: {sequence_length})"
+            )
+            try:
+                from src.utils.blast_data import (
+                    BlastData,
+                    FetchShipParams,
+                    FetchCaptainParams,
+                )
+                from src.tasks import run_classification_workflow_task
+                from src.database.sql_manager import fetch_meta_data
+                import tempfile
+
+                # Create temporary FASTA file for the workflow
+                tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+                with open(tmp_fasta, "w") as f:
+                    f.write(
+                        f">{seq_list[tab_idx].get('header', 'query')}\n{seq_list[tab_idx].get('sequence', '')}\n"
+                    )
+
+                # Set up workflow data
+                upload_data = BlastData(
+                    seq_type=seq_list[tab_idx].get("type", "nucl"),
+                    fetch_ship_params=FetchShipParams(
+                        curated=False, with_sequence=True, dereplicate=True
+                    ),
+                    fetch_captain_params=FetchCaptainParams(
+                        curated=True, with_sequence=True
+                    ),
+                    fasta_file=tmp_fasta,
+                    blast_df=sequence_result.get("blast_df"),
+                )
+
+                meta_df = fetch_meta_data()
+                meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+
+                # Run classification workflow
+                workflow_result = run_classification_workflow_task(
+                    class_dict=upload_data, meta_dict=meta_dict
+                )
+
+                # If workflow found a match, update sequence results with classification
+                if (
+                    workflow_result
+                    and workflow_result.get("complete", False)
+                    and workflow_result.get("found_match", False)
+                ):
+                    match_stage = workflow_result.get("match_stage")
+                    match_accession = workflow_result.get("match_result")
+
+                    logger.info(
+                        f"Workflow found {match_stage} match for tab {tab_idx}: {match_accession}"
+                    )
+
+                    # Create classification data
+                    classification_data = {
+                        "source": match_stage,
+                        "closest_match": match_accession,
+                        "confidence": "High"
+                        if match_stage in ["exact", "contained"]
+                        else "Medium",
+                    }
+
+                    # Look up metadata for the matched accession
+                    try:
+                        if meta_df is not None and not meta_df.empty:
+                            meta_match = meta_df[
+                                meta_df["accession_tag"] == match_accession
+                            ]
+                            if not meta_match.empty:
+                                # Add family information
+                                if "familyName" in meta_match.columns:
+                                    family = meta_match["familyName"].iloc[0]
+                                    if family and family != "None":
+                                        classification_data["family"] = family
+
+                                # Add navis information
+                                if "navis_name" in meta_match.columns:
+                                    navis = meta_match["navis_name"].iloc[0]
+                                    if navis and navis != "None":
+                                        classification_data["navis"] = navis
+
+                                # Add haplotype information
+                                if "haplotype_name" in meta_match.columns:
+                                    haplotype = meta_match["haplotype_name"].iloc[0]
+                                    if haplotype and haplotype != "None":
+                                        classification_data["haplotype"] = haplotype
+
+                                # Add match details
+                                if match_stage == "exact":
+                                    classification_data["match_details"] = (
+                                        f"Exact sequence match to {match_accession}"
+                                    )
+                                elif match_stage == "contained":
+                                    classification_data["match_details"] = (
+                                        f"Query sequence contained within {match_accession}"
+                                    )
+                                elif match_stage == "similar":
+                                    classification_data["match_details"] = (
+                                        f"High similarity to {match_accession}"
+                                    )
+                                else:
+                                    classification_data["match_details"] = (
+                                        f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
+                                    )
+                    except Exception as e:
+                        logger.error(
+                            f"Error looking up metadata for {match_accession}: {e}"
+                        )
+
+                    # Update sequence results with classification
+                    sequence_result["classification"] = classification_data
+                    logger.info(
+                        f"Updated tab {tab_idx} with classification: {classification_data}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Error running classification workflow for tab {tab_idx}: {e}"
+                )
+        else:
+            if not should_classify:
+                logger.debug(
+                    f"Skipping classification for tab {tab_idx} - sequence too short ({sequence_length}bp)"
+                )
+            else:
+                logger.debug(
+                    f"Skipping classification for tab {tab_idx} - no BLAST content"
+                )
+
+        # Update the results store
+        updated_results = dict(results_store)
+        updated_results["processed_sequences"].append(tab_idx)
+        updated_results["sequence_results"][str(tab_idx)] = sequence_result
+
+        logger.info(f"Successfully processed and updated results for tab {tab_idx}")
+        return updated_results
+
+    except PreventUpdate:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in process_additional_sequence for tab {active_tab}: {e}"
+        )
+        logger.exception("Full traceback:")
         raise PreventUpdate
-
-    # Process this sequence
-    logger.debug(f"Processing sequence for tab {tab_idx}")
-    sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
-
-    if not sequence_result:
-        logger.error(f"Failed to process sequence for tab {tab_idx}")
-        raise PreventUpdate
-
-    # Update the results store
-    updated_results = dict(results_store)
-    updated_results["processed_sequences"].append(tab_idx)
-    updated_results["sequence_results"][str(tab_idx)] = sequence_result
-
-    logger.debug(f"Updated results for tab {tab_idx}")
-    return updated_results
 
 
 ########################################################
@@ -1628,66 +1795,94 @@ def render_tab_content(active_tab, results_store):
     """Render the content for the current tab"""
     from src.utils.classification_utils import create_classification_output
 
-    if not active_tab or not results_store:
-        raise PreventUpdate
-
-    # Extract tab index
     try:
-        tab_idx = (
-            int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+        if not active_tab or not results_store:
+            logger.warning(
+                f"Missing data for tab rendering: active_tab={active_tab}, results_store={results_store is not None}"
+            )
+            raise PreventUpdate
+
+        # Extract tab index
+        try:
+            tab_idx = (
+                int(active_tab.split("-")[1]) if active_tab and "-" in active_tab else 0
+            )
+        except (ValueError, IndexError):
+            logger.error(f"Invalid tab format: {active_tab}")
+            return dmc.Alert(
+                title="Error",
+                children="Invalid tab format",
+                color="red",
+                variant="filled",
+            )
+
+        # Check if this sequence has been processed
+        processed_sequences = results_store.get("processed_sequences", [])
+        logger.debug(
+            f"Rendering tab {tab_idx}. Processed sequences: {processed_sequences}"
         )
-    except (ValueError, IndexError):
-        logger.error(f"Invalid tab format: {active_tab}")
+
+        if tab_idx not in processed_sequences:
+            # Not processed yet - show loading state
+            logger.debug(f"Tab {tab_idx} not processed yet, showing loading state")
+            return dmc.Stack(
+                [
+                    dmc.Center(dmc.Loader(size="xl")),
+                    dmc.Text("Processing sequence...", size="lg"),
+                ]
+            )
+
+        # Get results for this sequence
+        sequence_results = results_store.get("sequence_results", {}).get(str(tab_idx))
+        if not sequence_results:
+            logger.error(f"No sequence results found for tab {tab_idx}")
+            return dmc.Alert(
+                title="Error",
+                children=f"No results found for sequence {tab_idx + 1}. Please try clicking on this tab again to reprocess.",
+                color="red",
+                variant="filled",
+            )
+
+        # Check for errors in the results
+        if "error" in sequence_results and sequence_results["error"] is not None:
+            logger.error(
+                f"Error in sequence results for tab {tab_idx}: {sequence_results['error']}"
+            )
+            return seq_processing_error_alert(sequence_results["error"])
+
+        # Render classification results (workflow state not available for tabbed interface)
+        classification_output = create_classification_output(
+            sequence_results, workflow_state=None
+        )
+
+        # Render BLAST results
+        blast_container = create_blast_container(sequence_results, tab_id=tab_idx)
+
+        logger.debug(f"Successfully rendered content for tab {tab_idx}")
+        return [
+            classification_output,
+            progress_section,
+            # BLAST results section
+            dmc.Stack(
+                [
+                    blast_container,
+                ]
+            ),
+        ]
+
+    except PreventUpdate:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in render_tab_content for tab {active_tab}: {e}"
+        )
+        logger.exception("Full traceback:")
         return dmc.Alert(
-            title="Error",
-            children="Invalid tab format",
+            title="Error Rendering Tab",
+            children=f"An unexpected error occurred while rendering this tab: {str(e)}",
             color="red",
             variant="filled",
         )
-
-    # Check if this sequence has been processed
-    processed_sequences = results_store.get("processed_sequences", [])
-    if tab_idx not in processed_sequences:
-        # Not processed yet - show loading state
-        return dmc.Stack(
-            [
-                dmc.Center(dmc.Loader(size="xl")),
-                dmc.Text("Processing sequence...", size="lg"),
-            ]
-        )
-
-    # Get results for this sequence
-    sequence_results = results_store.get("sequence_results", {}).get(str(tab_idx))
-    if not sequence_results:
-        return dmc.Alert(
-            title="Error",
-            children="No results found for this sequence",
-            color="red",
-            variant="filled",
-        )
-
-    # Check for errors in the results
-    if "error" in sequence_results:
-        return seq_processing_error_alert(sequence_results["error"])
-
-    # Render classification results (workflow state not available for tabbed interface)
-    classification_output = create_classification_output(
-        sequence_results, workflow_state=None
-    )
-
-    # Render BLAST results
-    blast_container = create_blast_container(sequence_results, tab_id=tab_idx)
-
-    return [
-        classification_output,
-        progress_section,
-        # BLAST results section
-        dmc.Stack(
-            [
-                blast_container,
-            ]
-        ),
-    ]
 
 
 @callback(
@@ -2077,31 +2272,52 @@ def update_single_sequence_classification(blast_results_store, workflow_state):
     """Update classification output for single sequence submissions"""
     from src.utils.classification_utils import create_classification_output
 
+    logger.info(
+        f"update_single_sequence_classification CALLED: blast_results_store={blast_results_store is not None}, workflow_state={workflow_state is not None}"
+    )
+
+    if workflow_state:
+        logger.info(
+            f"Workflow state: complete={workflow_state.get('complete')}, found_match={workflow_state.get('found_match')}, match_stage={workflow_state.get('match_stage')}, match_result={workflow_state.get('match_result')}"
+        )
+
     if not blast_results_store:
+        logger.info("No blast_results_store, returning None")
         return None
 
     # Get the results for sequence 0
     sequence_results = blast_results_store.get("sequence_results", {}).get("0")
     if not sequence_results:
+        logger.info("No sequence results for sequence 0, returning None")
         return None
+
+    logger.info(
+        f"Original sequence_results has classification: {'classification' in sequence_results}"
+    )
 
     # Check if we have workflow results that should override the initial classification
     if (
         workflow_state
         and workflow_state.get("complete", False)
-        and workflow_state.get("found_match", False)
+        and workflow_state.get("found_match", True)
     ):
+        logger.info("Workflow completed with match found, updating classification")
         # Update sequence_results with workflow classification data
         match_result = workflow_state.get("match_result")
         if isinstance(match_result, dict):
             # Use workflow results
             sequence_results = sequence_results.copy()
             sequence_results["classification"] = match_result
+            logger.info("Used workflow match_result dict as classification")
         elif workflow_state.get("match_stage") and workflow_state.get("match_result"):
             # Convert simple workflow results to classification format and look up metadata
             sequence_results = sequence_results.copy()
             match_stage = workflow_state.get("match_stage")
             match_accession = workflow_state.get("match_result")
+
+            logger.info(
+                f"Processing workflow result: {match_stage} -> {match_accession}"
+            )
 
             # Create base classification
             classification_data = {
@@ -2118,6 +2334,7 @@ def update_single_sequence_classification(blast_results_store, workflow_state):
                 if meta_df is not None and not meta_df.empty:
                     meta_match = meta_df[meta_df["accession_tag"] == match_accession]
                     if not meta_match.empty:
+                        logger.debug(f"Found metadata for {match_accession}")
                         # Add family information
                         if "familyName" in meta_match.columns:
                             family = meta_match["familyName"].iloc[0]
@@ -2125,14 +2342,14 @@ def update_single_sequence_classification(blast_results_store, workflow_state):
                                 classification_data["family"] = family
 
                         # Add navis information
-                        if "starship_navis" in meta_match.columns:
-                            navis = meta_match["starship_navis"].iloc[0]
+                        if "navis_name" in meta_match.columns:
+                            navis = meta_match["navis_name"].iloc[0]
                             if navis and navis != "None":
                                 classification_data["navis"] = navis
 
                         # Add haplotype information
-                        if "starship_haplotype" in meta_match.columns:
-                            haplotype = meta_match["starship_haplotype"].iloc[0]
+                        if "haplotype_name" in meta_match.columns:
+                            haplotype = meta_match["haplotype_name"].iloc[0]
                             if haplotype and haplotype != "None":
                                 classification_data["haplotype"] = haplotype
 
@@ -2153,20 +2370,33 @@ def update_single_sequence_classification(blast_results_store, workflow_state):
                             classification_data["match_details"] = (
                                 f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
                             )
+                    else:
+                        logger.warning(f"No metadata found for {match_accession}")
 
             except Exception as e:
                 logger.error(f"Error looking up metadata for {match_accession}: {e}")
 
             sequence_results["classification"] = classification_data
+            logger.info(f"Created classification_data: {classification_data}")
+    else:
+        logger.info(
+            f"Workflow not complete or no match found. Complete: {workflow_state.get('complete') if workflow_state else 'N/A'}, Found match: {workflow_state.get('found_match') if workflow_state else 'N/A'}"
+        )
 
     # Create the classification output using the existing function
-    return create_classification_output(sequence_results, workflow_state)
+    logger.info(
+        f"Final sequence_results has classification: {'classification' in sequence_results}"
+    )
+    result = create_classification_output(sequence_results, workflow_state)
+    logger.info(f"create_classification_output returned: {type(result)}")
+    return result
 
 
 @callback(
     [
         Output("workflow-state-store", "data", allow_duplicate=True),
         Output("results-loading-overlay", "visible", allow_duplicate=True),
+        Output("blast-results-store", "data", allow_duplicate=True),
     ],
     [
         # Remove dependency on interval n_intervals
@@ -2194,7 +2424,7 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
             workflow_state.get("complete", False)
             or workflow_state.get("error") is not None
         ):
-            return workflow_state, False
+            return workflow_state, False, blast_results_store
         raise PreventUpdate
 
     # Check if task is running
@@ -2205,7 +2435,7 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
         workflow_state["error"] = "Missing task ID"
         workflow_state["complete"] = True
         workflow_state["status"] = "failed"
-        return workflow_state, False
+        return workflow_state, False, blast_results_store
 
     try:
         # Start the classification workflow - ONE TIME ONLY
@@ -2246,6 +2476,8 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
                 class_dict=upload_data, meta_dict=meta_dict
             )
 
+            logger.debug(f"Workflow result type: {type(result)}, content: {result}")
+
             # Use a copy to modify
             workflow_state = workflow_state.copy()
 
@@ -2254,13 +2486,112 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
 
             # If we got a result back, merge it with the workflow state
             if isinstance(result, dict):
+                logger.debug(
+                    f"Merging workflow result into state. Keys: {list(result.keys())}"
+                )
                 for key, value in result.items():
                     if value is not None or key not in workflow_state:
                         workflow_state[key] = value
+                        logger.debug(f"Set workflow_state['{key}'] = {value}")
 
             # Ensure the status is set properly
             workflow_state["status"] = "complete"
             workflow_state["complete"] = True
+
+            logger.debug(
+                f"Final workflow state: complete={workflow_state.get('complete')}, found_match={workflow_state.get('found_match')}, match_stage={workflow_state.get('match_stage')}, match_result={workflow_state.get('match_result')}"
+            )
+
+            # IMPORTANT: Also update the sequence results with classification data for tabbed interface
+            if (
+                workflow_state.get("complete", False)
+                and workflow_state.get("found_match", False)
+                and blast_results_store
+                and "sequence_results" in blast_results_store
+            ):
+                logger.info(
+                    "Updating sequence results with workflow classification for tabbed interface"
+                )
+
+                # Make a copy of blast_results_store to avoid modifying the original
+                blast_results_store = blast_results_store.copy()
+                blast_results_store["sequence_results"] = blast_results_store[
+                    "sequence_results"
+                ].copy()
+
+                # Get the sequence results for sequence 0
+                sequence_results = blast_results_store["sequence_results"].get("0")
+                if sequence_results:
+                    # Make a copy of sequence_results to avoid modifying the original
+                    sequence_results = sequence_results.copy()
+
+                    match_stage = workflow_state.get("match_stage")
+                    match_accession = workflow_state.get("match_result")
+
+                    # Create classification data
+                    classification_data = {
+                        "source": match_stage,
+                        "closest_match": match_accession,
+                        "confidence": "High"
+                        if match_stage in ["exact", "contained"]
+                        else "Medium",
+                    }
+
+                    # Look up metadata for the matched accession
+                    try:
+                        meta_df = fetch_meta_data()
+                        if meta_df is not None and not meta_df.empty:
+                            meta_match = meta_df[
+                                meta_df["accession_tag"] == match_accession
+                            ]
+                            if not meta_match.empty:
+                                logger.debug(f"Found metadata for {match_accession}")
+                                # Add family information
+                                if "familyName" in meta_match.columns:
+                                    family = meta_match["familyName"].iloc[0]
+                                    if family and family != "None":
+                                        classification_data["family"] = family
+
+                                # Add navis information
+                                if "navis_name" in meta_match.columns:
+                                    navis = meta_match["navis_name"].iloc[0]
+                                    if navis and navis != "None":
+                                        classification_data["navis"] = navis
+
+                                # Add haplotype information
+                                if "haplotype_name" in meta_match.columns:
+                                    haplotype = meta_match["haplotype_name"].iloc[0]
+                                    if haplotype and haplotype != "None":
+                                        classification_data["haplotype"] = haplotype
+
+                                # Add match details
+                                if match_stage == "exact":
+                                    classification_data["match_details"] = (
+                                        f"Exact sequence match to {match_accession}"
+                                    )
+                                elif match_stage == "contained":
+                                    classification_data["match_details"] = (
+                                        f"Query sequence contained within {match_accession}"
+                                    )
+                                elif match_stage == "similar":
+                                    classification_data["match_details"] = (
+                                        f"High similarity to {match_accession}"
+                                    )
+                                else:
+                                    classification_data["match_details"] = (
+                                        f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
+                                    )
+                    except Exception as e:
+                        logger.error(
+                            f"Error looking up metadata for {match_accession}: {e}"
+                        )
+
+                    # Update the sequence results with classification data
+                    sequence_results["classification"] = classification_data
+                    blast_results_store["sequence_results"]["0"] = sequence_results
+                    logger.info(
+                        f"Updated sequence results with classification: {classification_data}"
+                    )
 
             # Initialize stages if not present
             if "stages" not in workflow_state:
@@ -2269,7 +2600,7 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
                     for stage in WORKFLOW_STAGES
                 }
 
-            return workflow_state, False
+            return workflow_state, False, blast_results_store
 
         # Safety check - should never actually get here due to the early returns above
         raise PreventUpdate
@@ -2284,7 +2615,7 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
         workflow_state["error"] = str(e)
         workflow_state["status"] = "failed"
         workflow_state["complete"] = True
-        return workflow_state, False
+        return workflow_state, False, blast_results_store
 
 
 @callback(
@@ -2365,11 +2696,20 @@ def update_classification_progress(workflow_state):
         else:
             stage_text = "Starting classification..."
 
-    # Show section if classification is in progress
-    style = (
-        {"display": "block"} if status and status != "pending" else {"display": "none"}
-    )
+    # Hide the progress section if classification is complete
+    if workflow_state.get("complete", False):
+        style = {"display": "none"}
+    else:
+        # Show section if classification is in progress
+        style = (
+            {"display": "block"}
+            if status and status != "pending"
+            else {"display": "none"}
+        )
 
+    logger.debug(
+        f"Progress update: progress={progress}, text='{stage_text}', style={style}"
+    )
     return progress, stage_text, style
 
 
