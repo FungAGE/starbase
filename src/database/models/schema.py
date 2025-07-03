@@ -27,6 +27,7 @@ class Accessions(Base):
     id = Column(Integer, primary_key=True)
     ship_name = Column(String)
     accession_tag = Column(String, unique=True)
+    version_tag = Column(String)
 
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")

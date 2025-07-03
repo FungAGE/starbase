@@ -638,8 +638,21 @@ def clean_contigIDs(string):
 def create_ncbi_style_header(row):
     try:
         clean_contig = clean_contigIDs(row["contigID"])
+
+        # Use accession_display if available, otherwise combine accession_tag and version_tag
+        if "accession_display" in row and pd.notnull(row["accession_display"]):
+            accession_with_version = row["accession_display"]
+        elif (
+            "version_tag" in row
+            and pd.notnull(row["version_tag"])
+            and row["version_tag"] != ""
+        ):
+            accession_with_version = f"{row['accession_tag']}.{row['version_tag']}"
+        else:
+            accession_with_version = row["accession_tag"]
+
         return (
-            f">{row['accession_tag']} "
+            f">{accession_with_version} "
             f"[organism={row['name']}] "
             f"[lineage=Fungi; {row['order']}; {row['family']}] "
             f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "

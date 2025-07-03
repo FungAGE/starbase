@@ -217,13 +217,25 @@ def create_accession_modal(accession):
         initial_df = fetch_meta_data()
 
         accession = str(accession).strip("[]").split("/")[-1].strip()
+
+        # If accession contains version (e.g., "SBS123456.1"), extract base accession for lookup
+        base_accession = accession.split(".")[0] if "." in accession else accession
+
         initial_df["accession_tag"] = (
             initial_df["accession_tag"]
             .astype(str)
             .apply(lambda x: x.strip("[]").split("/")[-1].strip())
         )
 
-        modal_data = initial_df[initial_df["accession_tag"] == accession]
+        # First try to find exact match with the full accession (including version)
+        if "accession_display" in initial_df.columns:
+            modal_data = initial_df[initial_df["accession_display"] == accession]
+            if modal_data.empty:
+                # If no exact match, try with base accession
+                modal_data = initial_df[initial_df["accession_tag"] == base_accession]
+        else:
+            # Fallback to original behavior if accession_display is not available
+            modal_data = initial_df[initial_df["accession_tag"] == accession]
 
         if modal_data.empty:
             return dmc.Stack(
@@ -554,18 +566,20 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
 
             accession = None
             if f"{table_id}.cellClicked" in triggered_id and cell_clicked:
-                # AG Grid format
-                if cell_clicked["colId"] == "accession_tag":
+                # AG Grid format - handle both accession_tag and accession_display
+                if cell_clicked["colId"] in ["accession_tag", "accession_display"]:
                     accession = str(cell_clicked["value"])
             elif f"{table_id}.active_cell" in triggered_id and active_cell:
-                # Dash DataTable format
-                if active_cell["column_id"] == "accession_tag":
+                # Dash DataTable format - handle both accession_tag and accession_display
+                if active_cell["column_id"] in ["accession_tag", "accession_display"]:
                     # Calculate the actual row index based on pagination
                     actual_row_idx = (page_current or 0) * page_size + active_cell[
                         "row"
                     ]
                     if table_data and actual_row_idx < len(table_data):
-                        accession = str(table_data[actual_row_idx]["accession_tag"])
+                        accession = str(
+                            table_data[actual_row_idx][active_cell["column_id"]]
+                        )
 
             if accession:
                 # Clean and standardize the accession tag
@@ -587,6 +601,8 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 ]
             )
             return True, error_content, "Error"
+
+    return toggle_modal
 
 
 def create_file_upload(

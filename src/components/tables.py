@@ -71,6 +71,14 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         else:
             df = pd.DataFrame()
 
+    # If we have accession_display column, use it for display but keep accession_tag for functionality
+    if isinstance(df, pd.DataFrame) and "accession_display" in df.columns:
+        # Create a display copy where accession_tag is replaced with accession_display
+        display_df = df.copy()
+        display_df["accession_tag"] = display_df["accession_display"]
+    else:
+        display_df = df
+
     # Create column definitions
     if columns:
         grid_columns = []
@@ -94,7 +102,9 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
 
             grid_columns.append(col_def)
     else:
-        grid_columns = [{"field": col} for col in df.columns]
+        grid_columns = [
+            {"field": col} for col in display_df.columns if col != "accession_display"
+        ]
 
     # Simplified stable grid options
     grid_options = {
@@ -117,7 +127,9 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
-        rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
+        rowData=display_df.to_dict("records")
+        if isinstance(display_df, pd.DataFrame)
+        else display_df,
         defaultColDef={
             "resizable": True,
             "sortable": True,
@@ -150,6 +162,14 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
             )
         else:
             df = pd.DataFrame()
+
+    # If we have accession_display column, use it for display but keep accession_tag for functionality
+    if isinstance(df, pd.DataFrame) and "accession_display" in df.columns:
+        # Create a display copy where accession_tag is replaced with accession_display
+        display_df = df.copy()
+        display_df["accession_tag"] = display_df["accession_display"]
+    else:
+        display_df = df
 
     # Convert column format to AG Grid format
     if columns:
@@ -193,7 +213,8 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 "headerName": col.replace("_", " ").title(),
                 "sortable": True,
             }
-            for col in df.columns
+            for col in display_df.columns
+            if col != "accession_display"
         ]
 
     # Simplified grid options
@@ -217,7 +238,9 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
-        rowData=df.to_dict("records") if isinstance(df, pd.DataFrame) else df,
+        rowData=display_df.to_dict("records")
+        if isinstance(display_df, pd.DataFrame)
+        else display_df,
         defaultColDef={
             "resizable": True,
             "minWidth": 100,
@@ -324,7 +347,13 @@ def make_dl_table(df, id, table_columns):
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):
-        row_data = df.to_dict("records")
+        # If we have accession_display column, use it for display but keep accession_tag for functionality
+        if "accession_display" in df.columns:
+            display_df = df.copy()
+            display_df["accession_tag"] = display_df["accession_display"]
+            row_data = display_df.to_dict("records")
+        else:
+            row_data = df.to_dict("records")
     else:
         row_data = df  # Assume it's already in records format
 
@@ -338,8 +367,8 @@ def make_dl_table(df, id, table_columns):
             "filter": True,
         }
 
-        # Add checkbox to first column (accession_tag)
-        if col["id"] == "accession_tag":
+        # Add checkbox and special styling to accession columns
+        if col["id"] in ["accession_tag", "accession_display"]:
             col_def.update(
                 {
                     "checkboxSelection": True,

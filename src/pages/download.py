@@ -24,7 +24,7 @@ dash.register_page(__name__)
 table_columns = [
     {
         "name": "Accession",
-        "id": "accession_tag",
+        "id": "accession_display",
         "deletable": False,
         "selectable": True,
         "presentation": "markdown",
@@ -239,7 +239,14 @@ def generate_download_helper(rows, curated, dereplicate):
         if not rows:
             raise ValueError("No rows selected for download")
 
-        accessions = [row["accession_tag"] for row in rows]
+        # Extract accession tags (without version for database lookup)
+        accessions = []
+        for row in rows:
+            accession = row["accession_display"]
+            # If the accession contains a version, extract the base accession
+            base_accession = accession.split(".")[0] if "." in accession else accession
+            accessions.append(base_accession)
+
         dl_df = fetch_ships(
             accession_tags=accessions,
             curated=curated,
@@ -250,27 +257,43 @@ def generate_download_helper(rows, curated, dereplicate):
         if dl_df is None or dl_df.empty:
             raise ValueError("No sequences found for download")
 
-        # Count occurrences of each accession tag
-        accession_counts = dl_df["accession_tag"].value_counts()
+        # Count occurrences of each accession tag + version tag combination
+        if "accession_display" in dl_df.columns:
+            accession_counts = dl_df["accession_display"].value_counts()
+        else:
+            accession_counts = dl_df["accession_tag"].value_counts()
 
         fasta_content = []
         for _, row in dl_df.drop_duplicates(
-            subset=["accession_tag", "sequence"]
+            subset=["accession_display", "sequence"]
         ).iterrows():
-            count = accession_counts[row["accession_tag"]]
+            # Use accession_display if available, otherwise combine accession_tag and version_tag
+            if "accession_display" in row and pd.notnull(row["accession_display"]):
+                display_accession = row["accession_display"]
+            else:
+                display_accession = (
+                    f"{row['accession_tag']}.{row['version_tag']}"
+                    if pd.notnull(row.get("version_tag"))
+                    and row.get("version_tag") != ""
+                    else row["accession_tag"]
+                )
+
+            count = accession_counts.get(display_accession, 1)
 
             if count > 1:
                 # Simplified header for multiple representatives
                 header = (
-                    f">{row['accession_tag']} "
+                    f">{display_accession} "
                     f"[family={row['familyName']}] "
                     f"[representatives={count}]"
                 )
             else:
-                # Full header for single entries
-                header = create_ncbi_style_header(row)
+                # Full header for single entries - pass the row with display_accession info
+                row_with_display = row.copy()
+                row_with_display["accession_display"] = display_accession
+                header = create_ncbi_style_header(row_with_display)
             if header is None or header == "None":
-                header = f">{row['accession_tag']}" + (
+                header = f">{display_accession}" + (
                     f" [family={row['familyName']}]" if row.get("familyName") else ""
                 )
             fasta_content.append(f"{header}\n{row['sequence']}")
@@ -355,8 +378,8 @@ def generate_download_selected(
     selected_data = [
         row
         for row in table_data
-        if row.get("accession_tag")
-        in [selected.get("accession_tag") for selected in selected_rows]
+        if row.get("accession_display")
+        in [selected.get("accession_display") for selected in selected_rows]
     ]
 
     download_data, num_sequences = generate_download_helper(
