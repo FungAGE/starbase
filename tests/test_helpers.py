@@ -116,6 +116,9 @@ def test_fetch_meta_data(curated=False, accession_tag=None):
             else:
                 meta_df = pd.read_sql_query(meta_query, session.bind)
 
+            # Deduplicate by accession_tag to prevent multiple rows per sequence
+            meta_df = meta_df.drop_duplicates(subset="accession_tag")
+
             return meta_df
         except Exception as e:
             logger.error(f"Error fetching meta data: {str(e)}")
@@ -490,12 +493,39 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
                     workflow_state["stages"][stage_id]["progress"] = 100
                     workflow_state["stages"][stage_id]["status"] = "complete"
 
+                    # Early stopping: If no family classification found, skip navis and haplotype
+                    logger.debug(
+                        "Skipping navis and haplotype classification due to family failure"
+                    )
+                    for remaining_stage in ["navis", "haplotype"]:
+                        if remaining_stage in workflow_state["stages"]:
+                            workflow_state["stages"][remaining_stage]["progress"] = 100
+                            workflow_state["stages"][remaining_stage]["status"] = (
+                                "skipped"
+                            )
+
+                    # Complete the workflow
+                    workflow_state["complete"] = True
+                    return workflow_state
+
             elif stage_id == "navis":
                 logger.debug("Running navis classification")
                 if captains_df.empty:
                     logger.warning("No captain data available for navis classification")
                     workflow_state["stages"][stage_id]["progress"] = 80
                     workflow_state["stages"][stage_id]["status"] = "skipped"
+
+                    # Early stopping: If no captain data, skip haplotype
+                    logger.debug(
+                        "Skipping haplotype classification due to no captain data"
+                    )
+                    if "haplotype" in workflow_state["stages"]:
+                        workflow_state["stages"]["haplotype"]["progress"] = 100
+                        workflow_state["stages"]["haplotype"]["status"] = "skipped"
+
+                    # Complete the workflow
+                    workflow_state["complete"] = True
+                    return workflow_state
                 else:
                     result = classify_navis(
                         fasta=upload_data.fasta_file,
@@ -520,6 +550,18 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
                         logger.debug("No navis classification found")
                         workflow_state["stages"][stage_id]["progress"] = 90
                         workflow_state["stages"][stage_id]["status"] = "complete"
+
+                        # Early stopping: If no navis classification found, skip haplotype
+                        logger.debug(
+                            "Skipping haplotype classification due to navis failure"
+                        )
+                        if "haplotype" in workflow_state["stages"]:
+                            workflow_state["stages"]["haplotype"]["progress"] = 100
+                            workflow_state["stages"]["haplotype"]["status"] = "skipped"
+
+                        # Complete the workflow
+                        workflow_state["complete"] = True
+                        return workflow_state
 
             elif stage_id == "haplotype":
                 logger.debug("Running haplotype classification")

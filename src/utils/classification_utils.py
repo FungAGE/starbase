@@ -1066,6 +1066,16 @@ def cluster_sequences(similarities, threshold=0.95):
     logger.debug(f"Clustering sequences with threshold {threshold}")
 
     try:
+        # Handle None similarities
+        if similarities is None:
+            logger.warning("No similarities provided (None)")
+            return []
+
+        # Handle empty similarities
+        if not similarities:
+            logger.warning("No similarities provided (empty list)")
+            return []
+
         # Filter similarities by threshold
         filtered_similarities = [
             (id1, id2) for id1, id2, sim in similarities if sim >= threshold
