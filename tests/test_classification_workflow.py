@@ -16,7 +16,7 @@ import json
 import argparse
 from datetime import datetime
 
-from tests.test_helpers import (
+from test_helpers import (
     test_fetch_ships as fetch_ships,
     test_fetch_meta_data as fetch_meta_data,
     test_run_classification_workflow as run_classification_workflow,

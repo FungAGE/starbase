@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from tests.test_classification_workflow import ClassificationTester
+from test_classification_workflow import ClassificationTester
 
 # Add the main project directory to the path so we can import src modules
 current_dir = os.path.dirname(os.path.abspath(__file__))

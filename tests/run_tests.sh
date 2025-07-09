@@ -33,7 +33,7 @@ run_test() {
     # Change to the parent directory (project root) before running
     cd "$(dirname "$0")/.."
     
-    cmd="python3 tests/test_classification_workflow.py --output-dir $output_dir"
+    cmd="env PYTHONPATH=. python3 tests/test_classification_workflow.py --output-dir $output_dir"
     
     if [ ! -z "$max_seqs" ]; then
         cmd="$cmd --max-sequences $max_seqs"
@@ -89,7 +89,7 @@ case "${1:-menu}" in
     
     "interactive"|"i")
         echo "Starting interactive mode..."
-        cd "$(dirname "$0")/.." && python3 tests/run_classification_tests.py
+        cd "$(dirname "$0")/.." && env PYTHONPATH=. python3 tests/run_classification_tests.py
         ;;
     
     "analyze"|"a")
@@ -105,7 +105,7 @@ case "${1:-menu}" in
         fi
         
         echo "Analyzing results in $2..."
-        cd "$(dirname "$0")/.." && python3 -c "
+        cd "$(dirname "$0")/.." && env PYTHONPATH=. python3 -c "
 import sys
 sys.path.append('.')
 from tests.run_classification_tests import analyze_previous_results
