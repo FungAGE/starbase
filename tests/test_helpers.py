@@ -8,8 +8,8 @@ import os
 import sys
 from contextlib import contextmanager
 
-from config.database import StarbaseSession
-from config.logging import get_logger
+from src.config.database import StarbaseSession
+from src.config.logging import get_logger
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -336,7 +336,7 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
         dict: Classification workflow results
     """
     # Import here to avoid circular imports
-    from utils.classification_utils import (
+    from src.utils.classification_utils import (
         check_exact_match,
         check_contained_match,
         check_similar_match,

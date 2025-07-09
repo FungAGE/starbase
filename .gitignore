@@ -174,4 +174,4 @@ celerybeat*
 src/database/db/**
 src/database/db.tar.gz
 
-classification_test_results/*
+*test_results*/*

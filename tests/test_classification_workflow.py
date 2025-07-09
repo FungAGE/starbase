@@ -16,10 +16,7 @@ import json
 import argparse
 from datetime import datetime
 
-# Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
-
-from src.utils.test_helpers import (
+from tests.test_helpers import (
     test_fetch_ships as fetch_ships,
     test_fetch_meta_data as fetch_meta_data,
     test_run_classification_workflow as run_classification_workflow,
@@ -27,6 +24,11 @@ from src.utils.test_helpers import (
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Add parent directory to path so we can import src modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 
 
 @dataclass

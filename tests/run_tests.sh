@@ -30,7 +30,10 @@ run_test() {
     
     echo -e "${YELLOW}Starting $test_name...${NC}"
     
-    cmd="python3 test_classification_workflow.py --output-dir $output_dir"
+    # Change to the parent directory (project root) before running
+    cd "$(dirname "$0")/.."
+    
+    cmd="python3 tests/test_classification_workflow.py --output-dir $output_dir"
     
     if [ ! -z "$max_seqs" ]; then
         cmd="$cmd --max-sequences $max_seqs"
@@ -86,7 +89,7 @@ case "${1:-menu}" in
     
     "interactive"|"i")
         echo "Starting interactive mode..."
-        python3 run_classification_tests.py
+        cd "$(dirname "$0")/.." && python3 tests/run_classification_tests.py
         ;;
     
     "analyze"|"a")
@@ -102,10 +105,10 @@ case "${1:-menu}" in
         fi
         
         echo "Analyzing results in $2..."
-        python3 -c "
+        cd "$(dirname "$0")/.." && python3 -c "
 import sys
 sys.path.append('.')
-from run_classification_tests import analyze_previous_results
+from tests.run_classification_tests import analyze_previous_results
 analyze_previous_results('$2')
 "
         ;;
@@ -144,17 +147,17 @@ analyze_previous_results('$2')
         read -p "Select an option (1-7) or 'h' for help: " -r choice
         
         case $choice in
-            1) ./run_tests.sh quick ;;
-            2) ./run_tests.sh curated ;;
-            3) ./run_tests.sh small ;;
-            4) ./run_tests.sh medium ;;
-            5) ./run_tests.sh full ;;
-            6) ./run_tests.sh interactive ;;
+            1) "$0" quick ;;
+            2) "$0" curated ;;
+            3) "$0" small ;;
+            4) "$0" medium ;;
+            5) "$0" full ;;
+            6) "$0" interactive ;;
             7) 
                 read -p "Enter results directory: " -r results_dir
-                ./run_tests.sh analyze "$results_dir"
+                "$0" analyze "$results_dir"
                 ;;
-            h|H) ./run_tests.sh help ;;
+            h|H) "$0" help ;;
             *) 
                 echo -e "${RED}Invalid option${NC}"
                 exit 1

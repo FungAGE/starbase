@@ -8,10 +8,12 @@ import os
 import sys
 from pathlib import Path
 
-# Add the main directory to the path
-sys.path.append(os.path.dirname(__file__))
+from tests.test_classification_workflow import ClassificationTester
 
-from test_classification_workflow import ClassificationTester
+# Add the main project directory to the path so we can import src modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 
 
 def run_quick_test():
