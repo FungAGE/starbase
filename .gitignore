@@ -175,3 +175,4 @@ src/database/db/**
 src/database/db.tar.gz
 
 *test_results*/*
+*.csv

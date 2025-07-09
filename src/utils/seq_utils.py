@@ -20,35 +20,40 @@ def clean_sequence(seq):
     if seq is None:
         return None
 
-    # Remove any content within parentheses
-    seq = re.sub(r"\(.*?\)", "", seq)
-    seq = seq.upper()
-
-    # Remove any non-nucleotide characters (keep IUPAC codes)
+    # all valid DNA nucleotides including ambiguous ones
     valid_nucleotides = {
         "A",
         "T",
         "C",
         "G",
-        "N",
         "R",
         "Y",
-        "S",
-        "W",
-        "K",
         "M",
+        "W",
+        "S",
+        "K",
+        "N",
         "B",
         "D",
         "H",
         "V",
     }
-    cleaned_seq = "".join(nuc for nuc in seq if nuc in valid_nucleotides)
 
-    # Return the cleaned sequence if it's not empty
-    if cleaned_seq:
-        return cleaned_seq
+    # Remove anything in parentheses and convert to uppercase
+    seq = re.sub(r"\(.*?\)", "", seq)
+    seq = seq.upper()
+
+    # Check if all characters are valid nucleotides
+    if all(nuc in valid_nucleotides for nuc in seq):
+        return seq
     else:
         return None
+
+
+def generate_md5_hash(seq):
+    import hashlib
+
+    return hashlib.md5(seq.encode()).hexdigest()
 
 
 def clean_lines(queries):

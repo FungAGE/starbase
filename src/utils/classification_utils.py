@@ -23,6 +23,7 @@ from src.utils.seq_utils import (
     create_tmp_fasta_dir,
     load_fasta_to_dict,
     clean_sequence,
+    generate_md5_hash,
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
@@ -190,8 +191,35 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None
-        # Get all sequences from the file (as a list)
-        sequence_list = list(sequences.values())
+        sequence = list(sequences.values())[0]
+
+    # Normalize sequence by removing whitespace and making uppercase
+    clean_sequence = "".join(sequence.upper().split())
+    sequence_hash = generate_md5_hash(clean_sequence)
+    logger.debug(
+        f"Query sequence hash: {sequence_hash} (sequence length: {len(clean_sequence)})"
+    )
+
+    # Calculate hashes for existing sequences, skipping None values
+    existing_hashes = {}
+    skipped_count = 0
+    for acc, seq in zip(existing_ships["accession_tag"], existing_ships["sequence"]):
+        if seq is None:
+            skipped_count += 1
+            logger.warning(f"Skipping null sequence for accession {acc}")
+            continue
+
+        # Normalize sequence the same way
+        clean_db_seq = "".join(seq.upper().split())
+        existing_hashes[generate_md5_hash(clean_db_seq)] = acc
+
+    if skipped_count > 0:
+        logger.warning(f"Skipped {skipped_count} sequences due to null values")
+
+    logger.debug(f"Compared against {len(existing_hashes)} valid sequences")
+    match = existing_hashes.get(sequence_hash)
+    if match:
+        logger.debug(f"Found exact hash match: {match}")
     else:
         # If fasta is not a file path, treat it as a sequence string
         logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
