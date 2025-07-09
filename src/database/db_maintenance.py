@@ -42,21 +42,30 @@ replacing the original database if you're satisfied with the results.
 import pandas as pd
 import shutil
 import os
+import sys
+import glob
 import logging
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from ..config.database import StarbaseSession
-from ..utils.seq_utils import clean_sequence
-from ..utils.classification_utils import (
-    generate_md5_hash,
-    generate_new_accession,
-)
+
+from src.config.database import StarbaseSession
+from src.utils.seq_utils import clean_sequence, generate_md5_hash, write_temp_fasta
+from src.utils.classification_utils import generate_new_accession, check_contained_match
+
+# Add the project root to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Global variable to hold the backup session factory
 BackupSession = None
 BACKUP_DB_PATH = None
-ORIGINAL_DB_PATH = "db/starbase.sqlite"  # Relative to src/database/
+
+# Get the absolute path to the database file
+current_dir = os.path.dirname(os.path.abspath(__file__))
+ORIGINAL_DB_PATH = os.path.join(current_dir, "db", "starbase.sqlite")
 
 
 def disable_sqlalchemy_logging():
@@ -78,7 +87,7 @@ def create_backup_database():
     # Create backup filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"starbase_backup_{timestamp}.sqlite"
-    BACKUP_DB_PATH = os.path.join("db", backup_filename)  # Relative to src/database/
+    BACKUP_DB_PATH = os.path.join(current_dir, "db", backup_filename)
 
     print(f"Creating backup database: {BACKUP_DB_PATH}")
 
@@ -348,15 +357,6 @@ def check_contained_sequences_and_version_tag():
     This function uses the `check_contained_match` function to check if a sequence is contained within a previous sequence in the database.
     If it is, then the version tag is assigned a new version tag, and flagged for review.
     """
-    # Import required functions (you'll need to add these imports at the top of the file)
-    try:
-        from ..utils.seq_utils import write_temp_fasta, check_contained_match
-    except ImportError:
-        print(
-            "❌ Error: write_temp_fasta and check_contained_match functions not found"
-        )
-        print("Please ensure these functions are available in ..utils.sequence_utils")
-        return
 
     session = get_database_session()
 
@@ -591,9 +591,10 @@ def check_md5sum():
     # Save only unique mismatches to CSV for review
     if md5_mismatches:
         mismatches_df = pd.DataFrame(md5_mismatches)
-        mismatches_df.to_csv("md5_mismatches.csv", index=False)
+        csv_path = os.path.join(current_dir, "md5_mismatches.csv")
+        mismatches_df.to_csv(csv_path, index=False)
         print(
-            f"Found {len(mismatches_df)} unique MD5 mismatches. Details saved to md5_mismatches.csv"
+            f"Found {len(mismatches_df)} unique MD5 mismatches. Details saved to {csv_path}"
         )
     else:
         print("No MD5 mismatches found.")
@@ -721,22 +722,97 @@ def check_md5sum():
     print("MD5 hash checking and fixing completed.")
 
 
-def replace_original_with_backup():
+def list_backup_databases():
     """
-    Helper function to replace the original database with the backup.
+    List all available backup databases in the db directory.
+    """
+    db_dir = os.path.join(current_dir, "db")
+    backup_pattern = "starbase_backup_*.sqlite"
+
+    backup_files = []
+    if os.path.exists(db_dir):
+        backup_files = glob.glob(os.path.join(db_dir, backup_pattern))
+        backup_files.sort(reverse=True)  # Most recent first
+
+    return backup_files
+
+
+def replace_original_with_backup(backup_path=None):
+    """
+    Helper function to replace the original database with a backup.
     Use this only after verifying the backup is correct.
+
+    Args:
+        backup_path (str, optional): Path to specific backup file. If None, will prompt user to select.
     """
     global BACKUP_DB_PATH, ORIGINAL_DB_PATH
 
-    if not BACKUP_DB_PATH or not os.path.exists(BACKUP_DB_PATH):
-        print("❌ No backup database found to replace original with.")
+    # If no backup path specified, try to find available backups
+    if backup_path is None:
+        # First try the global variable if it exists
+        if BACKUP_DB_PATH and os.path.exists(BACKUP_DB_PATH):
+            backup_path = BACKUP_DB_PATH
+        else:
+            # Look for backup files in the db directory
+            backup_files = list_backup_databases()
+
+            if not backup_files:
+                print("❌ No backup database files found.")
+                print(
+                    f"   Looking for pattern: starbase_backup_*.sqlite in {os.path.join(current_dir, 'db')}"
+                )
+                return False
+
+            print("📁 Available backup databases:")
+            for i, backup_file in enumerate(backup_files, 1):
+                backup_name = os.path.basename(backup_file)
+                file_size = os.path.getsize(backup_file)
+                mod_time = datetime.fromtimestamp(os.path.getmtime(backup_file))
+                print(f"  {i}. {backup_name}")
+                print(f"     Size: {file_size:,} bytes, Modified: {mod_time}")
+                print()
+
+            while True:
+                try:
+                    choice = input(
+                        f"Select backup to use (1-{len(backup_files)}) or 'q' to quit: "
+                    ).strip()
+                    if choice.lower() == "q":
+                        print("Operation cancelled.")
+                        return False
+
+                    choice_idx = int(choice) - 1
+                    if 0 <= choice_idx < len(backup_files):
+                        backup_path = backup_files[choice_idx]
+                        break
+                    else:
+                        print(
+                            f"Please enter a number between 1 and {len(backup_files)}"
+                        )
+                except ValueError:
+                    print("Please enter a valid number or 'q' to quit")
+
+    # Validate the backup path
+    if not backup_path or not os.path.exists(backup_path):
+        print(f"❌ Backup database not found: {backup_path}")
         return False
 
     if not os.path.exists(ORIGINAL_DB_PATH):
-        print("❌ Original database not found.")
+        print(f"❌ Original database not found: {ORIGINAL_DB_PATH}")
         return False
 
-    print(f"⚠️  This will replace {ORIGINAL_DB_PATH} with {BACKUP_DB_PATH}")
+    print("⚠️  This will replace:")
+    print(f"     Original: {ORIGINAL_DB_PATH}")
+    print(f"     With backup: {backup_path}")
+    print()
+
+    # Show file sizes for comparison
+    original_size = os.path.getsize(ORIGINAL_DB_PATH)
+    backup_size = os.path.getsize(backup_path)
+    print(f"   Original size: {original_size:,} bytes")
+    print(f"   Backup size: {backup_size:,} bytes")
+    print()
+
     confirmation = input("Are you absolutely sure? Type 'REPLACE' to confirm: ")
 
     if confirmation == "REPLACE":
@@ -747,7 +823,7 @@ def replace_original_with_backup():
             print(f"✓ Original backed up to: {original_backup}")
 
             # Replace original with backup
-            shutil.copy2(BACKUP_DB_PATH, ORIGINAL_DB_PATH)
+            shutil.copy2(backup_path, ORIGINAL_DB_PATH)
             print("✓ Original database replaced with backup")
 
             return True
@@ -781,13 +857,14 @@ def examine_backup_summary():
         print(f"  Ships with sequences: {ships_with_sequence}")
 
         # Check for CSV reports
-        if os.path.exists("md5_mismatches.csv"):
+        csv_path = os.path.join(current_dir, "md5_mismatches.csv")
+        if os.path.exists(csv_path):
             import pandas as pd
 
-            mismatches_df = pd.read_csv("md5_mismatches.csv")
+            mismatches_df = pd.read_csv(csv_path)
             print(f"  MD5 mismatches found: {len(mismatches_df)}")
             if len(mismatches_df) > 0:
-                print("  See details in: md5_mismatches.csv")
+                print(f"  See details in: {csv_path}")
 
         session.close()
 
@@ -795,7 +872,120 @@ def examine_backup_summary():
         print(f"Error examining backup: {e}")
 
 
+def manage_backups():
+    """
+    Interactive backup management interface.
+    """
+    print("=" * 60)
+    print("         BACKUP DATABASE MANAGEMENT")
+    print("=" * 60)
+    print()
+
+    backup_files = list_backup_databases()
+
+    if not backup_files:
+        print("❌ No backup database files found.")
+        print(f"   Looking in: {os.path.join(current_dir, 'db')}")
+        print("   Run the main maintenance tool first to create backups.")
+        return
+
+    print("📁 Available backup databases:")
+    for i, backup_file in enumerate(backup_files, 1):
+        backup_name = os.path.basename(backup_file)
+        file_size = os.path.getsize(backup_file)
+        mod_time = datetime.fromtimestamp(os.path.getmtime(backup_file))
+        print(f"  {i}. {backup_name}")
+        print(f"     Size: {file_size:,} bytes, Modified: {mod_time}")
+        print()
+
+    print("Options:")
+    print("  r) Replace original database with a backup")
+    print("  d) Delete old backup files")
+    print("  q) Quit")
+    print()
+
+    choice = input("Select option: ").strip().lower()
+
+    if choice == "r":
+        success = replace_original_with_backup()
+        if success:
+            print("\n✓ Database replacement completed successfully!")
+    elif choice == "d":
+        print("\n🗑️  Delete backup files:")
+        for i, backup_file in enumerate(backup_files, 1):
+            backup_name = os.path.basename(backup_file)
+            print(f"  {i}. {backup_name}")
+
+        print("  a) Delete all backups")
+        print("  q) Cancel")
+
+        del_choice = input("Select backup(s) to delete: ").strip().lower()
+
+        if del_choice == "q":
+            print("Delete operation cancelled.")
+        elif del_choice == "a":
+            confirm = input("Delete ALL backup files? Type 'DELETE ALL' to confirm: ")
+            if confirm == "DELETE ALL":
+                for backup_file in backup_files:
+                    try:
+                        os.remove(backup_file)
+                        print(f"✓ Deleted: {os.path.basename(backup_file)}")
+                    except Exception as e:
+                        print(f"❌ Error deleting {backup_file}: {e}")
+            else:
+                print("Delete operation cancelled.")
+        else:
+            try:
+                del_idx = int(del_choice) - 1
+                if 0 <= del_idx < len(backup_files):
+                    backup_file = backup_files[del_idx]
+                    backup_name = os.path.basename(backup_file)
+                    confirm = input(f"Delete {backup_name}? Type 'DELETE' to confirm: ")
+                    if confirm == "DELETE":
+                        os.remove(backup_file)
+                        print(f"✓ Deleted: {backup_name}")
+                    else:
+                        print("Delete operation cancelled.")
+                else:
+                    print(f"Invalid selection. Please enter 1-{len(backup_files)}")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+    elif choice == "q":
+        print("Exiting backup management.")
+    else:
+        print("Invalid choice.")
+
+
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Starbase Database Maintenance Tool")
+    parser.add_argument(
+        "--replace-backup",
+        action="store_true",
+        help="Replace original database with a backup",
+    )
+    parser.add_argument(
+        "--manage-backups", action="store_true", help="Interactive backup management"
+    )
+
+    args = parser.parse_args()
+
+    if args.replace_backup:
+        print("=" * 60)
+        print("         REPLACE ORIGINAL DATABASE")
+        print("=" * 60)
+        print()
+        success = replace_original_with_backup()
+        if success:
+            print("\n✓ Database replacement completed successfully!")
+        exit(0)
+
+    if args.manage_backups:
+        manage_backups()
+        exit(0)
+
+    # Default behavior - main maintenance interface
     print("=" * 60)
     print("         STARBASE DATABASE MAINTENANCE TOOL")
     print("=" * 60)
@@ -815,6 +1005,8 @@ if __name__ == "__main__":
     print("  ✓ All changes made to a timestamped backup copy")
     print("  ✓ Full transaction rollback on any errors")
     print("  ✓ CSV reports generated for review")
+    print()
+    print("TIP: Use --help to see command-line options")
     print()
 
     # Get user choice
@@ -887,8 +1079,10 @@ if __name__ == "__main__":
                 print(
                     "\n📄 To replace original with backup (ONLY if you're satisfied):"
                 )
+                print("   python src/database/db_maintenance.py --replace-backup")
+                print("   OR")
                 print(
-                    '   python -c "from src.database.fix_md5 import replace_original_with_backup; replace_original_with_backup()"'
+                    '   python -c "from src.database.db_maintenance import replace_original_with_backup; replace_original_with_backup()"'
                 )
             cleanup_backup_database()
     else:
