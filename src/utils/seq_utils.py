@@ -17,13 +17,40 @@ logger = get_logger(__name__)
 
 
 def clean_sequence(seq):
-    valid_nucleotides = {"A", "T", "C", "G"}
+    # all valid DNA nucleotides including ambiguous ones
+    valid_nucleotides = {
+        "A",
+        "T",
+        "C",
+        "G",
+        "R",
+        "Y",
+        "M",
+        "W",
+        "S",
+        "K",
+        "N",
+        "B",
+        "D",
+        "H",
+        "V",
+    }
+
+    # Remove anything in parentheses and convert to uppercase
     seq = re.sub(r"\(.*?\)", "", seq)
     seq = seq.upper()
+
+    # Check if all characters are valid nucleotides
     if all(nuc in valid_nucleotides for nuc in seq):
         return seq
     else:
         return None
+
+
+def generate_md5_hash(seq):
+    import hashlib
+
+    return hashlib.md5(seq.encode()).hexdigest()
 
 
 def clean_lines(queries):

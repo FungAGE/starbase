@@ -22,6 +22,7 @@ from src.utils.seq_utils import (
     write_multi_fasta,
     create_tmp_fasta_dir,
     load_fasta_to_dict,
+    generate_md5_hash,
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
@@ -183,7 +184,7 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
 
     # Normalize sequence by removing whitespace and making uppercase
     clean_sequence = "".join(sequence.upper().split())
-    sequence_hash = hashlib.md5(clean_sequence.encode()).hexdigest()
+    sequence_hash = generate_md5_hash(clean_sequence)
     logger.debug(
         f"Query sequence hash: {sequence_hash} (sequence length: {len(clean_sequence)})"
     )
@@ -199,7 +200,7 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
 
         # Normalize sequence the same way
         clean_db_seq = "".join(seq.upper().split())
-        existing_hashes[hashlib.md5(clean_db_seq.encode()).hexdigest()] = acc
+        existing_hashes[generate_md5_hash(clean_db_seq)] = acc
 
     if skipped_count > 0:
         logger.warning(f"Skipped {skipped_count} sequences due to null values")
