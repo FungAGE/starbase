@@ -81,7 +81,7 @@ def test_fetch_meta_data(curated=False, accession_tag=None):
                    ELSE a.accession_tag
                END as accession_display,
                t.taxID, t.strain, t.`order`, t.family, t.name, 
-               sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd, 
+               sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.elementBegin, sf.elementEnd, 
                f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
         FROM joined_ships j
@@ -263,15 +263,13 @@ def test_fetch_captains(
                 END as accession_display,
                 j.curated_status,
                 j.starshipID,
-                sf.captainID,
                 c.sequence,
                 n.navis_name
             FROM joined_ships j
             INNER JOIN accessions a ON j.ship_id = a.id
             LEFT JOIN starship_features sf ON a.id = sf.accession_id
-            LEFT JOIN captains c ON sf.captainID = c.captainID
+            LEFT JOIN captains c ON j.captain_id = c.id
             LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-            WHERE sf.captainID IS NOT NULL
         """
 
         if accession_tags:
@@ -291,7 +289,6 @@ def test_fetch_captains(
                 v.accession_display,
                 v.curated_status,
                 v.starshipID,
-                v.captainID,
                 v.sequence,
                 v.navis_name
             FROM valid_captains v
@@ -307,7 +304,6 @@ def test_fetch_captains(
                 v.accession_display,
                 v.curated_status,
                 v.starshipID,
-                v.captainID,
                 v.navis_name
             FROM valid_captains v
             """
@@ -352,7 +348,7 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
     if stages:
         WORKFLOW_STAGES = [stage for stage in WORKFLOW_STAGES if stage["id"] in stages]
 
-    # Initialize workflow state
+    # Initialize workflow state as dictionary
     workflow_state = {
         "complete": False,
         "error": None,
@@ -372,6 +368,10 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
         "class_dict": {},
     }
 
+    # Initialize variables to track files between stages
+    similarities = None
+    protein_file = None
+
     try:
         # Fetch data using test functions
         logger.info("Fetching ships data for classification...")
@@ -389,9 +389,6 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
             ),
             dereplicate=getattr(upload_data.fetch_captain_params, "dereplicate", True),
         )
-
-        # Initialize similarities to None
-        similarities = None
 
         # Run through workflow stages
         for i, stage in enumerate(WORKFLOW_STAGES):
@@ -472,6 +469,9 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
                 if family_dict:
                     family_name = family_dict["family"]
                     logger.debug(f"Found family classification: {family_name}")
+                    logger.debug(
+                        f"Protein file for navis classification: {protein_file}"
+                    )
                     workflow_state["stages"][stage_id]["progress"] = 70
                     workflow_state["stages"][stage_id]["status"] = "complete"
 
@@ -522,56 +522,88 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
                     if "haplotype" in workflow_state["stages"]:
                         workflow_state["stages"]["haplotype"]["progress"] = 100
                         workflow_state["stages"]["haplotype"]["status"] = "skipped"
+                    break
 
-                    # Complete the workflow
-                    workflow_state["complete"] = True
-                    return workflow_state
+                elif protein_file is None:
+                    logger.warning("No protein file available for navis classification")
+                    workflow_state["stages"][stage_id]["progress"] = 80
+                    workflow_state["stages"][stage_id]["status"] = "failed"
+                    workflow_state["stages"][stage_id]["error"] = (
+                        "No protein file from family classification"
+                    )
+
+                    # Early stopping: If no protein file, skip haplotype
+                    logger.debug(
+                        "Skipping haplotype classification due to no protein file"
+                    )
+                    if "haplotype" in workflow_state["stages"]:
+                        workflow_state["stages"]["haplotype"]["progress"] = 100
+                        workflow_state["stages"]["haplotype"]["status"] = "skipped"
+                    break
+
+                elif not os.path.exists(protein_file):
+                    logger.warning(f"Protein file does not exist: {protein_file}")
+                    workflow_state["stages"][stage_id]["progress"] = 80
+                    workflow_state["stages"][stage_id]["status"] = "failed"
+                    workflow_state["stages"][stage_id]["error"] = (
+                        f"Protein file not found: {protein_file}"
+                    )
+
+                    # Early stopping: If protein file missing, skip haplotype
+                    logger.debug(
+                        "Skipping haplotype classification due to missing protein file"
+                    )
+                    if "haplotype" in workflow_state["stages"]:
+                        workflow_state["stages"]["haplotype"]["progress"] = 100
+                        workflow_state["stages"]["haplotype"]["status"] = "skipped"
+                    break
+
                 else:
-                    result = classify_navis(
-                        fasta=upload_data.fasta_file,
+                    navis_result, protein_file = classify_navis(
+                        fasta=protein_file,  # Use protein file from family classification
                         existing_captains=captains_df,
                         threads=1,
                     )
 
-                    if result:
-                        logger.debug(f"Found navis classification: {result}")
-                        workflow_state["stages"][stage_id]["progress"] = 90
+                    if navis_result:
+                        logger.debug(f"Found navis classification: {navis_result}")
+                        workflow_state["stages"][stage_id]["progress"] = 80
                         workflow_state["stages"][stage_id]["status"] = "complete"
 
-                        # Store navis result but don't return yet - continue to other stages
+                        # Store navis result but don't return yet - continue to haplotype
                         if not workflow_state["found_match"]:
                             workflow_state["found_match"] = True
                             workflow_state["match_stage"] = "navis"
-                            workflow_state["match_result"] = result
+                            workflow_state["match_result"] = navis_result
+                            workflow_state["class_dict"] = {"navis": navis_result}
 
-                        # Store navis result for testing purposes
-                        workflow_state["class_dict"]["navis"] = result
+                        navis_value = navis_result
                     else:
                         logger.debug("No navis classification found")
-                        workflow_state["stages"][stage_id]["progress"] = 90
-                        workflow_state["stages"][stage_id]["status"] = "complete"
+                        workflow_state["stages"][stage_id]["progress"] = 80
+                        workflow_state["stages"][stage_id]["status"] = "failed"
 
-                        # Early stopping: If no navis classification found, skip haplotype
+                        # Early stopping: If navis classification failed, skip haplotype
                         logger.debug(
-                            "Skipping haplotype classification due to navis failure"
+                            "Skipping haplotype classification due to failed navis classification"
                         )
                         if "haplotype" in workflow_state["stages"]:
                             workflow_state["stages"]["haplotype"]["progress"] = 100
                             workflow_state["stages"]["haplotype"]["status"] = "skipped"
-
-                        # Complete the workflow
-                        workflow_state["complete"] = True
-                        return workflow_state
+                        break
 
             elif stage_id == "haplotype":
                 logger.debug("Running haplotype classification")
-                if captains_df.empty or ships_df.empty:
-                    logger.warning("Missing data for haplotype classification")
-                    workflow_state["stages"][stage_id]["progress"] = 90
+                if ships_df.empty:
+                    logger.warning(
+                        "No ship data available for haplotype classification"
+                    )
+                    workflow_state["stages"][stage_id]["progress"] = 100
                     workflow_state["stages"][stage_id]["status"] = "skipped"
-                else:
-                    # Extract navis value
-                    navis_value = None
+                    break
+
+                # Extract navis value - use the navis_result if available, otherwise try to extract from data
+                if navis_value is None:
                     try:
                         if (
                             not captains_df.empty
@@ -588,45 +620,38 @@ def test_run_classification_workflow(upload_data, meta_dict=None, stages=None):
                     except Exception as e:
                         logger.error(f"Error extracting navis value: {e}")
 
-                    if navis_value is None:
-                        navis_value = "UNK"
+                if navis_value is None:
+                    navis_value = "UNK"
 
-                    try:
-                        result = classify_haplotype(
-                            fasta=upload_data.fasta_file,
-                            existing_ships=ships_df,
-                            navis=navis_value,
-                            similarities=similarities,
-                        )
+                try:
+                    result = classify_haplotype(
+                        fasta=protein_file,  # Use protein file instead of original fasta
+                        existing_ships=ships_df,
+                        navis=navis_value,
+                        similarities=similarities,
+                    )
 
-                        if result:
-                            logger.debug(f"Found haplotype classification: {result}")
-                            workflow_state["stages"][stage_id]["progress"] = 100
-                            workflow_state["stages"][stage_id]["status"] = "complete"
+                    if result:
+                        logger.debug(f"Found haplotype classification: {result}")
+                        workflow_state["stages"][stage_id]["progress"] = 100
+                        workflow_state["stages"][stage_id]["status"] = "complete"
 
-                            # Store haplotype result but don't return yet - continue to other stages
-                            if not workflow_state["found_match"]:
-                                workflow_state["found_match"] = True
-                                workflow_state["match_stage"] = "haplotype"
-                                workflow_state["match_result"] = result
+                        # Store haplotype result but don't return yet - continue to other stages
+                        if not workflow_state["found_match"]:
+                            workflow_state["found_match"] = True
+                            workflow_state["match_stage"] = "haplotype"
+                            workflow_state["match_result"] = result
+                            workflow_state["class_dict"] = result
+                    else:
+                        logger.debug("No haplotype classification found")
+                        workflow_state["stages"][stage_id]["progress"] = 100
+                        workflow_state["stages"][stage_id]["status"] = "failed"
 
-                            # Store haplotype result for testing purposes
-                            if isinstance(result, dict) and "haplotype_name" in result:
-                                workflow_state["class_dict"]["haplotype"] = result[
-                                    "haplotype_name"
-                                ]
-                            else:
-                                workflow_state["class_dict"]["haplotype"] = result
-                        else:
-                            logger.debug("No haplotype classification found")
-                            workflow_state["stages"][stage_id]["progress"] = 100
-                            workflow_state["stages"][stage_id]["status"] = "complete"
-                    except Exception as e:
-                        logger.error(f"Error in haplotype classification: {e}")
-                        workflow_state["stages"][stage_id]["status"] = "error"
-                        workflow_state["error"] = (
-                            f"Haplotype classification error: {str(e)}"
-                        )
+                except Exception as e:
+                    logger.error(f"Error during haplotype classification: {e}")
+                    workflow_state["stages"][stage_id]["progress"] = 100
+                    workflow_state["stages"][stage_id]["status"] = "error"
+                    workflow_state["stages"][stage_id]["error"] = str(e)
 
             # Mark stage as complete
             workflow_state["stages"][stage_id]["progress"] = 100

@@ -575,7 +575,7 @@ def classify_family(
 
 def classify_navis(
     fasta: str, existing_captains: pd.DataFrame, threads: int = 1
-) -> str:
+) -> tuple:
     """Assign navis based on captain sequence clustering.
     - Compare captain sequence to existing classified captains
     - Use mmseqs clustering to group with existing navis
@@ -583,12 +583,29 @@ def classify_navis(
     Create temporary dir with FASTAs from:
     - Captain sequence from new sequence
     - All existing classified captain sequences
+
+    Returns:
+        tuple: (navis_result, protein_file) where:
+            - navis_result: str or None - the assigned navis name
+            - protein_file: str - path to the protein file for use in haplotype classification
     """
 
-    protein = list(load_fasta_to_dict(fasta).values())[0]
+    fasta_sequences = load_fasta_to_dict(fasta)
+    if not fasta_sequences:
+        logger.error("No sequences found in protein file")
+        return None, None
 
-    logger.debug("Starting navis classification")
-    tmp_fasta_dir = create_tmp_fasta_dir(protein, existing_captains)
+    # Get the actual sequence ID from the protein file
+    query_seq_id = list(fasta_sequences.keys())[0]
+    protein = list(fasta_sequences.values())[0]
+
+    logger.debug(f"Query sequence ID: {query_seq_id}")
+    logger.debug(f"Protein sequence length: {len(protein)}")
+
+    logger.debug(
+        f"Starting navis classification with query sequence ID: {query_seq_id}"
+    )
+    tmp_fasta_dir = create_tmp_fasta_dir(fasta, existing_captains)
     logger.debug(f"Created temporary FASTA directory: {tmp_fasta_dir}")
 
     # Run mmseqs clustering
@@ -602,43 +619,42 @@ def classify_navis(
     logger.debug(f"Clustering complete, got {len(clusters)} results")
 
     # The clusters dict maps member sequences to their representatives
-    # So we can directly look up the query sequence
-    if "query_sequence" not in clusters:
-        logger.warning("Query sequence not found in clustering results")
-        return None
+    # Use the actual query sequence ID instead of hardcoded "query_sequence"
+    if query_seq_id not in clusters:
+        logger.warning(
+            f"Query sequence '{query_seq_id}' not found in clustering results"
+        )
+        logger.debug(
+            f"Available sequence IDs: {list(clusters.keys())[:10]}..."
+        )  # Show first 10 for debugging
+        return None, None
 
     # Get the representative sequence for our query's cluster
-    cluster_rep = clusters["query_sequence"]
+    cluster_rep = clusters[query_seq_id]
     logger.debug(
-        f"Query sequence belongs to cluster with representative: {cluster_rep}"
+        f"Query sequence '{query_seq_id}' belongs to cluster with representative: {cluster_rep}"
     )
 
-    if cluster_rep == "query_sequence":
+    if cluster_rep == query_seq_id:
         logger.warning("Query sequence is the cluster representative")
-        return None
+        return None, None
     else:
         # Look up the navis name from the cluster representative
-        # Try both captainID and accession_display if available
-        matching_captains = existing_captains[
-            existing_captains["captainID"] == cluster_rep
-        ]
 
-        # If not found and accession_display column exists, try that too
-        if matching_captains.empty and "accession_display" in existing_captains.columns:
-            matching_captains = existing_captains[
-                existing_captains["accession_display"] == cluster_rep
-            ]
+        matching_captains = existing_captains[
+            existing_captains["accession_display"] == cluster_rep
+        ]
 
         if matching_captains.empty:
             logger.warning(
                 f"No matching captain found for cluster representative: {cluster_rep}"
             )
-            return None
+            return None, None
 
         navis_name = matching_captains["navis_name"].iloc[0]
         logger.debug(f"Found navis name: {navis_name}")
 
-        return navis_name
+        return navis_name, fasta
 
 
 def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
@@ -1524,7 +1540,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     workflow_state["stages"][stage_id]["progress"] = 80
                     workflow_state["stages"][stage_id]["status"] = "skipped"
                 else:
-                    result = classify_navis(
+                    result, protein_file = classify_navis(
                         fasta=upload_data.fasta_file,
                         existing_captains=captains_df,
                         threads=1,
