@@ -86,29 +86,71 @@ def analyze_previous_results(results_dir: str):
     print(f"\nAnalyzing results from: {latest_file}")
     print(f"Total sequences tested: {len(results_df)}")
     print(f"Successful classifications: {results_df['found_match'].sum()}")
-    print(f"Overall accuracy: {results_df['overall_correct'].mean():.2%}")
 
-    # Stage breakdown
-    print("\nClassification by stage:")
-    stage_counts = results_df["predicted_stage"].value_counts()
-    for stage, count in stage_counts.items():
-        print(f"  {stage}: {count}")
+    # Check if we have the new status columns
+    has_status_cols = all(
+        col in results_df.columns
+        for col in ["family_status", "navis_status", "haplotype_status"]
+    )
+
+    if has_status_cols:
+        print("\nStage Status Summary:")
+        for stage in ["family", "navis", "haplotype"]:
+            status_col = f"{stage}_status"
+            if status_col in results_df.columns:
+                status_counts = results_df[status_col].value_counts()
+                predicted = status_counts.get("predicted", 0)
+                failed = status_counts.get("failed", 0)
+                skipped = status_counts.get("skipped", 0)
+                error = status_counts.get("error", 0)
+                print(
+                    f"  {stage.title()}: {predicted} predicted, {failed} failed, {skipped} skipped, {error} error"
+                )
+    else:
+        # Legacy format - try to infer from match_stage
+        if "match_stage" in results_df.columns:
+            print("\nClassification by stage:")
+            stage_counts = results_df["match_stage"].value_counts()
+            for stage, count in stage_counts.items():
+                print(f"  {stage}: {count}")
 
     # Accuracy by type
     print("\nAccuracy by classification type:")
-    for col in [
-        "family_correct",
-        "navis_correct",
-        "haplotype_correct",
-        "accession_correct",
-    ]:
-        if col in results_df.columns:
-            correct_results = results_df[results_df[col].notna()]
-            if len(correct_results) > 0:
-                accuracy = correct_results[col].mean()
-                print(
-                    f"  {col.replace('_correct', '').title()}: {accuracy:.2%} ({len(correct_results)} tested)"
+    print("(Only calculated for stages that made predictions)")
+    for stage in ["family", "navis", "haplotype"]:
+        correct_col = f"{stage}_correct"
+        status_col = f"{stage}_status"
+
+        if correct_col in results_df.columns:
+            if has_status_cols and status_col in results_df.columns:
+                # New format: only count sequences where stage made a prediction
+                predicted_results = results_df[results_df[status_col] == "predicted"]
+                testable_results = predicted_results[
+                    predicted_results[correct_col].notna()
+                ]
+            else:
+                # Legacy format: count all non-null results
+                testable_results = results_df[results_df[correct_col].notna()]
+
+            if len(testable_results) > 0:
+                accuracy = testable_results[correct_col].mean()
+                total_predicted = (
+                    len(results_df[results_df[status_col] == "predicted"])
+                    if has_status_cols and status_col in results_df.columns
+                    else len(testable_results)
                 )
+                print(
+                    f"  {stage.title()}: {accuracy:.2%} ({len(testable_results)} testable / {total_predicted} predicted)"
+                )
+            else:
+                print(f"  {stage.title()}: No testable results")
+
+    # Overall accuracy
+    if "any_correct" in results_df.columns:
+        overall_accuracy = results_df["any_correct"].mean()
+        print(f"\nOverall accuracy: {overall_accuracy:.2%}")
+    else:
+        print("\nOverall accuracy: Not available in this results file")
 
 
 def main():

@@ -140,7 +140,34 @@ class ClassificationTester:
             "predicted_family": None,
             "predicted_navis": None,
             "predicted_haplotype": None,
+            # Add stage status information
+            "family_status": "not_tested",
+            "navis_status": "not_tested",
+            "haplotype_status": "not_tested",
         }
+
+        # Extract stage information from workflow stages
+        stages = workflow_result.get("stages", {})
+
+        # Determine stage status based on workflow stages
+        for stage_name in ["family", "navis", "haplotype"]:
+            if stage_name in stages:
+                stage_info = stages[stage_name]
+                stage_status = stage_info.get("status", "pending")
+
+                if stage_status == "skipped":
+                    classification[f"{stage_name}_status"] = "skipped"
+                elif stage_status == "error":
+                    classification[f"{stage_name}_status"] = "error"
+                elif stage_status == "complete":
+                    # Check if we have a result for this stage
+                    class_dict = workflow_result.get("class_dict", {})
+                    if stage_name in class_dict and class_dict[stage_name]:
+                        classification[f"{stage_name}_status"] = "predicted"
+                    else:
+                        classification[f"{stage_name}_status"] = "failed"
+                else:
+                    classification[f"{stage_name}_status"] = "not_tested"
 
         # Check if we have classification results in class_dict
         class_dict = workflow_result.get("class_dict", {})
@@ -170,38 +197,55 @@ class ClassificationTester:
         return classification
 
     def compare_classifications(self, actual: Dict, predicted: Dict) -> Dict:
-        """Compare actual vs predicted classifications"""
+        """Compare actual vs predicted classifications with clearer status indicators"""
         comparison = {
             "is_testable": predicted.get("is_classification", False),
             "family_correct": None,
             "navis_correct": None,
             "haplotype_correct": None,
+            "family_status": predicted.get("family_status", "not_tested"),
+            "navis_status": predicted.get("navis_status", "not_tested"),
+            "haplotype_status": predicted.get("haplotype_status", "not_tested"),
             "any_correct": False,
         }
 
-        # Only evaluate if this is an classification
+        # Only evaluate if this is a classification and the stage was actually tested
         if not comparison["is_testable"]:
             return comparison
 
         # Compare family
-        actual_family = actual.get("familyName") or actual.get("familyName_meta")
-        predicted_family = predicted.get("predicted_family")
-        if actual_family and predicted_family:
-            comparison["family_correct"] = actual_family == predicted_family
+        if comparison["family_status"] == "predicted":
+            actual_family = actual.get("familyName") or actual.get("familyName_meta")
+            predicted_family = predicted.get("predicted_family")
+            if actual_family and predicted_family:
+                comparison["family_correct"] = actual_family == predicted_family
+            elif actual_family:
+                comparison["family_correct"] = False  # Had actual but no prediction
+            # If no actual family, leave as None (can't evaluate)
 
         # Compare navis
-        actual_navis = actual.get("navis_name") or actual.get("navis_name_meta")
-        predicted_navis = predicted.get("predicted_navis")
-        if actual_navis and predicted_navis:
-            comparison["navis_correct"] = actual_navis == predicted_navis
+        if comparison["navis_status"] == "predicted":
+            actual_navis = actual.get("navis_name") or actual.get("navis_name_meta")
+            predicted_navis = predicted.get("predicted_navis")
+            if actual_navis and predicted_navis:
+                comparison["navis_correct"] = actual_navis == predicted_navis
+            elif actual_navis:
+                comparison["navis_correct"] = False  # Had actual but no prediction
+            # If no actual navis, leave as None (can't evaluate)
 
         # Compare haplotype
-        actual_haplotype = actual.get("haplotype_name") or actual.get(
-            "haplotype_name_meta"
-        )
-        predicted_haplotype = predicted.get("predicted_haplotype")
-        if actual_haplotype and predicted_haplotype:
-            comparison["haplotype_correct"] = actual_haplotype == predicted_haplotype
+        if comparison["haplotype_status"] == "predicted":
+            actual_haplotype = actual.get("haplotype_name") or actual.get(
+                "haplotype_name_meta"
+            )
+            predicted_haplotype = predicted.get("predicted_haplotype")
+            if actual_haplotype and predicted_haplotype:
+                comparison["haplotype_correct"] = (
+                    actual_haplotype == predicted_haplotype
+                )
+            elif actual_haplotype:
+                comparison["haplotype_correct"] = False  # Had actual but no prediction
+            # If no actual haplotype, leave as None (can't evaluate)
 
         # Any classification correct
         comparison["any_correct"] = any(
@@ -271,6 +315,9 @@ class ClassificationTester:
                 "navis_correct": comparison["navis_correct"],
                 "haplotype_correct": comparison["haplotype_correct"],
                 "any_correct": comparison["any_correct"],
+                "family_status": comparison["family_status"],
+                "navis_status": comparison["navis_status"],
+                "haplotype_status": comparison["haplotype_status"],
             }
 
             return test_result
@@ -295,6 +342,9 @@ class ClassificationTester:
                 "navis_correct": None,
                 "haplotype_correct": None,
                 "any_correct": False,
+                "family_status": "error",
+                "navis_status": "error",
+                "haplotype_status": "error",
             }
 
         finally:
@@ -330,16 +380,37 @@ class ClassificationTester:
             stage_counts = results["match_stage"].value_counts(dropna=False)
             metrics["classification_by_stage"] = stage_counts.to_dict()
 
-            # Accuracy by classification type (only for classifications)
+            # Add stage status statistics
+            for stage in ["family", "navis", "haplotype"]:
+                status_col = f"{stage}_status"
+                if status_col in results.columns:
+                    status_counts = results[status_col].value_counts(dropna=False)
+                    metrics[f"{stage}_stage_status"] = status_counts.to_dict()
+
+            # Accuracy by classification type (only for classifications with predictions)
             for classification_type in ["family", "navis", "haplotype"]:
                 correct_col = f"{classification_type}_correct"
-                if correct_col in results.columns:
-                    correct_results = results[results[correct_col].notna()]
-                    if len(correct_results) > 0:
-                        metrics[f"{classification_type}_accuracy"] = correct_results[
+                status_col = f"{classification_type}_status"
+
+                if correct_col in results.columns and status_col in results.columns:
+                    # Only count sequences where stage was actually tested and made a prediction
+                    predicted_results = results[results[status_col] == "predicted"]
+                    testable_results = predicted_results[
+                        predicted_results[correct_col].notna()
+                    ]
+
+                    if len(testable_results) > 0:
+                        metrics[f"{classification_type}_accuracy"] = testable_results[
                             correct_col
                         ].mean()
-                        metrics[f"{classification_type}_tested"] = len(correct_results)
+                        metrics[f"{classification_type}_tested"] = len(testable_results)
+                        metrics[f"{classification_type}_predicted"] = len(
+                            predicted_results
+                        )
+                    else:
+                        metrics[f"{classification_type}_accuracy"] = 0
+                        metrics[f"{classification_type}_tested"] = 0
+                        metrics[f"{classification_type}_predicted"] = 0
         else:
             metrics["any_correct_accuracy"] = 0
             metrics["classification_by_stage"] = {}
@@ -448,16 +519,39 @@ class ClassificationTester:
                 f.write(f"{stage}: {count}\n")
             f.write("\n")
 
+            f.write("STAGE STATUS BREAKDOWN\n")
+            f.write("-" * 30 + "\n")
+            f.write("Shows what happened at each classification stage:\n")
+            f.write("- predicted: Stage ran and made a prediction\n")
+            f.write("- failed: Stage ran but returned no result\n")
+            f.write("- skipped: Stage was skipped due to earlier stage failure\n")
+            f.write("- error: Stage encountered an error\n")
+            f.write("- not_tested: Stage was never attempted\n\n")
+
+            for stage in ["family", "navis", "haplotype"]:
+                status_key = f"{stage}_stage_status"
+                if status_key in metrics:
+                    f.write(f"{stage.title()} stage status:\n")
+                    status_counts = metrics[status_key]
+                    for status, count in status_counts.items():
+                        f.write(f"  {status}: {count}\n")
+                    f.write("\n")
+
             f.write("ACCURACY BY CLASSIFICATION TYPE\n")
             f.write("-" * 40 + "\n")
+            f.write("Accuracy calculated only for stages that made predictions\n\n")
             for classification_type in ["family", "navis", "haplotype"]:
                 accuracy_key = f"{classification_type}_accuracy"
                 tested_key = f"{classification_type}_tested"
+                predicted_key = f"{classification_type}_predicted"
+
                 if accuracy_key in metrics:
                     accuracy = metrics[accuracy_key]
                     tested = metrics.get(tested_key, 0)
+                    predicted = metrics.get(predicted_key, 0)
                     f.write(
-                        f"{classification_type.title()}: {accuracy:.2%} ({tested} tested)\n"
+                        f"{classification_type.title()}: {accuracy:.2%} accuracy "
+                        f"({tested} testable / {predicted} predicted)\n"
                     )
             f.write("\n")
 
@@ -508,6 +602,20 @@ class ClassificationTester:
             f"Non-sequences (exact/contained/similar): {metrics.get('non_sequences', 0)}"
         )
         print(f"classification accuracy: {metrics.get('any_correct_accuracy', 0):.2%}")
+
+        # Show stage status breakdown
+        print("\nStage Status Summary:")
+        for stage in ["family", "navis", "haplotype"]:
+            status_key = f"{stage}_stage_status"
+            if status_key in metrics:
+                status_counts = metrics[status_key]
+                predicted = status_counts.get("predicted", 0)
+                failed = status_counts.get("failed", 0)
+                skipped = status_counts.get("skipped", 0)
+                print(
+                    f"  {stage.title()}: {predicted} predicted, {failed} failed, {skipped} skipped"
+                )
+
         print(f"Results saved to: {self.output_dir}")
 
 

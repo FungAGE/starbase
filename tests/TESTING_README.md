@@ -99,10 +99,17 @@ Contains one row per tested sequence with columns:
 - `accession_tag` - Sequence identifier
 - `sequence_length` - Length of sequence
 - `actual_family`, `actual_navis`, `actual_haplotype` - Known classifications
-- `predicted_stage` - Which stage made the classification
+- `match_stage` - Which stage made the final classification
 - `predicted_family`, `predicted_navis`, `predicted_haplotype` - Predicted classifications
 - `found_match` - Whether any classification was found
-- `overall_correct`, `family_correct`, etc. - Correctness metrics
+- `family_correct`, `navis_correct`, `haplotype_correct` - Correctness for each stage
+- `any_correct` - Whether any classification was correct
+- `family_status`, `navis_status`, `haplotype_status` - Status of each classification stage:
+  - `predicted` - Stage ran and made a prediction
+  - `failed` - Stage ran but returned no result
+  - `skipped` - Stage was skipped due to earlier stage failure
+  - `error` - Stage encountered an error
+  - `not_tested` - Stage was never attempted
 
 ### 2. Metrics Summary (`metrics_TIMESTAMP.json`)
 JSON file containing:
@@ -130,8 +137,15 @@ Human-readable summary including:
 TEST SUMMARY
 ==================================================
 Total sequences: 100
-Successful classifications: 87
-Overall accuracy: 78.20%
+Classified sequences: 78
+Non-sequences (exact/contained/similar): 22
+Classification accuracy: 85.20%
+
+Stage Status Summary:
+  Family: 78 predicted, 12 failed, 0 skipped
+  Navis: 45 predicted, 33 failed, 12 skipped  
+  Haplotype: 23 predicted, 22 failed, 45 skipped
+
 Results saved to: classification_test_results
 ```
 
