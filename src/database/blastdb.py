@@ -118,9 +118,11 @@ def create_dbs():
 
     captain_sequences_dict = {}
     for index, row in captain_sequences.iterrows():
-        accession = row["captainID"]
+        accession = row["accession_display"]
+        captain_id = row["id"]
         sequence = row["sequence"]
-        captain_sequences_dict[accession] = sequence
+        accession_captain_id = f"{accession}_{captain_id}"
+        captain_sequences_dict[accession_captain_id] = sequence
 
     write_fasta(captain_sequences_dict, captain_fasta_path)
     create_blast_database(captain_fasta_path, "prot")

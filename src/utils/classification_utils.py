@@ -640,7 +640,7 @@ def classify_navis(
         return None, None
     else:
         # Look up the navis name from the cluster representative
-
+        # TODO: should use accession_display and captain_id?
         matching_captains = existing_captains[
             existing_captains["accession_display"] == cluster_rep
         ]
@@ -738,7 +738,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 "note": "Missing sequence data",
             }
 
-        required_columns = ["sequence", "captainID", "haplotype_name"]
+        required_columns = ["sequence", "captain_id", "haplotype_name"]
         missing_columns = [
             col for col in required_columns if col not in filtered_ships.columns
         ]
@@ -787,7 +787,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
 
             # Get haplotypes for these ships
             ship_haplotypes = filtered_ships[
-                filtered_ships["captainID"].isin(ship_ids)
+                filtered_ships["accession_display"].isin(ship_ids)
             ]["haplotype_name"].dropna()
 
             if ship_haplotypes.empty:

@@ -59,7 +59,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
                ELSE a.accession_tag
            END as accession_display,
            t.taxID, t.strain, t.`order`, t.family, t.name, 
-           sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd, 
+           sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.elementBegin, sf.elementEnd, 
            f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
     FROM joined_ships j
@@ -410,7 +410,6 @@ def fetch_captains(
             END as accession_display,
             j.curated_status,
             j.starshipID,
-            sf.captainID,
             c."sequence",
             n.navis_name
         FROM joined_ships j
@@ -441,7 +440,6 @@ def fetch_captains(
             v.accession_display,
             v.curated_status,
             v.starshipID,
-            v.captainID,
             v.sequence,
             v.navis_name
         FROM valid_captains v
@@ -457,7 +455,6 @@ def fetch_captains(
             v.accession_display,
             v.curated_status,
             v.starshipID,
-            v.captainID,
             v.navis_name
         FROM valid_captains v
         """
