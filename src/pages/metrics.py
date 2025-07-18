@@ -53,45 +53,6 @@ def get_metrics_layout():
                             size="lg",
                             c="dimmed",
                         ),
-                        # Date range picker
-                        dmc.Paper(
-                            [
-                                dmc.Group(
-                                    [
-                                        dmc.DatePicker(
-                                            id="date-range-picker",
-                                            label="Date Range",
-                                            placeholder="Select date range",
-                                            type="range",
-                                            value=[
-                                                (
-                                                    datetime.now() - timedelta(days=14)
-                                                ).strftime("%Y-%m-%d"),
-                                                datetime.now().strftime("%Y-%m-%d"),
-                                            ],
-                                            style={"flex": 1},
-                                        ),
-                                        dmc.Button(
-                                            "Refresh",
-                                            id="refresh-btn",
-                                            variant="light",
-                                            leftSection="🔄",
-                                        ),
-                                    ],
-                                    align="end",
-                                ),
-                                dmc.Text(
-                                    id="date-range-display",
-                                    size="sm",
-                                    c="dimmed",
-                                    style={"marginTop": "10px"},
-                                ),
-                            ],
-                            p="md",
-                            radius="md",
-                            withBorder=True,
-                            style={"marginTop": "20px"},
-                        ),
                         # Key metrics cards
                         dmc.Grid(
                             style={"paddingTop": "20px"},
@@ -233,6 +194,45 @@ def get_metrics_layout():
                                     span={"base": 12, "sm": 6, "md": 3},
                                 ),
                             ],
+                        ),
+                        # Date range picker
+                        dmc.Paper(
+                            [
+                                dmc.Group(
+                                    [
+                                        dmc.DatePicker(
+                                            id="date-range-picker",
+                                            label="Date Range",
+                                            placeholder="Select date range",
+                                            type="range",
+                                            value=[
+                                                (
+                                                    datetime.now() - timedelta(days=14)
+                                                ).strftime("%Y-%m-%d"),
+                                                datetime.now().strftime("%Y-%m-%d"),
+                                            ],
+                                            style={"flex": 1},
+                                        ),
+                                        dmc.Button(
+                                            "Refresh",
+                                            id="refresh-btn",
+                                            variant="light",
+                                            leftSection="🔄",
+                                        ),
+                                    ],
+                                    align="end",
+                                ),
+                                dmc.Text(
+                                    id="date-range-display",
+                                    size="sm",
+                                    c="dimmed",
+                                    style={"marginTop": "10px"},
+                                ),
+                            ],
+                            p="md",
+                            radius="md",
+                            withBorder=True,
+                            style={"marginTop": "20px"},
                         ),
                         # Charts
                         dmc.Grid(
