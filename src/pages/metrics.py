@@ -135,7 +135,7 @@ def get_metrics_layout():
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
-                                                                    f"{len(telemetry_data.get('locations', []))}",
+                                                                    f"{len(set(loc.get('country', 'Unknown') for loc in telemetry_data.get('locations', []) if loc.get('country') and loc.get('country') != 'Unknown'))}",
                                                                     size="xl",
                                                                     fw="bold",
                                                                 ),
