@@ -388,6 +388,7 @@ def create_stats_section():
         get_database_stats()
         if is_connected
         else {
+            "total_starships": "—",
             "curated_starships": "—",
             "uncurated_starships": "—",
             "species_count": "—",
@@ -437,7 +438,7 @@ def create_stats_section():
                                                 align="center",
                                             ),
                                             dmc.Title(
-                                                f"{stats['curated_starships'] + stats['uncurated_starships']:,}",
+                                                f"{stats['total_starships']:,}",
                                                 order=2,
                                                 style={
                                                     "fontSize": "clamp(1.8rem, 3vw, 2.5rem)"
