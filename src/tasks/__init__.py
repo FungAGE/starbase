@@ -157,15 +157,60 @@ def run_classification_workflow_task(class_dict, meta_dict=None):
     The workflow runs tasks sequentially.
     """
     from src.utils.classification_utils import run_classification_workflow
+    from src.utils.blast_data import WorkflowState
 
     try:
         # Run the sequential workflow
         result = run_classification_workflow(class_dict, meta_dict)
 
+        # If result is None or empty, return a default error state
+        if result is None:
+            logger.warning("Workflow returned None - returning failed state")
+            return {
+                "complete": True,
+                "error": "Classification workflow returned no results",
+                "status": "failed",
+                "found_match": False,
+                "match_stage": None,
+                "match_result": None,
+                "workflow_started": True,
+                "current_stage": None,
+                "current_stage_idx": 0,
+                "start_time": 0.0,
+                "stages": {},
+                "class_dict": {},
+                "task_id": "",
+            }
+
+        # Convert WorkflowState objects to dictionaries
+        if isinstance(result, WorkflowState):
+            logger.debug("Converting WorkflowState object to dictionary")
+            result = result.to_dict()
+
+        # Ensure result is a dictionary
+        if not isinstance(result, dict):
+            logger.error(f"Workflow result is not a dictionary: {type(result)}")
+            return {
+                "complete": True,
+                "error": f"Invalid workflow result type: {type(result)}",
+                "status": "failed",
+                "found_match": False,
+                "match_stage": None,
+                "match_result": None,
+                "workflow_started": True,
+                "current_stage": None,
+                "current_stage_idx": 0,
+                "start_time": 0.0,
+                "stages": {},
+                "class_dict": {},
+                "task_id": "",
+            }
+
         # Test JSON serialization before returning
         try:
             # Test if result is JSON serializable
             json.dumps(result)
+            logger.debug("Workflow result is JSON serializable")
         except TypeError as json_error:
             logger.error(f"Result is not JSON serializable: {json_error}")
             # Return a safe version with error information
@@ -173,10 +218,34 @@ def run_classification_workflow_task(class_dict, meta_dict=None):
                 "complete": True,
                 "error": f"Classification result is not JSON serializable: {str(json_error)}",
                 "status": "failed",
+                "found_match": False,
+                "match_stage": None,
+                "match_result": None,
+                "workflow_started": True,
+                "current_stage": None,
+                "current_stage_idx": 0,
+                "start_time": 0.0,
+                "stages": {},
+                "class_dict": {},
+                "task_id": "",
             }
 
         return result
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
         logger.exception("Full traceback:")
-        return None
+        return {
+            "complete": True,
+            "error": f"Classification workflow failed: {str(e)}",
+            "status": "failed",
+            "found_match": False,
+            "match_stage": None,
+            "match_result": None,
+            "workflow_started": True,
+            "current_stage": None,
+            "current_stage_idx": 0,
+            "start_time": 0.0,
+            "stages": {},
+            "class_dict": {},
+            "task_id": "",
+        }
