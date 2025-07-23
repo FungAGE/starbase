@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3.9
   - mmseqs2==17.b804f
-  - minimap2==2.1.1
+  - minimap2>=2.1.1
   - sourmash==3.5.1
   - mcl==22.282
   - diamond>=2.1.7
