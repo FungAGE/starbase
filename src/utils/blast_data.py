@@ -120,6 +120,24 @@ class WorkflowState:
     start_time: float = 0.0
     class_dict: Dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert WorkflowState to dictionary for JSON serialization."""
+        return {
+            "complete": self.complete,
+            "error": self.error,
+            "found_match": self.found_match,
+            "match_stage": self.match_stage,
+            "match_result": self.match_result,
+            "stages": self.stages,
+            "task_id": self.task_id,
+            "status": self.status,
+            "workflow_started": self.workflow_started,
+            "current_stage": self.current_stage,
+            "current_stage_idx": self.current_stage_idx,
+            "start_time": self.start_time,
+            "class_dict": self.class_dict,
+        }
+
 
 @dataclass
 class BlastResult:

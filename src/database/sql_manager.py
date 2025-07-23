@@ -503,38 +503,20 @@ def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
     try:
-        # Get curated and uncurated counts
-        curated_count = (
-            session.execute("""
-            SELECT COUNT(DISTINCT a.accession_tag) 
-            FROM accessions a
-            LEFT JOIN joined_ships j ON j.ship_id = a.id
-            WHERE j.curated_status = 'curated'
-        """).scalar()
-            or 0
-        )
-
-        uncurated_count = (
-            session.execute("""
-            SELECT COUNT(DISTINCT a.accession_tag) 
-            FROM accessions a
-            LEFT JOIN joined_ships j ON j.ship_id = a.id
-            WHERE j.curated_status != 'curated' OR j.curated_status IS NULL
-        """).scalar()
-            or 0
-        )
+        # use metadata from previous query
+        meta_df = fetch_meta_data(curated=False)
+        total_count = len(meta_df)
+        curated_count = len(meta_df[meta_df["curated_status"] == "curated"])
+        uncurated_count = total_count - curated_count
+        species_count = len(meta_df["name"].dropna().unique())
+        family_count = len(meta_df["familyName"].dropna().unique())
 
         stats = {
+            "total_starships": total_count,
             "curated_starships": curated_count,
             "uncurated_starships": uncurated_count,
-            "species_count": session.execute(
-                "SELECT COUNT(DISTINCT name) FROM taxonomy"
-            ).scalar()
-            or 0,
-            "family_count": session.execute(
-                "SELECT COUNT(DISTINCT newFamilyID) FROM family_names WHERE newFamilyID IS NOT NULL"
-            ).scalar()
-            or 0,
+            "species_count": species_count,
+            "family_count": family_count,
         }
         return stats
     except Exception as e:
