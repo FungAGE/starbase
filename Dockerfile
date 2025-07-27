@@ -38,7 +38,7 @@ RUN mamba env create -f environment.yaml && \
     mamba clean -afy
 
 # Set conda environment to activate by default
-ENV PATH=$HOME/miniconda/envs/starbase/bin:$PATH
+ENV PATH=$HOME/miniconda/envs/starbase/bin:$HOME/miniconda/bin:$PATH
 ENV CONDA_DEFAULT_ENV=starbase
 
 # Install Node.js, npm, and blasterjs
