@@ -33,19 +33,19 @@ RUN apt-get update && apt-get upgrade -y && \
     chmod +x "$SUPERCRONIC" && \
     mv "$SUPERCRONIC" "/usr/local/bin/supercronic"
 
-# Install Miniconda
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
-    bash miniconda.sh -b -p $HOME/miniconda && \
-    rm miniconda.sh && \
+# Install Mambaforge
+RUN wget https://github.com/conda-forge/miniforge/releases/download/25.3.0-3/Miniforge3-25.3.0-3-Linux-x86_64.sh -O miniforge.sh && \
+    bash miniforge.sh -b -p $HOME/miniconda && \
+    rm miniforge.sh && \
     echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
     echo "conda activate starbase" >> $HOME/.bashrc
 
 ENV PATH=$HOME/miniconda/bin:$PATH
 
-# Copy environment file and create conda environment 
+# Copy environment file and create conda environment using mamba
 COPY environment.yaml .
-RUN conda env create -f environment.yaml && \
-    conda clean -afy
+RUN mamba env create -f environment.yaml && \
+    mamba clean -afy
 
 # Set conda environment to activate by default
 ENV PATH=$HOME/miniconda/envs/starbase/bin:$PATH
