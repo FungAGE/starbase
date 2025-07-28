@@ -1,0 +1,57 @@
+CLASSIFICATION WORKFLOW TEST REPORT
+==================================================
+Test run: 20250717_133438
+Curated only: False
+Max sequences: 10
+
+OVERALL METRICS
+--------------------
+Total sequences tested: 10
+classified sequences: 5
+Non-sequences (exact/contained/similar): 5
+Failed classifications: 5
+Workflow errors: 0
+classification accuracy: 80.00%
+
+CLASSIFICATION BY STAGE
+------------------------------
+family: 5
+
+STAGE STATUS BREAKDOWN
+------------------------------
+Shows what happened at each classification stage:
+- predicted: Stage ran and made a prediction
+- failed: Stage ran but returned no result
+- skipped: Stage was skipped due to earlier stage failure
+- error: Stage encountered an error
+- not_tested: Stage was never attempted
+
+Family stage status:
+  predicted: 5
+
+Navis stage status:
+  failed: 5
+
+Haplotype stage status:
+  skipped: 5
+
+ACCURACY BY CLASSIFICATION TYPE
+----------------------------------------
+Accuracy calculated only for stages that made predictions
+
+Family: 80.00% accuracy (5 testable / 5 predicted)
+Navis: 0.00% accuracy (0 testable / 0 predicted)
+Haplotype: 0.00% accuracy (0 testable / 0 predicted)
+
+CONFUSION MATRICES
+-------------------------
+
+Family Classification:
+predicted_family  Arwing  Hephaestus  Phoenix  Prometheus  Total
+actual_family                                                   
+Arwing                 1           0        0           0      1
+Enterprise             0           0        0           1      1
+Hephaestus             0           1        0           0      1
+Phoenix                0           0        1           0      1
+Prometheus             0           0        0           1      1
+Total                  1           1        1           2      5

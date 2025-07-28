@@ -1,0 +1,13 @@
+actual_family,Arwing,Enterprise,Family-11,Galactica,Hephaestus,Moya,Phoenix,Prometheus,Serenity,Tardis,Voyager,Total
+Arwing,36,2,0,0,0,0,0,0,0,0,0,38
+Enterprise,0,41,0,1,1,0,1,7,0,0,0,51
+Family-11,0,0,1,0,0,0,0,0,0,0,0,1
+Galactica,0,8,0,28,0,0,0,2,0,1,0,39
+Hephaestus,0,0,0,0,34,0,0,1,0,0,0,35
+Moya,0,0,0,0,0,3,0,0,0,0,0,3
+Phoenix,0,0,0,0,3,0,33,5,0,2,0,43
+Prometheus,0,0,0,0,0,0,1,73,5,0,0,79
+Serenity,0,0,0,0,0,0,0,0,1,0,0,1
+Tardis,0,0,0,0,2,0,0,0,0,20,0,22
+Voyager,0,0,0,0,3,0,0,0,0,1,21,25
+Total,36,51,1,29,43,3,35,88,6,24,21,337
