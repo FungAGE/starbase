@@ -19,16 +19,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Activate conda environment - with fallback if conda not configured
-if command -v conda &> /dev/null; then
-    # If conda exists but not in standard location
-    eval "$(conda shell.bash hook)"
-    conda activate starbase
-else
-    source /opt/conda/etc/profile.d/conda.sh
-    conda activate starbase 
-fi
-
 # Set environment variables based on mode
 export PYTHONPATH=$(pwd)
 if [ "$DEV_MODE" = "true" ]; then

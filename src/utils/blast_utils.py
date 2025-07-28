@@ -19,7 +19,9 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
-def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
+def run_blast(
+    query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2, curated=None
+):
     try:
         # Add input size check
         max_input_size = 10 * 1024 * 1024  # 10MB
@@ -29,7 +31,7 @@ def run_blast(query_type, query_fasta, tmp_blast, input_eval=0.01, threads=2):
             )
             return None
 
-        blast_db = get_blast_db(db_type="blast", query_type="nucl")
+        blast_db = get_blast_db(db_type="blast", query_type="nucl", curated=curated)
         blast_type = "blastn" if query_type == "nucl" else "tblastn"
 
         blast_cmd = [
@@ -672,13 +674,18 @@ def create_no_matches_alert():
     )
 
 
-def get_blast_db(db_type="blast", gene_type="tyr", query_type=None):
-    """Get the appropriate BLAST database configuration based on query type."""
+def get_blast_db(db_type="blast", gene_type="tyr", query_type=None, curated=None):
+    """Get the appropriate BLAST database configuration based on query type and curation status."""
     from src.config.settings import BLAST_DB_PATHS
 
     if db_type == "blast":
         if query_type == "nucl":
-            db = BLAST_DB_PATHS["ship"][query_type]
+            if curated is True:
+                db = BLAST_DB_PATHS["ship"]["curated"][query_type]
+            elif curated is False:
+                db = BLAST_DB_PATHS["ship"]["uncurated"][query_type]
+            else:
+                db = BLAST_DB_PATHS["ship"]["all"][query_type]
         elif query_type == "prot":
             db = BLAST_DB_PATHS["gene"][gene_type][query_type]
         else:

@@ -1,30 +1,40 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    image: starbase:latest
     container_name: starbase_app
     ports:
       - "8000:8000"
     environment:
-      - FLASK_ENV=dev
+      - FLASK_DEBUG=dev
       - PYTHONPATH=/home/starbase:/home/starbase/src
       - PYTHONNOUSERSITE=1  # Prevent loading packages from user site
     volumes:
-      - .:/home/starbase:rw
+      # Mount only specific directories to avoid overwriting conda installation
+      - ./src:/home/starbase/src:rw
+      - ./environment.yaml:/home/starbase/environment.yaml:ro
+      - ./start-script.sh:/home/starbase/start-script.sh:ro
+      - ./app.py:/home/starbase/app.py:ro
       - ./src/database/db:/home/starbase/src/database/db:rw
     restart: always
-    command: ["./start-script.sh"]
+  
   unit-tests:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: starbase:latest
     container_name: starbase_tests
+    depends_on:
+      - app
     environment:
       - PYTHONPATH=/home/starbase:/home/starbase/src
     volumes:
-      - .:/home/starbase
-      - ./src/database/db:/home/starbase/src/database/db
-    command: ["pytest", "-v"]
+      # Mount only specific directories to avoid overwriting conda installation
+      - ./src:/home/starbase/src:rw
+      - ./environment.yaml:/home/starbase/environment.yaml:ro
+      - ./start-script.sh:/home/starbase/start-script.sh:ro
+      - ./app.py:/home/starbase/app.py:ro
+      - ./src/database/db:/home/starbase/src/database/db:rw
+    entrypoint: ["pytest"]
+    command: ["-v"]
+    profiles:
+      - testing

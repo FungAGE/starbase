@@ -50,26 +50,41 @@ Contributions to the development of `starbase` are welcome! If you have suggesti
 
 * Find the most recent version under the "Packages" tab: `docker pull ghcr.io/fungage/starbase:[tag]`
 
-* Run Starbase locally with Docker
-```Bash
+* Run Starbase locally with Docker:
+```bash
 docker build -t starbase .
 docker run -it --rm -p 8000:8000 starbase ./start-script.sh
 ```
 
-* You can also run Starbase locally using Docker Compose:
-```Bash
+* **Recommended**: Run Starbase locally using Docker Compose:
+```bash
+# Build and run the application
 docker compose up app --build
 
-## Tear down
-docker compose down --volumes
+# Run with verbose logging and hot reload
+docker compose up app --build && docker exec starbase_app ./start-script.sh --dev
 ```
 
 You can reach the app in your local browser by visiting `localhost:8000`.
 
 ## Unit tests
 
-Run Pytest in a Docker container as follows:
+Run Pytest in a Docker container:
 
-```Bash
-docker compose run unit-tests
+```bash
+# Run tests (will build image if needed)
+docker compose --profile testing up unit-tests
+
+# Or run tests against existing image
+docker compose run --rm unit-tests
+```
+
+## Tear down
+
+```bash
+# Stop all services and remove volumes
+docker compose down --volumes
+
+# Remove built images (optional)
+docker rmi starbase:latest
 ```
