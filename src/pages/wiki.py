@@ -1,4 +1,3 @@
-import time
 from datetime import datetime
 
 import dash
@@ -266,16 +265,16 @@ layout = dmc.Container(
                         dmc.GridCol(
                             span={"lg": 3, "md": 6, "sm": 12},
                             children=[
-                                dmc.MultiSelect(
-                                    id="taxonomy-search",
+                                dmc.Autocomplete(
+                                    id="multi-column-search",
                                     label="Taxonomy",
-                                    placeholder="Search by taxonomy...",
-                                    searchable=True,
-                                    clearable=True,
-                                    nothingFoundMessage="No options found",
+                                    placeholder="Search across family, genus, etc.",
                                     data=[],  # Will be populated by callback
-                                    value=[],  # Initialize with empty list
-                                ),
+                                    limit=20,  # Limit dropdown items for performance
+                                    # nothingFoundMessage="No matches found",
+                                    # icon=html.I(className="bi bi-search"),
+                                    style={"width": "100%"},
+                                )
                             ],
                         ),
                         # Family Search
@@ -689,79 +688,73 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
         )
 
 
-# Add this cache decorator for common filter combinations
-@cache.memoize()
-def get_filtered_options(taxonomy=None, family=None):
-    """Cache-friendly version of option filtering"""
-    try:
-        meta_data = cache.get("meta_data")
-        if meta_data is None:
-            meta_data = fetch_meta_data()
-
-        if taxonomy:
-            meta_data = meta_data[meta_data["name"].isin(taxonomy)]
-        if family:
-            meta_data = meta_data[meta_data["familyName"].isin(family)]
-
-        return {
-            "taxonomy": sorted(meta_data["name"].dropna().unique()),
-            "family": sorted(meta_data["familyName"].dropna().unique()),
-        }
-    except Exception as e:
-        logger.error(f"Error in get_filtered_options: {str(e)}")
-        return {"taxonomy": [], "family": []}
-
-
+# Modified callback to create combined search data
 @callback(
-    [
-        Output("taxonomy-search", "data"),
-        Output("family-search", "data"),
-    ],
-    [
-        Input("taxonomy-search", "value"),
-        Input("family-search", "value"),
-        Input("meta-data", "data"),
-    ],
+    Output("multi-column-search", "data"),
+    Input("meta-data", "data"),
     prevent_initial_call=True,
 )
 @handle_callback_error
-def update_search_options(taxonomy_val, family_val, meta_data):
+def update_combined_search_data(meta_data):
     if not meta_data:
-        return [], []
+        return []
 
     try:
-        # Get filtered options from cache if possible
-        options = get_filtered_options(taxonomy_val, family_val)
+        df = pd.DataFrame(meta_data)
 
-        # Format options for Mantine MultiSelect
-        taxonomy_data = [{"value": x, "label": x} for x in options["taxonomy"]]
-        family_data = [{"value": x, "label": x} for x in options["family"]]
+        # Define the columns you want to search across
+        search_columns = [
+            "name",
+            "subkingdom",
+            "phylum",
+            "subphylum",
+            "class",
+            "subclass",
+            "order",
+            "suborder",
+            "family",
+            "genus",
+            "familyName",
+        ]
 
-        return taxonomy_data, family_data
+        # Collect all unique values across specified columns
+        all_values = set()
+
+        for col in search_columns:
+            if col in df.columns:
+                # Get non-null values and add to set
+                values = df[col].dropna().astype(str).unique()
+                all_values.update(values)
+
+        # Convert to sorted list and format for Autocomplete
+        search_data = [{"value": val, "label": val} for val in sorted(all_values)]
+
+        return search_data
+
     except Exception as e:
-        logger.error(f"Error in update_search_options: {str(e)}")
-        return [], []
+        logger.error(f"Error in update_combined_search_data: {str(e)}")
+        return []
 
 
 @callback(
     [
         Output("filtered-meta-data", "data"),
-        Output("taxonomy-search", "value"),
-        Output("family-search", "value"),
+        Output("multi-column-search", "value"),
     ],
     [
         Input("apply-search", "n_clicks"),
         Input("reset-search", "n_clicks"),
     ],
     [
-        State("taxonomy-search", "value"),
-        State("family-search", "value"),
+        State("multi-column-search", "value"),
         State("meta-data", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
-def handle_search(search_clicks, reset_clicks, taxonomy, family, original_data):
+def handle_multi_column_search(
+    search_clicks, reset_clicks, search_value, original_data
+):
     if not original_data:
         raise PreventUpdate
 
@@ -771,34 +764,49 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, original_data):
 
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
-    # Clear relevant caches on reset
+    # Reset functionality
     if triggered_id == "reset-search":
-        cache.delete_memoized(get_filtered_options)
-        return None, [], []
+        return None, ""
 
-    # If no search clicked or no filters selected, prevent update
-    if not search_clicks or not any([taxonomy, family]):
-        return None, [], []
+    # If no search clicked or no search value, prevent update
+    if not search_clicks or not search_value:
+        return None, search_value or ""
 
     try:
         df = pd.DataFrame(original_data)
 
-        # Apply filters if they exist
-        if taxonomy and len(taxonomy) > 0:
-            df = df[df["name"].isin(taxonomy)]
-        if family and len(family) > 0:
-            df = df[df["familyName"].isin(family)]
+        # Define columns to search across
+        search_columns = [
+            "name",
+            "subkingdom",
+            "phylum",
+            "subphylum",
+            "class",
+            "subclass",
+            "order",
+            "suborder",
+            "family",
+            "genus",
+            "familyName",
+        ]
 
-        # Return filtered data and keep current filter values
-        return (
-            df.to_dict("records"),
-            taxonomy or [],
-            family or [],
-        )
+        # Create a mask for rows that contain the search value in any of the specified columns
+        mask = pd.Series([False] * len(df))
+
+        for col in search_columns:
+            if col in df.columns:
+                # Case-insensitive partial matching
+                mask |= (
+                    df[col].astype(str).str.contains(search_value, case=False, na=False)
+                )
+
+        filtered_df = df[mask]
+
+        return filtered_df.to_dict("records"), search_value
 
     except Exception as e:
-        logger.error(f"Error in handle_search: {str(e)}")
-        return None, [], []
+        logger.error(f"Error in handle_multi_column_search: {str(e)}")
+        return None, search_value or ""
 
 
 @callback(
@@ -813,9 +821,6 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, original_data):
 )
 @handle_callback_error
 def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
-    # Force cache bypass for visualization updates
-    cache.delete_memoized(get_filtered_options)  # Clear related filter cache
-
     # For initial load, use meta_data
     if filtered_meta is None and meta_data is not None:
         data_to_use = meta_data
@@ -837,12 +842,11 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
         if dereplicate:
             df = df.drop_duplicates(subset=["accession_tag"])
 
-        # Create sunburst plot with cache busting parameter
+        # Create sunburst plot
         sunburst_figure = create_sunburst_plot(
             df=df,
             type="tax",
             title_switch=False,
-            cache_bust=time.time(),  # Add timestamp to prevent caching
         )
 
         if sunburst_figure is None:
