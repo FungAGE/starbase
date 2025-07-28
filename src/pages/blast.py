@@ -2362,7 +2362,9 @@ def update_single_sequence_classification(blast_results_store, workflow_state):
             try:
                 meta_df = fetch_meta_data()
                 if meta_df is not None and not meta_df.empty:
-                    meta_match = meta_df[meta_df["accession_tag"] == match_accession]
+                    meta_match = meta_df[
+                        meta_df["accession_display"] == match_accession
+                    ]
                     if not meta_match.empty:
                         logger.debug(f"Found metadata for {match_accession}")
                         # Add family information
