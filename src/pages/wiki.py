@@ -20,14 +20,11 @@ from src.config.cache import cache
 from src.database.sql_manager import (
     fetch_meta_data,
     fetch_paper_data,
-    fetch_download_data, 
-    fetch_ships
+    fetch_ships,
 )
 from src.components.tables import (
-    make_dl_table, 
-    table_no_results_alert, 
-    table_error,
-    make_wiki_table
+    make_dl_table,
+    make_wiki_table,
 )
 from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
@@ -174,6 +171,7 @@ def load_initial_data():
         logger.error(f"Error loading initial data: {str(e)}")
         return None
 
+
 table_columns = [
     {
         "name": "Accession",
@@ -299,6 +297,25 @@ layout = dmc.Container(
                     ],
                     gutter="xl",
                 ),
+                dmc.Group(
+                    align="right",
+                    mt="md",
+                    children=[
+                        dmc.Group(
+                            children=[
+                                curated_switch(
+                                    text="Only show curated Starships",
+                                    size="md",
+                                ),
+                                dereplicated_switch(
+                                    text="Only show dereplicated Starships",
+                                    size="md",
+                                ),
+                            ],
+                            mt="md",
+                        ),
+                    ],
+                ),
                 # Search Actions
                 dmc.Group(
                     align="right",
@@ -339,9 +356,7 @@ layout = dmc.Container(
                     children=[
                         dmc.Paper(
                             children=[
-                                dmc.Title(
-                                    "Taxonomic Distribution", order=2, mb="md"
-                                ),
+                                dmc.Title("Taxonomic Distribution", order=2, mb="md"),
                                 dcc.Loading(
                                     id="search-sunburst-loading",
                                     type="circle",
@@ -372,9 +387,7 @@ layout = dmc.Container(
                                     type="circle",
                                     children=html.Div(
                                         id="accordion",
-                                        children=dbc.Accordion(
-                                            id="category-accordion"
-                                        ),
+                                        children=dbc.Accordion(id="category-accordion"),
                                     ),
                                 ),
                             ],
@@ -496,7 +509,7 @@ def create_accordion(cached_meta, cached_papers):
 @callback(
     Output("search-results", "children"),
     Input("filtered-meta-data", "data"),
-    Input("meta-data", "data"),  # Change State to Input to handle initial load
+    Input("meta-data", "data"),
     Input("curated-input", "checked"),
     Input("dereplicated-input", "checked"),
 )
@@ -510,13 +523,11 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
 
     try:
         df = pd.DataFrame(data_to_use)
-        
+
         # Apply curated/dereplicated filters if switches are enabled
         if curated:
             df = df[df["curated_status"] == "curated"]
-        if dereplicate:
-            df = df[df["dereplicated_status"] == "dereplicated"]
-            
+
         if df.empty:
             return dmc.Alert(
                 "No results match your search criteria.", color="blue", variant="filled"
@@ -531,9 +542,10 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
         )
 
         # Remove duplicates and merge with counts
-        filtered_meta_df = df.drop_duplicates(subset=["accession_tag"]).merge(
-            genome_counts, on="accession_tag", how="left"
-        )
+        if dereplicate:
+            filtered_meta_df = df.drop_duplicates(subset=["accession_tag"]).merge(
+                genome_counts, on="accession_tag", how="left"
+            )
 
         if filtered_meta_df.empty:
             return dmc.Text("No results found", size="lg", c="dimmed")
@@ -555,29 +567,19 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             table_columns=table_columns,
         )
 
-        title = dmc.Title("Search Results", order=2, mb="md")
-        
+        title = dmc.Title("Starship Table", order=2, mb="md")
+
         # Create the enhanced component similar to wiki_table_with_download
         enhanced_results = dmc.Paper(
             children=[
-                dmc.Text(
-                    "Select individual Starships or download the complete dataset",
-                    size="lg",
-                    c="dimmed",
-                ),
-                # Add curated switch here
+                # Main Content
+                dmc.Title(title),
                 dmc.Stack(
                     [
-                        dmc.Group(
-                            children=[
-                                curated_switch(
-                                    text="Only show curated Starships", size="md"
-                                ),
-                                dereplicated_switch(
-                                    text="Only show dereplicated Starships", size="md"
-                                ),
-                            ],
-                            mt="md",
+                        dmc.Text(
+                            "Select individual Starships or download the complete dataset",
+                            size="lg",
+                            c="dimmed",
                         ),
                         # Download Options
                         dmc.Center(
@@ -588,7 +590,10 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                         "Download All Starships",
                                         id="download-all-btn",
                                         variant="gradient",
-                                        gradient={"from": "indigo", "to": "cyan"},
+                                        gradient={
+                                            "from": "indigo",
+                                            "to": "cyan",
+                                        },
                                         leftSection=html.I(
                                             className="bi bi-cloud-download"
                                         ),
@@ -616,7 +621,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                     ],
                     gap="xl",
                 ),
-                # Main Content
+                dmc.Space(h="md"),
                 # Notification Area
                 html.Div(id="dl-notify"),
                 dcc.Download(id="dl-package"),
@@ -658,7 +663,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                             children=[table],
                         ),
                     ],
-                )
+                ),
             ],
             p="xl",
             radius="md",
@@ -798,11 +803,16 @@ def handle_search(search_clicks, reset_clicks, taxonomy, family, original_data):
 
 @callback(
     Output("search-sunburst-plot", "children"),
-    [Input("filtered-meta-data", "data"), Input("meta-data", "data")],
+    [
+        Input("filtered-meta-data", "data"),
+        Input("meta-data", "data"),
+        Input("curated-input", "checked"),
+        Input("dereplicated-input", "checked"),
+    ],
     prevent_initial_call=False,  # Allow initial call
 )
 @handle_callback_error
-def update_search_sunburst(filtered_meta, meta_data):
+def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
     # Force cache bypass for visualization updates
     cache.delete_memoized(get_filtered_options)  # Clear related filter cache
 
@@ -820,8 +830,12 @@ def update_search_sunburst(filtered_meta, meta_data):
         if df.empty:
             return dmc.Text("No results to display", size="lg", c="dimmed")
 
+        if curated:
+            df = df[df["curated_status"] == "curated"]
+
         # Deduplicate data to match table processing
-        df = df.drop_duplicates(subset=["accession_tag"])
+        if dereplicate:
+            df = df.drop_duplicates(subset=["accession_tag"])
 
         # Create sunburst plot with cache busting parameter
         sunburst_figure = create_sunburst_plot(
@@ -905,26 +919,26 @@ def update_search_sunburst(filtered_meta, meta_data):
 def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
     """Update the table statistics based on current data and filters"""
     data_to_use = filtered_meta if filtered_meta is not None else cached_meta
-    
+
     if data_to_use is None:
         return "No data available"
-        
+
     try:
         df = pd.DataFrame(data_to_use)
-        
+
         # Apply curated/dereplicated filters if switches are enabled
         if curated:
             df = df[df["curated_status"] == "curated"]
         if dereplicate:
-            df = df[df["dereplicated_status"] == "dereplicated"]
-            
+            df = df.drop_duplicates(subset=["accession_tag"])
+
         if df.empty:
             return "No records found"
-            
+
         # Count unique accession tags
         unique_count = len(df["accession_tag"].dropna().unique())
         return f"Showing {unique_count} records"
-        
+
     except Exception as e:
         logger.error(f"Error updating table stats: {str(e)}")
         return "Error loading data"
@@ -932,11 +946,15 @@ def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
 
 def generate_download_helper(rows, curated, dereplicate):
     """Helper function containing the common download logic"""
+    import re
+
     try:
         if not rows:
             raise ValueError("No rows selected for download")
 
-        accessions = [row["accession_tag"] for row in rows]
+        accessions = [
+            re.sub(pattern="\..*", repl="", string=row["accession_tag"]) for row in rows
+        ]
         dl_df = fetch_ships(
             accession_tags=accessions,
             curated=curated,
