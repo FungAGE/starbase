@@ -85,9 +85,11 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         for col in columns:
             col_def = {
                 "field": col["field"],
-                "headerName": col["name"]
-                if "name" in col
-                else col["field"].replace("_", " ").title(),
+                "headerName": (
+                    col["name"]
+                    if "name" in col
+                    else col["field"].replace("_", " ").title()
+                ),
                 "flex": 1,
             }
 
@@ -127,9 +129,11 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
-        rowData=display_df.to_dict("records")
-        if isinstance(display_df, pd.DataFrame)
-        else display_df,
+        rowData=(
+            display_df.to_dict("records")
+            if isinstance(display_df, pd.DataFrame)
+            else display_df
+        ),
         defaultColDef={
             "resizable": True,
             "sortable": True,
@@ -238,9 +242,11 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
-        rowData=display_df.to_dict("records")
-        if isinstance(display_df, pd.DataFrame)
-        else display_df,
+        rowData=(
+            display_df.to_dict("records")
+            if isinstance(display_df, pd.DataFrame)
+            else display_df
+        ),
         defaultColDef={
             "resizable": True,
             "minWidth": 100,
@@ -342,8 +348,14 @@ def make_paper_table():
 
 
 def make_dl_table(df, id, table_columns):
-    """Table for displaying download data."""
-    # Ensure we have a valid data structure
+    """
+    Specific table constructor for ship data with accession tag handling and download options.
+
+    Args:
+        df (pd.DataFrame): Ship data to display
+        id (str): Unique identifier for the table
+        table_columns (list): Column definitions
+    """  # Ensure we have a valid data structure
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):

@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 import dash
 from dash import dcc, html, callback
@@ -16,20 +17,31 @@ import os
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.config.cache import cache
-from src.database.sql_manager import fetch_meta_data
 from src.database.sql_manager import (
+    fetch_meta_data,
     fetch_paper_data,
+    fetch_download_data, 
+    fetch_ships
 )
-from src.components.tables import make_ship_table, make_wiki_table
+from src.components.tables import (
+    make_dl_table, 
+    table_no_results_alert, 
+    table_error,
+    make_wiki_table
+)
 from src.utils.plot_utils import make_logo, create_sunburst_plot
-from src.utils.seq_utils import clean_contigIDs
-from src.components.callbacks import create_modal_callback
-from src.components.error_boundary import handle_callback_error, create_error_boundary
+from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
+from src.components.callbacks import (
+    curated_switch,
+    create_modal_callback,
+    dereplicated_switch,
+)
+from src.components.error_boundary import handle_callback_error
 from src.config.logging import get_logger
 
-dash.register_page(__name__)
-
 logger = get_logger(__name__)
+
+dash.register_page(__name__)
 
 
 def create_accordion_item(df, papers, category):
@@ -162,163 +174,225 @@ def load_initial_data():
         logger.error(f"Error loading initial data: {str(e)}")
         return None
 
+table_columns = [
+    {
+        "name": "Accession",
+        "id": "accession_tag",
+        "deletable": False,
+        "selectable": True,
+        "presentation": "markdown",
+        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+    },
+    {
+        "name": "Starship Family",
+        "id": "familyName",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Number of Genomes",
+        "id": "n_genomes",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+        "type": "numericColumn",
+        "valueFormatter": "value.toLocaleString()",
+    },
+    {
+        "name": "Order",
+        "id": "order",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Family",
+        "id": "family",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Species",
+        "id": "name",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Reference",
+        "id": "shortCitation",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+    },
+    {
+        "name": "Element Length (bp)",
+        "id": "elementLength",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
+        "type": "numericColumn",
+        "valueFormatter": "value.toLocaleString()",
+    },
+]
 
-layout = create_error_boundary(
-    dmc.Container(
-        fluid=True,
-        children=[
-            modal,
-            dcc.Location(id="url", refresh=False),
-            dcc.Store(id="meta-data", data=load_initial_data()),
-            dcc.Store(id="filtered-meta-data"),
-            dcc.Store(id="paper-data"),
-            # Header Section
-            dmc.Space(h="md"),
-            dmc.Paper(
-                children=[
-                    dmc.Title(
-                        "Starship Wiki",
-                        order=1,
-                        mb="md",
-                    ),
-                    dmc.Text(
-                        "Search and explore the characteristics of different Starship families",
-                        c="dimmed",
-                        size="lg",
-                    ),
-                    dmc.Space(h="md"),
-                    dmc.Grid(
-                        children=[
-                            # Taxonomy Search
-                            dmc.GridCol(
-                                span={"lg": 3, "md": 6, "sm": 12},
-                                children=[
-                                    dmc.MultiSelect(
-                                        id="taxonomy-search",
-                                        label="Taxonomy",
-                                        placeholder="Search by taxonomy...",
-                                        searchable=True,
-                                        clearable=True,
-                                        nothingFoundMessage="No options found",
-                                        data=[],  # Will be populated by callback
-                                        value=[],  # Initialize with empty list
+
+layout = dmc.Container(
+    fluid=True,
+    children=[
+        modal,
+        dcc.Location(id="url", refresh=False),
+        dcc.Store(id="meta-data", data=load_initial_data()),
+        dcc.Store(id="filtered-meta-data"),
+        dcc.Store(id="paper-data"),
+        # Header Section
+        dmc.Space(h="md"),
+        dmc.Paper(
+            children=[
+                dmc.Title(
+                    "Starship Wiki",
+                    order=1,
+                    mb="md",
+                ),
+                dmc.Text(
+                    "Search and explore the characteristics of different Starship families",
+                    c="dimmed",
+                    size="lg",
+                ),
+                dmc.Space(h="md"),
+                dmc.Grid(
+                    children=[
+                        # Taxonomy Search
+                        dmc.GridCol(
+                            span={"lg": 3, "md": 6, "sm": 12},
+                            children=[
+                                dmc.MultiSelect(
+                                    id="taxonomy-search",
+                                    label="Taxonomy",
+                                    placeholder="Search by taxonomy...",
+                                    searchable=True,
+                                    clearable=True,
+                                    nothingFoundMessage="No options found",
+                                    data=[],  # Will be populated by callback
+                                    value=[],  # Initialize with empty list
+                                ),
+                            ],
+                        ),
+                        # Family Search
+                        dmc.GridCol(
+                            span={"lg": 3, "md": 6, "sm": 12},
+                            children=[
+                                dmc.MultiSelect(
+                                    id="family-search",
+                                    label="Starship Family",
+                                    placeholder="Search by family...",
+                                    searchable=True,
+                                    clearable=True,
+                                    nothingFoundMessage="No options found",
+                                    data=[],  # Will be populated by callback
+                                    value=[],  # Initialize with empty list
+                                ),
+                            ],
+                        ),
+                    ],
+                    gutter="xl",
+                ),
+                # Search Actions
+                dmc.Group(
+                    align="right",
+                    mt="md",
+                    children=[
+                        dmc.Button(
+                            "Reset",
+                            id="reset-search",
+                            variant="outline",
+                            leftSection=DashIconify(icon="tabler:refresh"),
+                        ),
+                        dmc.Button(
+                            "Search",
+                            id="apply-search",
+                            variant="filled",
+                            leftSection=DashIconify(icon="tabler:search"),
+                        ),
+                    ],
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            mb="xl",
+        ),
+        dmc.Grid(
+            children=[
+                # Left Column - Search Results
+                dmc.GridCol(
+                    span={"lg": 6, "md": 12},
+                    children=[
+                        html.Div(id="search-results"),
+                    ],
+                ),
+                # Right Column - Search Section
+                dmc.GridCol(
+                    span={"lg": 6, "md": 12},
+                    children=[
+                        dmc.Paper(
+                            children=[
+                                dmc.Title(
+                                    "Taxonomic Distribution", order=2, mb="md"
+                                ),
+                                dcc.Loading(
+                                    id="search-sunburst-loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="search-sunburst-plot",
+                                        style={
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "overflow": "hidden",  # Prevent overflow
+                                            "display": "flex",  # Use flexbox
+                                            "alignItems": "center",
+                                            "justifyContent": "center",
+                                        },
                                     ),
-                                ],
-                            ),
-                            # Family Search
-                            dmc.GridCol(
-                                span={"lg": 3, "md": 6, "sm": 12},
-                                children=[
-                                    dmc.MultiSelect(
-                                        id="family-search",
-                                        label="Starship Family",
-                                        placeholder="Search by family...",
-                                        searchable=True,
-                                        clearable=True,
-                                        nothingFoundMessage="No options found",
-                                        data=[],  # Will be populated by callback
-                                        value=[],  # Initialize with empty list
-                                    ),
-                                ],
-                            ),
-                        ],
-                        gutter="xl",
-                    ),
-                    # Search Actions
-                    dmc.Group(
-                        align="right",
-                        mt="md",
-                        children=[
-                            dmc.Button(
-                                "Reset",
-                                id="reset-search",
-                                variant="outline",
-                                leftSection=DashIconify(icon="tabler:refresh"),
-                            ),
-                            dmc.Button(
-                                "Search",
-                                id="apply-search",
-                                variant="filled",
-                                leftSection=DashIconify(icon="tabler:search"),
-                            ),
-                        ],
-                    ),
-                ],
-                p="xl",
-                radius="md",
-                withBorder=True,
-                mb="xl",
-            ),
-            dmc.Grid(
-                children=[
-                    # Left Column - Search Results
-                    dmc.GridCol(
-                        span={"lg": 6, "md": 12},
-                        children=[
-                            html.Div(id="search-results"),
-                        ],
-                    ),
-                    # Right Column - Search Section
-                    dmc.GridCol(
-                        span={"lg": 6, "md": 12},
-                        children=[
-                            dmc.Paper(
-                                children=[
-                                    dmc.Title(
-                                        "Taxonomic Distribution", order=2, mb="md"
-                                    ),
-                                    dcc.Loading(
-                                        id="search-sunburst-loading",
-                                        type="circle",
-                                        children=html.Div(
-                                            id="search-sunburst-plot",
-                                            style={
-                                                "width": "100%",
-                                                "height": "100%",
-                                                "overflow": "hidden",  # Prevent overflow
-                                                "display": "flex",  # Use flexbox
-                                                "alignItems": "center",
-                                                "justifyContent": "center",
-                                            },
+                                ),
+                            ],
+                            withBorder=True,
+                            shadow="sm",
+                            radius="md",
+                            p="md",
+                        ),
+                        dmc.Space(h="sm"),
+                        dmc.Paper(
+                            children=[
+                                dmc.Title("Starship Families", order=2, mb="md"),
+                                dcc.Loading(
+                                    id="wiki-loading",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="accordion",
+                                        children=dbc.Accordion(
+                                            id="category-accordion"
                                         ),
                                     ),
-                                ],
-                                withBorder=True,
-                                shadow="sm",
-                                radius="md",
-                                p="md",
-                            ),
-                            dmc.Space(h="sm"),
-                            dmc.Paper(
-                                children=[
-                                    dmc.Title("Starship Families", order=2, mb="md"),
-                                    dcc.Loading(
-                                        id="wiki-loading",
-                                        type="circle",
-                                        children=html.Div(
-                                            id="accordion",
-                                            children=dbc.Accordion(
-                                                id="category-accordion"
-                                            ),
-                                        ),
-                                    ),
-                                ],
-                                p="md",
-                                radius="md",
-                                withBorder=True,
-                                style={
-                                    "minHeight": "200px",  # Minimum height when collapsed
-                                    "maxHeight": "calc(100vh - 200px)",  # Maximum height
-                                    "height": "auto",  # Allow height to adjust to content
-                                    "overflowY": "auto",
-                                },
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
+                                ),
+                            ],
+                            p="md",
+                            radius="md",
+                            withBorder=True,
+                            style={
+                                "minHeight": "200px",  # Minimum height when collapsed
+                                "maxHeight": "calc(100vh - 200px)",  # Maximum height
+                                "height": "auto",  # Allow height to adjust to content
+                                "overflowY": "auto",
+                            },
+                        ),
+                    ],
+                ),
+            ],
+        ),
+    ],
 )
 
 
@@ -423,9 +497,11 @@ def create_accordion(cached_meta, cached_papers):
     Output("search-results", "children"),
     Input("filtered-meta-data", "data"),
     Input("meta-data", "data"),  # Change State to Input to handle initial load
+    Input("curated-input", "checked"),
+    Input("dereplicated-input", "checked"),
 )
 @handle_callback_error
-def create_search_results(filtered_meta, cached_meta):
+def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
     # Use filtered data if available, otherwise use original data
     data_to_use = filtered_meta if filtered_meta is not None else cached_meta
 
@@ -434,6 +510,13 @@ def create_search_results(filtered_meta, cached_meta):
 
     try:
         df = pd.DataFrame(data_to_use)
+        
+        # Apply curated/dereplicated filters if switches are enabled
+        if curated:
+            df = df[df["curated_status"] == "curated"]
+        if dereplicate:
+            df = df[df["dereplicated_status"] == "dereplicated"]
+            
         if df.empty:
             return dmc.Alert(
                 "No results match your search criteria.", color="blue", variant="filled"
@@ -455,34 +538,6 @@ def create_search_results(filtered_meta, cached_meta):
         if filtered_meta_df.empty:
             return dmc.Text("No results found", size="lg", c="dimmed")
 
-        # Updated column definitions for AG Grid
-        table_columns = [
-            {
-                "field": "accession_tag",
-                "headerName": "Accession",
-                "flex": 1,
-                "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
-            },
-            {"field": "familyName", "headerName": "Starship Family", "flex": 1},
-            {
-                "field": "n_genomes",
-                "headerName": "Number of Genomes",
-                "flex": 1,
-                "type": "numericColumn",
-                "valueFormatter": "value.toLocaleString()",
-                "sortable": True,
-            },
-            {"field": "name", "headerName": "Species", "flex": 1},
-            {
-                "field": "elementLength",
-                "headerName": "Element Length (bp)",
-                "flex": 1,
-                "type": "numericColumn",
-                "valueFormatter": "value.toLocaleString()",
-                "sortable": True,
-            },
-        ]
-
         # Convert numeric columns to appropriate type
         filtered_meta_df["n_genomes"] = pd.to_numeric(
             filtered_meta_df["n_genomes"], errors="coerce"
@@ -494,20 +549,121 @@ def create_search_results(filtered_meta, cached_meta):
         # Fill NA values
         filtered_meta_df = filtered_meta_df.fillna("")
 
-        table = make_ship_table(
+        table = make_dl_table(
             filtered_meta_df,
-            id="wiki-table",
-            columns=table_columns,
-            select_rows=False,
-            pg_sz=25,
+            id="dl-table",
+            table_columns=table_columns,
         )
 
         title = dmc.Title("Search Results", order=2, mb="md")
-        return dmc.Paper(
-            children=[dbc.Stack([title, table], gap=3)],
+        
+        # Create the enhanced component similar to wiki_table_with_download
+        enhanced_results = dmc.Paper(
+            children=[
+                dmc.Text(
+                    "Select individual Starships or download the complete dataset",
+                    size="lg",
+                    c="dimmed",
+                ),
+                # Add curated switch here
+                dmc.Stack(
+                    [
+                        dmc.Group(
+                            children=[
+                                curated_switch(
+                                    text="Only show curated Starships", size="md"
+                                ),
+                                dereplicated_switch(
+                                    text="Only show dereplicated Starships", size="md"
+                                ),
+                            ],
+                            mt="md",
+                        ),
+                        # Download Options
+                        dmc.Center(
+                            dmc.Group(
+                                gap="xl",
+                                children=[
+                                    dmc.Button(
+                                        "Download All Starships",
+                                        id="download-all-btn",
+                                        variant="gradient",
+                                        gradient={"from": "indigo", "to": "cyan"},
+                                        leftSection=html.I(
+                                            className="bi bi-cloud-download"
+                                        ),
+                                        size="md",
+                                        loaderProps={
+                                            "variant": "dots",
+                                            "color": "white",
+                                        },
+                                    ),
+                                    dmc.Button(
+                                        "Download Selected Starships",
+                                        id="download-selected-btn",
+                                        variant="gradient",
+                                        gradient={"from": "teal", "to": "lime"},
+                                        leftSection=html.I(className="bi bi-download"),
+                                        size="md",
+                                        loaderProps={
+                                            "variant": "dots",
+                                            "color": "white",
+                                        },
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ],
+                    gap="xl",
+                ),
+                # Main Content
+                # Notification Area
+                html.Div(id="dl-notify"),
+                dcc.Download(id="dl-package"),
+                # Table Section
+                html.Div(
+                    children=[
+                        # Table Header with Stats
+                        dmc.Group(
+                            gap="apart",
+                            mt="md",
+                            children=[
+                                dmc.Text(
+                                    id="table-stats",
+                                    size="sm",
+                                    c="dimmed",
+                                ),
+                                dmc.Text(
+                                    "Click rows to select Starships",
+                                    size="sm",
+                                    c="dimmed",
+                                    style={"fontStyle": "italic"},
+                                ),
+                            ],
+                        ),
+                        dmc.Modal(
+                            id="accession-modal",
+                            opened=False,
+                            centered=True,
+                            overlayProps={"blur": 3},
+                            size="lg",
+                            children=[
+                                dmc.Title(id="modal-title", order=3),
+                                dmc.Space(h="md"),
+                                html.Div(id="modal-content"),
+                            ],
+                        ),
+                        html.Div(
+                            id="dl-table-container",
+                            children=[table],
+                        ),
+                    ],
+                )
+            ],
             p="xl",
             radius="md",
             withBorder=True,
+            mb="xl",
             style={
                 "minHeight": "calc(100vh - 120px)",
                 "height": "auto",
@@ -517,6 +673,8 @@ def create_search_results(filtered_meta, cached_meta):
             },
         )
 
+        return enhanced_results
+
     except Exception as e:
         logger.error(f"Error in create_search_results: {str(e)}")
         return dmc.Alert(
@@ -524,11 +682,6 @@ def create_search_results(filtered_meta, cached_meta):
             color="red",
             variant="filled",
         )
-
-
-toggle_modal = create_modal_callback(
-    "wiki-table", "wiki-modal", "wiki-modal-content", "wiki-modal-title"
-)
 
 
 # Add this cache decorator for common filter combinations
@@ -739,3 +892,199 @@ def update_search_sunburst(filtered_meta, meta_data):
             color="red",
             variant="filled",
         )
+
+
+@callback(
+    Output("table-stats", "children"),
+    Input("filtered-meta-data", "data"),
+    Input("meta-data", "data"),
+    Input("curated-input", "checked"),
+    Input("dereplicated-input", "checked"),
+)
+@handle_callback_error
+def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
+    """Update the table statistics based on current data and filters"""
+    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
+    
+    if data_to_use is None:
+        return "No data available"
+        
+    try:
+        df = pd.DataFrame(data_to_use)
+        
+        # Apply curated/dereplicated filters if switches are enabled
+        if curated:
+            df = df[df["curated_status"] == "curated"]
+        if dereplicate:
+            df = df[df["dereplicated_status"] == "dereplicated"]
+            
+        if df.empty:
+            return "No records found"
+            
+        # Count unique accession tags
+        unique_count = len(df["accession_tag"].dropna().unique())
+        return f"Showing {unique_count} records"
+        
+    except Exception as e:
+        logger.error(f"Error updating table stats: {str(e)}")
+        return "Error loading data"
+
+
+def generate_download_helper(rows, curated, dereplicate):
+    """Helper function containing the common download logic"""
+    try:
+        if not rows:
+            raise ValueError("No rows selected for download")
+
+        accessions = [row["accession_tag"] for row in rows]
+        dl_df = fetch_ships(
+            accession_tags=accessions,
+            curated=curated,
+            dereplicate=dereplicate,
+            with_sequence=True,
+        )
+
+        if dl_df is None or dl_df.empty:
+            raise ValueError("No sequences found for download")
+
+        # Count occurrences of each accession tag
+        accession_counts = dl_df["accession_tag"].value_counts()
+
+        fasta_content = []
+        for _, row in dl_df.drop_duplicates(
+            subset=["accession_tag", "sequence"]
+        ).iterrows():
+            count = accession_counts[row["accession_tag"]]
+
+            if count > 1:
+                # Simplified header for multiple representatives
+                header = (
+                    f">{row['accession_tag']} "
+                    f"[family={row['familyName']}] "
+                    f"[representatives={count}]"
+                )
+            else:
+                # Full header for single entries
+                header = create_ncbi_style_header(row)
+            if header is None or header == "None":
+                header = f">{row['accession_tag']}" + (
+                    f" [family={row['familyName']}]" if row.get("familyName") else ""
+                )
+            fasta_content.append(f"{header}\n{row['sequence']}")
+
+        fasta_str = "\n".join(fasta_content)
+        logger.debug(
+            f"FASTA content created successfully for {len(fasta_content)} sequences."
+        )
+
+        # Return both the FASTA content and download info
+        return dict(
+            content=fasta_str,
+            filename=f"starships_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fasta",
+            type="text/plain",
+        ), len(fasta_content)
+
+    except ValueError as e:
+        logger.warning(f"Download helper warning: {str(e)}")
+        return None, 0
+    except Exception as e:
+        logger.error(f"Failed to execute database query. Details: {e}")
+        return None, 0
+
+
+@callback(
+    [
+        Output("dl-package", "data", allow_duplicate=True),
+        Output("dl-notify", "children", allow_duplicate=True),
+    ],
+    [Input("download-all-btn", "n_clicks")],
+    [
+        State("dl-table", "rowData"),
+        State("curated-input", "checked"),
+        State("dereplicated-input", "checked"),
+    ],
+    prevent_initial_call=True,
+    running=[
+        (Output("download-all-btn", "loading"), True, False),
+    ],
+)
+@handle_callback_error
+def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
+    if not dl_all_clicks:
+        raise dash.exceptions.PreventUpdate
+
+    download_data, num_sequences = generate_download_helper(
+        table_data, curated, dereplicate
+    )
+
+    if not download_data:
+        return None, dmc.Alert(
+            children="No sequences found for download", color="red", title="Error"
+        )
+
+    return download_data, dmc.Alert(
+        children=f"Downloading {num_sequences} sequences",
+        color="green",
+        title="Success",
+    )
+
+
+@callback(
+    [Output("dl-package", "data"), Output("dl-notify", "children")],
+    [Input("download-selected-btn", "n_clicks")],
+    [
+        State("dl-table", "rowData"),
+        State("dl-table", "selectedRows"),
+        State("curated-input", "checked"),
+        State("dereplicated-input", "checked"),
+    ],
+    prevent_initial_call=True,
+    running=[
+        (Output("download-selected-btn", "loading"), True, False),
+    ],
+)
+@handle_callback_error
+def generate_download_selected(
+    dl_select_clicks, table_data, selected_rows, curated, dereplicate
+):
+    if not dl_select_clicks or not selected_rows:
+        raise dash.exceptions.PreventUpdate
+
+    # Filter table_data to get only the selected rows
+    selected_data = [
+        row
+        for row in table_data
+        if row.get("accession_tag")
+        in [selected.get("accession_tag") for selected in selected_rows]
+    ]
+
+    download_data, num_sequences = generate_download_helper(
+        selected_data, curated, dereplicate
+    )
+
+    if not download_data:
+        return None, dmc.Alert(
+            children="No sequences found for selected rows", color="red", title="Error"
+        )
+
+    return download_data, dmc.Alert(
+        children=f"Downloading {num_sequences} sequences",
+        color="green",
+        title="Success",
+    )
+
+
+@callback(
+    Output("download-selected-btn", "disabled"),
+    [Input("dl-table", "selectedRows")],  # Only selectedRows, no rowData
+)
+@handle_callback_error
+def update_download_selected_button(selected_rows):
+    # Disable the button if no rows are selected
+    return not selected_rows or len(selected_rows) == 0
+
+
+# Rename this to avoid conflict with the wiki table modal
+download_table_modal = create_modal_callback(
+    "dl-table", "accession-modal", "modal-content", "modal-title"
+)

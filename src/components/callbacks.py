@@ -238,26 +238,32 @@ def create_accession_modal(accession):
             modal_data = initial_df[initial_df["accession_tag"] == accession]
 
         if modal_data.empty:
-            return dmc.Stack(
-                [
-                    dmc.Alert(
-                        title="No Data Found",
-                        color="red",
-                        children=[
-                            f"No data found for accession: {accession}",
-                        ],
-                    )
-                ]
-            ), f"Accession: {accession}"
+            return (
+                dmc.Stack(
+                    [
+                        dmc.Alert(
+                            title="No Data Found",
+                            color="red",
+                            children=[
+                                f"No data found for accession: {accession}",
+                            ],
+                        )
+                    ]
+                ),
+                f"Accession: {accession}",
+            )
 
         # Validate modal_data
         if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
             logger.warning("Invalid or empty modal_data received")
-            return dmc.Alert(
-                title="Invalid Data",
-                color="red",
-                children="Invalid modal data received",
-            ), f"Error: {accession}"
+            return (
+                dmc.Alert(
+                    title="Invalid Data",
+                    color="red",
+                    children="Invalid modal data received",
+                ),
+                f"Error: {accession}",
+            )
 
         # Log data info for debugging
         logger.debug(
@@ -271,11 +277,14 @@ def create_accession_modal(accession):
         ]
         if missing_columns:
             logger.warning(f"Missing required columns: {missing_columns}")
-            return dmc.Alert(
-                title="Missing Data",
-                color="red",
-                children=f"Missing required columns: {missing_columns}",
-            ), f"Error: {accession}"
+            return (
+                dmc.Alert(
+                    title="Missing Data",
+                    color="red",
+                    children=f"Missing required columns: {missing_columns}",
+                ),
+                f"Error: {accession}",
+            )
 
         # create variables for each data used in the sections of the modal
         starshipID = safe_get_value(modal_data, "starshipID")
@@ -388,15 +397,19 @@ def create_accession_modal(accession):
                         dmc.Group(
                             [
                                 dmc.Text("NCBI Taxonomy ID:", fw=700),
-                                dmc.Anchor(
-                                    tax_id,
-                                    href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
+                                (
+                                    dmc.Anchor(
+                                        tax_id,
+                                        href=(
+                                            f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
+                                            if tax_id != "N/A"
+                                            else "#"
+                                        ),
+                                        target="_blank" if tax_id != "N/A" else None,
+                                    )
                                     if tax_id != "N/A"
-                                    else "#",
-                                    target="_blank" if tax_id != "N/A" else None,
-                                )
-                                if tax_id != "N/A"
-                                else dmc.Text(tax_id),
+                                    else dmc.Text(tax_id)
+                                ),
                             ]
                         ),
                     ],
@@ -410,108 +423,112 @@ def create_accession_modal(accession):
             withBorder=True,
             children=[
                 dmc.Title("Genome Details", order=4, mb=10),
-                dmc.ScrollArea(
-                    children=[
-                        dmc.Table(
-                            striped=True,
-                            highlightOnHover=True,
-                            withColumnBorders=True,
-                            children=[
-                                html.Thead(
-                                    html.Tr(
+                (
+                    dmc.ScrollArea(
+                        children=[
+                            dmc.Table(
+                                striped=True,
+                                highlightOnHover=True,
+                                withColumnBorders=True,
+                                children=[
+                                    html.Thead(
+                                        html.Tr(
+                                            [
+                                                html.Th(
+                                                    "Field",
+                                                    style={
+                                                        "backgroundColor": "#f8f9fa"
+                                                    },
+                                                ),
+                                                *create_genome_headers(modal_data),
+                                            ]
+                                        )
+                                    ),
+                                    html.Tbody(
                                         [
-                                            html.Th(
-                                                "Field",
-                                                style={"backgroundColor": "#f8f9fa"},
+                                            html.Tr(
+                                                [
+                                                    html.Td("Genome Source"),
+                                                    *create_table_cells(
+                                                        modal_data, "genomeSource"
+                                                    ),
+                                                ]
                                             ),
-                                            *create_genome_headers(modal_data),
+                                            html.Tr(
+                                                [
+                                                    html.Td("ContigID"),
+                                                    *create_table_cells(
+                                                        modal_data, "contigID"
+                                                    ),
+                                                ]
+                                            ),
+                                            html.Tr(
+                                                [
+                                                    html.Td("Element Position"),
+                                                    *create_position_cells(
+                                                        modal_data,
+                                                        "elementBegin",
+                                                        "elementEnd",
+                                                    ),
+                                                ]
+                                            ),
+                                            html.Tr(
+                                                [
+                                                    html.Td("Size"),
+                                                    *create_table_cells(
+                                                        modal_data,
+                                                        "elementLength",
+                                                        format_func=lambda x: f"{int(float(x))} bp",
+                                                    ),
+                                                ]
+                                            ),
                                         ]
-                                    )
-                                ),
-                                html.Tbody(
-                                    [
-                                        html.Tr(
-                                            [
-                                                html.Td("Genome Source"),
-                                                *create_table_cells(
-                                                    modal_data, "genomeSource"
-                                                ),
-                                            ]
-                                        ),
-                                        html.Tr(
-                                            [
-                                                html.Td("ContigID"),
-                                                *create_table_cells(
-                                                    modal_data, "contigID"
-                                                ),
-                                            ]
-                                        ),
-                                        html.Tr(
-                                            [
-                                                html.Td("Element Position"),
-                                                *create_position_cells(
-                                                    modal_data,
-                                                    "elementBegin",
-                                                    "elementEnd",
-                                                ),
-                                            ]
-                                        ),
-                                        html.Tr(
-                                            [
-                                                html.Td("Size"),
-                                                *create_table_cells(
-                                                    modal_data,
-                                                    "elementLength",
-                                                    format_func=lambda x: f"{int(float(x))} bp",
-                                                ),
-                                            ]
-                                        ),
-                                    ]
-                                ),
-                            ],
-                        )
-                    ]
-                )
-                if len(modal_data) > 1
-                else dmc.SimpleGrid(
-                    cols={"base": 1, "sm": 2},
-                    spacing="lg",
-                    children=[
-                        dmc.Group(
-                            [
-                                dmc.Text("Assembly Accession:", fw=700),
-                                dmc.Text(assembly_accession or "N/A"),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Genome Source:", fw=700),
-                                dmc.Text(genome_source or "N/A"),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("ContigID:", fw=700),
-                                dmc.Text(contig_id or "N/A"),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Element Position:", fw=700),
-                                dmc.Text(element_position),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Size:", fw=700),
-                                dmc.Text(
-                                    f"{element_length} bp"
-                                    if element_length != "N/A"
-                                    else "N/A"
-                                ),
-                            ]
-                        ),
-                    ],
+                                    ),
+                                ],
+                            )
+                        ]
+                    )
+                    if len(modal_data) > 1
+                    else dmc.SimpleGrid(
+                        cols={"base": 1, "sm": 2},
+                        spacing="lg",
+                        children=[
+                            dmc.Group(
+                                [
+                                    dmc.Text("Assembly Accession:", fw=700),
+                                    dmc.Text(assembly_accession or "N/A"),
+                                ]
+                            ),
+                            dmc.Group(
+                                [
+                                    dmc.Text("Genome Source:", fw=700),
+                                    dmc.Text(genome_source or "N/A"),
+                                ]
+                            ),
+                            dmc.Group(
+                                [
+                                    dmc.Text("ContigID:", fw=700),
+                                    dmc.Text(contig_id or "N/A"),
+                                ]
+                            ),
+                            dmc.Group(
+                                [
+                                    dmc.Text("Element Position:", fw=700),
+                                    dmc.Text(element_position),
+                                ]
+                            ),
+                            dmc.Group(
+                                [
+                                    dmc.Text("Size:", fw=700),
+                                    dmc.Text(
+                                        f"{element_length} bp"
+                                        if element_length != "N/A"
+                                        else "N/A"
+                                    ),
+                                ]
+                            ),
+                        ],
+                    )
                 ),
             ],
         )
