@@ -46,6 +46,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g biojs-vis-blasterjs
 
+# Create db directory
+RUN mkdir -p $HOME/src/database/db && \
+    chown -R $USER:$USER $HOME \
+    chmod -R 777 $HOME/src/database/db
+
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/cache/status || exit 1
