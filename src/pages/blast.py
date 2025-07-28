@@ -997,7 +997,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         return None, str(e), error_alert, None, n_clicks
 
 
-def process_single_sequence(seq_data, evalue_threshold):
+def process_single_sequence(seq_data, evalue_threshold, curated=None):
     """Process a single sequence and return structured results"""
 
     # extract from seq_data
@@ -1030,6 +1030,7 @@ def process_single_sequence(seq_data, evalue_threshold):
             query_seq=query_seq,
             query_type=query_type,
             eval_threshold=evalue_threshold,
+            curated=curated,
         )
 
         # Handle case where blast_results is None or invalid
@@ -1341,14 +1342,17 @@ def process_single_sequence(seq_data, evalue_threshold):
     [
         State("blast-sequences-store", "data"),
         State("evalue-threshold", "value"),
-        State("blast-fasta-upload", "contents"),  # Add file contents as state
+        State("blast-fasta-upload", "contents"),
+        State("curated-input", "value"),
     ],
     running=[
         (Output("submit-button", "disabled"), True, False),
     ],
     prevent_initial_call=True,
 )
-def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
+def process_sequences(
+    submission_id, seq_list, evalue_threshold, file_contents, curated
+):
     """Process only the first sequence initially, for both text input and file uploads"""
     if not submission_id:
         logger.warning("No submission_id provided to process_sequences")
@@ -1459,7 +1463,9 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
             )
 
             # Process sequence 0
-            sequence_result = process_single_sequence(seq_list[0], evalue_threshold)
+            sequence_result = process_single_sequence(
+                seq_list[0], evalue_threshold, curated
+            )
 
             if sequence_result:
                 logger.debug(
@@ -1593,10 +1599,13 @@ def process_sequences(submission_id, seq_list, evalue_threshold, file_contents):
         State("blast-results-store", "data"),
         State("blast-sequences-store", "data"),
         State("evalue-threshold", "value"),
+        State("curated-input", "value"),
     ],
     prevent_initial_call=True,
 )
-def process_additional_sequence(active_tab, results_store, seq_list, evalue_threshold):
+def process_additional_sequence(
+    active_tab, results_store, seq_list, evalue_threshold, curated
+):
     """Process a sequence when its tab is selected if not already processed"""
     try:
         if not active_tab or not results_store or not seq_list:
@@ -1636,7 +1645,9 @@ def process_additional_sequence(active_tab, results_store, seq_list, evalue_thre
         logger.info(
             f"Processing sequence for tab {tab_idx}: {seq_list[tab_idx].get('header', 'unknown')[:50]}..."
         )
-        sequence_result = process_single_sequence(seq_list[tab_idx], evalue_threshold)
+        sequence_result = process_single_sequence(
+            seq_list[tab_idx], evalue_threshold, curated
+        )
 
         if not sequence_result:
             logger.error(

@@ -38,7 +38,16 @@ DB_PATHS = {
 
 # BLAST database paths
 BLAST_DB_PATHS = {
-    "ship": {"nucl": os.path.join(DATA_DIR, "ships", "fna", "blastdb", "ships.fa")},
+    "ship": {
+        "all": {
+            "nucl": os.path.join(DATA_DIR, "ships", "fna", "blastdb", "ships_all.fa")
+        },
+        "curated": {
+            "nucl": os.path.join(
+                DATA_DIR, "ships", "fna", "blastdb", "ships_curated.fa"
+            )
+        },
+    },
     "gene": {
         "tyr": {
             "nucl": os.path.join(

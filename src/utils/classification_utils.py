@@ -166,6 +166,16 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     return f"SBS{next_num:06d}"
 
 
+def get_version_sort_key(version_tag):
+    """Convert version_tag to sortable format. Handle None/empty as 0."""
+    if not version_tag:
+        return 0
+    try:
+        return int(version_tag)
+    except (ValueError, TypeError):
+        return 0
+
+
 ########################################################
 # sequence matching functions
 ########################################################

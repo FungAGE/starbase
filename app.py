@@ -115,11 +115,19 @@ def initialize_app():
     """Initialize app components and perform setup tasks."""
     with server.app_context():
         from src.database.migrations import create_database_indexes
+        from src.database.blastdb import create_dbs
         from src.config.scheduler import run_scheduler
 
         create_database_indexes()
         cleanup_old_cache()
         update_ip_locations()
+
+        try:
+            logger.info("Rebuilding BLAST databases on startup...")
+            create_dbs()
+            logger.info("BLAST databases rebuilt successfully on startup")
+        except Exception as e:
+            logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
 
         # Start the scheduler thread
         run_scheduler()

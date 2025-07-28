@@ -81,33 +81,51 @@ def create_dbs():
         fetch_meta_data,
     )
 
-    ship_fasta_path = BLAST_DB_PATHS["ship"]["nucl"]
-    ship_fasta_dir = os.path.dirname(ship_fasta_path)
-    os.makedirs(ship_fasta_dir, exist_ok=True)
+    datasets = [
+        ("all", False),
+        ("curated", True),
+    ]
 
-    ship_sequences = cache.get("all_ships")
-    if ship_sequences is None:
-        ship_sequences = fetch_ships(dereplicate=True, with_sequence=True)
+    for dataset_name, curated_filter in datasets:
+        logger.info(f"Creating {dataset_name} ship BLAST database...")
 
-    ship_metadata = cache.get("ship_metadata")
-    if ship_metadata is None:
-        ship_metadata = fetch_meta_data(accession_tag=ship_sequences["accession_tag"])
+        ship_fasta_path = BLAST_DB_PATHS["ship"][dataset_name]["nucl"]
+        ship_fasta_dir = os.path.dirname(ship_fasta_path)
+        os.makedirs(ship_fasta_dir, exist_ok=True)
 
-    ship_sequences_dict = {}
-    for index, row in ship_sequences.iterrows():
-        accession_tag = row["accession_tag"]
-        # Find matching metadata row by accession_tag value
-        metadata_rows = ship_metadata[ship_metadata["accession_tag"] == accession_tag]
-        if not metadata_rows.empty:
-            accession_metadata = metadata_rows.iloc[0]  # Get first matching row
-            # Use create_ncbi_style_header which properly handles accession_display
-            header = create_ncbi_style_header(accession_metadata)
+        ship_sequences = fetch_ships(
+            dereplicate=True, with_sequence=True, curated=curated_filter
+        )
+
+        if ship_sequences.empty:
+            logger.warning(f"No sequences found for {dataset_name} dataset")
+            continue
+
+        ship_metadata = fetch_meta_data(
+            accession_tag=ship_sequences["accession_tag"].tolist()
+        )
+
+        ship_sequences_dict = {}
+
+        for _, row in ship_sequences.iterrows():
+            accession_tag = row["accession_tag"]
             sequence = row["sequence"]
-            if header:  # Only add if header creation succeeded
-                ship_sequences_dict[header] = sequence
 
-    write_fasta(ship_sequences_dict, ship_fasta_path)
-    create_blast_database(ship_fasta_path, "nucl")
+            metadata_rows = ship_metadata[
+                ship_metadata["accession_tag"] == accession_tag
+            ]
+            if not metadata_rows.empty:
+                metadata = metadata_rows.iloc[0]
+
+                header = create_ncbi_style_header(metadata)
+                if header and sequence:
+                    ship_sequences_dict[header] = sequence
+
+        logger.info(
+            f"Writing {len(ship_sequences_dict)} sequences to {dataset_name} FASTA file"
+        )
+        write_fasta(ship_sequences_dict, ship_fasta_path)
+        create_blast_database(ship_fasta_path, "nucl")
 
     # Create captain database
     captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]

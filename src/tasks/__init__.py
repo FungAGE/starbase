@@ -44,7 +44,9 @@ def cleanup_cache_task():
 
 
 # @celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
-def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+def run_blast_search_task(
+    query_header, query_seq, query_type, eval_threshold=0.01, curated=None
+):
     """Celery task to run BLAST search"""
 
     try:
@@ -59,6 +61,7 @@ def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.
             tmp_blast=tmp_blast,
             input_eval=eval_threshold,
             threads=2,
+            curated=curated,
         )
 
         if blast_results_file is None:

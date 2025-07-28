@@ -185,7 +185,7 @@ def fetch_ships(
     """
     session = StarbaseSession()
 
-    query = """
+    base_query = """
     WITH valid_ships AS (
         SELECT DISTINCT 
             a.id as accession_id, 
@@ -199,7 +199,19 @@ def fetch_ships(
             sf.elementBegin, sf.elementEnd, sf.contigID,
             t.name, t.family, t.`order`,
             f.familyName, n.navis_name, h.haplotype_name,
-            g.assembly_accession
+            g.assembly_accession"""
+
+    if dereplicate:
+        base_query += """,
+            ROW_NUMBER() OVER (
+                PARTITION BY a.accession_tag 
+                ORDER BY CASE 
+                    WHEN a.version_tag IS NULL OR a.version_tag = '' THEN 0 
+                    ELSE CAST(a.version_tag AS INTEGER) 
+                END DESC
+            ) as rn"""
+
+    base_query += """
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -210,6 +222,8 @@ def fetch_ships(
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
         WHERE 1=1
     """
+
+    query = base_query
 
     if accession_tags:
         query += " AND a.accession_tag IN ({})".format(
@@ -239,7 +253,12 @@ def fetch_ships(
             s.md5
         FROM valid_ships v
         LEFT JOIN ships s ON s.accession_id = v.accession_id
-        WHERE s.sequence IS NOT NULL
+        WHERE s.sequence IS NOT NULL"""
+
+        if dereplicate:
+            query += " AND v.rn = 1"
+
+        query += """
         """
     else:
         query += """
@@ -258,14 +277,16 @@ def fetch_ships(
             v.`order`,
             v.familyName,
             v.assembly_accession
-        FROM valid_ships v
+        FROM valid_ships v"""
+
+        if dereplicate:
+            query += " WHERE v.rn = 1"
+
+        query += """
         """
 
     try:
         df = pd.read_sql_query(query, session.bind)
-
-        if dereplicate:
-            df = df.drop_duplicates(subset="accession_tag")
 
         if df.empty:
             logger.warning("Fetched ships DataFrame is empty.")
