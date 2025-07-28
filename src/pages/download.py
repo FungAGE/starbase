@@ -293,10 +293,10 @@ def generate_download_helper(rows, curated, dereplicate):
                 row_with_display["accession_display"] = display_accession
                 header = create_ncbi_style_header(row_with_display)
             if header is None or header == "None":
-                header = f">{display_accession}" + (
+                header = f"{display_accession}" + (
                     f" [family={row['familyName']}]" if row.get("familyName") else ""
                 )
-            fasta_content.append(f"{header}\n{row['sequence']}")
+            fasta_content.append(f">{header}\n{row['sequence']}")
 
         fasta_str = "\n".join(fasta_content)
         logger.debug(

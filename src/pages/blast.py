@@ -2061,6 +2061,10 @@ clientside_callback(
                             table.style.marginLeft = '0';
                             table.style.textAlign = 'left';
                         });
+                        
+                        // BlasterJS should now display clean accession numbers
+                        const buttons = container.querySelectorAll('.alignment-table-description');
+                        console.log(`Found ${buttons.length} BlasterJS buttons in ${containerId}`);
                     }, 100);
                 } catch (blasterError) {
                     console.error("Error initializing BlasterJS library:", blasterError);
@@ -2251,8 +2255,12 @@ clientside_callback(
                             tables.forEach(function(table) {
                                 table.style.marginLeft = '0';
                                 table.style.textAlign = 'left';
-                            });
-                        }, 100);
+                                                          });
+                              
+                              // BlasterJS should now display clean accession numbers
+                              const buttons = container.querySelectorAll('.alignment-table-description');
+                              console.log(`Found ${buttons.length} BlasterJS buttons in tab ${tabIdx}`);
+                          }, 100);
                         
                         console.log(`BlasterJS initialized for tab ${tabIdx}`);
                     } catch (error) {
@@ -2564,7 +2572,7 @@ def update_classification_workflow_state(workflow_state, blast_results_store):
                         meta_df = fetch_meta_data()
                         if meta_df is not None and not meta_df.empty:
                             meta_match = meta_df[
-                                meta_df["accession_tag"] == match_accession
+                                meta_df["accession_display"] == match_accession
                             ]
                             if not meta_match.empty:
                                 logger.debug(f"Found metadata for {match_accession}")

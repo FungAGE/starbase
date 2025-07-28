@@ -81,8 +81,7 @@ def create_dbs():
         fetch_meta_data,
     )
 
-    # TODO: add filter to sql queries so "None" entries are not included
-    ship_fasta_path = BLAST_DB_PATHS["ship"]
+    ship_fasta_path = BLAST_DB_PATHS["ship"]["nucl"]
     ship_fasta_dir = os.path.dirname(ship_fasta_path)
     os.makedirs(ship_fasta_dir, exist_ok=True)
 
@@ -97,12 +96,15 @@ def create_dbs():
     ship_sequences_dict = {}
     for index, row in ship_sequences.iterrows():
         accession_tag = row["accession_tag"]
-        accession_metadata = ship_metadata.loc[accession_tag]
-        # Use create_ncbi_style_header which properly handles accession_display
-        header = create_ncbi_style_header(accession_metadata)
-        sequence = row["sequence"]
-        if header:  # Only add if header creation succeeded
-            ship_sequences_dict[header] = sequence
+        # Find matching metadata row by accession_tag value
+        metadata_rows = ship_metadata[ship_metadata["accession_tag"] == accession_tag]
+        if not metadata_rows.empty:
+            accession_metadata = metadata_rows.iloc[0]  # Get first matching row
+            # Use create_ncbi_style_header which properly handles accession_display
+            header = create_ncbi_style_header(accession_metadata)
+            sequence = row["sequence"]
+            if header:  # Only add if header creation succeeded
+                ship_sequences_dict[header] = sequence
 
     write_fasta(ship_sequences_dict, ship_fasta_path)
     create_blast_database(ship_fasta_path, "nucl")

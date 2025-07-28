@@ -676,17 +676,44 @@ def create_ncbi_style_header(row):
         else:
             accession_with_version = row["accession_tag"]
 
+        organism = row["name"]
+        if organism is None:
+            organism = "Unknown"
+        else:
+            organism = f"[organism={organism}] "
+        if row["order"] is None:
+            order = "Unknown"
+        else:
+            order = f"[lineage=Fungi; {row['order']}] "
+        if row["family"] is None:
+            family = "Unknown"
+        else:
+            family = f"[family={row['family']}] "
+        if row["assembly_accession"] is None:
+            assembly = ""
+        else:
+            assembly = f"[assembly={row['assembly_accession']}] "
+        if row["familyName"] is None:
+            family_name = ""
+        else:
+            family_name = f"[family={row['familyName']}] "
+        if (
+            clean_contig is not None
+            and row["elementBegin"] is not None
+            and row["elementEnd"] is not None
+        ):
+            genomic_location = f"[genomic_location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}]"
+        else:
+            genomic_location = ""
+
         return (
-            f">{accession_with_version} "
-            f"[organism={row['name']}] "
-            f"[lineage=Fungi; {row['order']}; {row['family']}] "
-            f"[location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}] "
-            + (
-                f"[assembly={row['assembly_accession']}] "
-                if row["assembly_accession"]
-                else ""
-            )
-            + f"[family={row['familyName']}]"
+            f"{accession_with_version} "
+            + organism
+            + order
+            + family
+            + assembly
+            + family_name
+            + genomic_location
         )
     except Exception as e:
         logger.warning(

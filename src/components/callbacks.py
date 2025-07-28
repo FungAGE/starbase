@@ -245,19 +245,6 @@ def create_accession_modal(accession):
                         color="red",
                         children=[
                             f"No data found for accession: {accession}",
-                            dmc.Space(h=10),
-                            "Cache Status:",
-                            dmc.List(
-                                [
-                                    dmc.ListItem(
-                                        f"Total records in cache: {len(initial_df)}"
-                                    ),
-                                    dmc.ListItem(
-                                        f"Sample accessions: {', '.join(initial_df['accession_tag'].head().tolist())}"
-                                    ),
-                                    dmc.ListItem(f"Searched for: {accession}"),
-                                ]
-                            ),
                         ],
                     )
                 ]
