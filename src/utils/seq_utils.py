@@ -660,6 +660,16 @@ def clean_contigIDs(string):
                 return string
 
 
+def sanitize_header(header: str) -> str:
+    # Replace non-breaking spaces and remove non-ASCII characters
+    return (
+        header.replace('\xa0', ' ')
+              .replace('\u00A0', ' ')
+              .replace('\u200b', '')  # zero-width space, if present
+              .encode('ascii', errors='ignore')
+              .decode()
+    )
+
 def create_ncbi_style_header(row):
     try:
         clean_contig = clean_contigIDs(row["contigID"])
@@ -706,15 +716,17 @@ def create_ncbi_style_header(row):
         else:
             genomic_location = ""
 
-        return (
-            f"{accession_with_version} "
-            + organism
-            + order
-            + family
-            + assembly
-            + family_name
-            + genomic_location
-        )
+        header = (
+                f"{accession_with_version} "
+                + organism
+                + order
+                + family
+                + assembly
+                + family_name
+                + genomic_location
+            )
+        sanitized_header = sanitize_header(header)
+        return sanitized_header
     except Exception as e:
         logger.warning(
             f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
