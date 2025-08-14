@@ -79,6 +79,8 @@ class FetchCaptainParams:
 
 @dataclass
 class ClassificationData:
+    seq_type: Optional[str] = "nucl"
+    fasta_file: Optional[str] = None
     source: Optional[str] = None
     family: Optional[str] = None
     navis: Optional[str] = None
@@ -89,6 +91,8 @@ class ClassificationData:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "seq_type": self.seq_type,
+            "fasta_file": self.fasta_file,
             "source": self.source,
             "family": self.family,
             "navis": self.navis,
@@ -108,7 +112,7 @@ class ClassificationData:
         """Check if the classification data is empty (no meaningful data)"""
         return all(
             getattr(self, field) is None 
-            for field in ['source', 'family', 'navis', 'haplotype', 'closest_match', 'match_details', 'confidence']
+            for field in ['seq_type', 'fasta_file', 'source', 'family', 'navis', 'haplotype', 'closest_match', 'match_details', 'confidence']
         )
 
 
@@ -147,7 +151,8 @@ class BlastData:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BlastData":
         """Create a BlastData instance from a dictionary"""
-
+        if data is None:
+            return None
 
         # Create the class instance with extracted data
         return cls(
@@ -171,6 +176,8 @@ class WorkflowState:
     error: Optional[str] = None
     found_match: bool = False
     match_stage: Optional[str] = None
+    match_result: Optional[str] = None
+    classification_data: Optional[Dict[str, Any]] = None
     stages: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     task_id: str = ""
     status: str = "initialized"
@@ -187,6 +194,8 @@ class WorkflowState:
             "error": self.error,
             "found_match": self.found_match,
             "match_stage": self.match_stage,
+            "match_result": self.match_result,
+            "classification_data": self.classification_data,
             "stages": self.stages,
             "task_id": self.task_id,
             "status": self.status,
@@ -200,6 +209,9 @@ class WorkflowState:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WorkflowState":
         """Create a WorkflowState instance from a dictionary"""
+        if data is None:
+            return None
+            
         # Handle nested dictionaries
         fetch_ship_params = FetchShipParams.from_dict(data.get("fetch_ship_params", {}))
         fetch_captain_params = FetchCaptainParams.from_dict(data.get("fetch_captain_params", {}))
@@ -209,6 +221,8 @@ class WorkflowState:
             error=data.get("error"),
             found_match=data.get("found_match", False),
             match_stage=data.get("match_stage"),
+            match_result=data.get("match_result"),
+            classification_data=data.get("classification_data"),
             stages=data.get("stages", {}),
             task_id=data.get("task_id", ""),
             status=data.get("status", "initialized"),
@@ -218,3 +232,10 @@ class WorkflowState:
             fetch_ship_params=fetch_ship_params,
             fetch_captain_params=fetch_captain_params,
         )
+    
+    def set_classification(self, classification_data: "ClassificationData") -> None:
+        """Set classification results on the workflow state"""
+        self.found_match = True
+        self.match_stage = classification_data.source
+        self.match_result = classification_data.closest_match
+        self.classification_data = classification_data.to_dict() if classification_data else None
