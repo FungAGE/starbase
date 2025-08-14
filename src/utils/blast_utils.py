@@ -675,21 +675,45 @@ def create_no_matches_alert():
 
 
 def get_blast_db(db_type="blast", gene_type="tyr", query_type=None, curated=None):
-    """Get the appropriate BLAST database configuration based on query type and curation status."""
+    """Resolve DB paths for BLAST/DIAMOND/HMM.
+
+    For BLAST, return the database prefix (without .fa/.faa) and validate index files exist.
+    """
     from src.config.settings import BLAST_DB_PATHS
 
     if db_type == "blast":
         if query_type == "nucl":
             if curated is True:
-                db = BLAST_DB_PATHS["ship"]["curated"][query_type]
+                db_path = BLAST_DB_PATHS["ship"]["curated"][query_type]
             elif curated is False:
-                db = BLAST_DB_PATHS["ship"]["uncurated"][query_type]
+                db_path = BLAST_DB_PATHS["ship"]["uncurated"][query_type]
             else:
-                db = BLAST_DB_PATHS["ship"]["all"][query_type]
+                db_path = BLAST_DB_PATHS["ship"]["all"][query_type]
         elif query_type == "prot":
-            db = BLAST_DB_PATHS["gene"][gene_type][query_type]
+            db_path = BLAST_DB_PATHS["gene"][gene_type][query_type]
         else:
             raise ValueError(f"Invalid query type: {query_type}")
+
+        # Use the basename without extension as BLAST DB prefix
+        db_prefix, _ = os.path.splitext(db_path)
+
+        # Validate expected BLAST index files
+        if query_type == "nucl":
+            required = [".nhr", ".nin", ".nsq"]
+        else:
+            required = [".phr", ".pin", ".psq"]
+
+        missing = [s for s in required if not os.path.exists(db_prefix + s)]
+        if missing:
+            logger.error(
+                f"BLAST DB index files missing for prefix {db_prefix}: {', '.join(missing)}"
+            )
+            raise ValueError(
+                f"BLAST database for {db_prefix} is not built or incomplete. Missing: {', '.join(missing)}"
+            )
+
+        return db_prefix
+
     elif db_type == "diamond":
         # Add this case for Diamond databases
         if query_type == "nucl" or query_type == "prot":
@@ -705,14 +729,6 @@ def get_blast_db(db_type="blast", gene_type="tyr", query_type=None, curated=None
             raise ValueError(f"Invalid query type: {query_type}")
     else:
         raise ValueError(f"Invalid database type: {db_type}")
-
-    if not os.path.exists(db):
-        logger.error(f"BLAST database not found: {db}")
-        raise ValueError(f"BLAST database {db} not found.")
-
-    if os.path.getsize(db) == 0:
-        logger.error(f"BLAST database is empty: {db}")
-        raise ValueError(f"BLAST database {db} is empty.")
 
     return db
 

@@ -30,7 +30,7 @@ import networkx as nx
 
 from typing import Optional, Tuple, Dict, Any
 from src.database.sql_manager import fetch_ships, fetch_captains
-from src.utils.blast_data import WorkflowState
+from src.utils.blast_data import WorkflowState, ClassificationData
 
 accession_workflow = """
 ########################################################
@@ -1307,65 +1307,46 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
         raise
 
 
-def run_classification_workflow(upload_data, meta_dict=None):
+def run_classification_workflow(workflow_state, blast_data, classification_data, meta_dict=None):
     """Run the classification workflow and return results."""
     import pandas as pd
-
-    # Initialize workflow state as dictionary for Dash compatibility
-    workflow_state = {
-        "complete": False,
-        "error": None,
-        "found_match": False,
-        "match_stage": None,
-        "match_result": None,
-        "stages": {
-            stage["id"]: {"progress": 0, "status": "pending"}
-            for stage in WORKFLOW_STAGES
-        },
-        "task_id": "",
-        "status": "initialized",
-        "workflow_started": True,
-        "current_stage": None,
-        "current_stage_idx": 0,
-        "start_time": 0.0,
-        "class_dict": {},
-    }
-
+    
     # Initialize similarities to None to avoid NameError in haplotype stage
     similarities = None
 
     try:
         # Parse parameters for database fetches
         ships_df = fetch_ships(
-            curated=upload_data.fetch_ship_params.curated,
-            with_sequence=upload_data.fetch_ship_params.with_sequence,
-            dereplicate=upload_data.fetch_ship_params.dereplicate,
+            curated=workflow_state.fetch_ship_params.curated,
+            with_sequence=workflow_state.fetch_ship_params.with_sequence,
+            dereplicate=workflow_state.fetch_ship_params.dereplicate,
         )
         captains_df = fetch_captains(
-            curated=upload_data.fetch_captain_params.curated,
-            with_sequence=upload_data.fetch_captain_params.with_sequence,
+            curated=workflow_state.fetch_captain_params.curated,
+            with_sequence=workflow_state.fetch_captain_params.with_sequence,
         )
 
-        fasta_path = upload_data.fasta_file
+        fasta_path = blast_data.fasta_file
         if isinstance(fasta_path, dict) and "content" in fasta_path:
             tmp_file = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
             with open(tmp_file, "w") as f:
                 f.write(fasta_path["content"])
-            upload_data.fasta_file = tmp_file
+            blast_data.fasta_file = tmp_file
             fasta_path = tmp_file
 
         # Make sure blast_df is serializable
-        if upload_data.blast_df and isinstance(upload_data.blast_df, pd.DataFrame):
-            upload_data.blast_df = upload_data.blast_df.to_dict("records")
+        if blast_data.blast_df and isinstance(blast_data.blast_df, pd.DataFrame):
+            blast_data.blast_df = blast_data.blast_df.to_dict("records")
 
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
 
             # Update state to show progress
-            workflow_state["current_stage"] = stage_id
-            workflow_state["current_stage_idx"] = i
-            workflow_state["stages"][stage_id]["progress"] = 10
-            workflow_state["stages"][stage_id]["status"] = "running"
+            workflow_state.current_stage = stage_id
+            workflow_state.current_stage_idx = i
+
+            workflow_state.stages[stage_id]["progress"] = 10
+            workflow_state.stages[stage_id]["status"] = "running"
 
             logger.debug(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
@@ -1373,26 +1354,30 @@ def run_classification_workflow(upload_data, meta_dict=None):
                 logger.debug("Running exact match check")
 
                 result = check_exact_match(
-                    fasta=upload_data.fasta_file, existing_ships=ships_df
+                    fasta=blast_data.fasta_file, existing_ships=ships_df
                 )
 
                 if result:
                     logger.debug(f"Found exact match: {result}")
-                    workflow_state["stages"][stage_id]["progress"] = 100
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["found_match"] = True
-                    workflow_state["match_stage"] = "exact"
-                    workflow_state["match_result"] = result
-                    workflow_state["complete"] = True
+                    workflow_state.stages[stage_id]["progress"] = 100
+                    workflow_state.stages[stage_id]["status"] = "complete"
+
+                    classification_data.source = "exact"
+                    classification_data.closest_match = result
+                    classification_data.confidence = "High"
+                    classification_data.match_details = f"Exact sequence match to {result}"
+                    
+                    workflow_state.set_classification(classification_data)
+                    workflow_state.complete = True
                     logger.debug(
-                        f"Exact match found - stage: {workflow_state['match_stage']}, result: {workflow_state['match_result']}"
+                        f"Exact match found - stage: {workflow_state.match_stage}, result: {classification_data}"
                     )
                     return workflow_state
 
             if stage_id == "contained":
                 logger.debug("Running contained match check")
                 result = check_contained_match(
-                    fasta=upload_data.fasta_file,
+                    fasta=blast_data.fasta_file,
                     existing_ships=ships_df,
                     min_coverage=0.95,
                     min_identity=0.95,
@@ -1400,35 +1385,44 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
                 if result:
                     logger.debug(f"Found contained match: {result}")
-                    workflow_state["stages"][stage_id]["progress"] = 30
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["found_match"] = True
-                    workflow_state["match_stage"] = "contained"
-                    workflow_state["match_result"] = result
-                    workflow_state["complete"] = True
+                    workflow_state.stages[stage_id]["progress"] = 30
+                    workflow_state.stages[stage_id]["status"] = "complete"
+                    
+                    classification_data.source = "contained"
+                    classification_data.closest_match = result
+                    classification_data.confidence = "High"
+                    classification_data.match_details = f"Query sequence contained within {result}"
+                    
+                    workflow_state.set_classification(classification_data)
+                    workflow_state.complete = True
                     logger.debug(
-                        f"Contained match found - stage: {workflow_state['match_stage']}, result: {workflow_state['match_result']}"
+                        f"Contained match found - stage: {workflow_state.match_stage}, result: {classification_data}"
                     )
                     return workflow_state
 
             if stage_id == "similar":
                 logger.debug("Running similarity match check")
                 result, similarities = check_similar_match(
-                    fasta=upload_data.fasta_file,
+                    fasta=blast_data.fasta_file,
                     existing_ships=ships_df,
                     threshold=0.95,
                 )
 
                 if result:
                     logger.debug(f"Found similar match: {result}")
-                    workflow_state["stages"][stage_id]["progress"] = 50
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["found_match"] = True
-                    workflow_state["match_stage"] = "similar"
-                    workflow_state["match_result"] = result
+                    workflow_state.stages[stage_id]["progress"] = 50
+                    workflow_state.stages[stage_id]["status"] = "complete"
+                    
+                    classification_data.source = "similar"
+                    classification_data.closest_match = result
+                    classification_data.confidence = "High"
+                    classification_data.match_details = f"High similarity to {result}"
+                    
+                    workflow_state.set_classification(classification_data)
+                    workflow_state.complete = True
                     # Don't store similarities in workflow_state to avoid serialization issues
                     logger.debug(
-                        f"Similar match found - stage: {workflow_state['match_stage']}, result: {workflow_state['match_result']}, similarities: {len(similarities) if similarities else 0} entries"
+                        f"Similar match found - stage: {workflow_state.match_stage}, result: {classification_data}, similarities: {len(similarities) if similarities else 0} entries"
                     )
                     return workflow_state
 
@@ -1436,8 +1430,8 @@ def run_classification_workflow(upload_data, meta_dict=None):
                 logger.debug("Running family classification")
 
                 family_dict, protein_file = classify_family(
-                    fasta=upload_data.fasta_file,
-                    seq_type=upload_data.seq_type,
+                    fasta=blast_data.fasta_file,
+                    seq_type=blast_data.seq_type,
                     meta_dict=meta_dict,
                     pident_thresh=90,
                     input_eval=0.001,
@@ -1447,11 +1441,11 @@ def run_classification_workflow(upload_data, meta_dict=None):
                 if family_dict:
                     family_name = family_dict["family"]
                     logger.debug(f"Found family classification: {family_name}")
-                    workflow_state["stages"][stage_id]["progress"] = 70
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["complete"] = True
-                    workflow_state["found_match"] = True
-                    workflow_state["match_stage"] = "family"
+                    workflow_state.stages[stage_id]["progress"] = 70
+                    workflow_state.stages[stage_id]["status"] = "complete"
+                    workflow_state.complete = True
+                    workflow_state.found_match = True
+                    workflow_state.match_stage = "family"
 
                     # Simplify the result before setting it in the workflow state
                     if (
@@ -1460,19 +1454,24 @@ def run_classification_workflow(upload_data, meta_dict=None):
                         and isinstance(family_dict[0], dict)
                         and "family" in family_dict[0]
                     ):
-                        workflow_state["match_result"] = family_dict[0]["family"]
+                        family=family_dict[0]["family"]
                     elif isinstance(family_dict, dict) and "family" in family_dict:
-                        workflow_state["match_result"] = family_dict["family"]
+                        family = family_dict["family"]
                     else:
-                        workflow_state["match_result"] = family_dict
+                        family = family_dict   
+
+                    classification_data.source = "family"
+                    classification_data.family = family
+                    classification_data.confidence = "Medium"
 
                     # Check hits count
                     n_hits = family_dict.get("n_hits", 0)
                     if n_hits == 0:
                         logger.debug("Family matched but with 0 hits (unusual state)")
 
+                    workflow_state.set_classification(classification_data)
                     logger.debug(
-                        f"Family classification result: {workflow_state['match_result']}"
+                        f"Family classification result: {classification_data}"
                     )
                     return workflow_state
                 else:
@@ -1480,44 +1479,47 @@ def run_classification_workflow(upload_data, meta_dict=None):
                     logger.debug(
                         "No family classification found (HMMER returned no hits)"
                     )
-                    workflow_state["stages"][stage_id]["progress"] = 100
-                    workflow_state["stages"][stage_id]["status"] = "complete"
+                    workflow_state.stages[stage_id]["progress"] = 100
+                    workflow_state.stages[stage_id]["status"] = "complete"
                     # Mark this as a meaningful "no match" result rather than incomplete
-                    workflow_state["found_match"] = False
-                    workflow_state["match_stage"] = "family"
-                    workflow_state["match_result"] = "No hits found"
-                    workflow_state["complete"] = True
+                    workflow_state.found_match = False
+                    workflow_state.match_stage = "family"
+                    workflow_state.error = "No hits found"
+                    workflow_state.complete = True
                     return workflow_state
 
             if stage_id == "navis":
                 logger.debug("Running navis classification")
                 if captains_df.empty:
                     logger.warning("No captain data available for navis classification")
-                    workflow_state["stages"][stage_id]["progress"] = 80
-                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                    workflow_state.stages[stage_id]["progress"] = 80
+                    workflow_state.stages[stage_id]["status"] = "skipped"
                 else:
                     result = classify_navis(
-                        fasta=upload_data.fasta_file,
+                        fasta=blast_data.fasta_file,
                         existing_captains=captains_df,
                         threads=1,
                     )
 
                 if result:
                     logger.debug(f"Found navis classification: {result}")
-                    workflow_state["stages"][stage_id]["progress"] = 90
-                    workflow_state["stages"][stage_id]["status"] = "complete"
-                    workflow_state["found_match"] = True
-                    workflow_state["match_stage"] = "navis"
-                    workflow_state["match_result"] = result
-                    workflow_state["complete"] = True
+                    workflow_state.stages[stage_id]["progress"] = 90
+                    workflow_state.stages[stage_id]["status"] = "complete"
+                    workflow_state.found_match = True
+                    workflow_state.match_stage = "navis"
+                    classification_data.source = "navis"
+                    classification_data.navis = result
+                    classification_data.confidence = "Medium"
+                    workflow_state.set_classification(classification_data)
+                    workflow_state.complete = True
                     return workflow_state
 
             if stage_id == "haplotype":
                 logger.debug("Running haplotype classification")
                 if captains_df.empty or ships_df.empty:
                     logger.warning("Missing data for haplotype classification")
-                    workflow_state["stages"][stage_id]["progress"] = 90
-                    workflow_state["stages"][stage_id]["status"] = "skipped"
+                    workflow_state.stages[stage_id]["progress"] = 90
+                    workflow_state.stages[stage_id]["status"] = "skipped"
                 else:
                     # Extract navis value from the first captain record
                     navis_value = None
@@ -1551,7 +1553,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
                 try:
                     result = classify_haplotype(
-                        fasta=upload_data.fasta_file,
+                        fasta=blast_data.fasta_file,
                         existing_ships=ships_df,
                         navis=navis_value,
                         similarities=similarities,
@@ -1559,37 +1561,38 @@ def run_classification_workflow(upload_data, meta_dict=None):
 
                     if result:
                         logger.debug(f"Found haplotype classification: {result}")
-                        workflow_state["stages"][stage_id]["progress"] = 100
-                        workflow_state["stages"][stage_id]["status"] = "complete"
-                        workflow_state["complete"] = True
-                        workflow_state["found_match"] = True
-                        workflow_state["match_stage"] = "haplotype"
-                        workflow_state["match_result"] = result
+                        workflow_state.stages[stage_id]["progress"] = 100
+                        workflow_state.stages[stage_id]["status"] = "complete"
+                        workflow_state.complete = True
+                        workflow_state.found_match = True
+                        workflow_state.match_stage = "haplotype"
+                        classification_data.source = "haplotype"
+                        classification_data.haplotype = result
+                        classification_data.confidence = "High"
+                        workflow_state.set_classification(classification_data)
                         return workflow_state
                 except Exception as e:
                     logger.error(f"Error in haplotype classification: {e}")
-                    workflow_state["stages"][stage_id]["status"] = "error"
-                    workflow_state["error"] = (
+                    workflow_state.stages[stage_id]["status"] = "error"
+                    workflow_state.error = (
                         f"Haplotype classification error: {str(e)}"
                     )
 
             # Mark this stage as complete
-            workflow_state["stages"][stage_id]["progress"] = 100
-            workflow_state["stages"][stage_id]["status"] = "complete"
+            workflow_state.stages[stage_id]["progress"] = 100
+            workflow_state.stages[stage_id]["status"] = "complete"
 
         # If no classification found through our methods, try BLAST results as a final fallback
-        if not workflow_state.get("found_match", False) and upload_data.blast_df:
+        if not workflow_state.found_match == False and blast_data.blast_df:
             logger.debug(
                 "No classification found through workflow methods, trying BLAST fallback"
             )
             try:
                 # Convert blast_df back to DataFrame if it's a list of records
-                if isinstance(upload_data.blast_df, list):
-                    import pandas as pd
-
-                    blast_df = pd.DataFrame(upload_data.blast_df)
+                if isinstance(blast_data.blast_df, list):
+                    blast_df = pd.DataFrame(blast_data.blast_df)
                 else:
-                    blast_df = upload_data.blast_df
+                    blast_df = blast_data.blast_df
 
                 if not blast_df.empty:
                     # Sort by evalue (ascending) and pident (descending) to get best hits
@@ -1619,20 +1622,15 @@ def run_classification_workflow(upload_data, meta_dict=None):
                             if not meta_df_sub.empty:
                                 top_family = meta_df_sub["familyName"].iloc[0]
 
-                                workflow_state["found_match"] = True
-                                workflow_state["match_stage"] = "blast_hit"
-                                workflow_state["match_result"] = {
-                                    "source": "blast_hit",
-                                    "family": top_family,
-                                    "closest_match": hit_IDs,
-                                    "match_details": f"BLAST hit with {top_pident:.1f}% identity (length {top_aln_length}bp, E-value: {top_evalue})",
-                                    "confidence": "High"
-                                    if top_pident >= 90 and top_aln_length > 1000
-                                    else "Medium"
-                                    if top_pident >= 70
-                                    else "Low",
-                                }
-
+                                workflow_state.found_match = True
+                                workflow_state.match_stage = "blast_hit"
+                                classification_data.source = "blast_hit"
+                                classification_data.family = top_family
+                                classification_data.closest_match=hit_IDs
+                                classification_data.match_details=f"BLAST hit with {top_pident:.1f}% identity (length {top_aln_length}bp, E-value: {top_evalue})"
+                                classification_data.confidence="High" if top_pident >= 90 and top_aln_length > 1000 else "Medium" if top_pident >= 70 else "Low"
+                                
+                                workflow_state.set_classification(classification_data)
                                 logger.debug(
                                     f"Found BLAST-based classification: {top_family}"
                                 )
@@ -1640,7 +1638,7 @@ def run_classification_workflow(upload_data, meta_dict=None):
                 logger.error(f"Error processing BLAST fallback: {e}")
 
         # Mark workflow as complete even if no matches were found
-        workflow_state["complete"] = True
+        workflow_state.complete = True
         return workflow_state
 
     except Exception as e:
@@ -1648,8 +1646,8 @@ def run_classification_workflow(upload_data, meta_dict=None):
         logger.error(f"Error in classification workflow: {error_message}")
         logger.exception("Full traceback:")
 
-        workflow_state["error"] = error_message
-        workflow_state["complete"] = True
+        workflow_state.error = error_message
+        workflow_state.complete = True
         return workflow_state
 
 
@@ -1665,9 +1663,15 @@ def create_classification_card(classification_data):
     """
     from dash_iconify import DashIconify
     import dash_mantine_components as dmc
+    from src.config.logging import get_logger
+    
+    logger = get_logger(__name__)
 
     if not classification_data:
         return None
+
+    # Debug: Log the classification data being passed to the card
+    logger.debug(f"create_classification_card received data: {classification_data}")
 
     source = classification_data.get("source", "Unknown")
     family = classification_data.get("family")
@@ -1677,6 +1681,8 @@ def create_classification_card(classification_data):
     closest_match = classification_data.get("closest_match")
     match_details = classification_data.get("match_details")
     confidence = classification_data.get("confidence", "Low")
+    
+    logger.debug(f"Extracted values - source: {source}, family: {family}, navis: {navis}, haplotype: {haplotype}, confidence: {confidence}")
 
     source_color = source_colors.get(source, "gray")
     confidence_color = confidence_colors.get(confidence, "gray")
@@ -1796,13 +1802,12 @@ def create_classification_card(classification_data):
     )
 
 
-def create_classification_output(sequence_results, workflow_state=None):
+def create_classification_output(workflow_state=None, classification_data=None):
     """Create the classification output component"""
     import dash_html_components as html
     import dash_mantine_components as dmc
 
     # Extract classification data
-    classification_data = sequence_results.get("classification")
     classification_title = dmc.Title(
         "Classification Results",
         order=2,
@@ -1817,20 +1822,41 @@ def create_classification_output(sequence_results, workflow_state=None):
             ]
         )
     else:
+        # Handle workflow_state as either object or dictionary
+        workflow_complete = False
+        if workflow_state:
+            if hasattr(workflow_state, 'complete'):
+                workflow_complete = workflow_state.complete
+            elif isinstance(workflow_state, dict):
+                workflow_complete = workflow_state.get('complete', False)
+        
         # Check if workflow is still running
-        if workflow_state and not workflow_state.get("complete", False):
+        if workflow_state and not workflow_complete:
             # Calculate progress from workflow state
             progress = 0
             current_stage_text = "Starting classification..."
 
-            if workflow_state.get("current_stage_idx") is not None:
+            # Get current stage index
+            current_stage_idx = None
+            if hasattr(workflow_state, 'current_stage_idx'):
+                current_stage_idx = workflow_state.current_stage_idx
+            elif isinstance(workflow_state, dict):
+                current_stage_idx = workflow_state.get('current_stage_idx')
+                
+            if current_stage_idx is not None:
                 try:
-                    stage_idx = int(workflow_state.get("current_stage_idx", 0))
+                    stage_idx = int(current_stage_idx)
                     total_stages = 6  # Number of workflow stages
 
                     # Get current stage progress
-                    current_stage = workflow_state.get("current_stage")
-                    stages_dict = workflow_state.get("stages", {})
+                    current_stage = None
+                    stages_dict = None
+                    if hasattr(workflow_state, 'current_stage'):
+                        current_stage = workflow_state.current_stage
+                        stages_dict = workflow_state.stages
+                    elif isinstance(workflow_state, dict):
+                        current_stage = workflow_state.get('current_stage')
+                        stages_dict = workflow_state.get('stages', {})
 
                     if current_stage and current_stage in stages_dict:
                         stage_data = stages_dict[current_stage]
