@@ -8,7 +8,6 @@ from dash.dependencies import Output, Input, State
 import os
 import base64
 import pandas as pd
-import time
 import tempfile
 
 from src.config.cache import cache
@@ -20,7 +19,6 @@ from src.utils.seq_utils import (
 from src.utils.blast_utils import (
     create_no_matches_alert,
     parse_blast_xml,
-    select_ship_family,
 )
 
 from src.components.callbacks import (
@@ -36,6 +34,7 @@ from src.tasks import (
 
 from src.config.logging import get_logger
 
+from src.utils.blast_data import get_dash_adapter
 from src.utils.blast_data import BlastData, WorkflowState, FetchShipParams, FetchCaptainParams, ClassificationData
 
 dash.register_page(__name__)
@@ -91,9 +90,6 @@ layout = dmc.Container(
         # Processed data stores
         dcc.Store(id="processed-metadata-store"),
         dcc.Store(id="processed-blast-store"),
-        dcc.Store(
-            id="blast-processed-tabs", data=[0]
-        ),  # Store which tabs have been processed
         # Results stores
         dcc.Store(id="blast-data-store"),
         dcc.Store(id="classification-data-store", data=None),
@@ -610,8 +606,10 @@ def create_blast_container(sequence_results, tab_id=None):
     if not blast_content:
         return html.Div(
             [
-                html.H2(
-                    "BLAST Results", style={"marginTop": "15px", "marginBottom": "20px"}
+                dmc.Title(
+                    "BLAST Results",
+                    order=2,
+                    style={"marginTop": "15px", "marginBottom": "20px"},
                 ),
                 create_no_matches_alert(),
             ]
@@ -692,14 +690,25 @@ def process_blast_results(blast_results_dict, active_tab_idx):
     blast_results = BlastData.from_dict(blast_results_dict) if blast_results_dict else None
 
     # Convert active_tab_idx to string (since keys in sequence_results are strings)
-    tab_idx = str(active_tab_idx or 0)
-    logger.debug(f"Processing BLAST results for tab index: {tab_idx}")
+    # For single sequence input, always use "0" regardless of active_tab_idx
+    if len(blast_results.sequence_results) == 1 and "0" in blast_results.sequence_results:
+        tab_idx = "0"
+        logger.debug(f"Single sequence detected, using tab index: {tab_idx}")
+    else:
+        tab_idx = str(active_tab_idx or 0)
+        logger.debug(f"Processing BLAST results for tab index: {tab_idx}")
 
     # Get the correct sequence results based on active tab
     sequence_results = blast_results.sequence_results.get(tab_idx)
     if not sequence_results:
-        logger.warning(f"No sequence results for tab index {tab_idx}")
-        return None
+        # Fallback: try to get the first available sequence result
+        if blast_results.sequence_results:
+            first_key = next(iter(blast_results.sequence_results.keys()))
+            sequence_results = blast_results.sequence_results[first_key]
+            logger.warning(f"No sequence results for tab index {tab_idx}, using first available: {first_key}")
+        else:
+            logger.warning(f"No sequence results available at all")
+            return None
 
     # Check for blast_file or blast_content directly in sequence_results
     blast_results_file = sequence_results.get("blast_file")
@@ -928,7 +937,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
 
 
 def process_single_sequence(seq_data, evalue_threshold, curated=None):
-    """Process a single sequence and return structured results"""
+    """Process a single sequence and return structured results - LEGACY VERSION"""
 
     # extract from seq_data
     query_header = seq_data.get("header", "query")
@@ -1024,6 +1033,140 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None):
         return blast_data.to_dict()
 
 
+def process_single_sequence_unified(seq_data, evalue_threshold, curated=None, sequence_id=None):
+    """
+    Process a single sequence using the new consolidated SequenceAnalysis model.
+    
+    This is the NEW VERSION that uses SequenceAnalysis instead of multiple separate objects.
+    """
+    from src.utils.blast_data import (
+        SequenceAnalysis, BlastResult, SequenceType, WorkflowConfig, WorkflowStatus
+    )
+    
+    # Extract basic sequence information
+    query_header = seq_data.get("header", "query")
+    query_seq = seq_data.get("sequence", "")
+    query_type = seq_data.get("type", "nucl")
+    
+    # Generate sequence ID if not provided
+    if not sequence_id:
+        import time
+        sequence_id = f"seq_{int(time.time() * 1000)}"
+    
+    # Create the unified SequenceAnalysis object
+    analysis = SequenceAnalysis(
+        sequence_id=sequence_id,
+        sequence=query_seq,
+        sequence_header=query_header,
+        sequence_type=SequenceType.NUCLEOTIDE if query_type == "nucl" else SequenceType.PROTEIN,
+        status=WorkflowStatus.RUNNING
+    )
+    
+    # Set configuration based on parameters
+    analysis.config = WorkflowConfig(
+        ship_curated_only=curated or False,
+        captain_curated_only=curated or False,
+    )
+    
+    logger.info(f"Processing sequence {sequence_id}: {query_header[:50]}...")
+    
+    try:
+        # Create temporary FASTA file
+        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+        if not tmp_query_fasta:
+            error_message = "Failed to create temporary file"
+            logger.error(error_message)
+            analysis.set_error(error_message)
+            return analysis
+        
+        # Fetch metadata
+        meta_df = fetch_meta_data()
+        
+        # Run BLAST search
+        blast_results = run_blast_search_task(
+            query_header=query_header,
+            query_seq=query_seq,
+            query_type=query_type,
+            eval_threshold=evalue_threshold,
+            curated=curated,
+        )
+        
+        # Process BLAST results
+        blast_result = BlastResult(
+            sequence=query_seq,
+            sequence_type=analysis.sequence_type,
+            fasta_file=tmp_query_fasta
+        )
+        
+        if not blast_results:
+            logger.warning("BLAST search returned no results")
+            blast_result.error = "No BLAST results returned"
+        elif isinstance(blast_results, dict) and "content" in blast_results:
+            blast_result.blast_content = blast_results["content"]
+            blast_result.blast_file = blast_results.get("file")
+        elif isinstance(blast_results, str):
+            import os
+            if os.path.exists(blast_results):
+                blast_result.blast_file = blast_results
+                try:
+                    with open(blast_results, "r") as f:
+                        blast_result.blast_content = f.read()
+                except Exception as e:
+                    logger.error(f"Failed to read BLAST file {blast_results}: {e}")
+                    blast_result.error = f"Failed to read BLAST file: {e}"
+            else:
+                # Assume it's content
+                blast_result.blast_content = blast_results
+        
+        # Parse BLAST content if available
+        if blast_result.blast_file and os.path.exists(blast_result.blast_file) and not blast_result.error:
+            try:
+                from src.utils.blast_utils import parse_blast_xml
+                
+                # Parse the XML file to TSV format
+                blast_tsv = parse_blast_xml(blast_result.blast_file)
+                
+                if blast_tsv and os.path.exists(blast_tsv):
+                    # Read the parsed TSV file
+                    blast_df = pd.read_csv(blast_tsv, sep="\t")
+                    
+                    if len(blast_df) == 0:
+                        logger.warning(f"No BLAST hits found for {sequence_id}")
+                        blast_result.blast_hits = []
+                    else:
+                        blast_result.blast_hits = blast_df.to_dict("records")
+                        logger.info(f"Successfully processed {len(blast_df)} BLAST hits for {sequence_id}")
+                        
+                    blast_result.processed = True
+                else:
+                    error_message = "Failed to parse BLAST XML file"
+                    logger.error(error_message)
+                    blast_result.error = error_message
+                
+            except Exception as e:
+                error_message = f"Failed to parse BLAST output: {e}"
+                logger.error(error_message)
+                blast_result.error = error_message
+        
+        # Attach BLAST result to analysis
+        analysis.blast_result = blast_result
+        
+        # Mark as complete if no errors
+        if not blast_result.error:
+            analysis.set_complete()
+        else:
+            analysis.set_error(blast_result.error)
+            
+        logger.info(f"Completed processing sequence {sequence_id}")
+        return analysis
+        
+    except Exception as e:
+        error_message = f"Error in process_single_sequence_unified: {e}"
+        logger.error(error_message)
+        analysis.set_error(error_message)
+        return analysis
+
+
 @callback(
     [
         Output("workflow-state-store", "data"),
@@ -1050,206 +1193,169 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None):
 def process_multiple_sequences(
     submission_id, seq_list, evalue_threshold, file_contents, curated
 ):
-    """Process only the first sequence initially, for both text input and file uploads"""
-
-    workflow_state = WorkflowState(
-        stages = {
-            stage["id"]: {"progress": 0, "complete": False}
-            for stage in WORKFLOW_STAGES
-        },
-        workflow_started = False
-    )
+    """
+    REPLACEMENT for process_multiple_sequences using centralized state.
+    
+    This eliminates data duplication by using a single source of truth.
+    """
 
     if not submission_id:
-        logger.warning("No submission_id provided to process_multiple_sequences")
+        logger.warning("No submission_id provided to process_multiple_sequences_unified")
         raise PreventUpdate
-
-    if not seq_list:
-        # If we have no seq_list but do have file contents, parse the file directly
-        if file_contents:
+    
+    # Get the centralized state adapter
+    adapter = get_dash_adapter()
+    sequence_id = str(submission_id)
+    
+    try:
+        # Handle missing seq_list by parsing file_contents if available
+        if not seq_list and file_contents:
             logger.debug("No seq_list but file_contents available - parsing directly")
             try:
                 input_type, direct_seq_list, n_seqs, error = check_input(
                     query_text_input=None, query_file_contents=file_contents
                 )
-
                 if error or not direct_seq_list or len(direct_seq_list) == 0:
                     logger.warning(f"Failed to parse file contents directly: {error}")
-                    workflow_state.error = "Failed to parse sequence data"
-                    workflow_state.complete = True
-                    workflow_state.status = "failed"
-                    workflow_state.found_match = False
-                
-                    return (
-                        workflow_state.to_dict(),
-                        None,
-                        True,
-                        None,
-                        False,
-                        False,
-                    )
-
-                logger.debug(
-                    f"Successfully parsed {len(direct_seq_list)} sequences directly from file contents"
-                )
+                    # Return error state
+                    return _return_error_state(adapter, sequence_id, "Failed to parse sequence data")
                 seq_list = direct_seq_list
             except Exception as e:
                 logger.error(f"Error parsing file contents: {e}")
-                workflow_state.error = "Failed to parse sequence data"
-                workflow_state.complete = True
-                workflow_state.status = "failed"
-                workflow_state.found_match = False
-
-                return (
-                    workflow_state.to_dict(),
-                    None,
-                    True,
-                    None,
-                    False,
-                    False,
-                )
-        else:
-            logger.warning("No seq_list or file_contents provided to process_multiple_sequences")
-
-            workflow_state.error = "No sequence data available"
-            workflow_state.complete = True
-            workflow_state.status = "failed"
-            workflow_state.found_match = False
-
-            return (
-                workflow_state.to_dict(),
-                None,
-                True,
-                None,
-                False,
-                False,
-            )
-
-    logger.debug(
-        f"Processing sequence submission with ID: {submission_id}, sequences: {len(seq_list)}"
-    )
-
-    try:
-        classification_interval_disabled = True  # Always disable the interval
-
-        # Process only the first sequence to start
-        if seq_list and len(seq_list) > 0:
-            # Log sequence details for debugging
-            first_seq = seq_list[0]
-            logger.debug(
-                f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}"
-            )
-
-            # Process sequence 0
-            sequence_result = process_single_sequence(
-                seq_list[0], evalue_threshold, curated
-            )
-
-            if sequence_result:
-                logger.debug(
-                    f"Sequence result: processed={sequence_result.get('processed', False)}, blast_file={sequence_result.get('blast_file') is not None}"
-                )
-
-                # Structure the blast results properly
-                blast_data = BlastData(processed_sequences = [0],
-                    sequence_results = {
-                        "0": sequence_result,
-                    },
-                    total_sequences = len(seq_list)
-                )
-
-                # Determine if we should enable classification interval
-                sequence_length = len(sequence_result.get("sequence", ""))
-                skip_classification = (
-                    sequence_length < 5000 or sequence_result.get("error") is not None
-                )
-
-                logger.debug(
-                    f"Classification decision: skip={skip_classification}, seq_length={sequence_length}"
-                )
-
-                # Default to disabled - always
-                classification_interval_disabled = True
-
-                # Set up workflow state if needed
-                if not skip_classification and sequence_result.get("blast_content"):
-                    # Write the file content to include in classification_data
-                    tmp_query_fasta = None
-
-                    try:
-                        tmp_query_fasta = write_temp_fasta(
-                            seq_list[0].get("header", "query"),
-                            seq_list[0].get("sequence", ""),
-                        )
-                    except Exception as e:
-                        logger.error(f"Error writing FASTA to temp file: {e}")
-                        # If we can't write the file, skip classification
-                        skip_classification = True
-
-                    if not skip_classification and tmp_query_fasta:
-                        # Set up the workflow state with proper classification_data
-                        workflow_state.task_id = str(submission_id)
-                        workflow_state.fetch_ship_params = FetchShipParams(
-                            curated = False,
-                            with_sequence = True, 
-                            dereplicate = True
-                        )
-                        workflow_state.fetch_captain_params = FetchCaptainParams(
-                            curated = True,
-                            with_sequence = True
-                        )
-                        classification_data = ClassificationData(
-                            seq_type = seq_list[0].get("type", "nucl"),
-                            fasta_file = tmp_query_fasta
-                        )
-                        blast_data.seq_type = seq_list[0].get("type", "nucl")
-                        blast_data.fasta_file = tmp_query_fasta
-
-                    # Since we're no longer using Celery, we don't need the interval
-                    # always set to disabled since we run synchronously
-                    classification_interval_disabled = True
-
-            else:
-                logger.warning(
-                    "No sequence result returned from process_single_sequence"
-                )
-                blast_data.processed_sequences = [0]
-                blast_data.sequence_results = {
-                    "0": {
-                        "processed": False,
-                        "error": "Failed to process sequence",
-                        "sequence": seq_list[0].get("sequence", ""),
-                    }
-                }
-                blast_data.total_sequences = len(seq_list)
-
-        logger.debug(
-            f"Completed process_multiple_sequences: has_blast_results={blast_data.blast_content is not None}, interval_disabled={classification_interval_disabled}"
-        )
-        return (
-            workflow_state.to_dict(),
-            classification_data.to_dict() if 'classification_data' in locals() and classification_data else None,
-            classification_interval_disabled,
-            blast_data.to_dict(),
-            False,
-            False,
-        )  # Set loading to False when done
-    except Exception as e:
-        logger.error(f"Error in process_multiple_sequences: {str(e)}")
-        # Return basic data on error
-        workflow_state.complete = True
-        workflow_state.error = str(e)
-        workflow_state.status = "failed"
-        workflow_state.task_id = str(submission_id) if submission_id else None
+                return _return_error_state(adapter, sequence_id, "Failed to parse sequence data")
         
+        if not seq_list:
+            logger.warning("No seq_list or file_contents provided")
+            return _return_error_state(adapter, sequence_id, "No sequence data available")
+        
+        logger.debug(f"Processing sequence submission with ID: {sequence_id}, sequences: {len(seq_list)}")
+        
+        # Add sequence to centralized state
+        pipeline_state = adapter.pipeline_state
+        sequence_state = pipeline_state.add_sequence(sequence_id)
+        
+        # Process the first sequence using existing logic
+        first_seq = seq_list[0]
+        logger.debug(f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}")
+        
+        # Import the existing process_single_sequence function
+        from src.pages.blast import process_single_sequence
+        sequence_result = process_single_sequence(first_seq, evalue_threshold, curated)
+        
+        if not sequence_result:
+            logger.warning("No sequence result returned from process_single_sequence")
+            return _return_error_state(adapter, sequence_id, "Failed to process sequence")
+        
+        # Update centralized state with BLAST data
+        from src.utils.blast_data import BlastData
+        blast_data = BlastData(
+            processed_sequences=[0],
+            sequence_results={"0": sequence_result},
+            total_sequences=len(seq_list)
+        )
+        pipeline_state.update_blast_data(sequence_id, blast_data)
+        
+        # Set up workflow state
+        workflow_state = WorkflowState(
+            stages={
+                stage["id"]: {"progress": 0, "complete": False}
+                for stage in WORKFLOW_STAGES
+            },
+            workflow_started=False,
+            task_id=sequence_id
+        )
+        
+        # Determine if we should run classification
+        sequence_length = len(sequence_result.get("sequence", ""))
+        skip_classification = (
+            sequence_length < 5000 or sequence_result.get("error") is not None
+        )
+        
+        logger.debug(f"Classification decision: skip={skip_classification}, seq_length={sequence_length}")
+        
+        classification_data = None
+        if not skip_classification and sequence_result.get("blast_content"):
+            # Set up classification workflow parameters
+            workflow_state.fetch_ship_params = FetchShipParams(
+                curated=False,
+                with_sequence=True, 
+                dereplicate=True
+            )
+            workflow_state.fetch_captain_params = FetchCaptainParams(
+                curated=True,
+                with_sequence=True
+            )
+            
+            # Write temp FASTA file
+            try:
+                tmp_query_fasta = write_temp_fasta(
+                    first_seq.get("header", "query"),
+                    first_seq.get("sequence", ""),
+                )
+                if tmp_query_fasta:
+                    classification_data = ClassificationData(
+                        seq_type=first_seq.get("type", "nucl"),
+                        fasta_file=tmp_query_fasta
+                    )
+                    blast_data.seq_type = first_seq.get("type", "nucl")
+                    blast_data.fasta_file = tmp_query_fasta
+                else:
+                    skip_classification = True
+                    logger.error("Failed to create temporary FASTA file")
+            except Exception as e:
+                logger.error(f"Error writing FASTA to temp file: {e}")
+                skip_classification = True
+        
+        # Update centralized state
+        pipeline_state.update_workflow_state(sequence_id, workflow_state)
+        if classification_data:
+            pipeline_state.update_classification_data(sequence_id, classification_data)
+        
+        # Return data for Dash stores (for backward compatibility)
+        store_data = adapter.sync_all_stores(sequence_id)
+        
+        logger.debug(f"Completed unified sequence processing for {sequence_id}")
         return (
-            workflow_state.to_dict(),
-            None,
-            True,
-            None,
-            False,
-            False,
-        )  # Set loading to False on error too
+            store_data["workflow_state"],
+            store_data["classification_data"],
+            True,  # Always disable interval (no longer using polling)
+            store_data["blast_data"],
+            False,  # Stop loading
+            False,  # Hide loading overlay
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in process_multiple_sequences_unified: {str(e)}")
+        return _return_error_state(adapter, sequence_id, str(e))
+
+def _return_error_state(adapter, sequence_id, error_message):
+    """Helper function to return consistent error state"""
+    pipeline_state = adapter.pipeline_state
+    
+    # Set error in centralized state
+    pipeline_state.set_sequence_error(sequence_id, error_message)
+    
+    # Create error workflow state
+    workflow_state = WorkflowState(
+        stages={stage["id"]: {"progress": 0, "complete": False} for stage in WORKFLOW_STAGES},
+        workflow_started=False,
+        complete=True,
+        status="failed",
+        error=error_message,
+        task_id=sequence_id
+    )
+    pipeline_state.update_workflow_state(sequence_id, workflow_state)
+    
+    # Return error state for all stores
+    store_data = adapter.sync_all_stores(sequence_id)
+    return (
+        store_data["workflow_state"],
+        store_data["classification_data"],
+        True,  # Disable interval
+        store_data["blast_data"],
+        False,  # Stop loading
+        False,  # Hide loading overlay
+    )
 
 
 @callback(
@@ -1263,10 +1369,14 @@ def process_multiple_sequences(
     ],
     prevent_initial_call=True,
 )
-def process_additional_sequence(
+def process_additional_sequence_unified(
     active_tab, results_store, seq_list, evalue_threshold, curated
 ):
-    """Process a sequence when its tab is selected if not already processed"""
+    """
+    REPLACEMENT for process_additional_sequence using centralized state.
+    
+    This eliminates tab-specific data duplication by using the centralized pipeline state.
+    """
     try:
         if not active_tab or not results_store or not seq_list:
             logger.warning(
@@ -1282,6 +1392,20 @@ def process_additional_sequence(
         except (ValueError, IndexError) as e:
             logger.error(f"Invalid tab format '{active_tab}': {e}")
             raise PreventUpdate
+
+        # Get centralized state adapter
+        adapter = get_dash_adapter()
+        pipeline_state = adapter.pipeline_state
+        
+        # Use the main sequence ID for multi-tab processing
+        # In a full implementation, each tab could have its own sequence ID
+        main_sequence_id = pipeline_state._active_sequence_id
+        if not main_sequence_id:
+            logger.error("No active sequence ID found for tab processing")
+            raise PreventUpdate
+            
+        # Create unique sequence ID for this tab
+        tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
 
         # Check if this sequence has already been processed
         processed_sequences = results_store.get("processed_sequences", [])
@@ -1301,13 +1425,43 @@ def process_additional_sequence(
             )
             raise PreventUpdate
 
-        # Process this sequence
+        # Process this sequence using existing logic
         logger.info(
             f"Processing sequence for tab {tab_idx}: {seq_list[tab_idx].get('header', 'unknown')[:50]}..."
         )
-        sequence_result = process_single_sequence(
-            seq_list[tab_idx], evalue_threshold, curated
-        )
+        
+        # Use the new unified approach for this tab
+        sequence_id = f"tab_{tab_idx}"
+        
+        # Try the new unified approach first
+        try:
+            logger.info(f"Using unified processing for tab {tab_idx}")
+            analysis = process_single_sequence_unified(
+                seq_list[tab_idx], evalue_threshold, curated, sequence_id
+            )
+            
+            # Convert to legacy format for backward compatibility
+            if analysis:
+                from src.utils.blast_data import convert_sequence_analysis_to_legacy_blast_data
+                sequence_result = convert_sequence_analysis_to_legacy_blast_data(analysis)
+                
+                # Update the sequence_results key to match the tab index
+                if sequence_result and "sequence_results" in sequence_result:
+                    # Move from "0" to str(tab_idx)
+                    seq_data = sequence_result["sequence_results"]["0"]
+                    sequence_result["sequence_results"] = {str(tab_idx): seq_data}
+                    sequence_result["processed_sequences"] = [tab_idx] if analysis.is_complete() else []
+                
+                logger.info(f"Successfully converted unified result to legacy format for tab {tab_idx}")
+            else:
+                raise Exception("Unified processing returned None")
+                
+        except Exception as e:
+            logger.warning(f"Unified processing failed for tab {tab_idx}, falling back to legacy: {e}")
+            # Fallback to legacy processing
+            sequence_result = process_single_sequence(
+                seq_list[tab_idx], evalue_threshold, curated
+            )
 
         if not sequence_result:
             logger.error(
@@ -1329,44 +1483,66 @@ def process_additional_sequence(
                 f"Running classification workflow for tab {tab_idx} (length: {sequence_length})"
             )
             try:
-                # Create temporary FASTA file for the workflow
-                tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-                with open(tmp_fasta, "w") as f:
-                    f.write(
-                        f">{seq_list[tab_idx].get('header', 'query')}\n{seq_list[tab_idx].get('sequence', '')}\n"
-                    )
+                # Add this sequence to centralized state for classification
+                tab_sequence_state = pipeline_state.add_sequence(tab_sequence_id)
+                
+                # Create temporary FASTA file
+                tmp_fasta = write_temp_fasta(
+                    seq_list[tab_idx].get('header', 'query'),
+                    seq_list[tab_idx].get('sequence', '')
+                )
+                
+                if not tmp_fasta:
+                    logger.error(f"Failed to create temp FASTA for tab {tab_idx}")
+                    raise Exception("Failed to create temporary FASTA file")
 
-                # Set up workflow data
+                # Set up BLAST data in centralized state
+                blast_data = BlastData(
+                    seq_type=seq_list[tab_idx].get("type", "nucl"),
+                    fasta_file=tmp_fasta,
+                    blast_df=sequence_result.get("blast_df"),
+                    processed_sequences=[0],
+                    sequence_results={"0": sequence_result},
+                    total_sequences=1
+                )
+                pipeline_state.update_blast_data(tab_sequence_id, blast_data)
+
+                # Set up workflow state
                 workflow_state = WorkflowState(
                     stages={
                         stage["id"]: {"progress": 0, "status": "pending"}
                         for stage in WORKFLOW_STAGES
-                    }
+                    },
+                    task_id=tab_sequence_id,
+                    workflow_started=False
                 )
-                # set up workflow state parameters
                 workflow_state.fetch_ship_params = FetchShipParams(
                     curated=False, with_sequence=True, dereplicate=True
                 )
                 workflow_state.fetch_captain_params = FetchCaptainParams(
                     curated=True, with_sequence=True
                 )
+                pipeline_state.update_workflow_state(tab_sequence_id, workflow_state)
                 
-                # set up blast data
-                blast_data = BlastData(
+                # Set up classification data
+                classification_data = ClassificationData(
                     seq_type=seq_list[tab_idx].get("type", "nucl"),
-                    fasta_file=tmp_fasta,
-                    blast_df=sequence_result.get("blast_df"),
+                    fasta_file=tmp_fasta
                 )
-
-                meta_df = fetch_meta_data()
-                meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+                pipeline_state.update_classification_data(tab_sequence_id, classification_data)
 
                 # Run classification workflow
+                meta_df = fetch_meta_data()
+                meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+                
                 workflow_result = run_classification_workflow_task(
-                    workflow_state_dict=workflow_state, blast_data_dict=blast_data, meta_dict=meta_dict
+                    workflow_state=workflow_state.to_dict(),
+                    blast_data=blast_data.to_dict(),
+                    classification_data=classification_data.to_dict(),
+                    meta_dict=meta_dict
                 )
 
-                # If workflow found a match, update sequence results with classification
+                # If workflow found a match, update centralized state
                 if (
                     workflow_result
                     and workflow_result.get("complete", False)
@@ -1379,66 +1555,20 @@ def process_additional_sequence(
                         f"Workflow found {match_stage} match for tab {tab_idx}: {match_accession}"
                     )
 
-                    # Create classification data
-                    classification_data = {
-                        "source": match_stage,
-                        "closest_match": match_accession,
-                        "confidence": "High"
-                        if match_stage in ["exact", "contained"]
-                        else "Medium",
-                    }
-
-                    # Look up metadata for the matched accession
-                    try:
-                        if meta_df is not None and not meta_df.empty:
-                            meta_match = meta_df[
-                                meta_df["accession_tag"] == match_accession
-                            ]
-                            if not meta_match.empty:
-                                # Add family information
-                                if "familyName" in meta_match.columns:
-                                    family = meta_match["familyName"].iloc[0]
-                                    if family and family != "None":
-                                        classification_data["family"] = family
-
-                                # Add navis information
-                                if "navis_name" in meta_match.columns:
-                                    navis = meta_match["navis_name"].iloc[0]
-                                    if navis and navis != "None":
-                                        classification_data["navis"] = navis
-
-                                # Add haplotype information
-                                if "haplotype_name" in meta_match.columns:
-                                    haplotype = meta_match["haplotype_name"].iloc[0]
-                                    if haplotype and haplotype != "None":
-                                        classification_data["haplotype"] = haplotype
-
-                                # Add match details
-                                if match_stage == "exact":
-                                    classification_data["match_details"] = (
-                                        f"Exact sequence match to {match_accession}"
-                                    )
-                                elif match_stage == "contained":
-                                    classification_data["match_details"] = (
-                                        f"Query sequence contained within {match_accession}"
-                                    )
-                                elif match_stage == "similar":
-                                    classification_data["match_details"] = (
-                                        f"High similarity to {match_accession}"
-                                    )
-                                else:
-                                    classification_data["match_details"] = (
-                                        f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
-                                    )
-                    except Exception as e:
-                        logger.error(
-                            f"Error looking up metadata for {match_accession}: {e}"
-                        )
-
-                    # Update sequence results with classification
-                    sequence_result["classification"] = classification_data
+                    # Create enriched classification data using the helper function
+                    enriched_classification = _create_enriched_classification(
+                        match_stage, match_accession, meta_df
+                    )
+                    
+                    # Update centralized state - SINGLE SOURCE OF TRUTH
+                    pipeline_state.update_classification_data(tab_sequence_id, enriched_classification)
+                    
+                    # Get the enriched data and add it to sequence results for backward compatibility
+                    classification_dict = enriched_classification.to_dict()
+                    sequence_result["classification"] = classification_dict
+                    
                     logger.info(
-                        f"Updated tab {tab_idx} with classification: {classification_data}"
+                        f"Updated tab {tab_idx} with classification: {classification_dict}"
                     )
 
             except Exception as e:
@@ -1455,7 +1585,7 @@ def process_additional_sequence(
                     f"Skipping classification for tab {tab_idx} - no BLAST content"
                 )
 
-        # Update the results store
+        # Update the results store for backward compatibility
         updated_results = dict(results_store)
         updated_results["processed_sequences"].append(tab_idx)
         updated_results["sequence_results"][str(tab_idx)] = sequence_result
@@ -1467,7 +1597,7 @@ def process_additional_sequence(
         raise
     except Exception as e:
         logger.error(
-            f"Unexpected error in process_additional_sequence for tab {active_tab}: {e}"
+            f"Unexpected error in process_additional_sequence_unified for tab {active_tab}: {e}"
         )
         logger.exception("Full traceback:")
         raise PreventUpdate
@@ -1484,8 +1614,12 @@ def process_additional_sequence(
     ],
     prevent_initial_call=True,
 )
-def render_tab_content(active_tab, blast_data_dict):
-    """Render the content for the current tab"""
+def render_tab_content_unified(active_tab, blast_data_dict):
+    """
+    REPLACEMENT for render_tab_content using centralized state.
+    
+    This eliminates complex data retrieval logic by using the centralized pipeline state.
+    """
     from src.utils.classification_utils import create_classification_output
 
     blast_data = BlastData.from_dict(blast_data_dict) if blast_data_dict else None
@@ -1510,6 +1644,17 @@ def render_tab_content(active_tab, blast_data_dict):
                 color="red",
                 variant="filled",
             )
+
+        # Get centralized state adapter
+        adapter = get_dash_adapter()
+        pipeline_state = adapter.pipeline_state
+        
+        # Get the main sequence ID and create tab-specific ID
+        main_sequence_id = pipeline_state._active_sequence_id
+        if main_sequence_id:
+            tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
+        else:
+            tab_sequence_id = None
 
         # Check if this sequence has been processed
         processed_sequences = blast_data.processed_sequences
@@ -1545,14 +1690,33 @@ def render_tab_content(active_tab, blast_data_dict):
             )
             return seq_processing_error_alert(sequence_results["error"])
 
-        # Render classification results (workflow state not available for tabbed interface)
-        classification_data = sequence_results.get("classification") if sequence_results else None
-        classification_output = create_classification_output(workflow_state=None, classification_data=classification_data)
+        # Get classification data from centralized state if available
+        classification_data = None
+        if tab_sequence_id:
+            # Try to get enriched classification data from centralized state first
+            centralized_classification = adapter.get_sequence_classification_for_ui(tab_sequence_id)
+            if centralized_classification:
+                classification_data = centralized_classification
+                logger.debug(f"Using centralized classification data for tab {tab_idx}: {classification_data}")
+            else:
+                # Fallback to sequence results classification data
+                classification_data = sequence_results.get("classification")
+                logger.debug(f"Using sequence results classification data for tab {tab_idx}")
+        else:
+            # Fallback to sequence results classification data
+            classification_data = sequence_results.get("classification")
+            logger.debug(f"Using fallback classification data for tab {tab_idx}")
+
+        # Render classification results using centralized data
+        classification_output = create_classification_output(
+            workflow_state=None,  # Workflow state not needed for tab rendering
+            classification_data=classification_data
+        )
 
         # Render BLAST results
         blast_container = create_blast_container(sequence_results, tab_id=tab_idx)
 
-        logger.debug(f"Successfully rendered content for tab {tab_idx}")
+        logger.debug(f"Successfully rendered content for tab {tab_idx} using centralized state")
         return [
             classification_output,
             progress_section,
@@ -1568,7 +1732,7 @@ def render_tab_content(active_tab, blast_data_dict):
         raise
     except Exception as e:
         logger.error(
-            f"Unexpected error in render_tab_content for tab {active_tab}: {e}"
+            f"Unexpected error in render_tab_content_unified for tab {active_tab}: {e}"
         )
         logger.exception("Full traceback:")
         return dmc.Alert(
@@ -1971,144 +2135,52 @@ clientside_callback(
     prevent_initial_call=True,
 )
 def update_single_sequence_classification(blast_results_dict, workflow_state_dict):
-    """Update classification output for single sequence submissions"""
+    """
+    REPLACEMENT for update_single_sequence_classification using centralized state.
+    
+    This eliminates the complex data merging logic by using a single source of truth.
+    """
     from src.utils.classification_utils import create_classification_output
-
+    
+    # Get the centralized state adapter
+    adapter = get_dash_adapter()
+    
+    logger.info("update_single_sequence_classification_unified CALLED")
+    
+    # Convert inputs to objects for compatibility
     blast_results = BlastData.from_dict(blast_results_dict) if blast_results_dict else None
     workflow_state = WorkflowState.from_dict(workflow_state_dict) if workflow_state_dict else None
-
-    logger.info(
-        f"update_single_sequence_classification CALLED: blast_results_dict={blast_results is not None}, workflow_state={workflow_state is not None}"
-    )
-
+    
     if workflow_state:
         logger.info(
-            f"Workflow state: complete={workflow_state.complete}, found_match={workflow_state.found_match}, match_stage={workflow_state.match_stage}, match_result={workflow_state.match_result}"
+            f"Workflow state: complete={workflow_state.complete}, found_match={workflow_state.found_match}, match_stage={workflow_state.match_stage}"
         )
-
+    
     if not blast_results:
         logger.info("No blast_results, returning None")
         return None
-
-    # Get the results for sequence 0
-    sequence_results = blast_results.sequence_results.get("0")
-    if not sequence_results:
-        logger.info("No sequence results for sequence 0, returning None")
+    
+    # Get the active sequence ID (assume sequence 0 for single sequence)
+    # In a full implementation, this would come from the adapter's active sequence
+    sequence_id = adapter.pipeline_state._active_sequence_id
+    if not sequence_id:
+        logger.info("No active sequence ID, returning None")
         return None
-
-    logger.info(
-        f"Original sequence_results has classification: {'classification' in sequence_results}"
-    )
-
-    # Check if we have workflow results that should override the initial classification
-    if (
-        workflow_state
-        and workflow_state.complete
-        and workflow_state.found_match
-    ):
-        logger.info("Workflow completed with match found, updating classification")
-        # Update sequence_results with workflow classification data
-        classification_data = workflow_state.classification_data
-        if classification_data:
-            # Use workflow classification data directly
-            sequence_results = sequence_results.copy()
-            sequence_results["classification"] = classification_data
-            logger.info("Used workflow classification_data as classification")
-            logger.debug(f"Workflow classification_data: {classification_data}")
-        elif workflow_state.match_stage and workflow_state.match_result:
-            # Convert simple workflow results to classification format and look up metadata
-            sequence_results = sequence_results.copy()
-            match_stage = workflow_state.match_stage
-            match_accession = workflow_state.match_result
-
-            logger.info(
-                f"Processing workflow result: {match_stage} -> {match_accession}"
-            )
-
-            # Create base classification
-            classification_data = ClassificationData(
-                source = match_stage,
-                closest_match = match_accession,
-                confidence = "High"
-                if match_stage in ["exact", "contained"]
-                else "Medium"
-            )
-
-            # Look up additional metadata for the matched accession
-            try:
-                meta_df = fetch_meta_data()
-                if meta_df is not None and not meta_df.empty:
-                    meta_match = meta_df[
-                        meta_df["accession_display"] == match_accession
-                    ]
-                    if not meta_match.empty:
-                        logger.debug(f"Found metadata for {match_accession}")
-                        # Add family information
-                        if "familyName" in meta_match.columns:
-                            family = meta_match["familyName"].iloc[0]
-                            if family and family != "None":
-                                classification_data["family"] = family
-
-                        # Add navis information
-                        if "navis_name" in meta_match.columns:
-                            navis = meta_match["navis_name"].iloc[0]
-                            if navis and navis != "None":
-                                classification_data["navis"] = navis
-
-                        # Add haplotype information
-                        if "haplotype_name" in meta_match.columns:
-                            haplotype = meta_match["haplotype_name"].iloc[0]
-                            if haplotype and haplotype != "None":
-                                classification_data["haplotype"] = haplotype
-
-                        # Add match details
-                        if match_stage == "exact":
-                            classification_data["match_details"] = (
-                                f"Exact sequence match to {match_accession}"
-                            )
-                        elif match_stage == "contained":
-                            classification_data["match_details"] = (
-                                f"Query sequence contained within {match_accession}"
-                            )
-                        elif match_stage == "similar":
-                            classification_data["match_details"] = (
-                                f"High similarity to {match_accession}"
-                            )
-                        else:
-                            classification_data["match_details"] = (
-                                f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
-                            )
-                    else:
-                        logger.warning(f"No metadata found for {match_accession}")
-
-            except Exception as e:
-                logger.error(f"Error looking up metadata for {match_accession}: {e}")
-
-            sequence_results["classification"] = classification_data.to_dict()
-            logger.info(f"Created classification_data: {classification_data}")
+    
+    # Get classification data from centralized state - SINGLE SOURCE OF TRUTH
+    classification_data = adapter.get_sequence_classification_for_ui(sequence_id)
+    
+    if classification_data:
+        logger.info(f"Found classification data in centralized state: {classification_data}")
     else:
-        logger.info(
-            f"Workflow not complete or no match found. Complete: {workflow_state.complete if workflow_state else 'N/A'}, Found match: {workflow_state.found_match if workflow_state else 'N/A'}"
-        )
-
-    # Create the classification output using the existing function
-    logger.info(
-        f"Final sequence_results has classification: {'classification' in sequence_results}"
+        logger.info("No classification data found in centralized state")
+    
+    # Create the classification output using the unified data
+    result = create_classification_output(
+        workflow_state=workflow_state,
+        classification_data=classification_data
     )
     
-    # Get classification data from workflow state or sequence results
-    # Prefer sequence results since they contain metadata lookup results
-    classification_data = None
-    if sequence_results and "classification" in sequence_results:
-        classification_data = sequence_results["classification"]
-        logger.debug(f"Using classification data from sequence_results: {classification_data}")
-    elif workflow_state and workflow_state.classification_data:
-        classification_data = workflow_state.classification_data
-        logger.debug(f"Using classification data from workflow_state: {classification_data}")
-    else:
-        logger.debug("No classification data found in either source")
-    
-    result = create_classification_output(workflow_state=workflow_state, classification_data=classification_data)
     logger.info(f"create_classification_output returned: {type(result)}")
     return result
 
@@ -2120,7 +2192,6 @@ def update_single_sequence_classification(blast_results_dict, workflow_state_dic
         Output("blast-data-store", "data", allow_duplicate=True),
     ],
     [
-        # Remove dependency on interval n_intervals
         Input("workflow-state-store", "data"),
         Input("classification-data-store", "data"),
     ],
@@ -2129,195 +2200,164 @@ def update_single_sequence_classification(blast_results_dict, workflow_state_dic
     ],
     prevent_initial_call=True,
 )
-def update_classification_workflow_state(workflow_state_dict, classification_data_dict, blast_results_dict):
-    """Initialize workflow state (one-time operation)"""
-    # If no workflow state, nothing to do
+def update_classification_workflow_state_unified(workflow_state_dict, classification_data_dict, blast_results_dict):
+    """
+    REPLACEMENT for update_classification_workflow_state using centralized state.
+    
+    This eliminates complex state synchronization by using the centralized pipeline state.
+    """
+    
+    # Early exit conditions
     if workflow_state_dict is None or classification_data_dict is None:
         raise PreventUpdate
-
-    workflow_state = WorkflowState.from_dict(workflow_state_dict) if workflow_state_dict else None
-    classification_data = ClassificationData.from_dict(classification_data_dict) if classification_data_dict else None
+    
+    # Get centralized state adapter
+    adapter = get_dash_adapter()
+    pipeline_state = adapter.pipeline_state
+    
+    # Convert to objects
+    workflow_state = WorkflowState.from_dict(workflow_state_dict)
+    classification_data = ClassificationData.from_dict(classification_data_dict)
     blast_results = BlastData.from_dict(blast_results_dict) if blast_results_dict else None
-
-    # Return early if workflow is complete, has error, or already started
-    if (
-        workflow_state.complete
-        or workflow_state.error is not None
-        or workflow_state.workflow_started
-    ):
-        # If workflow is complete, also set loading overlay to false
-        if (
-            workflow_state.complete
-            or workflow_state.error is not None
-        ):
-            return workflow_state.to_dict(), False, blast_results.to_dict()
+    
+    # Get sequence ID from workflow state
+    sequence_id = workflow_state.task_id
+    if not sequence_id:
+        logger.warning("No sequence ID found in workflow state")
         raise PreventUpdate
-
-    # Check if task is running
-    task_id = workflow_state.task_id
-    if not task_id:
-        logger.warning("No task ID found in workflow state")
-        workflow_state.error = "Missing task ID"
-        workflow_state.complete = True
-        workflow_state.status = "failed"
-        return workflow_state.to_dict(), False, blast_results.to_dict()
-
+    
+    # Check if workflow should run (one-time operation)
+    if (workflow_state.complete or 
+        workflow_state.error is not None or 
+        workflow_state.workflow_started):
+        
+        if workflow_state.complete or workflow_state.error is not None:
+            # Update centralized state and return final data
+            pipeline_state.update_workflow_state(sequence_id, workflow_state)
+            store_data = adapter.sync_all_stores(sequence_id)
+            return store_data["workflow_state"], False, store_data["blast_data"]
+        raise PreventUpdate
+    
     try:
-        # Start the classification workflow - ONE TIME ONLY
-        if workflow_state.task_id and not workflow_state.workflow_started:
-            # Extract BLAST data from the blast_results_store
-            blast_df = None
-            if blast_results and blast_results.sequence_results:
-                sequence_results = blast_results.sequence_results.get("0")
-                if sequence_results and "blast_df" in sequence_results:
-                    blast_df = sequence_results["blast_df"]
-
-            blast_data = BlastData(
-                seq_type=classification_data.seq_type,
-                fasta_file=classification_data.fasta_file,
-                blast_df=blast_df,  # Pass BLAST results to the workflow
+        logger.debug("Running classification workflow via centralized state")
+        
+        # Get current state from centralized pipeline
+        sequence_state = pipeline_state.get_sequence(sequence_id)
+        if not sequence_state:
+            logger.error(f"No sequence state found for {sequence_id}")
+            raise PreventUpdate
+        
+        # Prepare data for workflow
+        blast_data = sequence_state.blast_data
+        if not blast_data:
+            logger.error(f"No BLAST data found for {sequence_id}")
+            raise PreventUpdate
+        
+        # Get metadata
+        meta_df = fetch_meta_data()
+        meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+        
+        # Run workflow directly (no Celery)
+        result = run_classification_workflow_task(
+            workflow_state=workflow_state.to_dict(),
+            blast_data=blast_data.to_dict(),
+            classification_data=classification_data.to_dict(),
+            meta_dict=meta_dict
+        )
+        
+        logger.debug(f"Workflow result type: {type(result)}")
+        
+        # Convert result back to workflow state
+        if isinstance(result, dict):
+            updated_workflow_state = WorkflowState.from_dict(result)
+        else:
+            updated_workflow_state = result
+        
+        # Mark as started and complete
+        updated_workflow_state.workflow_started = True
+        updated_workflow_state.status = "complete"
+        updated_workflow_state.complete = True
+        
+        # Update centralized state with results
+        pipeline_state.update_workflow_state(sequence_id, updated_workflow_state)
+        
+        # If workflow found a match, create enriched classification data
+        if (updated_workflow_state.complete and 
+            updated_workflow_state.found_match and 
+            updated_workflow_state.match_result):
+            
+            logger.info(f"Workflow found match: {updated_workflow_state.match_stage} -> {updated_workflow_state.match_result}")
+            
+            # Create enriched classification data with metadata lookup
+            enriched_classification = _create_enriched_classification(
+                updated_workflow_state.match_stage,
+                updated_workflow_state.match_result,
+                meta_df
             )
-
-            meta_df = fetch_meta_data()
-            meta_dict = meta_df.to_dict("records") if meta_df is not None else None
-
-            logger.debug("Running classification workflow directly (no Celery)")
-            # Run the workflow function directly
-            result = run_classification_workflow_task(
-                workflow_state=workflow_state.to_dict(), 
-                blast_data=blast_data.to_dict(), 
-                classification_data=classification_data.to_dict(),
-                meta_dict=meta_dict
-            )
-
-            logger.debug(f"Workflow result type: {type(result)}, content: {result}")
-
-            # Convert result back to workflow state object
-            if isinstance(result, dict):
-                workflow_state = WorkflowState.from_dict(result)
-            else:
-                workflow_state = result
-
-            # Mark as started so we don't run it again
-            workflow_state.workflow_started = True
-
-            # The workflow_state should already be updated by the workflow function
-            # Just ensure the status is set properly
-            workflow_state.status = "complete"
-            workflow_state.complete = True
-
-            logger.debug(
-                f"Final workflow state: complete={workflow_state.complete}, found_match={workflow_state.found_match}, match_stage={workflow_state.match_stage}, match_result={workflow_state.match_result}"
-            )
-
-            # IMPORTANT: Also update the sequence results with classification data for tabbed interface
-            if (
-                workflow_state.complete
-                and workflow_state.found_match
-                and blast_results
-                and blast_results.sequence_results
-            ):
-                logger.info(
-                    "Updating sequence results with workflow classification for tabbed interface"
-                )
-
-                # Get the sequence results for sequence 0 - we'll modify this directly
-                sequence_results = blast_results.sequence_results.get("0")
-                if sequence_results:
-                    # Make a copy of sequence_results to avoid modifying the original
-                    sequence_results = sequence_results.copy()
-
-                    match_stage = workflow_state.match_stage
-                    match_accession = workflow_state.match_result
-
-                    # Create classification data
-                    classification_data = ClassificationData(
-                        source=match_stage,
-                        closest_match=match_accession,
-                        confidence="High"
-                        if match_stage in ["exact", "contained"]
-                        else "Medium"
-                    )
-
-                    # Look up metadata for the matched accession
-                    try:
-                        meta_df = fetch_meta_data()
-                        if meta_df is not None and not meta_df.empty:
-                            meta_match = meta_df[
-                                meta_df["accession_display"] == match_accession
-                            ]
-                            if not meta_match.empty:
-                                logger.debug(f"Found metadata for {match_accession}")
-                                # Add family information
-                                if "familyName" in meta_match.columns:
-                                    family = meta_match["familyName"].iloc[0]
-                                    if family and family != "None":
-                                        classification_data.family = family
-
-                                # Add navis information
-                                if "navis_name" in meta_match.columns:
-                                    navis = meta_match["navis_name"].iloc[0]
-                                    if navis and navis != "None":
-                                        classification_data.navis = navis
-
-                                # Add haplotype information
-                                if "haplotype_name" in meta_match.columns:
-                                    haplotype = meta_match["haplotype_name"].iloc[0]
-                                    if haplotype and haplotype != "None":
-                                        classification_data.haplotype = haplotype
-
-                                # Add match details
-                                if match_stage == "exact":
-                                    classification_data.match_details = (
-                                        f"Exact sequence match to {match_accession}"
-                                    )
-                                elif match_stage == "contained":
-                                    classification_data.match_details = (
-                                        f"Query sequence contained within {match_accession}"
-                                    )
-                                elif match_stage == "similar":
-                                    classification_data.match_details = (
-                                        f"High similarity to {match_accession}"
-                                    )
-                                else:
-                                    classification_data.match_details = (
-                                        f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
-                                    )
-                    except Exception as e:
-                        logger.error(
-                            f"Error looking up metadata for {match_accession}: {e}"
-                        )
-
-                    # Update the sequence results with classification data
-                    sequence_results["classification"] = classification_data.to_dict()
-                    blast_results.sequence_results["0"] = sequence_results
-                    
-                    # Also update the workflow state's classification_data with the enriched data
-                    workflow_state.classification_data = classification_data.to_dict()
-                    
-                    logger.info(
-                        f"Updated sequence results with classification: {classification_data}"
-                    )
-
-            # Initialize stages if not present
-            if not workflow_state.stages:
-                workflow_state.stages = {
-                    stage["id"]: {"progress": 0, "complete": False}
-                    for stage in WORKFLOW_STAGES
-                }
-
-            return workflow_state.to_dict(), False, blast_results.to_dict()
-
-        # Safety check - should never actually get here due to the early returns above
-        raise PreventUpdate
-
+            
+            # Update centralized state with enriched classification - SINGLE UPDATE
+            pipeline_state.update_classification_data(sequence_id, enriched_classification)
+            
+            logger.info(f"Updated centralized state with enriched classification: {enriched_classification}")
+        
+        # Return synchronized data from centralized state
+        store_data = adapter.sync_all_stores(sequence_id)
+        return store_data["workflow_state"], False, store_data["blast_data"]
+        
     except Exception as e:
-        logger.error(f"Error updating workflow state: {e}")
-        # Update the workflow state with error information
+        logger.error(f"Error in unified workflow state update: {e}")
+        
+        # Update error state in centralized system
         workflow_state.error = str(e)
-        workflow_state.status = "failed"
+        workflow_state.status = "failed" 
         workflow_state.complete = True
-        return workflow_state.to_dict(), False, blast_results.to_dict()
+        pipeline_state.update_workflow_state(sequence_id, workflow_state)
+        pipeline_state.set_sequence_error(sequence_id, str(e))
+        
+        # Return error state
+        store_data = adapter.sync_all_stores(sequence_id)
+        return store_data["workflow_state"], False, store_data["blast_data"]
+
+def _create_enriched_classification(match_stage, match_accession, meta_df):
+    """Create ClassificationData with metadata lookup"""
+    from src.utils.blast_data import ClassificationData
+    
+    # Create base classification
+    classification_data = ClassificationData(
+        source=match_stage,
+        closest_match=match_accession,
+        confidence="High" if match_stage in ["exact", "contained"] else "Medium"
+    )
+    
+    # Look up metadata
+    try:
+        if meta_df is not None and not meta_df.empty:
+            meta_match = meta_df[meta_df["accession_display"] == match_accession]
+            if not meta_match.empty:
+                logger.debug(f"Found metadata for {match_accession}")
+                
+                # Add family, navis, haplotype info
+                for col, attr in [("familyName", "family"), ("navis_name", "navis"), ("haplotype_name", "haplotype")]:
+                    if col in meta_match.columns:
+                        value = meta_match[col].iloc[0]
+                        if value and value != "None":
+                            setattr(classification_data, attr, value)
+                
+                # Add match details
+                if match_stage == "exact":
+                    classification_data.match_details = f"Exact sequence match to {match_accession}"
+                elif match_stage == "contained":
+                    classification_data.match_details = f"Query sequence contained within {match_accession}"
+                elif match_stage == "similar":
+                    classification_data.match_details = f"High similarity to {match_accession}"
+                else:
+                    classification_data.match_details = f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
+            else:
+                logger.warning(f"No metadata found for {match_accession}")
+    except Exception as e:
+        logger.error(f"Error looking up metadata for {match_accession}: {e}")
+    
+    return classification_data
 
 
 @callback(
