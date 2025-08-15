@@ -1248,3 +1248,107 @@ _migration_adapter = MigrationAdapter()
 def get_migration_adapter() -> MigrationAdapter:
     """Get the global migration adapter instance"""
     return _migration_adapter
+
+# =============================================================================
+# MIGRATION UTILITIES
+# =============================================================================
+
+def convert_sequence_analysis_to_legacy_blast_data(analysis: SequenceAnalysis) -> Dict[str, Any]:
+    """
+    Convert a SequenceAnalysis object to legacy BlastData format.
+    
+    This utility helps during the migration period by allowing new code that uses
+    SequenceAnalysis to be compatible with existing code that expects BlastData format.
+    """
+    if not analysis:
+        return None
+        
+    result = {
+        "seq_type": analysis.sequence_type.value,
+        "sequence": analysis.sequence,
+        "fasta_file": analysis.blast_result.fasta_file if analysis.blast_result else None,
+        "blast_content": analysis.blast_result.blast_content if analysis.blast_result else None,
+        "blast_file": analysis.blast_result.blast_file if analysis.blast_result else None,
+        "blast_df": analysis.blast_result.blast_hits if analysis.blast_result else None,
+        "processed": analysis.is_complete(),
+        "error": analysis.error,
+        "processed_sequences": [0] if analysis.is_complete() else [],
+        "total_sequences": 1,
+        "sequence_results": {
+            "0": {
+                "sequence": analysis.sequence,
+                "blast_content": analysis.blast_result.blast_content if analysis.blast_result else None,
+                "blast_file": analysis.blast_result.blast_file if analysis.blast_result else None,
+                "blast_df": analysis.blast_result.blast_hits if analysis.blast_result else None,
+                "processed": analysis.is_complete(),
+                "error": analysis.error,
+            }
+        }
+    }
+    
+    # Add classification data if available
+    if analysis.classification:
+        classification_dict = {
+            "seq_type": analysis.classification.sequence_type.value,
+            "source": analysis.classification.stage.value if analysis.classification.stage else None,
+            "family": analysis.classification.family,
+            "navis": analysis.classification.navis,
+            "haplotype": analysis.classification.haplotype,
+            "closest_match": analysis.classification.closest_match,
+            "match_details": analysis.classification.match_details,
+            "confidence": analysis.classification.confidence.value if analysis.classification.confidence else None,
+            "fasta_file": analysis.blast_result.fasta_file if analysis.blast_result else None,
+        }
+        result["sequence_results"]["0"]["classification"] = classification_dict
+    
+    return result
+
+def convert_sequence_analysis_to_legacy_workflow_state(analysis: SequenceAnalysis) -> Dict[str, Any]:
+    """
+    Convert a SequenceAnalysis object to legacy WorkflowState format.
+    """
+    if not analysis:
+        return None
+        
+    return {
+        "complete": analysis.is_complete(),
+        "error": analysis.error,
+        "found_match": analysis.has_classification(),
+        "match_stage": analysis.classification.stage.value if analysis.classification and analysis.classification.stage else None,
+        "match_result": analysis.classification.closest_match if analysis.classification else None,
+        "classification_data": analysis.classification.to_dict() if analysis.classification else None,
+        "stages": analysis.stage_progress,
+        "task_id": analysis.sequence_id,
+        "status": analysis.status.value,
+        "workflow_started": analysis.status != WorkflowStatus.INITIALIZED,
+        "current_stage": analysis.current_stage,
+        "current_stage_idx": 0,
+        "fetch_ship_params": {
+            "curated": analysis.config.ship_curated_only,
+            "with_sequence": analysis.config.ship_include_sequence,
+            "dereplicate": analysis.config.ship_dereplicate,
+        },
+        "fetch_captain_params": {
+            "curated": analysis.config.captain_curated_only,
+            "with_sequence": analysis.config.captain_include_sequence,
+        }
+    }
+
+def enable_unified_processing():
+    """Enable using the new unified data models globally"""
+    global _use_unified_processing
+    _use_unified_processing = True
+    logger.info("Enabled unified processing with consolidated data models")
+
+def disable_unified_processing():
+    """Disable using the new unified data models globally"""
+    global _use_unified_processing
+    _use_unified_processing = False
+    logger.info("Disabled unified processing, using legacy data models")
+
+def is_unified_processing_enabled():
+    """Check if unified processing is enabled"""
+    return _use_unified_processing
+
+# Global flag for migration
+_use_unified_processing = False
