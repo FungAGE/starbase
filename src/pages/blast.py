@@ -16,10 +16,8 @@ from src.utils.seq_utils import (
     write_temp_fasta,
     seq_processing_error_alert,
 )
-from src.utils.blast_utils import (
-    create_no_matches_alert,
-    parse_blast_xml,
-)
+from src.utils.blast_utils import create_no_matches_alert
+
 
 from src.components.callbacks import (
     curated_switch,
@@ -36,11 +34,7 @@ from src.config.logging import get_logger
 
 from src.utils.blast_data import (
     get_dash_adapter,
-    # Legacy models for backward compatibility
     BlastData, WorkflowState, FetchShipParams, FetchCaptainParams, ClassificationData,
-    # New consolidated models
-    SequenceAnalysis, BlastResult, ClassificationResult,
-    # Utility functions
     safe_convert_sequence_analysis_to_legacy
 )
 
@@ -935,7 +929,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
 
 
 def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_id=None):
-    """Process a single sequence and return structured results - LEGACY VERSION
+    """Process a single sequence and return structured results
     Handle cases where blast_results is:
         - None or invalid
         - raw content (i.e. if it's a string, assume it's content)
@@ -945,11 +939,19 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
     Returns:
         - structured results 
         - converted to dict for backward compatibility
+    
+    - Parse BLAST content if available
+    - Parse the XML file to TSV format
+    - Read the parsed TSV file
+    - Attach BLAST result to analysis
+    - Mark as complete if no errors
     """
 
     from src.utils.blast_data import (
         SequenceAnalysis, BlastResult, SequenceType, WorkflowConfig, WorkflowStatus
     )
+    from src.utils.blast_utils import parse_blast_xml
+
     
     # Extract basic sequence information
     query_header = seq_data.get("header", "query")
@@ -986,11 +988,7 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
             logger.error(error_message)
             analysis.set_error(error_message)
             return analysis
-        
-        # Fetch metadata
-        meta_df = fetch_meta_data()
-        
-        # Run BLAST search
+              
         blast_results = run_blast_search_task(
             query_header=query_header,
             query_seq=query_seq,
@@ -999,7 +997,6 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
             curated=curated,
         )
         
-        # Process BLAST results
         blast_result = BlastResult(
             sequence=query_seq,
             sequence_type=analysis.sequence_type,
@@ -1023,19 +1020,14 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
                     logger.error(f"Failed to read BLAST file {blast_results}: {e}")
                     blast_result.error = f"Failed to read BLAST file: {e}"
             else:
-                # Assume it's content
                 blast_result.blast_content = blast_results
         
-        # Parse BLAST content if available
         if blast_result.blast_file and os.path.exists(blast_result.blast_file) and not blast_result.error:
-            try:
-                from src.utils.blast_utils import parse_blast_xml
-                
-                # Parse the XML file to TSV format
+            try:                
                 blast_tsv = parse_blast_xml(blast_result.blast_file)
                 
                 if blast_tsv and os.path.exists(blast_tsv):
-                    # Read the parsed TSV file
+
                     blast_df = pd.read_csv(blast_tsv, sep="\t")
                     
                     if len(blast_df) == 0:
@@ -1056,10 +1048,8 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
                 logger.error(error_message)
                 blast_result.error = error_message
         
-        # Attach BLAST result to analysis
         analysis.blast_result = blast_result
         
-        # Mark as complete if no errors
         if not blast_result.error:
             analysis.set_complete()
         else:
@@ -2086,22 +2076,18 @@ def update_single_sequence_classification(blast_results_dict, workflow_state_dic
     ],
     prevent_initial_call=True,
 )
-def update_classification_workflow_state_unified(workflow_state_dict, classification_data_dict, blast_results_dict):
+def update_classification_workflow_state(workflow_state_dict, classification_data_dict, blast_results_dict):
     """
-    REPLACEMENT for update_classification_workflow_state using centralized state.
-    
-    This eliminates complex state synchronization by using the centralized pipeline state.
+    Update the classification workflow state using the centralized pipeline state.
     """
     
     # Early exit conditions
     if workflow_state_dict is None or classification_data_dict is None:
         raise PreventUpdate
     
-    # Get centralized state adapter
     adapter = get_dash_adapter()
     pipeline_state = adapter.pipeline_state
     
-    # Convert to objects
     workflow_state = WorkflowState.from_dict(workflow_state_dict)
     classification_data = ClassificationData.from_dict(classification_data_dict)
     blast_results = BlastData.from_dict(blast_results_dict) if blast_results_dict else None

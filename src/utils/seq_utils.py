@@ -102,6 +102,17 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
         seq_list: List of dictionaries with sequence metadata
         n_seqs: Number of sequences
         error: Error message (if any)
+            - red alerts are errors that should prevent processing
+            - with throw an error if:
+                - no input is provided
+                - both text and file contents are provided
+                - sequences are of different types
+                - no sequences could be parsed
+                - error parsing text input or file contents
+                - error guessing sequence type
+                - error parsing file contents
+                - no sequences were parsed
+                - error processing the sequence
     """
     error = None
     try:
@@ -120,7 +131,6 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
                 query_text_input, max_sequences=max_sequences
             )
             if error and isinstance(error, dmc.Alert) and error.color == "red":
-                # Only treat red alerts as errors that should prevent processing
                 logger.error(f"Error parsing text input: {error}")
                 return None, None, None, error
         elif query_file_contents:
@@ -128,8 +138,6 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             seq_list, n_seqs, warning_or_error = parse_fasta_from_file(
                 query_file_contents, max_sequences=max_sequences
             )
-
-            # Only treat real errors (red alerts) as blocking errors
             if (
                 warning_or_error
                 and isinstance(warning_or_error, dmc.Alert)
@@ -138,7 +146,6 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
                 logger.error(f"Error parsing file contents: {warning_or_error}")
                 return None, None, None, warning_or_error
 
-        # Return early if seq_list is None
         if seq_list is None:
             logger.error("No sequences were parsed")
             return None, None, None, error if error else "No sequences could be parsed"
