@@ -606,18 +606,22 @@ class PipelineState:
         self._sequences: Dict[str, SequenceState] = {}
         self._active_sequence_id: Optional[str] = None
         
-    def add_sequence(self, sequence_id: str) -> SequenceState:
+    def add_sequence(self, sequence_id: str, clear_existing: bool = False) -> SequenceState:
         """Add a new sequence to track"""
         if sequence_id in self._sequences:
-            logger.warning(f"Sequence {sequence_id} already exists, returning existing")
-            return self._sequences[sequence_id]
+            if clear_existing:
+                logger.info(f"Clearing existing sequence {sequence_id} and creating new one")
+                # Clear the existing sequence state
+                del self._sequences[sequence_id]
+            else:
+                logger.warning(f"Sequence {sequence_id} already exists, returning existing")
+                return self._sequences[sequence_id]
             
         sequence_state = SequenceState(sequence_id=sequence_id)
         self._sequences[sequence_id] = sequence_state
         
-        # Set as active if it's the first sequence
-        if self._active_sequence_id is None:
-            self._active_sequence_id = sequence_id
+        # Set as active sequence
+        self._active_sequence_id = sequence_id
             
         logger.debug(f"Added sequence {sequence_id} to pipeline state")
         return sequence_state
@@ -689,6 +693,22 @@ class PipelineState:
         if sequence_id in self._sequences:
             self._sequences[sequence_id].error = error
             logger.error(f"Set error for sequence {sequence_id}: {error}")
+    
+    def clear_all_sequences(self):
+        """Clear all sequences from the pipeline state"""
+        logger.info("Clearing all sequences from pipeline state")
+        self._sequences.clear()
+        self._active_sequence_id = None
+    
+    def start_new_submission(self, sequence_id: str) -> SequenceState:
+        """Start a new submission by clearing old state and adding the sequence"""
+        logger.info(f"Starting new submission with sequence ID: {sequence_id}")
+        # Clear all previous sequences to ensure clean state
+        self.clear_all_sequences()
+        # Add the new sequence
+        sequence_state = self.add_sequence(sequence_id)
+        logger.info(f"New submission initialized - active sequence: {self._active_sequence_id}")
+        return sequence_state
     
     def get_processed_sequences(self) -> List[str]:
         """Get list of processed sequence IDs"""
@@ -1054,7 +1074,7 @@ class DashStateAdapter:
         # Always prefer the centralized classification data
         if sequence_state.classification_data:
             classification_dict = sequence_state.classification_data.to_dict()
-            logger.debug(f"Returning classification data for UI: {classification_dict}")
+            logger.debug(f"Returning classification data for UI (sequence {sequence_id}): {classification_dict}")
             return classification_dict
             
         # Fallback to workflow state classification data if available
