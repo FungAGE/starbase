@@ -1145,7 +1145,8 @@ def process_multiple_sequences(
         logger.debug(f"Processing sequence submission with ID: {sequence_id}, sequences: {len(seq_list)}")
         
         pipeline_state = adapter.pipeline_state
-        sequence_state = pipeline_state.add_sequence(sequence_id)
+        # Start a new submission - this clears any old state
+        sequence_state = pipeline_state.start_new_submission(sequence_id)
 
         first_seq = seq_list[0]
         logger.debug(f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}")
@@ -1237,6 +1238,10 @@ def process_multiple_sequences(
 def _return_error_state(adapter, sequence_id, error_message):
     """Helper function to return consistent error state"""
     pipeline_state = adapter.pipeline_state
+    
+    # Ensure sequence exists before setting error
+    if sequence_id not in pipeline_state._sequences:
+        pipeline_state.add_sequence(sequence_id)
     
     # Set error in centralized state
     pipeline_state.set_sequence_error(sequence_id, error_message)
@@ -2027,9 +2032,7 @@ def update_single_sequence_classification(blast_results_dict, workflow_state_dic
     
     # Get the centralized state adapter
     adapter = get_dash_adapter()
-    
-    logger.info("update_single_sequence_classification_unified CALLED")
-    
+        
     # Convert inputs to objects for compatibility
     blast_results = BlastData.from_dict(blast_results_dict) if blast_results_dict else None
     workflow_state = WorkflowState.from_dict(workflow_state_dict) if workflow_state_dict else None
@@ -2164,24 +2167,29 @@ def update_classification_workflow_state_unified(workflow_state_dict, classifica
         # Update centralized state with results
         pipeline_state.update_workflow_state(sequence_id, updated_workflow_state)
         
-        # If workflow found a match, create enriched classification data
-        if (updated_workflow_state.complete and 
-            updated_workflow_state.found_match and 
-            updated_workflow_state.match_result):
-            
-            logger.info(f"Workflow found match: {updated_workflow_state.match_stage} -> {updated_workflow_state.match_result}")
-            
-            # Create enriched classification data with metadata lookup
-            enriched_classification = _create_enriched_classification(
-                updated_workflow_state.match_stage,
-                updated_workflow_state.match_result,
-                meta_df
-            )
-            
-            # Update centralized state with enriched classification - SINGLE UPDATE
-            pipeline_state.update_classification_data(sequence_id, enriched_classification)
-            
-            logger.info(f"Updated centralized state with enriched classification: {enriched_classification}")
+        # Handle workflow completion
+        if updated_workflow_state.complete:
+            if (updated_workflow_state.found_match and updated_workflow_state.match_result):
+                logger.info(f"Workflow found match: {updated_workflow_state.match_stage} -> {updated_workflow_state.match_result}")
+                
+                # Create enriched classification data with metadata lookup
+                enriched_classification = _create_enriched_classification(
+                    updated_workflow_state.match_stage,
+                    updated_workflow_state.match_result,
+                    meta_df
+                )
+                
+                # Update centralized state with enriched classification - SINGLE UPDATE
+                pipeline_state.update_classification_data(sequence_id, enriched_classification)
+                
+                logger.info(f"Updated centralized state with enriched classification: {enriched_classification}")
+            else:
+                logger.info("Workflow completed but no matches found - clearing classification data")
+                # Clear any empty classification data when no matches are found
+                sequence_state = pipeline_state.get_sequence(sequence_id)
+                if sequence_state:
+                    sequence_state.classification_data = None
+                    logger.debug("Cleared empty classification data from centralized state")
         
         # Return synchronized data from centralized state
         store_data = adapter.sync_all_stores(sequence_id)

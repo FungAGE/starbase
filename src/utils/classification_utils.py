@@ -1673,16 +1673,21 @@ def create_classification_card(classification_data):
     # Debug: Log the classification data being passed to the card
     logger.debug(f"create_classification_card received data: {classification_data}")
 
-    source = classification_data.get("source", "Unknown")
+    source = classification_data.get("source")
     family = classification_data.get("family")
     navis = classification_data.get("navis")
     haplotype = classification_data.get("haplotype")
     # TODO: update this to be the accession_display (accession_tag and version_tag)
     closest_match = classification_data.get("closest_match")
     match_details = classification_data.get("match_details")
-    confidence = classification_data.get("confidence", "Low")
+    confidence = classification_data.get("confidence")
     
     logger.debug(f"Extracted values - source: {source}, family: {family}, navis: {navis}, haplotype: {haplotype}, confidence: {confidence}")
+    
+    # Check if this is an empty classification (all important fields are None)
+    if not any([source, family, navis, haplotype, closest_match, confidence]):
+        logger.debug("Classification data is empty (all fields are None), returning None")
+        return None
 
     source_color = source_colors.get(source, "gray")
     confidence_color = confidence_colors.get(confidence, "gray")
@@ -1815,90 +1820,96 @@ def create_classification_output(workflow_state=None, classification_data=None):
     )
 
     if classification_data:
-        return html.Div(
-            [
-                classification_title,
-                create_classification_card(classification_data),
-            ]
-        )
-    else:
-        # Handle workflow_state as either object or dictionary
-        workflow_complete = False
-        if workflow_state:
-            if hasattr(workflow_state, 'complete'):
-                workflow_complete = workflow_state.complete
-            elif isinstance(workflow_state, dict):
-                workflow_complete = workflow_state.get('complete', False)
-        
-        # Check if workflow is still running
-        if workflow_state and not workflow_complete:
-            # Calculate progress from workflow state
-            progress = 0
-            current_stage_text = "Starting classification..."
-
-            # Get current stage index
-            current_stage_idx = None
-            if hasattr(workflow_state, 'current_stage_idx'):
-                current_stage_idx = workflow_state.current_stage_idx
-            elif isinstance(workflow_state, dict):
-                current_stage_idx = workflow_state.get('current_stage_idx')
-                
-            if current_stage_idx is not None:
-                try:
-                    stage_idx = int(current_stage_idx)
-                    total_stages = 6  # Number of workflow stages
-
-                    # Get current stage progress
-                    current_stage = None
-                    stages_dict = None
-                    if hasattr(workflow_state, 'current_stage'):
-                        current_stage = workflow_state.current_stage
-                        stages_dict = workflow_state.stages
-                    elif isinstance(workflow_state, dict):
-                        current_stage = workflow_state.get('current_stage')
-                        stages_dict = workflow_state.get('stages', {})
-
-                    if current_stage and current_stage in stages_dict:
-                        stage_data = stages_dict[current_stage]
-                        stage_progress = (
-                            stage_data.get("progress", 0)
-                            if isinstance(stage_data, dict)
-                            else 0
-                        )
-                    else:
-                        stage_progress = 0
-
-                    # Calculate overall progress
-                    progress = int(
-                        (stage_idx / total_stages) * 100
-                        + (stage_progress / total_stages)
-                    )
-                    progress = max(0, min(100, progress))
-                    # get stage label from WORKFLOW_STAGES
-                    stage_labels = {
-                        stage["id"]: stage["label"] for stage in WORKFLOW_STAGES
-                    }
-                    current_stage_text = stage_labels.get(
-                        current_stage,
-                        f"Processing {current_stage}"
-                        if current_stage
-                        else "Running classification...",
-                    )
-
-                except (ValueError, ZeroDivisionError, TypeError):
-                    progress = 0
-
-            # Handle case where workflow started but current_stage info is missing
-            if not current_stage_text or current_stage_text == "Processing None":
-                current_stage_text = "Running comprehensive classification..."
-
-            # Workflow is still running - show progress bar and loader
+        classification_card = create_classification_card(classification_data)
+        if classification_card:
             return html.Div(
                 [
                     classification_title,
-                    dmc.Stack(
-                        [
-                            dmc.Group(
+                    classification_card,
+                ]
+            )
+        else:
+            # Classification data exists but is empty - treat as no classification
+            classification_data = None
+    
+    # No valid classification data - check workflow state
+    # Handle workflow_state as either object or dictionary
+    workflow_complete = False
+    if workflow_state:
+        if hasattr(workflow_state, 'complete'):
+            workflow_complete = workflow_state.complete
+        elif isinstance(workflow_state, dict):
+            workflow_complete = workflow_state.get('complete', False)
+        
+    # Check if workflow is still running
+    if workflow_state and not workflow_complete:
+        # Calculate progress from workflow state
+        progress = 0
+        current_stage_text = "Starting classification..."
+
+        # Get current stage index
+        current_stage_idx = None
+        if hasattr(workflow_state, 'current_stage_idx'):
+            current_stage_idx = workflow_state.current_stage_idx
+        elif isinstance(workflow_state, dict):
+            current_stage_idx = workflow_state.get('current_stage_idx')
+                
+        if current_stage_idx is not None:
+            try:
+                stage_idx = int(current_stage_idx)
+                total_stages = 6  # Number of workflow stages
+
+                # Get current stage progress
+                current_stage = None
+                stages_dict = None
+                if hasattr(workflow_state, 'current_stage'):
+                    current_stage = workflow_state.current_stage
+                    stages_dict = workflow_state.stages
+                elif isinstance(workflow_state, dict):
+                    current_stage = workflow_state.get('current_stage')
+                    stages_dict = workflow_state.get('stages', {})
+
+                if current_stage and current_stage in stages_dict:
+                    stage_data = stages_dict[current_stage]
+                    stage_progress = (
+                        stage_data.get("progress", 0)
+                        if isinstance(stage_data, dict)
+                        else 0
+                    )
+                else:
+                    stage_progress = 0
+
+                # Calculate overall progress
+                progress = int(
+                    (stage_idx / total_stages) * 100
+                    + (stage_progress / total_stages)
+                )
+                progress = max(0, min(100, progress))
+                # get stage label from WORKFLOW_STAGES
+                stage_labels = {
+                    stage["id"]: stage["label"] for stage in WORKFLOW_STAGES
+                }
+                current_stage_text = stage_labels.get(
+                    current_stage,
+                    f"Processing {current_stage}"
+                    if current_stage
+                    else "Running classification...",
+                )
+
+            except (ValueError, ZeroDivisionError, TypeError):
+                progress = 0
+
+        # Handle case where workflow started but current_stage info is missing
+        if not current_stage_text or current_stage_text == "Processing None":
+            current_stage_text = "Running comprehensive classification..."
+
+        # Workflow is still running - show progress bar and loader
+        return html.Div(
+            [
+                classification_title,
+                dmc.Stack(
+                    [
+                        dmc.Group(
                                 [
                                     dmc.Loader(size="sm", color="blue"),
                                     dmc.Text(
@@ -1927,16 +1938,16 @@ def create_classification_output(workflow_state=None, classification_data=None):
                     ),
                 ]
             )
-        else:
-            # Workflow is complete but no classification available
-            return html.Div(
-                [
-                    classification_title,
-                    dmc.Alert(
-                        title="No Classification Available",
-                        children="Could not classify this sequence with any available method.",
-                        color="yellow",
-                        variant="light",
-                    ),
+    else:
+        # Workflow is complete but no classification available
+        return html.Div(
+            [
+                classification_title,
+                dmc.Alert(
+                    title="No Classification Available",
+                    children="Could not classify this sequence with any available method.",
+                    color="yellow",
+                    variant="light",
+                ),
                 ]
             )
