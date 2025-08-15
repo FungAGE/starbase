@@ -1350,5 +1350,42 @@ def is_unified_processing_enabled():
     """Check if unified processing is enabled"""
     return _use_unified_processing
 
-# Global flag for migration
-_use_unified_processing = False
+# Global flag for migration - ENABLED by default for complete migration
+_use_unified_processing = True
+
+def safe_convert_sequence_analysis_to_legacy(analysis: SequenceAnalysis, tab_idx: int = 0) -> Optional[Dict[str, Any]]:
+    """
+    Safely convert SequenceAnalysis to legacy format with proper error handling.
+    
+    Args:
+        analysis: The SequenceAnalysis object to convert
+        tab_idx: The tab index for multi-sequence results (default: 0)
+    
+    Returns:
+        Dictionary in legacy BlastData format, or None if conversion fails
+    """
+    if not analysis:
+        logger.warning("Cannot convert None analysis to legacy format")
+        return None
+    
+    try:
+        # Convert to legacy format
+        legacy_dict = convert_sequence_analysis_to_legacy_blast_data(analysis)
+        
+        if not legacy_dict:
+            logger.warning("Conversion to legacy format returned None")
+            return None
+        
+        # Update the sequence_results key to match the tab index if needed
+        if tab_idx != 0 and "sequence_results" in legacy_dict:
+            # Move from "0" to str(tab_idx)
+            seq_data = legacy_dict["sequence_results"]["0"]
+            legacy_dict["sequence_results"] = {str(tab_idx): seq_data}
+            legacy_dict["processed_sequences"] = [tab_idx] if analysis.is_complete() else []
+        
+        logger.debug(f"Successfully converted SequenceAnalysis to legacy format for tab {tab_idx}")
+        return legacy_dict
+        
+    except Exception as e:
+        logger.error(f"Error converting SequenceAnalysis to legacy format: {e}")
+        return None
