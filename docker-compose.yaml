@@ -8,7 +8,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - FLASK_DEBUG=dev
       - PYTHONPATH=/home/starbase:/home/starbase/src
       - PYTHONNOUSERSITE=1  # Prevent loading packages from user site
     volumes:

@@ -3,7 +3,6 @@ from dash import html
 
 from src.config.settings import (
     HOME_URL,
-    DL_URL,
     WIKI_URL,
     PGV_URL,
     BLAST_URL,
@@ -16,16 +15,7 @@ def navmenu(buttons_disabled=False):
     navbar_content = [
         dbc.NavItem(
             dbc.NavLink(
-                ["Download ", html.Span("starbase", className="logo-text")],
-                href=DL_URL,
-                active="exact",
-                className="nav-item-link",
-                disabled=buttons_disabled,
-            )
-        ),
-        dbc.NavItem(
-            dbc.NavLink(
-                "Wiki",
+                "Wiki & Download",
                 href=WIKI_URL,
                 active="exact",
                 className="nav-item-link",

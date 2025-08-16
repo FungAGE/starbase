@@ -183,6 +183,8 @@ def fetch_ships(
     Returns:
         pd.DataFrame: DataFrame containing ship data
     """
+    import re
+
     session = StarbaseSession()
 
     base_query = """
@@ -225,7 +227,14 @@ def fetch_ships(
 
     query = base_query
 
+    use_accessions = []
     if accession_tags:
+        for accession in accession_tags:
+            if re.match("\..*", accession):
+                use_accessions.append(re.sub(pattern="\..*", repl="", string=accession))
+            else:
+                use_accessions.append(accession)
+
         query += " AND a.accession_tag IN ({})".format(
             ",".join(f"'{tag}'" for tag in accession_tags)
         )

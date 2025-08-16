@@ -154,17 +154,35 @@ def run_single_pgv_task(gff_file, tmp_file):
 
 
 # @celery.task(name="run_classification_workflow_task", bind=True)
-def run_classification_workflow_task(class_dict, meta_dict=None):
-    """Function to run the classification workflow.
+def run_classification_workflow_task(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+    """
+    Run the main classification workflow.
+    This workflow runs the following tasks sequentially:
+        1. Exact match check
+        2. Contained match check
+        3. Similarity match check
+        4. Family classification
+        5. Navis classification
+        6. Haplotype classification
 
-    The workflow runs tasks sequentially.
+    Args:
+        workflow_state_dict: WorkflowState object or dictionary
+        blast_data_dict: BlastData object or dictionary
+        classification_data_dict: ClassificationData object or dictionary
+        meta_dict: MetaData object or dictionary
     """
     from src.utils.classification_utils import run_classification_workflow
-    from src.utils.blast_data import WorkflowState
 
     try:
+        # Convert dictionaries to objects for the workflow function
+        from src.utils.blast_data import WorkflowState, BlastData, ClassificationData
+        
+        workflow_state_obj = WorkflowState.from_dict(workflow_state) if isinstance(workflow_state, dict) else workflow_state
+        blast_data_obj = BlastData.from_dict(blast_data) if isinstance(blast_data, dict) else blast_data
+        classification_data_obj = ClassificationData.from_dict(classification_data) if isinstance(classification_data, dict) and classification_data else ClassificationData()
+        
         # Run the sequential workflow
-        result = run_classification_workflow(class_dict, meta_dict)
+        result = run_classification_workflow(workflow_state_obj, blast_data_obj, classification_data_obj, meta_dict)
 
         # If result is None or empty, return a default error state
         if result is None:
@@ -185,29 +203,29 @@ def run_classification_workflow_task(class_dict, meta_dict=None):
                 "task_id": "",
             }
 
-        # Convert WorkflowState objects to dictionaries
-        if isinstance(result, WorkflowState):
-            logger.debug("Converting WorkflowState object to dictionary")
-            result = result.to_dict()
-
         # Ensure result is a dictionary
         if not isinstance(result, dict):
-            logger.error(f"Workflow result is not a dictionary: {type(result)}")
-            return {
-                "complete": True,
-                "error": f"Invalid workflow result type: {type(result)}",
-                "status": "failed",
-                "found_match": False,
-                "match_stage": None,
-                "match_result": None,
-                "workflow_started": True,
-                "current_stage": None,
-                "current_stage_idx": 0,
-                "start_time": 0.0,
-                "stages": {},
-                "class_dict": {},
-                "task_id": "",
-            }
+            # Convert WorkflowState object to dictionary if needed
+            if hasattr(result, 'to_dict'):
+                result = result.to_dict()
+                logger.debug("Converted WorkflowState object to dictionary")
+            else:
+                logger.error(f"Workflow result is not a dictionary: {type(result)}")
+                return {
+                    "complete": True,
+                    "error": f"Invalid workflow result type: {type(result)}",
+                    "status": "failed",
+                    "found_match": False,
+                    "match_stage": None,
+                    "match_result": None,
+                    "workflow_started": True,
+                    "current_stage": None,
+                    "current_stage_idx": 0,
+                    "start_time": 0.0,
+                    "stages": {},
+                    "class_dict": {},
+                    "task_id": "",
+                }
 
         # Test JSON serialization before returning
         try:
