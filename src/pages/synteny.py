@@ -97,8 +97,8 @@ layout = dmc.Container(
                                                                 dmc.NumberInput(
                                                                     label="Identity Threshold",
                                                                     id="synteny-identity-threshold",
-                                                                    value=0.9,
-                                                                    min=0,
+                                                                    value=0.3,
+                                                                    min=0.1,
                                                                     max=1,
                                                                     step=0.1,
                                                                     description="Minimum identity for showing links",
@@ -106,9 +106,9 @@ layout = dmc.Container(
                                                                 dmc.NumberInput(
                                                                     label="Scale Factor",
                                                                     id="synteny-scale-factor",
-                                                                    value=30,
+                                                                    value=10,
                                                                     min=1,
-                                                                    max=100,
+                                                                    max=50,
                                                                     description="Scaling factor for visualization",
                                                                 ),
                                                                 dmc.NumberInput(
