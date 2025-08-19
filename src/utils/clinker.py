@@ -79,12 +79,20 @@ def process_gbk_files(gbk_files):
             logger.info(f"Successfully parsed {len(clusters)} clusters")
             
             # Use align_clusters to create a Globaligner object
-            globaligner = align_clusters(*clusters)
+            # Set a lower cutoff for alignment to handle potentially poor translations
+            globaligner = align_clusters(*clusters, cutoff=0.1)
             logger.info(f"Successfully created globaligner with {len(globaligner.clusters)} clusters")
             return globaligner
         except Exception as e:
             logger.error(f"Error parsing files with clinker: {str(e)}")
-            raise
+            # If alignment fails, try with an even lower cutoff or no alignment
+            try:
+                logger.warning("Retrying with no sequence alignment...")
+                globaligner = align_clusters(*clusters, cutoff=0.0)
+                return globaligner
+            except Exception as e2:
+                logger.error(f"Failed even with no alignment: {str(e2)}")
+                raise e
                 
     except Exception as e:
         logger.error(f"Error in process_gbk_files: {str(e)}", exc_info=True)

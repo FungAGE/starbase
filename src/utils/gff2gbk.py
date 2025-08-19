@@ -153,7 +153,8 @@ def _extract_regions(gff_iterator):
 
 def _flatten_features(rec):
     """Make sub_features in an input rec flat for output.
-    GenBank does not handle nested features, so we want to make everything top level."""
+    GenBank does not handle nested features, so we want to make everything top level.
+    Also ensure proper protein translations for CDS features."""
     try:
         out = []
         for f in rec.features:
@@ -161,6 +162,10 @@ def _flatten_features(rec):
             while len(cur) > 0:
                 nextf = []
                 for curf in cur:
+                    # Fix protein translations for CDS features
+                    if curf.type == "CDS":
+                        curf = _fix_cds_translation(curf, rec.seq)
+                    
                     out.append(curf)
                     if len(curf.sub_features) > 0:
                         nextf.extend(curf.sub_features)
@@ -170,6 +175,31 @@ def _flatten_features(rec):
     except Exception as e:
         logger.error(f"Error flattening features for record {rec.id}: {str(e)}")
         raise
+
+
+def _fix_cds_translation(feature, sequence):
+    """Ensure CDS features have correct protein translations."""
+    try:
+        # Extract the CDS sequence
+        cds_seq = feature.extract(sequence)
+        
+        # Translate to protein (handle different genetic codes if needed)
+        protein_seq = cds_seq.translate(table=1, cds=True)  # Standard genetic code
+        
+        # Update the translation qualifier
+        if 'translation' not in feature.qualifiers:
+            feature.qualifiers['translation'] = [str(protein_seq)]
+        else:
+            # Replace existing translation with correct one
+            feature.qualifiers['translation'] = [str(protein_seq)]
+            
+        logger.debug(f"Updated translation for CDS at {feature.location}")
+        
+    except Exception as e:
+        logger.warning(f"Could not fix translation for CDS at {feature.location}: {str(e)}")
+        # Keep the original feature if translation fails
+        
+    return feature
 
 
 if __name__ == "__main__":
