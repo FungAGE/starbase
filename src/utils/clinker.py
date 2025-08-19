@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from clinker.classes import parse_files
+from clinker.align import align_clusters
 from src.utils.gff2gbk import main as gff2gb
 
 logger = logging.getLogger(__name__)
@@ -45,15 +46,22 @@ def process_local_files(gff_paths, fasta_paths):
         logger.error(f"Error in process_local_files: {str(e)}", exc_info=True)
         return None
 
-def process_gbk_files(gbk_dir):
-    """Process GenBank files directly, with a limit of 4 files"""
+def process_gbk_files(gbk_files):
+    """Process GenBank files directly, with a limit of 4 files
+    
+    Args:
+        gbk_files: List of GenBank file paths or directory path
+    """
     try:
-        # Get all GenBank files from the directory
-        gbk_dir = Path(gbk_dir)
-        gbk_files = list(gbk_dir.glob("*.gbk"))
+        # Handle both directory path and list of files
+        if isinstance(gbk_files, (str, Path)):
+            gbk_dir = Path(gbk_files)
+            gbk_files = list(gbk_dir.glob("*.gbk"))
+        else:
+            gbk_files = [Path(f) for f in gbk_files]
         
         if not gbk_files:
-            logger.error(f"No GenBank files found in {gbk_dir}")
+            logger.error(f"No GenBank files found")
             return None
             
         # Check if there are too many files
@@ -66,9 +74,14 @@ def process_gbk_files(gbk_dir):
         # Parse files using clinker
         logger.info("Parsing files with clinker...")
         try:
+            # parse_files returns a list of Cluster objects
             clusters = parse_files(gbk_files)
             logger.info(f"Successfully parsed {len(clusters)} clusters")
-            return clusters
+            
+            # Use align_clusters to create a Globaligner object
+            globaligner = align_clusters(*clusters)
+            logger.info(f"Successfully created globaligner with {len(globaligner.clusters)} clusters")
+            return globaligner
         except Exception as e:
             logger.error(f"Error parsing files with clinker: {str(e)}")
             raise
@@ -111,7 +124,8 @@ def create_clustermap_data(globaligner, use_file_order=False):
                     "name": gene.get('label', gene['uid']),
                     "start": gene['start'],
                     "end": gene['end'],
-                    "strand": gene['strand']
+                    "strand": gene['strand'],
+                    "names": gene.get('names', {})  # Include gene names for labeling
                 }
                 formatted_locus['genes'].append(formatted_gene)
                 
@@ -122,6 +136,7 @@ def create_clustermap_data(globaligner, use_file_order=False):
     # Process links
     for link in data['links']:
         formatted_link = {
+            "uid": f"link_{link['query']['uid']}_{link['target']['uid']}",
             "query": {
                 "uid": link['query']['uid'],
                 "name": link['query'].get('label', link['query']['uid'])
@@ -151,6 +166,39 @@ def create_clustermap_data(globaligner, use_file_order=False):
         "links": links,
         "groups": groups
     }
+
+def get_clustermap_json(gbk_files, identity_threshold=0.3, use_file_order=False):
+    """Process GenBank files and return JSON data for ClusterMap.js
+    
+    Args:
+        gbk_files: List of GenBank file paths
+        identity_threshold: Minimum identity threshold for links
+        use_file_order: Whether to use file order for clustering
+        
+    Returns:
+        dict: JSON-serializable data for ClusterMap.js
+    """
+    try:
+        # Process the GenBank files
+        globaligner = process_gbk_files(gbk_files)
+        if not globaligner:
+            raise ValueError("Failed to process GenBank files")
+        
+        # Create the clustermap data
+        clustermap_data = create_clustermap_data(globaligner, use_file_order)
+        
+        # Filter links by identity threshold
+        if identity_threshold > 0:
+            clustermap_data['links'] = [
+                link for link in clustermap_data['links'] 
+                if link['identity'] >= identity_threshold
+            ]
+        
+        return clustermap_data
+        
+    except Exception as e:
+        logger.error(f"Error creating clustermap JSON: {str(e)}")
+        raise
 
 def custom_save_html(data, output):
     """Customized version of clinker's save_html function"""
