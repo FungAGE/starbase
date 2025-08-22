@@ -41,6 +41,7 @@ layout = dmc.Container(
     children=[
         dcc.Location(id="synteny-url", refresh=False),
         dcc.Store(id="synteny-data-store"),
+        dcc.Store(id="synteny-viz-id-store"),
         
         # Header Section
         dmc.Paper(
@@ -67,88 +68,80 @@ layout = dmc.Container(
                     children=[
                         dmc.Paper(
                             children=dmc.Stack([
-                                dmc.Group(
-                                    pos="apart",
-                                    children=[
-                                        dmc.Title("Select Starships", order=2),
-                                        dmc.Button(
-                                            dmc.Text("Generate Visualization", size="lg"),
-                                            id="synteny-update-button",
-                                            variant="gradient",
-                                            gradient={"from": "indigo", "to": "cyan"},
-                                            leftSection=html.I(className="bi bi-diagram-3"),
-                                        ),
-                                    ],
-                                ),
-                                
+                                dmc.Stack([
+                                    dmc.Title("Select Starships", order=2),
+                                    # Table
+                                    dcc.Loading(
+                                        id="synteny-loading",
+                                        type="circle",
+                                        children=html.Div(id="synteny-table"),
+                                    ),
+                                ], gap="sm"),                                
                                 # Configuration Controls
                                 dmc.Accordion(
                                     variant="filled",
                                     chevronPosition="right",
                                     chevronSize=16,
-                                    children=[                                        
-                                    dmc.AccordionItem(
-                                        value="visualization-configuration",
-                                        children=[
-                                                    dmc.Group(
-                                                        pos="apart",
-                                                        children=[
-                                                            dmc.Stack([
-                                                                dmc.NumberInput(
-                                                                    label="Identity Threshold",
-                                                                    id="synteny-identity-threshold",
-                                                                    value=0.3,
-                                                                    min=0.1,
-                                                                    max=1,
-                                                                    step=0.1,
-                                                                    description="Minimum identity for showing links",
-                                                                ),
-                                                                dmc.NumberInput(
-                                                                    label="Scale Factor",
-                                                                    id="synteny-scale-factor",
-                                                                    value=10,
-                                                                    min=1,
-                                                                    max=50,
-                                                                    description="Scaling factor for visualization",
-                                                                ),
-                                                                dmc.NumberInput(
-                                                                    label="Cluster Spacing",
-                                                                    id="synteny-cluster-spacing",
-                                                                    value=50,
-                                                                    min=10,
-                                                                    max=200,
-                                                                    description="Vertical spacing between clusters",
-                                                                ),
-                                                                dmc.Switch(
-                                                                    id="synteny-use-file-order",
-                                                                    label="Use File Order",
-                                                                    checked=False,
-                                                                    description="Maintain original file order",
-                                                                ),
-                                                                dmc.Switch(
-                                                                    id="synteny-show-links",
-                                                                    label="Show Links",
-                                                                    checked=True,
-                                                                    description="Display synteny links",
-                                                                ),
-                                                                dmc.Switch(
-                                                                    id="synteny-show-gene-labels",
-                                                                    label="Show Gene Labels",
-                                                                    checked=False,
-                                                                    description="Display gene labels",
-                                                                ),
-                                                            ], gap="sm")
-                                                        ]
-                                                    )   
-                                                ],
-                                            ),
-                                        ],
+                                    value="visualization-settings",
+                                    children=[
+                                        dmc.AccordionItem(
+                                            value="visualization-settings",
+                                            children=[
+                                                dmc.AccordionControl(dmc.Title("Visualization Settings", order=3)),
+                                                dmc.AccordionPanel([
+                                                    dmc.Stack([
+                                                        dmc.NumberInput(
+                                                            label="Identity Threshold",
+                                                            id="synteny-identity-threshold",
+                                                            value=0.3,
+                                                            min=0.1,
+                                                            max=1,
+                                                            step=0.1,
+                                                            description="Minimum identity for showing links",
+                                                        ),
+                                                        dmc.NumberInput(
+                                                            label="Scale Factor",
+                                                            id="synteny-scale-factor",
+                                                            value=10,
+                                                            min=1,
+                                                            max=50,
+                                                            description="Scaling factor for visualization",
+                                                        ),
+                                                        dmc.NumberInput(
+                                                            label="Cluster Spacing",
+                                                            id="synteny-cluster-spacing",
+                                                            value=50,
+                                                            min=10,
+                                                            max=200,
+                                                            description="Vertical spacing between clusters",
+                                                        ),
+                                                        dmc.Switch(
+                                                            id="synteny-use-file-order",
+                                                            label="Maintain original file order",
+                                                            checked=False,
+                                                        ),
+                                                        dmc.Switch(
+                                                            id="synteny-show-links",
+                                                            label="Display synteny links",
+                                                            checked=True,
+                                                        ),
+                                                        dmc.Switch(
+                                                            id="synteny-show-gene-labels",
+                                                            label="Display gene labels",
+                                                            checked=False,
+                                                        ),
+                                                    ], gap="sm")
+                                                ])
+                                            ],
+                                        ),
+                                    ],
                                     ),
-                                # Table
-                                dcc.Loading(
-                                    id="synteny-loading",
-                                    type="circle",
-                                    children=html.Div(id="synteny-table"),
+                                dmc.Button(
+                                    dmc.Text("Generate Visualization", size="lg"),
+                                    id="synteny-update-button",
+                                    variant="gradient",
+                                    gradient={"from": "indigo", "to": "cyan"},
+                                    leftSection=html.I(className="bi bi-diagram-3"),
                                 ),
                             ], gap="md"),
                             p="xl",
@@ -176,9 +169,6 @@ layout = dmc.Container(
                                                 "height": "800px",
                                                 "width": "100%",
                                                 "overflow": "auto",
-                                                "backgroundColor": "#f8f9fa",
-                                                "border": "1px solid #dee2e6",
-                                                "borderRadius": "4px",
                                             },
                                         ),
                                         # Controls for the visualization
