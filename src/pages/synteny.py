@@ -41,7 +41,6 @@ layout = dmc.Container(
     children=[
         dcc.Location(id="synteny-url", refresh=False),
         dcc.Store(id="synteny-data-store"),
-        dcc.Store(id="synteny-viz-id-store"),
         
         # Header Section
         dmc.Paper(
@@ -70,13 +69,13 @@ layout = dmc.Container(
                             children=dmc.Stack([
                                 dmc.Stack([
                                     dmc.Title("Select Starships", order=2),
-                                    # Table
                                     dcc.Loading(
                                         id="synteny-loading",
                                         type="circle",
                                         children=html.Div(id="synteny-table"),
                                     ),
                                 ], gap="sm"),                                
+                                
                                 # Configuration Controls
                                 dmc.Accordion(
                                     variant="filled",
@@ -97,7 +96,6 @@ layout = dmc.Container(
                                                             min=0.1,
                                                             max=1,
                                                             step=0.1,
-                                                            description="Minimum identity for showing links",
                                                         ),
                                                         dmc.NumberInput(
                                                             label="Scale Factor",
@@ -105,7 +103,6 @@ layout = dmc.Container(
                                                             value=10,
                                                             min=1,
                                                             max=50,
-                                                            description="Scaling factor for visualization",
                                                         ),
                                                         dmc.NumberInput(
                                                             label="Cluster Spacing",
@@ -113,7 +110,6 @@ layout = dmc.Container(
                                                             value=50,
                                                             min=10,
                                                             max=200,
-                                                            description="Vertical spacing between clusters",
                                                         ),
                                                         dmc.Switch(
                                                             id="synteny-use-file-order",
@@ -135,7 +131,7 @@ layout = dmc.Container(
                                             ],
                                         ),
                                     ],
-                                    ),
+                                ),
                                 dmc.Button(
                                     dmc.Text("Generate Visualization", size="lg"),
                                     id="synteny-update-button",
@@ -152,42 +148,56 @@ layout = dmc.Container(
                     ],
                 ),
                 
-                # Right Column - Visualization Section
+                # Right Column - Static Visualization Container
                 dmc.GridCol(
                     span={"base": 12, "md": 8},
                     children=[
                         dmc.Paper(
                             children=dmc.Stack([
-                                html.Div(id="synteny-message", style={"textAlign": "center"}),
+                                html.Div(id="synteny-message"),
                                 dcc.Loading(
                                     id="synteny-loading-viz",
                                     type="circle",
                                     children=[
+                                        # STATIC CONTAINER - never changes ID
                                         html.Div(
-                                            id="synteny-visualization",
+                                            "Select Starships and click 'Generate Visualization'",
+                                            id="synteny-static-viz",  # Fixed ID
                                             style={
                                                 "height": "800px",
                                                 "width": "100%",
-                                                "overflow": "auto",
+                                                "display": "flex",
+                                                "alignItems": "center",
+                                                "justifyContent": "center",
+                                                "color": "#6c757d",
+                                                "fontSize": "16px",
+                                                "backgroundColor": "#f8f9fa",
+                                                "border": "1px solid #dee2e6",
+                                                "borderRadius": "4px",
                                             },
                                         ),
-                                        # Controls for the visualization
+                                        # Controls
                                         dmc.Group([
                                             dmc.Button(
                                                 "Save as SVG",
                                                 id="synteny-save-svg",
                                                 variant="light",
                                                 leftSection=html.I(className="bi bi-download"),
-                                                style={"display": "none"}
                                             ),
                                             dmc.Button(
                                                 "Reset View",
                                                 id="synteny-reset-view", 
                                                 variant="light",
                                                 leftSection=html.I(className="bi bi-arrow-clockwise"),
-                                                style={"display": "none"}
                                             ),
-                                        ], justify="center", mt="md", id="synteny-controls")
+                                            dmc.Button(
+                                                "Clear Visualization",
+                                                id="synteny-clear-viz",
+                                                variant="light",
+                                                color="red",
+                                                leftSection=html.I(className="bi bi-x-circle"),
+                                            ),
+                                        ], justify="center", gap="md", grow=True, id="synteny-controls")
                                     ]
                                 ),
                             ], gap="md"),
@@ -259,15 +269,18 @@ def load_synteny_table(href):
 )
 @handle_callback_error
 def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold, use_file_order):
-    """Prepare the data for visualization"""
+    """Prepare the data for visualization with enhanced error handling"""
     from src.utils.clinker import process_gbk_files, create_clustermap_data
+    import time
     
     if not n_clicks:
         return no_update
 
+    # Add small delay to ensure UI state is settled
+    time.sleep(0.1)
+    
     logger.info(f"Button clicked: {n_clicks}, Selected rows: {selected_rows}")
-    logger.info(f"Selected rows type: {type(selected_rows)}, Length: {len(selected_rows) if selected_rows else 0}")
-
+    
     if not selected_rows or len(selected_rows) == 0:
         return {"error": "Please select at least one Starship."}
 
@@ -275,12 +288,9 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
         return {"error": "Please select no more than 4 Starships."}
 
     try:
-        # Get the selected accession_displays (AG Grid returns the actual row data, not indices)
         selected_ships = [row["accession_display"] for row in selected_rows]
         
-        # Process the selected GenBank files
         selected_gbks = []
-        
         for ship in selected_ships:
             gbk_file = Path(GBK_PATH) / f"{ship}.gbk"
             if gbk_file.exists():
@@ -295,48 +305,78 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
         if not globaligner:
             return {"error": "Error processing GenBank files."}
 
-        # Create the data for clustermap.js
         clustermap_data = create_clustermap_data(globaligner, use_file_order or False)
         
-        # Add configuration
+        # Ensure data is serializable and clean
+        clean_data = json.loads(json.dumps(clustermap_data, default=str))
+        
         config = {
             "identity_threshold": identity_threshold or 0.3,
             "use_file_order": use_file_order or False,
         }
         
         return {
-            "data": clustermap_data,
+            "data": clean_data,
             "config": config,
-            "success": True
+            "success": True,
+            "timestamp": time.time()  # Add timestamp for cache busting
         }
 
     except Exception as e:
         logger.error(f"Error in preparing synteny data: {str(e)}")
         return {"error": f"Error: {str(e)}"}
+# Remove this callback as it references non-existent IDs and conflicts with the static container approach
+
 
 # Client-side callback to render the visualization
 clientside_callback(
     """
-    function(store_data, scale_factor, cluster_spacing, show_links, show_gene_labels, identity_threshold) {
-        if (!store_data || store_data.error) {
-            return [
-                store_data && store_data.error ? store_data.error : "Select Starships and click 'Generate Visualization'",
-                {"display": "none"}
-            ];
+    function(store_data, scale_factor, cluster_spacing, show_links, show_gene_labels, identity_threshold, clear_clicks) {
+        // Always use the same container ID
+        const containerId = 'synteny-static-viz';
+        
+        // If clear button was clicked, just clear and return
+        if (clear_clicks) {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = 'Select Starships and click "Generate Visualization"';
+                container.style.display = 'flex';
+                container.style.alignItems = 'center';
+                container.style.justifyContent = 'center';
+                container.style.color = '#6c757d';
+                container.style.fontSize = '16px';
+            }
+            return ["Visualization cleared", {"display": "none"}];
+        }
+        
+        // Handle null/cleared data store
+        if (!store_data) {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = 'Select Starships and click "Generate Visualization"';
+                container.style.display = 'flex';
+                container.style.alignItems = 'center';
+                container.style.justifyContent = 'center';
+                container.style.color = '#6c757d';
+                container.style.fontSize = '16px';
+            }
+            return ["", {"display": "none"}];
+        }
+        
+        if (store_data.error) {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = store_data.error;
+                container.style.color = 'red';
+            }
+            return [store_data.error, {"display": "none"}];
         }
         
         if (!store_data.success || !store_data.data) {
             return ["No data available", {"display": "none"}];
         }
         
-        // Check if synteny helper functions are available
-        if (typeof window.syntenyViz === 'undefined') {
-            console.error("Synteny visualization helpers not loaded");
-            return ["Error: Visualization library not loaded", {"display": "none"}];
-        }
-        
         try {
-            // Configuration for the visualization
             const config = {
                 plot: {
                     scaleFactor: scale_factor || 30,
@@ -360,14 +400,42 @@ clientside_callback(
                 }
             };
             
-            // Initialize the ClusterMap visualization
-            const chart = window.syntenyViz.initialize('synteny-visualization', store_data.data, config);
-            
-            if (chart) {
-                return ["", {"display": "block"}];
-            } else {
-                return ["Error initializing visualization", {"display": "none"}];
+            const container = document.getElementById(containerId);
+            if (!container) {
+                console.error("Static container not found");
+                return ["Error: Container not found", {"display": "none"}];
             }
+            
+            // COMPLETE RESET - clear everything
+            container.innerHTML = '';
+            container.style.display = 'block';
+            container.style.alignItems = 'unset';
+            container.style.justifyContent = 'unset';
+            container.style.color = 'unset';
+            container.style.fontSize = 'unset';
+            
+            // Clear any global D3 selections that might reference this container
+            if (typeof d3 !== 'undefined') {
+                d3.selectAll('#' + containerId + ' *').remove();
+            }
+            
+            // Wait a bit, then create new visualization
+            setTimeout(function() {
+                try {
+                    const chart = ClusterMap.ClusterMap().config(config);
+                    d3.select('#' + containerId)
+                        .datum(store_data.data)
+                        .call(chart);
+                    
+                    console.log("ClusterMap created successfully");
+                } catch (error) {
+                    console.error("Error creating ClusterMap:", error);
+                    container.innerHTML = '<div style="color: red; padding: 20px; text-align: center;">Error: ' + error.message + '</div>';
+                }
+            }, 200);
+            
+            return ["", {"display": "block"}];
+            
         } catch (error) {
             console.error("Error in synteny visualization:", error);
             return [`Error: ${error.message}`, {"display": "none"}];
@@ -382,16 +450,51 @@ clientside_callback(
         Input("synteny-show-links", "value"),
         Input("synteny-show-gene-labels", "value"),
         Input("synteny-identity-threshold", "value"),
+        Input("synteny-clear-viz", "n_clicks"),  # Add clear button input
     ]
+)
+
+
+clientside_callback(
+    """
+    function(n_clicks) {
+        if (n_clicks) {
+            // Clear the data store to allow new visualizations
+            return null;
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("synteny-data-store", "data", allow_duplicate=True),
+    Input("synteny-clear-viz", "n_clicks"),
+    prevent_initial_call=True
 )
 
 # Client-side callback for saving SVG
 clientside_callback(
     """
     function(n_clicks) {
-        if (n_clicks && typeof window.syntenyViz !== 'undefined') {
+        if (n_clicks) {
             try {
-                window.syntenyViz.exportSVG('synteny-visualization', 'starship-synteny.svg');
+                // Find the SVG in the static visualization container
+                const svg = document.querySelector('#synteny-static-viz svg');
+                if (svg) {
+                    // Create a blob and download
+                    const serializer = new XMLSerializer();
+                    const svgString = serializer.serializeToString(svg);
+                    const blob = new Blob([svgString], {type: 'image/svg+xml'});
+                    
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'starship-synteny.svg';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                } else {
+                    console.warn("No SVG found to export");
+                }
             } catch (error) {
                 console.error("Error exporting SVG:", error);
             }
@@ -408,9 +511,18 @@ clientside_callback(
 clientside_callback(
     """
     function(n_clicks) {
-        if (n_clicks && typeof window.syntenyViz !== 'undefined') {
+        if (n_clicks) {
             try {
-                window.syntenyViz.resetView('synteny-visualization');
+                // Find the SVG and reset its transform in the static visualization container
+                const svg = document.querySelector('#synteny-static-viz svg');
+                if (svg) {
+                    const g = svg.querySelector('g');
+                    if (g) {
+                        g.setAttribute('transform', 'translate(0,0) scale(1)');
+                    }
+                } else {
+                    console.warn("No SVG found to reset");
+                }
             } catch (error) {
                 console.error("Error resetting view:", error);
             }
