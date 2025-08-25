@@ -97,76 +97,6 @@ confidence_icons = {
 }
 
 
-def assign_accession(
-    sequence: str, existing_ships: pd.DataFrame = None, threshold: float = 0.95
-) -> Tuple[str, bool]:
-    """Assign an accession to a new sequence.
-
-    Args:
-        sequence: New sequence to assign accession to
-        existing_ships: DataFrame of existing ships (optional, will fetch if None)
-        threshold: Similarity threshold for "almost identical" matches
-
-    Returns:
-        Tuple[str, bool]: (accession, needs_review)
-            - accession: assigned accession number
-            - needs_review: True if sequence needs manual review
-    """
-
-    logger.debug("Starting accession assignment process")
-
-    logger.debug("Step 1: Checking for exact matches using MD5 hash...")
-    exact_match = check_exact_match(sequence, existing_ships)
-    if exact_match:
-        logger.debug(f"Found exact match: {exact_match}")
-        return exact_match, False
-
-    logger.debug("Step 2: Checking for contained matches...")
-    container_match = check_contained_match(
-        fasta=sequence,
-        existing_ships=existing_ships,
-        min_coverage=0.95,
-        min_identity=0.95,
-    )
-    if container_match:
-        logger.debug(f"Found containing match: {container_match}")
-        return container_match, True  # Flag for review since it's truncated
-
-    logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
-    similar_match = check_similar_match(sequence, existing_ships, threshold)
-    if similar_match:
-        logger.debug(f"Found similar match: {similar_match}")
-        return similar_match, True  # Flag for review due to high similarity
-
-    logger.debug("No matches found, generating new accession...")
-    new_accession = generate_new_accession(existing_ships)
-    logger.debug(f"Generated new accession: {new_accession}")
-    return new_accession, False
-
-
-def generate_new_accession(existing_ships: pd.DataFrame) -> str:
-    """Generate a new unique accession number."""
-    # Extract existing accession numbers
-    existing_nums = [
-        int(acc.replace("SBS", "").split(".")[0])
-        for acc in existing_ships["accession_tag"]
-        if acc.startswith("SBS")
-    ]
-
-    # Check if we have existing accessions
-    if not existing_nums:
-        error_msg = "Problem with loading existing ships. No existing SBS accessions found in database."
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-
-    # Find next available number
-    next_num = max(existing_nums) + 1
-    logger.debug(f"Last used accession number: SBS{max(existing_nums):06d}")
-    logger.debug(f"Assigning new accession number: SBS{next_num:06d}")
-
-    return f"SBS{next_num:06d}"
-
-
 def get_version_sort_key(version_tag):
     """Convert version_tag to sortable format. Handle None/empty as 0."""
     if not version_tag:
@@ -227,7 +157,9 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
                 f"generate_md5_hash returned None for sequence: {seq[:50]}..."
             )
             continue
-        query_md5[seq] = md5_hash
+
+        query_md5[seq]["md5"] = md5_hash
+        query_md5[seq]["md5_revcomp"] = md5_hash_revcomp
 
     # collect existing md5 in dict
     # Create reverse mapping: md5 -> accession_display (includes version)
@@ -257,15 +189,19 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
     logger.debug(f"Query MD5 hashes: {list(query_md5.values())}")
 
     # Check if query hash exists in database
-    for seq, md5 in query_md5.items():
-        logger.debug(f"Checking query MD5: {md5}")
-        match = existing_hashes.get(md5)
+    for seq, md5_dict in query_md5.items():
+        logger.debug(f"Checking query MD5: {md5_dict['md5']}")
+        match = existing_hashes.get(md5_dict['md5'])
+        match_revcomp = existing_hashes.get(md5_dict['md5_revcomp'])
         if match:
             logger.debug(f"Found exact hash match: {match}")
             return match
-
-    logger.debug("No exact match found")
-    return None
+        elif match_revcomp:
+            logger.debug(f"Found exact hash match: {match_revcomp}")
+            return match_revcomp
+        else:
+            logger.debug("No exact match found")
+            return None
 
 
 def check_contained_match(
