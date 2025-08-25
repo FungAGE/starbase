@@ -2,12 +2,63 @@ import logging
 import json
 import tempfile
 from pathlib import Path
+import pandas as pd
 
 from clinker.classes import parse_files
 from clinker.align import align_clusters
 from src.utils.gff2gbk import main as gff2gb
+from src.database.sql_manager import fetch_accession_ship
 
 logger = logging.getLogger(__name__)
+
+def create_temp_gbk_from_gff(accession_tag, temp_dir):
+    """Create a temporary GenBank file from GFF data in the database"""
+    try:
+        # Strip version number from accession tag for database lookup
+        base_accession = accession_tag.split('.')[0] if '.' in accession_tag else accession_tag
+        logger.info(f"Looking up base accession: {base_accession} for display accession: {accession_tag}")
+        
+        # Fetch sequence and GFF data from database using base accession
+        ship_data = fetch_accession_ship(base_accession)
+        
+        if not ship_data["sequence"] or ship_data["gff"] is None or ship_data["gff"].empty:
+            logger.error(f"No sequence or GFF data found for accession: {base_accession}")
+            return None
+            
+        # Create temporary FASTA file
+        fasta_file = temp_dir / f"{accession_tag}.fasta"
+        with open(fasta_file, "w") as f:
+            f.write(f">{base_accession}\n{ship_data['sequence']}\n")
+            
+        # Create temporary GFF file with proper GFF format
+        gff_file = temp_dir / f"{accession_tag}.gff"
+        
+        # Ensure GFF data has the correct column order and format
+        gff_df = ship_data["gff"].copy()
+        
+        # Add seqid column (use base accession as seqid for GFF format to match FASTA)
+        gff_df['seqid'] = base_accession
+        
+        # Map database columns to GFF format: seqid, source, type, start, end, score, strand, phase, attributes
+        gff_columns = ['seqid', 'source', 'type', 'start', 'end', 'score', 'strand', 'phase', 'attributes']
+        
+        # Reorder columns to match GFF format
+        gff_df = gff_df[gff_columns]
+        
+        # Write GFF file without header
+        gff_df.to_csv(gff_file, sep="\t", index=False, header=False)
+        
+        # Convert GFF to GenBank
+        gbk_file = temp_dir / f"{accession_tag}.gbk"
+        gff2gb(str(gff_file), str(fasta_file), str(gbk_file))
+        
+        logger.info(f"Successfully created GenBank file for {accession_tag}")
+        return str(gbk_file)
+        
+    except Exception as e:
+        logger.error(f"Error creating GenBank file for {accession_tag}: {str(e)}")
+        return None
+
 def process_local_files(gff_paths, fasta_paths):
     """Process local GFF and FASTA files using clinker"""
     try:
@@ -46,36 +97,56 @@ def process_local_files(gff_paths, fasta_paths):
         logger.error(f"Error in process_local_files: {str(e)}", exc_info=True)
         return None
 
-def process_gbk_files(gbk_files):
-    """Process GenBank files directly, with a limit of 4 files
+def process_gbk_files(gbk_files, accession_tags=None):
+    """Process GenBank files directly, with a limit of 4 files.
+    If accession_tags are provided, generate GenBank files on-the-fly from GFF data.
     
     Args:
         gbk_files: List of GenBank file paths or directory path
+        accession_tags: List of accession tags to generate GenBank files from GFF data
     """
     try:
-        # Handle both directory path and list of files
-        if isinstance(gbk_files, (str, Path)):
-            gbk_dir = Path(gbk_files)
-            gbk_files = list(gbk_dir.glob("*.gbk"))
-        else:
-            gbk_files = [Path(f) for f in gbk_files]
+        gbk_file_paths = []
         
-        if not gbk_files:
-            logger.error(f"No GenBank files found")
+        # If accession_tags are provided, generate GenBank files on-the-fly
+        if accession_tags:
+            logger.info(f"Generating GenBank files for {len(accession_tags)} accession tags")
+            
+            # Create temporary directory for generated files
+            temp_dir = Path(tempfile.mkdtemp())
+            
+            for accession_tag in accession_tags:
+                gbk_file = create_temp_gbk_from_gff(accession_tag, temp_dir)
+                if gbk_file:
+                    gbk_file_paths.append(gbk_file)
+                else:
+                    logger.warning(f"Failed to generate GenBank file for {accession_tag}")
+        else:
+            # Handle both directory path and list of files
+            if isinstance(gbk_files, (str, Path)):
+                gbk_dir = Path(gbk_files)
+                gbk_files = list(gbk_dir.glob("*.gbk"))
+            else:
+                gbk_files = [Path(f) for f in gbk_files]
+            
+            gbk_file_paths = [str(f) for f in gbk_files]
+        
+        if not gbk_file_paths:
+            logger.error(f"No GenBank files found or generated")
             return None
             
         # Check if there are too many files
-        if len(gbk_files) > 4:
-            logger.warning(f"Found {len(gbk_files)} GenBank files, exceeding limit of 4")
+        if len(gbk_file_paths) > 4:
+            logger.warning(f"Found {len(gbk_file_paths)} GenBank files, exceeding limit of 4")
             raise ValueError("Too many GenBank files. Please limit to 4 files for visualization.")
             
-        logger.info(f"Found {len(gbk_files)} GenBank files")
+        logger.info(f"Processing {len(gbk_file_paths)} GenBank files")
         
         # Parse files using clinker
         logger.info("Parsing files with clinker...")
         try:
             # parse_files returns a list of Cluster objects
-            clusters = parse_files(gbk_files)
+            clusters = parse_files(gbk_file_paths)
             logger.info(f"Successfully parsed {len(clusters)} clusters")
             
             # Use align_clusters to create a Globaligner object

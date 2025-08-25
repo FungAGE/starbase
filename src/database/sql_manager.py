@@ -309,7 +309,6 @@ def fetch_ships(
 
 @cache.memoize()
 @db_retry_decorator()
-# TODO: somehow, we need to be able to index the genbank files. create a column in a table with their paths?
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
@@ -325,16 +324,17 @@ def fetch_ship_table(curated=False):
         f.familyName,
         t.name
     FROM joined_ships js
-    LEFT JOIN accessions a ON js.ship_id = a.id
+    INNER JOIN accessions a ON js.ship_id = a.id
     LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
-    LEFT JOIN ships s ON s.accession_id = a.id AND s.sequence IS NOT NULL
-    LEFT JOIN gff g ON g.ship_id = a.id
+    INNER JOIN ships s ON s.accession_id = a.id AND s.sequence IS NOT NULL
+    -- Filter for ships that have GFF annotation data
+    INNER JOIN gff g ON g.ship_id = a.id
     """
 
     if curated:
-        query += " AND js.curated_status = 'curated'"
+        query += " WHERE js.curated_status = 'curated'"
 
     query += " ORDER BY f.familyName ASC"
 

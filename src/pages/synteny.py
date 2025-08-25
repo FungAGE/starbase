@@ -47,7 +47,7 @@ layout = dmc.Container(
             children=[
                 dmc.Title("Starship Synteny Viewer", order=1, mb="md"),
                 dmc.Text(
-                    "Interactive synteny visualization using ClusterMap.js - Compare and visualize up to 4 Starship sequences",
+                    "Interactive synteny visualization using ClusterMap.js - Compare and visualize up to 4 Starship sequences with GFF annotation data",
                     size="lg",
                     c="dimmed",
                 ),
@@ -161,7 +161,7 @@ layout = dmc.Container(
                                     children=[
                                         # STATIC CONTAINER - never changes ID
                                         html.Div(
-                                            "Select Starships and click 'Generate Visualization'",
+                                            "Select Starships with GFF annotation data and click 'Generate Visualization'",
                                             id="synteny-static-viz",  # Fixed ID
                                             style={
                                                 "height": "800px",
@@ -222,27 +222,16 @@ layout = dmc.Container(
 )
 @handle_callback_error
 def load_synteny_table(href):
-    """Load and display the ship selection table, filtered to only show entries with GenBank files"""
+    """Load and display the ship selection table, filtered to only show entries with GFF annotation data"""
     from src.database.sql_manager import fetch_ship_table
     from src.components.tables import make_pgv_table  
     
-    # Get list of available GenBank files and extract accession_displays (with version)
-    available_starships = {path.stem for path in Path(GBK_PATH).glob("*.gbk")}
-    logger.info(f"Found {len(available_starships)} GenBank files: {list(available_starships)[:5]}...")
-    
-    # Fetch all ships and filter for those with GenBank files
+    # Fetch ships that have GFF annotation data
     table_df = fetch_ship_table(curated=True)
     if table_df is not None and not table_df.empty:
-        logger.info(f"Fetched {len(table_df)} ships from database")
+        logger.info(f"Fetched {len(table_df)} ships with GFF annotation data from database")
         logger.info(f"Sample accession_tags from database: {table_df['accession_tag'].head().tolist()}")
         logger.info(f"Sample accession_displays from database: {table_df['accession_display'].head().tolist()}")
-        
-        # Filter the DataFrame to only include rows where accession_display is in available_starships
-        table_df = table_df[table_df['accession_display'].isin(available_starships)]
-        
-        if table_df.empty:
-            logger.error("No matching entries found with GenBank files")
-            return html.Div("No Starships found with corresponding GenBank files")
         
         table = make_pgv_table(
             df=table_df,
@@ -255,7 +244,7 @@ def load_synteny_table(href):
         return table
     
     logger.error("No data available or empty DataFrame")
-    return html.Div("No data available")
+    return html.Div("No Starships found with GFF annotation data")
 
 @callback(
     Output("synteny-data-store", "data"),
@@ -290,20 +279,12 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
     try:
         selected_ships = [row["accession_display"] for row in selected_rows]
         
-        selected_gbks = []
-        for ship in selected_ships:
-            gbk_file = Path(GBK_PATH) / f"{ship}.gbk"
-            if gbk_file.exists():
-                selected_gbks.append(str(gbk_file))
-            else:
-                logger.warning(f"No GenBank file found for ship: {ship}")
+        # Generate GenBank files on-the-fly from GFF data
+        logger.info(f"Generating GenBank files for selected ships: {selected_ships}")
+        globaligner = process_gbk_files(None, accession_tags=selected_ships)
         
-        if not selected_gbks:
-            return {"error": "No GenBank files found for selected ships."}
-            
-        globaligner = process_gbk_files(selected_gbks)
         if not globaligner:
-            return {"error": "Error processing GenBank files."}
+            return {"error": "Error processing GenBank files from GFF data."}
 
         clustermap_data = create_clustermap_data(globaligner, use_file_order or False)
         
@@ -339,7 +320,7 @@ clientside_callback(
         if (clear_clicks) {
             const container = document.getElementById(containerId);
             if (container) {
-                container.innerHTML = 'Select Starships and click "Generate Visualization"';
+                container.innerHTML = 'Select Starships with GFF annotation data and click "Generate Visualization"';
                 container.style.display = 'flex';
                 container.style.alignItems = 'center';
                 container.style.justifyContent = 'center';
@@ -353,7 +334,7 @@ clientside_callback(
         if (!store_data) {
             const container = document.getElementById(containerId);
             if (container) {
-                container.innerHTML = 'Select Starships and click "Generate Visualization"';
+                container.innerHTML = 'Select Starships with GFF annotation data and click "Generate Visualization"';
                 container.style.display = 'flex';
                 container.style.alignItems = 'center';
                 container.style.justifyContent = 'center';
