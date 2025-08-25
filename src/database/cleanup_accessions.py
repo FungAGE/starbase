@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+"""
+Optimized database cleaning script for accession tag correction.
+
+This script performs the following tasks more efficiently:
+1. Generate MD5 hashes for both normal and reverse complement sequences
+2. Identify sequences with identical MD5 hashes for normal and reverse complement
+3. Check for nested sequences
+4. Update accession versions based on sequence relationships
+"""
+
+import hashlib
+import pandas as pd
+from collections import defaultdict
+from typing import Dict, List, Tuple, Set
+from sqlalchemy import text
+from src.config.database import StarbaseSession
+from src.config.logging import get_logger
+from src.database.models.schema import Accessions, Ships, JoinedShips
+from src.utils.seq_utils import revcomp
+import time
+
+logger = get_logger(__name__)
+
+
+def generate_sequence_hashes(sequence: str) -> Tuple[str, str]:
+    """
+    Generate MD5 hashes for both normal and reverse complement sequences.
+    
+    Args:
+        sequence (str): DNA sequence
+        
+    Returns:
+        Tuple[str, str]: (normal_hash, reverse_complement_hash)
+    """
+    # Normalize sequence (uppercase, remove whitespace)
+    seq = sequence.upper().replace(" ", "").replace("\n", "")
+    
+    # Generate hash for normal sequence
+    normal_hash = hashlib.md5(seq.encode()).hexdigest()
+    
+    # Generate hash for reverse complement
+    rev_comp_seq = revcomp(seq)
+    # Convert BioPython Seq object to string
+    rev_comp_str = str(rev_comp_seq)
+    rev_comp_hash = hashlib.md5(rev_comp_str.encode()).hexdigest()
+    
+    return normal_hash, rev_comp_hash
+
+
+def fetch_all_sequences() -> pd.DataFrame:
+    """
+    Fetch all sequences from the database with their accession information.
+    
+    Returns:
+        pd.DataFrame: DataFrame with accession_id, accession_tag, sequence, and md5
+    """
+    session = StarbaseSession()
+    
+    query = """
+    SELECT 
+        a.id as accession_id,
+        a.accession_tag,
+        a.version_tag,
+        s.sequence,
+        s.md5
+    FROM accessions a
+    INNER JOIN ships s ON a.id = s.accession_id
+    WHERE s.sequence IS NOT NULL AND s.sequence != ''
+    """
+    
+    try:
+        df = pd.read_sql_query(query, session.bind)
+        logger.info(f"Fetched {len(df)} sequences from database")
+        return df
+    except Exception as e:
+        logger.error(f"Error fetching sequences: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def analyze_sequence_hashes(sequences_df: pd.DataFrame) -> Dict[str, List[str]]:
+    """
+    Analyze sequences to find those with identical MD5 hashes for normal and reverse complement.
+    
+    Args:
+        sequences_df (pd.DataFrame): DataFrame with sequences
+        
+    Returns:
+        Dict[str, List[str]]: Dictionary mapping hash to list of accession tags
+    """
+    hash_groups = defaultdict(list)
+    
+    logger.info("Analyzing sequence hashes...")
+    for idx, row in sequences_df.iterrows():
+        if idx % 100 == 0:
+            logger.info(f"Processed {idx}/{len(sequences_df)} sequences")
+            
+        accession_tag = row['accession_tag']
+        sequence = row['sequence']
+        
+        # Generate hashes
+        normal_hash, rev_comp_hash = generate_sequence_hashes(sequence)
+        
+        # Check if normal and reverse complement hashes are identical
+        if normal_hash == rev_comp_hash:
+            hash_groups[normal_hash].append(accession_tag)
+            logger.debug(f"Found self-complementary sequence: {accession_tag}")
+    
+    # Filter to only groups with more than one accession
+    duplicate_groups = {hash_val: accessions for hash_val, accessions in hash_groups.items() 
+                       if len(accessions) > 1}
+    
+    logger.info(f"Found {len(duplicate_groups)} groups of sequences with identical normal/reverse complement hashes")
+    
+    return duplicate_groups
+
+
+def find_reverse_complement_pairs(sequences_df: pd.DataFrame) -> List[Tuple[str, str]]:
+    """
+    Find sequences that are reverse complements of each other.
+    
+    Args:
+        sequences_df (pd.DataFrame): DataFrame with sequences
+        
+    Returns:
+        List[Tuple[str, str]]: List of (accession1, accession2) pairs that are reverse complements
+    """
+    rev_comp_pairs = []
+    
+    logger.info("Finding reverse complement pairs...")
+    
+    # Create dictionaries mapping hashes to lists of accessions (to handle duplicates)
+    normal_hash_to_accessions = defaultdict(list)
+    rev_comp_hash_to_accessions = defaultdict(list)
+    
+    for idx, row in sequences_df.iterrows():
+        if idx % 100 == 0:
+            logger.info(f"Processed {idx}/{len(sequences_df)} sequences for reverse complement analysis")
+            
+        accession_tag = row['accession_tag']
+        sequence = row['sequence']
+        
+        # Generate hashes
+        normal_hash, rev_comp_hash = generate_sequence_hashes(sequence)
+        
+        # Store mappings (append to lists to handle duplicates)
+        normal_hash_to_accessions[normal_hash].append(accession_tag)
+        rev_comp_hash_to_accessions[rev_comp_hash].append(accession_tag)
+    
+    # Find pairs where one sequence's normal hash matches another's reverse complement hash
+    processed_pairs = set()
+    
+    for normal_hash, accs1 in normal_hash_to_accessions.items():
+        if normal_hash in rev_comp_hash_to_accessions:
+            accs2 = rev_comp_hash_to_accessions[normal_hash]
+            
+            # Create all possible pairs between the two groups
+            for acc1 in accs1:
+                for acc2 in accs2:
+                    # Avoid self-pairs and duplicate pairs
+                    if acc1 != acc2:
+                        pair = tuple(sorted([acc1, acc2]))  # Sort to ensure consistent ordering
+                        if pair not in processed_pairs:
+                            rev_comp_pairs.append((acc1, acc2))
+                            processed_pairs.add(pair)
+                            logger.debug(f"Found reverse complement pair: {acc1} <-> {acc2}")
+    
+    logger.info(f"Found {len(rev_comp_pairs)} reverse complement pairs")
+    return rev_comp_pairs
+
+
+def find_nested_sequences(sequences_df: pd.DataFrame) -> List[Tuple[str, str]]:
+    """
+    Find sequences that are nested within other sequences using approach.
+    
+    Args:
+        sequences_df (pd.DataFrame): DataFrame with sequences
+        
+    Returns:
+        List[Tuple[str, str]]: List of (nested_accession, containing_accession) tuples
+    """
+    nested_pairs = []
+    
+    # Sort sequences by length (longest first) to optimize nested detection
+    sequences_df_sorted = sequences_df.copy()
+    sequences_df_sorted['seq_length'] = sequences_df_sorted['sequence'].str.len()
+    sequences_df_sorted = sequences_df_sorted.sort_values('seq_length', ascending=False)
+    
+    # Create a list of (accession_tag, sequence) tuples, removing exact duplicates
+    sequences = []
+    seen_sequences = set()
+    for _, row in sequences_df_sorted.iterrows():
+        seq_upper = row['sequence'].upper()
+        if seq_upper not in seen_sequences:
+            sequences.append((row['accession_tag'], seq_upper))
+            seen_sequences.add(seq_upper)
+        else:
+            logger.debug(f"Skipping duplicate sequence for accession: {row['accession_tag']}")
+    
+    logger.info(f"After removing exact duplicates: {len(sequences)} unique sequences")
+    
+    total_comparisons = len(sequences) * (len(sequences) - 1) // 2
+    comparison_count = 0
+    
+    logger.info(f"Starting nested sequence detection for {len(sequences)} sequences")
+    logger.info(f"Total comparisons needed: {total_comparisons}")
+    
+    start_time = time.time()
+    
+    # Check each pair of sequences (only need to check shorter sequences against longer ones)
+    for i, (acc1, seq1) in enumerate(sequences):
+        if i % 50 == 0:
+            elapsed = time.time() - start_time
+            rate = comparison_count / elapsed if elapsed > 0 else 0
+            eta = (total_comparisons - comparison_count) / rate if rate > 0 else 0
+            logger.info(f"Progress: {i}/{len(sequences)} sequences, {comparison_count}/{total_comparisons} comparisons")
+            logger.info(f"Rate: {rate:.1f} comparisons/sec, ETA: {eta/60:.1f} minutes")
+        
+        # Only check against sequences that are longer (i.e., have smaller indices due to sorting)
+        for j in range(i + 1, len(sequences)):
+            acc2, seq2 = sequences[j]
+            comparison_count += 1
+            
+            # Check if seq2 (shorter) is contained within seq1 (longer)
+            # Also ensure they're not the same sequence and seq2 is actually shorter
+            if seq2 in seq1 and acc1 != acc2 and len(seq2) < len(seq1):
+                nested_pairs.append((acc2, acc1))
+                logger.debug(f"Found nested sequence: {acc2} is nested in {acc1}")
+    
+    elapsed = time.time() - start_time
+    logger.info(f"Nested sequence detection completed in {elapsed:.1f} seconds")
+    logger.info(f"Found {len(nested_pairs)} nested sequence pairs")
+    
+    return nested_pairs
+
+
+def consolidate_accessions_by_hash(hash_groups: Dict[str, List[str]]) -> List[Dict]:
+    """
+    Consolidate accessions based on identical hash groups.
+    
+    Args:
+        hash_groups (Dict[str, List[str]]): Groups of accessions with identical hashes
+        
+    Returns:
+        List[Dict]: List of consolidation operations to perform
+    """
+    consolidations = []
+    
+    for hash_val, accessions in hash_groups.items():
+        # Sort accessions to ensure consistent ordering
+        accessions.sort()
+        
+        # Choose the accession with the lowest number as the primary
+        primary_accession = accessions[0]
+        secondary_accessions = accessions[1:]
+        
+        consolidation = {
+            'type': 'hash_duplicate',
+            'primary_accession': primary_accession,
+            'secondary_accessions': secondary_accessions,
+            'reason': f'Identical normal/reverse complement hash: {hash_val}'
+        }
+        
+        consolidations.append(consolidation)
+        logger.info(f"Will consolidate {len(secondary_accessions)} accessions under {primary_accession}")
+    
+    return consolidations
+
+
+def consolidate_reverse_complement_pairs(rev_comp_pairs: List[Tuple[str, str]]) -> List[Dict]:
+    """
+    Consolidate reverse complement pairs under the accession with the lower number.
+    
+    Args:
+        rev_comp_pairs (List[Tuple[str, str]]): List of (accession1, accession2) pairs
+        
+    Returns:
+        List[Dict]: List of consolidation operations to perform
+    """
+    consolidations = []
+    
+    for acc1, acc2 in rev_comp_pairs:
+        # Choose the accession with the lower number as primary
+        if acc1 < acc2:
+            primary_accession = acc1
+            secondary_accession = acc2
+        else:
+            primary_accession = acc2
+            secondary_accession = acc1
+        
+        consolidation = {
+            'type': 'reverse_complement',
+            'primary_accession': primary_accession,
+            'secondary_accessions': [secondary_accession],
+            'reason': f'Reverse complement of {primary_accession}'
+        }
+        
+        consolidations.append(consolidation)
+        logger.info(f"Will consolidate {secondary_accession} under {primary_accession} (reverse complement pair)")
+    
+    return consolidations
+
+
+def consolidate_nested_sequences(nested_pairs: List[Tuple[str, str]]) -> List[Dict]:
+    """
+    Consolidate nested sequences under the containing sequence's accession.
+    
+    Args:
+        nested_pairs (List[Tuple[str, str]]): List of (nested, containing) accession pairs
+        
+    Returns:
+        List[Dict]: List of consolidation operations to perform
+    """
+    consolidations = []
+    
+    # Group nested sequences by their containing sequence
+    nested_groups = defaultdict(list)
+    for nested_acc, containing_acc in nested_pairs:
+        nested_groups[containing_acc].append(nested_acc)
+    
+    for containing_acc, nested_accessions in nested_groups.items():
+        consolidation = {
+            'type': 'nested_sequence',
+            'primary_accession': containing_acc,
+            'secondary_accessions': nested_accessions,
+            'reason': f'Nested within longer sequence {containing_acc}'
+        }
+        
+        consolidations.append(consolidation)
+        logger.info(f"Will consolidate {len(nested_accessions)} nested accessions under {containing_acc}")
+    
+    return consolidations
+
+
+def apply_consolidations(consolidations: List[Dict], dry_run: bool = True) -> None:
+    """
+    Apply consolidation operations to the database.
+    
+    Args:
+        consolidations (List[Dict]): List of consolidation operations
+        dry_run (bool): If True, only log what would be done without making changes
+    """
+    session = StarbaseSession()
+    
+    try:
+        for consolidation in consolidations:
+            primary_acc = consolidation['primary_accession']
+            secondary_accs = consolidation['secondary_accessions']
+            reason = consolidation['reason']
+            
+            logger.info(f"Processing consolidation: {reason}")
+            
+            if dry_run:
+                logger.info(f"DRY RUN: Would consolidate {secondary_accs} under {primary_acc}")
+                continue
+            
+            # Get the primary accession record
+            primary_record = session.query(Accessions).filter(
+                Accessions.accession_tag == primary_acc
+            ).first()
+            
+            if not primary_record:
+                logger.error(f"Primary accession {primary_acc} not found")
+                continue
+            
+            # Update all secondary accessions to point to the primary accession
+            for secondary_acc in secondary_accs:
+                # Update ships table
+                ships_updated = session.query(Ships).join(Accessions).filter(
+                    Accessions.accession_tag == secondary_acc
+                ).update({Ships.accession_id: primary_record.id})
+                
+                # Update joined_ships table
+                joined_updated = session.query(JoinedShips).join(Accessions).filter(
+                    Accessions.accession_tag == secondary_acc
+                ).update({JoinedShips.ship_id: primary_record.id})
+                
+                logger.info(f"Updated {ships_updated} ships and {joined_updated} joined_ships for {secondary_acc}")
+            
+            # Commit the changes
+            session.commit()
+            logger.info(f"Successfully consolidated {len(secondary_accs)} accessions under {primary_acc}")
+            
+    except Exception as e:
+        logger.error(f"Error applying consolidations: {str(e)}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def generate_consolidation_report(consolidations: List[Dict]) -> str:
+    """
+    Generate a report of all consolidation operations.
+    
+    Args:
+        consolidations (List[Dict]): List of consolidation operations
+        
+    Returns:
+        str: Formatted report
+    """
+    report = []
+    report.append("=" * 80)
+    report.append("DATABASE CLEANUP REPORT - ACCESSION CONSOLIDATION")
+    report.append("=" * 80)
+    report.append("")
+    
+    # Group by type
+    hash_consolidations = [c for c in consolidations if c['type'] == 'hash_duplicate']
+    rev_comp_consolidations = [c for c in consolidations if c['type'] == 'reverse_complement']
+    nested_consolidations = [c for c in consolidations if c['type'] == 'nested_sequence']
+    
+    report.append(f"HASH DUPLICATE CONSOLIDATIONS: {len(hash_consolidations)}")
+    report.append("-" * 50)
+    for consolidation in hash_consolidations:
+        report.append(f"Primary: {consolidation['primary_accession']}")
+        report.append(f"Secondary: {', '.join(consolidation['secondary_accessions'])}")
+        report.append(f"Reason: {consolidation['reason']}")
+        report.append("")
+    
+    report.append(f"REVERSE COMPLEMENT CONSOLIDATIONS: {len(rev_comp_consolidations)}")
+    report.append("-" * 50)
+    for consolidation in rev_comp_consolidations:
+        report.append(f"Primary: {consolidation['primary_accession']}")
+        report.append(f"Secondary: {', '.join(consolidation['secondary_accessions'])}")
+        report.append(f"Reason: {consolidation['reason']}")
+        report.append("")
+    
+    report.append(f"NESTED SEQUENCE CONSOLIDATIONS: {len(nested_consolidations)}")
+    report.append("-" * 50)
+    for consolidation in nested_consolidations:
+        report.append(f"Primary: {consolidation['primary_accession']}")
+        report.append(f"Secondary: {', '.join(consolidation['secondary_accessions'])}")
+        report.append(f"Reason: {consolidation['reason']}")
+        report.append("")
+    
+    total_secondary = sum(len(c['secondary_accessions']) for c in consolidations)
+    report.append(f"SUMMARY: {len(consolidations)} consolidation operations affecting {total_secondary} accessions")
+    
+    return "\n".join(report)
+
+
+def main(dry_run: bool = True, output_report: str = None):
+    """
+    Main function to run the accession cleanup process.
+    
+    Args:
+        dry_run (bool): If True, only analyze and report without making changes
+        output_report (str): Path to save the consolidation report
+    """
+    logger.info("Starting database accession cleanup process")
+    
+    # Step 1: Fetch all sequences
+    logger.info("Step 1: Fetching all sequences from database")
+    sequences_df = fetch_all_sequences()
+    
+    # Step 2: Analyze sequence hashes
+    logger.info("Step 2: Analyzing sequence hashes")
+    hash_groups = analyze_sequence_hashes(sequences_df)
+    
+    # Step 3: Find reverse complement pairs
+    logger.info("Step 3: Finding reverse complement pairs")
+    rev_comp_pairs = find_reverse_complement_pairs(sequences_df)
+    
+    # Step 4: Find nested sequences
+    logger.info("Step 4: Finding nested sequences")
+    nested_pairs = find_nested_sequences(sequences_df)
+    
+    # Step 5: Generate consolidation operations
+    logger.info("Step 5: Generating consolidation operations")
+    hash_consolidations = consolidate_accessions_by_hash(hash_groups)
+    rev_comp_consolidations = consolidate_reverse_complement_pairs(rev_comp_pairs)
+    nested_consolidations = consolidate_nested_sequences(nested_pairs)
+    
+    all_consolidations = hash_consolidations + rev_comp_consolidations + nested_consolidations
+    
+    # Step 5: Generate report
+    logger.info("Step 5: Generating consolidation report")
+    report = generate_consolidation_report(all_consolidations)
+    
+    if output_report:
+        with open(output_report, 'w') as f:
+            f.write(report)
+        logger.info(f"Report saved to {output_report}")
+    else:
+        print(report)
+    
+    # Step 6: Apply consolidations (if not dry run)
+    if not dry_run and all_consolidations:
+        logger.info("Step 6: Applying consolidations to database")
+        apply_consolidations(all_consolidations, dry_run=False)
+    elif dry_run:
+        logger.info("Step 6: Skipping database changes (dry run mode)")
+    
+    logger.info("Optimized database accession cleanup process completed")
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Optimized clean up database accession tags")
+    parser.add_argument("--apply", action="store_true", 
+                       help="Apply changes to database (default is dry run)")
+    parser.add_argument("--report", type=str, 
+                       help="Path to save consolidation report")
+    
+    args = parser.parse_args()
+    
+    main(dry_run=not args.apply, output_report=args.report)
