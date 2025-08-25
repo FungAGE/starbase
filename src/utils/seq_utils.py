@@ -231,6 +231,17 @@ def translate_seq(seq):
         frames.append(rev)
     return frames
 
+def revcomp(seq: str) -> str:
+    """
+    Reverse complement a sequence. Able to handle both strings and Seq objects.
+    """
+    if type(seq) == str:
+        complement = str.maketrans(seq.upper(), "ACGTacgt")
+        return seq.translate(complement)[::-1]
+    elif type(seq) == Seq:
+        return seq.reverse_complement()
+    else:
+        return None
 
 def find_longest_orf(aa_seq, min_length=50):
     """
