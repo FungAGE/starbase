@@ -27,6 +27,7 @@ from src.utils.seq_utils import (
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
+from Bio.Seq import Seq
 import networkx as nx
 
 from typing import Optional, Tuple, Dict, Any
@@ -182,10 +183,15 @@ def get_version_sort_key(version_tag):
 ########################################################
 
 
-def generate_md5_hash(sequence: str) -> str:
+# sequence can be a string, Seq object, or SeqRecord object
+def generate_md5_hash(sequence):
     """Generate an MD5 hash of a sequence."""
     if sequence is None:
         return None
+    elif type(sequence) == SeqIO.SeqRecord:
+        sequence = str(sequence.seq)
+    elif type(sequence) == Seq:  # Handle Seq objects
+        sequence = str(sequence)
     return hashlib.md5(sequence.encode()).hexdigest()
 
 

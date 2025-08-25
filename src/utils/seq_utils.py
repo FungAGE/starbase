@@ -236,12 +236,13 @@ def revcomp(seq: str) -> str:
     Reverse complement a sequence. Able to handle both strings and Seq objects.
     """
     if type(seq) == str:
-        complement = str.maketrans(seq.upper(), "ACGTacgt")
-        return seq.translate(complement)[::-1]
+        rv_comp_seq = Seq(seq).reverse_complement()
     elif type(seq) == Seq:
-        return seq.reverse_complement()
+        rv_comp_seq = seq.reverse_complement()
     else:
         return None
+    return rv_comp_seq
+
 
 def find_longest_orf(aa_seq, min_length=50):
     """
