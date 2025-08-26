@@ -1,0 +1,154 @@
+# Docker Compose configuration for local single-pod Kubernetes simulation
+# This mimics a single Kubernetes pod deployment for local testing
+
+services:
+  # Main application service (simulating the Kubernetes pod)
+  starbase-pod:
+    build:
+      context: .
+      dockerfile: local.Dockerfile
+      args:
+        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    image: starbase:local-pod
+    container_name: starbase-local-pod
+    hostname: starbase-local-pod
+    
+    # Resource limits (mimicking Kubernetes resource constraints)
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-2G}
+          cpus: ${CPU_LIMIT:-1.0}
+        reservations:
+          memory: ${MEMORY_REQUEST:-1G}
+          cpus: ${CPU_REQUEST:-0.5}
+    
+    # Network configuration
+    ports:
+      - "${EXTERNAL_PORT:-8080}:8000"
+    
+    # Environment variables (mimicking Kubernetes environment)
+    environment:
+      # Application environment
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEV_MODE=${DEV_MODE:-true}
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONNOUSERSITE=1
+      - PYTHONUNBUFFERED=1
+      - SQLALCHEMY_WARN_20=1
+      - SQLALCHEMY_SILENCE_UBER_WARNING=1
+      
+      # Kubernetes-like environment variables
+      - KUBERNETES_SERVICE_HOST=${KUBERNETES_SERVICE_HOST:-127.0.0.1}
+      - KUBERNETES_SERVICE_PORT=${KUBERNETES_SERVICE_PORT:-443}
+      - POD_NAME=${POD_NAME:-starbase-local-pod}
+      - POD_NAMESPACE=${POD_NAMESPACE:-default}
+      - POD_IP=${POD_IP:-127.0.0.1}
+      - NODE_NAME=${NODE_NAME:-local-node}
+      
+      # Service configuration
+      - AUTH_DOMAIN=${AUTH_DOMAIN:-127.0.0.1.nip.io}
+      - HOST_IP=${HOST_IP:-127.0.0.1}
+      
+      # API keys
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+      - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+      
+      # URLs
+      - HOME_URL=${HOME_URL:-/}
+      - WIKI_URL=${WIKI_URL:-/wiki}
+      - BLAST_URL=${BLAST_URL:-/blast}
+      - ABOUT_URL=${ABOUT_URL:-/about}
+      - PGV_URL=${PGV_URL:-/pgv}
+      - SUBMIT_URL=${SUBMIT_URL:-/submit}
+      - METRICS_URL=${METRICS_URL:-/metrics}
+      
+      # Cache configuration
+      - CACHE_TIMEOUT=${CACHE_TIMEOUT:-300}
+      
+      # Security context (mimicking Kubernetes security context)
+      - RUN_AS_USER=${RUN_AS_USER:-1000}
+      - RUN_AS_GROUP=${RUN_AS_GROUP:-1000}
+      - FS_GROUP=${FS_GROUP:-1000}
+    
+    # Volume mounts (simulating Kubernetes persistent volumes)
+    volumes:
+      # Database files (mimics Kubernetes PVC)
+      - ./src/database/db:/home/starbase/src/database/db:rw
+      
+      # Logs directory
+      - ./src/database/logs:/home/starbase/logs:rw
+      
+      # Configuration files (mimics Kubernetes ConfigMaps)
+      - ./env:/home/starbase/.env:ro
+      
+      # Development overrides (for local development)
+      - ./src:/home/starbase/src:rw
+      - ./app.py:/home/starbase/app.py:ro
+    
+    # Health check (mimicking Kubernetes liveness/readiness probes)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/cache/status"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-60s}
+    
+    # Restart policy (mimicking Kubernetes restart policy)
+    restart: unless-stopped
+    
+    # Security options (mimicking Kubernetes security context)
+    security_opt:
+      - no-new-privileges:true
+    
+    # User specification (mimicking Kubernetes security context)
+    user: "${RUN_AS_USER:-1000}:${RUN_AS_GROUP:-1000}"
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=starbase-pod,environment=local"
+    
+    # Labels (mimicking Kubernetes labels)
+    labels:
+      - "app=starbase"
+      - "version=local"
+      - "environment=${ENVIRONMENT:-development}"
+      - "pod.name=${POD_NAME:-starbase-local-pod}"
+      - "pod.namespace=${POD_NAMESPACE:-default}"
+
+  # Optional: Redis service for caching (if needed)
+  # Uncomment this section if your app requires Redis
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: starbase-redis
+  #   hostname: starbase-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - starbase-redis-data:/data
+  #   command: redis-server --appendonly yes
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+# Named volumes (simulating Kubernetes Persistent Volumes)
+volumes: {}
+
+# Custom network (simulating Kubernetes pod network)
+networks:
+  default:
+    name: starbase-pod-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
