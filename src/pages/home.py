@@ -334,7 +334,7 @@ def create_features_section():
                         [developing_features_card], span={"base": 12, "sm": 6, "lg": 4}
                     ),
                     dmc.GridCol(
-                        [create_stats_section()], span={"base": 12, "sm": 6, "lg": 4}
+                        [stats_section], span={"base": 12, "sm": 6, "lg": 4}
                     ),
                     dmc.GridCol([accession_card], span={"base": 12, "sm": 6, "lg": 4}),
                 ],
@@ -378,237 +378,305 @@ def create_publications_section():
         flex=True,
     )
 
+stats = (
+    get_database_stats()
+    if is_connected
+    else {
+        "total_starships": "—",
+        "curated_starships": "—",
+        "uncurated_starships": "—",
+        "species_count": "—",
+        "family_count": "—",
+    }
+)
 
-def create_stats_section():
-    stats = (
-        get_database_stats()
-        if is_connected
-        else {
-            "total_starships": "—",
-            "curated_starships": "—",
-            "uncurated_starships": "—",
-            "species_count": "—",
-            "family_count": "—",
-        }
-    )
+total_starships_info = dmc.Stack(
+    [
+        dmc.Group(
+            [
+                DashIconify(
+                    icon="mdi:dna",
+                    width=30,
+                    color="#868E96",
+                    style={"width": "clamp(24px, 4vw, 36px)"},
+                ),
+                dmc.Text(
+                    html.Div(
+                        [
+                            "Total ",
+                            html.Span(
+                                "Starships",
+                                style={
+                                    "font-style": "italic"
+                                },
+                            ),
+                        ]
+                    ),
+                    size="lg",
+                    c="dimmed",
+                    style={
+                        "fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"
+                    },
+                ),
+            ],
+            gap="xs",
+            align="center",
+            justify="center",
+            style={
+                "flexDirection": "row",
+                "flexWrap": "wrap",
+                "justifyContent": "center",
+                "alignItems": "center",
+            },
+        ),
+        dmc.Title(
+            f"{stats['total_starships']:,}",
+            order=2,
+            style={
+                "fontSize": "clamp(1.8rem, 3vw, 2.5rem)",
+                "textAlign": "center",
+            },
+        ),
+    ],
+    justify="center",
+    gap="md",
+    align="center",
+)
 
-    return dmc.Paper(
-        [
-            dmc.Title("Database Statistics", order=2, mb="xl"),
-            dmc.SimpleGrid(
-                [
-                    # Total Starships Section
-                    dmc.Stack(
+curated_starships_info = dmc.Stack(
+    [
+        dmc.Group(
+            [
+                DashIconify(
+                    icon="mdi:check-circle",
+                    width=24,
+                    color="#2F9E44",
+                    style={"width": "clamp(20px, 3vw, 28px)"},
+                ),
+                dmc.Text(
+                    "Curated",
+                    size="sm",
+                    c="dimmed",
+                    style={
+                        "fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"
+                    },
+                ),
+            ],
+            gap="xs",
+            align="center",
+            justify="center",
+            style={
+                "flexDirection": "row",
+                "flexWrap": "wrap",
+                "justifyContent": "center",
+                "alignItems": "center",
+            },
+        ),
+        dmc.Title(
+            f"{stats['curated_starships']:,}",
+            order=3,
+            c="green",
+            style={
+                "fontSize": "clamp(1.4rem, 2vw, 1.8rem)",
+                "textAlign": "center",
+            },
+        ),
+    ],
+    justify="center",
+    gap="sm",
+    align="center",
+)
+
+uncurated_starships_info = dmc.Stack(
+    [
+        dmc.Group(
+            [
+                DashIconify(
+                    icon="mdi:clock",
+                    width=24,
+                    color="#E8590C",
+                    style={"width": "clamp(20px, 3vw, 28px)"},
+                ),
+                dmc.Text(
+                    "Uncurated",
+                    size="sm",
+                    c="dimmed",
+                    style={
+                        "fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"
+                    },
+                ),
+            ],
+            gap="xs",
+            align="center",
+            justify="center",
+            style={
+                "flexDirection": "row",
+                "flexWrap": "wrap",
+                "justifyContent": "center",
+                "alignItems": "center",
+            },
+        ),
+        dmc.Title(
+            f"{stats['uncurated_starships']:,}",
+            order=3,
+            c="orange",
+            style={
+                "fontSize": "clamp(1.4rem, 2vw, 1.8rem)",
+                "textAlign": "center",
+            },
+        ),
+    ],
+    justify="center",
+    gap="sm",
+    align="center",
+)
+
+species_info = dmc.Stack(
+    [
+        dmc.Group(
+            [
+                DashIconify(
+                    icon="mdi:mushroom",
+                    width=30,
+                    color="#868E96",
+                    style={"width": "clamp(24px, 4vw, 36px)"},
+                ),
+                dmc.Text(
+                    "Species",
+                    size="lg",
+                    c="dimmed",
+                    style={
+                        "fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"
+                    },
+                ),
+            ],
+            gap="xs",
+            align="center",
+            justify="center",
+            style={
+                "flexDirection": "row",
+                "flexWrap": "wrap",
+                "justifyContent": "center",
+                "alignItems": "center",
+            },
+        ),
+        dmc.Title(
+            f"{stats['species_count']:,}",
+            order=2,
+            style={
+                "fontSize": "clamp(1.8rem, 3vw, 2.5rem)",
+                "textAlign": "center",
+            },
+        ),
+    ],
+    justify="center",
+    gap="md",
+    align="center",
+    style={"height": "100%"},
+)
+
+family_info = dmc.Stack(
+    [
+        dmc.Group(
+            [
+                DashIconify(
+                    icon="mdi:family-tree",
+                    width=30,
+                    color="#868E96",
+                    style={"width": "clamp(24px, 4vw, 36px)"},
+                ),
+                dmc.Text(
+                    html.Div(
                         [
-                            dmc.Group(
-                                [
-                                    dmc.Stack(
-                                        [
-                                            dmc.Group(
-                                                [
-                                                    DashIconify(
-                                                        icon="mdi:dna",
-                                                        width="clamp(28px, 4vw, 42px)",
-                                                        color="#868E96",
-                                                    ),
-                                                    dmc.Text(
-                                                        html.Div(
-                                                            [
-                                                                "Total ",
-                                                                html.Span(
-                                                                    "Starships",
-                                                                    style={
-                                                                        "font-style": "italic"
-                                                                    },
-                                                                ),
-                                                            ]
-                                                        ),
-                                                        size="lg",
-                                                        c="dimmed",
-                                                        style={
-                                                            "fontSize": "clamp(1.1rem, 2vw, 1.5rem)"
-                                                        },
-                                                    ),
-                                                ],
-                                                gap="xs",
-                                                align="center",
-                                            ),
-                                            dmc.Title(
-                                                f"{stats['total_starships']:,}",
-                                                order=2,
-                                                style={
-                                                    "fontSize": "clamp(1.8rem, 3vw, 2.5rem)"
-                                                },
-                                            ),
-                                        ],
-                                        justify="center",
-                                        gap="xs",
-                                    ),
-                                ],
-                                gap="md",
-                                align="center",
+                            html.Span(
+                                "Starship",
+                                style={"font-style": "italic"},
                             ),
-                            dmc.Divider(my="sm"),
-                            # Curated/Uncurated Section
-                            dmc.Group(
-                                [
-                                    dmc.Stack(
-                                        [
-                                            dmc.Group(
-                                                [
-                                                    DashIconify(
-                                                        icon="mdi:check-circle",
-                                                        width="clamp(20px, 3vw, 28px)",
-                                                        color="#2F9E44",
-                                                    ),
-                                                    dmc.Text(
-                                                        "Curated",
-                                                        size="sm",
-                                                        c="dimmed",
-                                                        style={
-                                                            "fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"
-                                                        },
-                                                    ),
-                                                ],
-                                                gap="xs",
-                                                align="center",
-                                            ),
-                                            dmc.Title(
-                                                f"{stats['curated_starships']:,}",
-                                                order=3,
-                                                c="green",
-                                                style={
-                                                    "fontSize": "clamp(1.4rem, 2vw, 1.8rem)"
-                                                },
-                                            ),
-                                        ],
-                                        justify="center",
-                                        gap="xs",
-                                    ),
-                                    dmc.Stack(
-                                        [
-                                            dmc.Group(
-                                                [
-                                                    DashIconify(
-                                                        icon="mdi:clock",
-                                                        width="clamp(20px, 3vw, 28px)",
-                                                        color="#E8590C",
-                                                    ),
-                                                    dmc.Text(
-                                                        "Uncurated",
-                                                        size="sm",
-                                                        c="dimmed",
-                                                        style={
-                                                            "fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"
-                                                        },
-                                                    ),
-                                                ],
-                                                gap="xs",
-                                                align="center",
-                                            ),
-                                            dmc.Title(
-                                                f"{stats['uncurated_starships']:,}",
-                                                order=3,
-                                                c="orange",
-                                                style={
-                                                    "fontSize": "clamp(1.4rem, 2vw, 1.8rem)"
-                                                },
-                                            ),
-                                        ],
-                                        justify="center",
-                                        gap="xs",
-                                    ),
-                                ],
-                                gap="md",
-                                grow=True,
-                                align="center",
-                            ),
-                        ],
-                        gap="xl",
-                        justify="center",
-                        style={"height": "100%"},
+                            " Families",
+                        ]
                     ),
-                    # Species Section
-                    dmc.Stack(
-                        [
-                            dmc.Group(
-                                [
-                                    DashIconify(
-                                        icon="mdi:mushroom",
-                                        width="clamp(28px, 4vw, 42px)",
-                                        color="#868E96",
-                                    ),
-                                    dmc.Text(
-                                        "Species",
-                                        size="lg",
-                                        c="dimmed",
-                                        style={
-                                            "fontSize": "clamp(1.1rem, 2vw, 1.5rem)"
-                                        },
-                                    ),
-                                ],
-                                gap="xs",
-                                align="center",
-                            ),
-                            dmc.Title(
-                                f"{stats['species_count']:,}",
-                                order=2,
-                                style={"fontSize": "clamp(1.8rem, 3vw, 2.5rem)"},
-                            ),
-                        ],
-                        justify="center",
-                        style={"height": "100%"},
-                    ),
-                    # Families Section
-                    dmc.Stack(
-                        [
-                            dmc.Group(
-                                [
-                                    DashIconify(
-                                        icon="mdi:family-tree",
-                                        width="clamp(28px, 4vw, 42px)",
-                                        color="#868E96",
-                                    ),
-                                    dmc.Text(
-                                        html.Div(
-                                            [
-                                                html.Span(
-                                                    "Starship",
-                                                    style={"font-style": "italic"},
-                                                ),
-                                                " Families",
-                                            ]
-                                        ),
-                                        size="lg",
-                                        c="dimmed",
-                                        style={
-                                            "fontSize": "clamp(1.1rem, 2vw, 1.5rem)"
-                                        },
-                                    ),
-                                ],
-                                gap="xs",
-                                align="center",
-                            ),
-                            dmc.Title(
-                                f"{stats['family_count']:,}",
-                                order=2,
-                                style={"fontSize": "clamp(1.8rem, 3vw, 2.5rem)"},
-                            ),
-                        ],
-                        justify="center",
-                        style={"height": "100%"},
-                    ),
-                ],
-                cols={"base": 1, "sm": 2, "md": 3},
-                spacing="xl",
-                style={"minHeight": "100%", "alignItems": "center"},
-            ),
-        ],
-        p="xl",
-        radius="md",
-        shadow="sm",
-        withBorder=True,
-    )
+                    size="lg",
+                    c="dimmed",
+                    style={
+                        "fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"
+                    },
+                ),
+            ],
+            gap="xs",
+            align="center",
+            justify="center",
+            style={
+                "flexDirection": "row",
+                "flexWrap": "wrap",
+                "justifyContent": "center",
+                "alignItems": "center",
+            },
+        ),
+        dmc.Title(
+            f"{stats['family_count']:,}",
+            order=2,
+            style={
+                "fontSize": "clamp(1.8rem, 3vw, 2.5rem)",
+                "textAlign": "center",
+            },
+        ),
+    ],
+    justify="center",
+    gap="md",
+    align="center",
+    style={"height": "100%"},
+)
+
+stats_section = dmc.Paper(
+    [
+        dmc.Title("Database Statistics", order=2, mb="xl"),
+        dmc.SimpleGrid(
+            [
+                dmc.Stack(
+                    [
+                        dmc.Stack(
+                            [
+                                total_starships_info,
+                                dmc.Group(
+                                    [
+                                        curated_starships_info,
+                                        uncurated_starships_info,
+                                    ],
+                                    gap="lg",
+                                    grow=True,
+                                    align="center",
+                                    justify="space-around",
+                                ),
+                                dmc.Divider(my="md", color="gray.3"),
+                            ],
+                            gap="md",
+                        ),
+                    ],
+                    gap="xl",
+                    justify="center",
+                    style={"height": "100%"},
+                ),
+                dmc.Stack(
+                    [
+                        species_info,
+                        dmc.Divider(my="md", color="gray.3"),
+                        family_info,
+                    ],
+                    gap="xl",
+                    justify="center",
+                    style={"height": "100%"},
+                ),
+            ],
+            cols={"base": 1, "sm": 2, "md": 2, "lg": 1},
+            spacing="xl",
+            style={"minHeight": "100%", "alignItems": "stretch"},
+        ),
+    ],
+    p="xl",
+    radius="md",
+    shadow="sm",
+    withBorder=True,
+)
 
 
 layout = dmc.MantineProvider(
