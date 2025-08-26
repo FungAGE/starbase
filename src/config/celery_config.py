@@ -82,10 +82,22 @@ celery.conf.beat_schedule = {
         "task": "src.telemetry.tasks.check_cache_status",
         "schedule": crontab(minute="*/5"),  # Every 5 minutes
     },
+    "cleanup-cache-hourly": {
+        "task": "src.tasks.cleanup_cache_task",
+        "schedule": crontab(minute=0),  # Every hour at minute 0
+    },
 }
 
 # This ensures tasks are properly registered
 celery.autodiscover_tasks(["src.tasks", "src.telemetry"])
+
+# Explicitly import task modules to ensure registration
+try:
+    import src.tasks
+    import src.telemetry.tasks
+    print("Task modules imported successfully")
+except ImportError as e:
+    print(f"Warning: Could not import task modules: {e}")
 
 # Final adjustment to ensure loggers are properly set
 # This needs to run after autodiscover_tasks

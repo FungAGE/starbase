@@ -7,10 +7,12 @@ import requests
 from src.config.settings import IPSTACK_API_KEY
 from src.telemetry.utils import update_ip_locations as _update_ip_locations
 from src.config.logging import get_logger
+from src.config.celery_config import celery
 
 logger = get_logger(__name__)
 
 
+@celery.task(name="update_ip_locations")
 def update_ip_locations(api_key=None):
     """
     Update locations for any new IPs in request_logs that aren't in ip_locations.
@@ -21,6 +23,7 @@ def update_ip_locations(api_key=None):
     return _update_ip_locations(api_key)
 
 
+@celery.task(name="refresh_telemetry")
 def refresh_telemetry():
     """
     Refresh telemetry data (formerly a Celery task).
@@ -34,6 +37,7 @@ def refresh_telemetry():
         return {"status": "error", "error": str(e)}
 
 
+@celery.task(name="check_cache_status")
 def check_cache_status():
     """
     Check cache status and refresh if needed.

@@ -7,6 +7,7 @@ from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
 from src.config.logging import get_logger
+from src.config.celery_config import celery
 
 logger = get_logger(__name__)
 
@@ -22,6 +23,7 @@ __all__ = [
 ]
 
 
+@celery.task(name="refresh_telemetry_task")
 def refresh_telemetry_task(ipstack_api_key):
     """Task to refresh telemetry data (formerly Celery task)"""
     try:
@@ -33,6 +35,7 @@ def refresh_telemetry_task(ipstack_api_key):
         return {"status": "error", "message": str(e)}
 
 
+@celery.task(name="cleanup_cache_task")
 def cleanup_cache_task():
     """Task to clean up cache files (formerly Celery task)"""
     try:
@@ -43,9 +46,9 @@ def cleanup_cache_task():
         return {"status": "error", "message": str(e)}
 
 
-# @celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
+@celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
 def run_blast_search_task(
-    query_header, query_seq, query_type, eval_threshold=0.01, curated=None
+    self, query_header, query_seq, query_type, eval_threshold=0.01, curated=None
 ):
     """Celery task to run BLAST search"""
 
@@ -89,11 +92,14 @@ def run_blast_search_task(
 
     except Exception as e:
         logger.error(f"BLAST search failed: {str(e)}")
+        # Retry the task if it's a transient error
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=60 * (2 ** self.request.retries))
         return None
 
 
-# @celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
-def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+@celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
+def run_hmmer_search_task(self, query_header, query_seq, query_type, eval_threshold=0.01):
     """Celery task to run HMMER search"""
 
     try:
@@ -129,9 +135,13 @@ def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.
 
     except Exception as e:
         logger.error(f"HMMER search failed: {str(e)}")
+        # Retry the task if it's a transient error
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=60 * (2 ** self.request.retries))
         return None
 
 
+@celery.task(name="run_multi_pgv")
 def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
     from src.pages.pgv import multi_pgv
 
@@ -142,6 +152,7 @@ def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
         return None
 
 
+@celery.task(name="run_single_pgv")
 def run_single_pgv_task(gff_file, tmp_file):
     """Task to run `single_pgv` (formerly Celery task)"""
     from src.pages.pgv import single_pgv
@@ -153,8 +164,8 @@ def run_single_pgv_task(gff_file, tmp_file):
         return None
 
 
-# @celery.task(name="run_classification_workflow_task", bind=True)
-def run_classification_workflow_task(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+@celery.task(name="run_classification_workflow_task", bind=True)
+def run_classification_workflow_task(self, workflow_state, blast_data=None, classification_data=None, meta_dict=None):
     """
     Run the main classification workflow.
     This workflow runs the following tasks sequentially:

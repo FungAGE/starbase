@@ -1,4 +1,16 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: starbase_redis
+    ports:
+      - "6379:6379"
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   app:
     build:
       context: .
@@ -10,6 +22,8 @@ services:
     environment:
       - PYTHONPATH=/home/starbase:/home/starbase/src
       - PYTHONNOUSERSITE=1  # Prevent loading packages from user site
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       # Mount only specific directories to avoid overwriting conda installation
       - ./src:/home/starbase/src:rw
@@ -17,6 +31,49 @@ services:
       - ./start-script.sh:/home/starbase/start-script.sh:ro
       - ./app.py:/home/starbase/app.py:ro
       - ./src/database/db:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: starbase:latest
+    container_name: starbase_celery_worker
+    environment:
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONNOUSERSITE=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./src:/home/starbase/src:rw
+      - ./src/database/db:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "manage_celery.py", "worker"]
+    restart: always
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: starbase:latest
+    container_name: starbase_celery_beat
+    environment:
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONNOUSERSITE=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./src:/home/starbase/src:rw
+      - ./src/database/db:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "manage_celery.py", "beat"]
     restart: always
   
   unit-tests:
