@@ -182,6 +182,21 @@ def run_classification_workflow_task(self, workflow_state, blast_data=None, clas
         classification_data_dict: ClassificationData object or dictionary
         meta_dict: MetaData object or dictionary
     """
+    return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+
+
+def run_classification_workflow_sync(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+    """
+    Synchronous version of the classification workflow for direct calls.
+    This is the same as the Celery task but without the task decorator.
+    """
+    return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+
+
+def _run_classification_workflow_internal(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+    """
+    Internal implementation of the classification workflow.
+    """
     from src.utils.classification_utils import run_classification_workflow
 
     try:

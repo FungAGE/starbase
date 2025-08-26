@@ -28,6 +28,7 @@ from src.utils.classification_utils import WORKFLOW_STAGES
 from src.tasks import (
     run_blast_search_task,
     run_classification_workflow_task,
+    run_classification_workflow_sync,
 )
 
 from src.config.logging import get_logger
@@ -1417,7 +1418,7 @@ def process_additional_sequence(
                 meta_df = fetch_meta_data()
                 meta_dict = meta_df.to_dict("records") if meta_df is not None else None
                 
-                workflow_result = run_classification_workflow_task(
+                workflow_result = run_classification_workflow_sync(
                     workflow_state=workflow_state.to_dict(),
                     blast_data=blast_data.to_dict(),
                     classification_data=classification_data.to_dict(),
@@ -2114,10 +2115,18 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
         logger.debug("Running classification workflow via centralized state")
         
         # Get current state from centralized pipeline
+        resolved_sequence_id = pipeline_state.resolve_sequence_id(sequence_id)
+        if resolved_sequence_id:
+            sequence_id = resolved_sequence_id
+            logger.info(f"Resolved sequence ID: {sequence_id}")
+        
         sequence_state = pipeline_state.get_sequence(sequence_id)
         if not sequence_state:
             logger.error(f"No sequence state found for {sequence_id}")
-            raise PreventUpdate
+            # Create a new sequence state to prevent further errors
+            pipeline_state.add_sequence(sequence_id)
+            sequence_state = pipeline_state.get_sequence(sequence_id)
+            logger.info(f"Created new sequence state for {sequence_id}")
         
         # Prepare data for workflow
         blast_data = sequence_state.blast_data
@@ -2130,7 +2139,7 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
         meta_dict = meta_df.to_dict("records") if meta_df is not None else None
         
         # Run workflow directly (no Celery)
-        result = run_classification_workflow_task(
+        result = run_classification_workflow_sync(
             workflow_state=workflow_state.to_dict(),
             blast_data=blast_data.to_dict(),
             classification_data=classification_data.to_dict(),
