@@ -1,8 +1,6 @@
 # Docker Compose configuration for local single-pod Kubernetes simulation
 # This mimics a single Kubernetes pod deployment for local testing
 
-version: '3.8'
-
 services:
   # Main application service (simulating the Kubernetes pod)
   starbase-pod:
@@ -21,10 +19,10 @@ services:
       resources:
         limits:
           memory: ${MEMORY_LIMIT:-2G}
-          cpus: '${CPU_LIMIT:-1.0}'
+          cpus: ${CPU_LIMIT:-1.0}
         reservations:
           memory: ${MEMORY_REQUEST:-1G}
-          cpus: '${CPU_REQUEST:-0.5}'
+          cpus: ${CPU_REQUEST:-0.5}
     
     # Network configuration
     ports:
@@ -76,10 +74,11 @@ services:
     
     # Volume mounts (simulating Kubernetes persistent volumes)
     volumes:
-      # Data persistence (mimics Kubernetes PVC)
-      - starbase-data:/home/starbase/src/database/db:rw
-      - starbase-cache:/home/starbase/src/database/db/cache:rw
-      - starbase-logs:/home/starbase/logs:rw
+      # Database files (mimics Kubernetes PVC)
+      - ./src/database/db:/home/starbase/src/database/db:rw
+      
+      # Logs directory
+      - ./src/database/logs:/home/starbase/logs:rw
       
       # Configuration files (mimics Kubernetes ConfigMaps)
       - ./env:/home/starbase/.env:ro
@@ -87,7 +86,6 @@ services:
       # Development overrides (for local development)
       - ./src:/home/starbase/src:rw
       - ./app.py:/home/starbase/app.py:ro
-      - ./start-script.sh:/home/starbase/start-script.sh:ro
     
     # Health check (mimicking Kubernetes liveness/readiness probes)
     healthcheck:
@@ -142,30 +140,7 @@ services:
   #     retries: 3
 
 # Named volumes (simulating Kubernetes Persistent Volumes)
-volumes:
-  starbase-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data
-  
-  starbase-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/cache
-  
-  starbase-logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/logs
-  
-  # starbase-redis-data:
-  #   driver: local
+volumes: {}
 
 # Custom network (simulating Kubernetes pod network)
 networks:

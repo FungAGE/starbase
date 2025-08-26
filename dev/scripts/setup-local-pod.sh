@@ -112,7 +112,7 @@ create_env_file() {
     fi
     
     # Create .env file
-    cp env.template .env
+    cp dev/config/env.template .env
     
     # Update .env with local IP
     sed -i "s/AUTH_DOMAIN=127.0.0.1.nip.io/AUTH_DOMAIN=$LOCAL_IP.nip.io/g" .env
@@ -128,11 +128,9 @@ create_directories() {
     print_step "Creating required directories..."
     
     # Create directories that mimic Kubernetes volume mounts
-    mkdir -p data
-    mkdir -p cache
-    mkdir -p logs
+    mkdir -p src/database/cache
+    mkdir -p src/database/logs
     mkdir -p src/database/db
-    mkdir -p src/database/db/cache
     
     # Set proper permissions
     chmod 755 data cache logs
@@ -151,7 +149,7 @@ build_image() {
     fi
     
     # Build the image using local.Dockerfile
-    docker build -f local.Dockerfile -t starbase:local-pod \
+    docker build -f dev/docker/local.Dockerfile -t starbase:local-pod \
         --build-arg IPSTACK_API_KEY="${IPSTACK_API_KEY:-}" \
         --build-arg MAINTENANCE_TOKEN="${MAINTENANCE_TOKEN:-}" \
         .
@@ -164,7 +162,7 @@ validate_setup() {
     print_step "Validating setup..."
     
     # Check if required files exist
-    local required_files=("local.Dockerfile" "docker-compose.local.yaml" ".env" "app.py" "start-script.sh")
+    local required_files=("dev/docker/local.Dockerfile" "dev/docker/docker-compose.local.yaml" ".env" "app.py")
     for file in "${required_files[@]}"; do
         if [ ! -f "$file" ]; then
             print_error "Required file missing: $file"
@@ -190,9 +188,9 @@ start_environment() {
     
     # Use docker-compose to start the environment
     if command -v docker-compose &> /dev/null; then
-        docker-compose -f docker-compose.local.yaml up -d
+        docker-compose -f dev/docker/docker-compose.local.yaml up -d
     else
-        docker compose -f docker-compose.local.yaml up -d
+        docker compose -f dev/docker/docker-compose.local.yaml up -d
     fi
     
     print_success "Single-pod environment started"
@@ -241,8 +239,8 @@ show_connection_info() {
     echo ""
     echo -e "${BLUE}Useful Commands:${NC}"
     echo -e "  View logs:     docker logs starbase-local-pod -f"
-    echo -e "  Stop pod:      docker-compose -f docker-compose.local.yaml down"
-    echo -e "  Restart pod:   docker-compose -f docker-compose.local.yaml restart"
+    echo -e "  Stop pod:      docker-compose -f dev/docker/docker-compose.local.yaml down"
+    echo -e "  Restart pod:   docker-compose -f dev/docker/docker-compose.local.yaml restart"
     echo -e "  Shell access:  docker exec -it starbase-local-pod /bin/bash"
     echo ""
     echo -e "${YELLOW}Note:${NC} This environment simulates a single Kubernetes pod for local testing."

@@ -81,15 +81,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 # Create directory structure (mimicking Kubernetes volume mounts)
 RUN mkdir -p \
     $HOME/src/database/db \
-    $HOME/src/database/db/cache \
-    $HOME/logs \
-    $HOME/data \
-    $HOME/cache && \
+    $HOME/src/database/cache \
+    $HOME/src/database/logs && \
     chown -R $USER:$USER $HOME && \
     chmod -R 755 $HOME/src/database/db && \
-    chmod -R 755 $HOME/logs && \
-    chmod -R 755 $HOME/data && \
-    chmod -R 755 $HOME/cache
+    chmod -R 755 $HOME/src/database/cache && \
+    chmod -R 755 $HOME/src/database/logs
 
 # Add enhanced healthcheck (mimicking Kubernetes liveness/readiness probes)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
@@ -97,12 +94,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Copy application code (changes most frequently, so do this last)
 COPY ./ ./
-RUN chmod +x start-script.sh && \
+RUN chmod +x dev/scripts/start-script.sh && \
     # Ensure all directories and files are owned by starbase user
     chown -R $USER:$USER $HOME/src && \
-    chown -R $USER:$USER $HOME/logs && \
-    chown -R $USER:$USER $HOME/data && \
-    chown -R $USER:$USER $HOME/cache
+    chown -R $USER:$USER $HOME/src/database/cache && \
+    chown -R $USER:$USER $HOME/src/database/logs
 
 # Create a startup script that mimics Kubernetes init container behavior
 RUN cat > $HOME/k8s-init.sh << 'EOF'
@@ -118,15 +114,13 @@ echo "======================================"
 
 # Create directories if they don't exist (mimicking init container behavior)
 mkdir -p /home/starbase/src/database/db
-mkdir -p /home/starbase/logs
-mkdir -p /home/starbase/data
-mkdir -p /home/starbase/cache
+mkdir -p /home/starbase/src/database/cache
+mkdir -p /home/starbase/src/database/logs
 
 # Set proper permissions (mimicking Kubernetes volume mount behavior)
 chown -R starbase:starbase /home/starbase/src/database/db
-chown -R starbase:starbase /home/starbase/logs
-chown -R starbase:starbase /home/starbase/data
-chown -R starbase:starbase /home/starbase/cache
+chown -R starbase:starbase /home/starbase/src/database/cache
+chown -R starbase:starbase /home/starbase/src/database/logs
 
 echo "Pod initialization completed successfully"
 EOF
