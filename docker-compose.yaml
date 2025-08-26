@@ -50,10 +50,12 @@ services:
     volumes:
       - ./src:/home/starbase/src:rw
       - ./src/database/db:/home/starbase/src/database/db:rw
+      - ./manage_celery.py:/home/starbase/manage_celery.py:ro
     depends_on:
       redis:
         condition: service_healthy
-    command: ["python", "manage_celery.py", "worker"]
+    entrypoint: ["python"]
+    command: ["manage_celery.py", "worker"]
     restart: always
 
   celery-beat:
@@ -70,10 +72,12 @@ services:
     volumes:
       - ./src:/home/starbase/src:rw
       - ./src/database/db:/home/starbase/src/database/db:rw
+      - ./manage_celery.py:/home/starbase/manage_celery.py:ro
     depends_on:
       redis:
         condition: service_healthy
-    command: ["python", "manage_celery.py", "beat"]
+    entrypoint: ["python"]
+    command: ["manage_celery.py", "beat"]
     restart: always
   
   unit-tests:

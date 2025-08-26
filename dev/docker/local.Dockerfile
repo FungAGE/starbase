@@ -93,7 +93,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Copy application code (changes most frequently, so do this last)
 COPY ./ ./
-RUN chmod +x dev/scripts/start-script.sh && \
+RUN chmod +x start-script.sh && \
     # Ensure all directories and files are owned by starbase user
     chown -R $USER:$USER $HOME/src && \
     chown -R $USER:$USER $HOME/logs
