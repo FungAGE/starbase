@@ -79,14 +79,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && npm install -g biojs-vis-blasterjs
 
 # Create directory structure (mimicking Kubernetes volume mounts)
+# Main data directory - this is the persistent volume
 RUN mkdir -p \
     $HOME/src/database/db \
-    $HOME/src/database/cache \
-    $HOME/src/database/logs && \
+    $HOME/logs && \
     chown -R $USER:$USER $HOME && \
     chmod -R 755 $HOME/src/database/db && \
-    chmod -R 755 $HOME/src/database/cache && \
-    chmod -R 755 $HOME/src/database/logs
+    chmod -R 755 $HOME/logs
 
 # Add enhanced healthcheck (mimicking Kubernetes liveness/readiness probes)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
@@ -97,8 +96,7 @@ COPY ./ ./
 RUN chmod +x dev/scripts/start-script.sh && \
     # Ensure all directories and files are owned by starbase user
     chown -R $USER:$USER $HOME/src && \
-    chown -R $USER:$USER $HOME/src/database/cache && \
-    chown -R $USER:$USER $HOME/src/database/logs
+    chown -R $USER:$USER $HOME/logs
 
 # Create a startup script that mimics Kubernetes init container behavior
 RUN cat > $HOME/k8s-init.sh << 'EOF'
@@ -191,4 +189,3 @@ LABEL deployment.type="single-pod"
 
 # Use the enhanced start script
 ENTRYPOINT ["./start-local-pod.sh"]
-

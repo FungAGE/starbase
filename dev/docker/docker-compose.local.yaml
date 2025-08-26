@@ -5,8 +5,8 @@ services:
   # Main application service (simulating the Kubernetes pod)
   starbase-pod:
     build:
-      context: .
-      dockerfile: local.Dockerfile
+      context: ../..
+      dockerfile: dev/docker/local.Dockerfile
       args:
         - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
         - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
@@ -75,17 +75,14 @@ services:
     # Volume mounts (simulating Kubernetes persistent volumes)
     volumes:
       # Database files (mimics Kubernetes PVC)
-      - ./src/database/db:/home/starbase/src/database/db:rw
+      - ../../src/database/db:/home/starbase/src/database/db:rw
       
       # Logs directory
-      - ./src/database/logs:/home/starbase/logs:rw
-      
-      # Configuration files (mimics Kubernetes ConfigMaps)
-      - ./env:/home/starbase/.env:ro
+      - ../../src/database/logs:/home/starbase/logs:rw
       
       # Development overrides (for local development)
-      - ./src:/home/starbase/src:rw
-      - ./app.py:/home/starbase/app.py:ro
+      - ../../src:/home/starbase/src:rw
+      - ../../app.py:/home/starbase/app.py:ro
     
     # Health check (mimicking Kubernetes liveness/readiness probes)
     healthcheck:
@@ -151,4 +148,3 @@ networks:
       driver: default
       config:
         - subnet: 172.20.0.0/16
-

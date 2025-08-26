@@ -106,7 +106,7 @@ create_env_file() {
     print_info "Detected local IP: $LOCAL_IP"
     
     # Create .env file from template
-    if [ ! -f "env.template" ]; then
+    if [ ! -f "dev/config/env.template" ]; then
         print_error "env.template file not found. Please ensure it exists."
         exit 1
     fi
@@ -133,7 +133,7 @@ create_directories() {
     mkdir -p src/database/db
     
     # Set proper permissions
-    chmod 755 data cache logs
+    chmod 755 src/database/cache src/database/logs
     chmod -R 755 src/database/db
     
     print_success "Required directories created"
@@ -171,7 +171,7 @@ validate_setup() {
     done
     
     # Check if directories exist
-    local required_dirs=("data" "cache" "logs" "src")
+    local required_dirs=("src/database/cache" "src/database/logs" "src/database/db" "src")
     for dir in "${required_dirs[@]}"; do
         if [ ! -d "$dir" ]; then
             print_error "Required directory missing: $dir"
