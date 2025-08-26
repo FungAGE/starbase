@@ -23,9 +23,11 @@ from src.utils.seq_utils import (
     create_tmp_fasta_dir,
     load_fasta_to_dict,
     clean_sequence,
+    revcomp,
 )
 from src.database.sql_manager import fetch_ships
 from Bio import SeqIO
+from Bio.Seq import Seq
 import networkx as nx
 
 from typing import Optional, Tuple, Dict, Any
@@ -181,11 +183,15 @@ def get_version_sort_key(version_tag):
 ########################################################
 
 
-def generate_md5_hash(sequence: str) -> str:
+# sequence can be a string, Seq object, or SeqRecord object
+def generate_md5_hash(sequence):
     """Generate an MD5 hash of a sequence."""
     if sequence is None:
-        logger.error("Cannot generate MD5 hash for None sequence")
         return None
+    elif type(sequence) == SeqIO.SeqRecord:
+        sequence = str(sequence.seq)
+    elif type(sequence) == Seq:  # Handle Seq objects
+        sequence = str(sequence)
     return hashlib.md5(sequence.encode()).hexdigest()
 
 
@@ -200,10 +206,8 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
         if not sequences:
             logger.error("No sequences found in FASTA file")
             return None
-        # Get all sequences from the file (as a list)
         sequence_list = list(sequences.values())
     else:
-        # If fasta is not a file path, treat it as a sequence string
         logger.debug(f"Treating input as sequence string, length: {len(fasta)}")
         sequence_list = [fasta]
 
@@ -212,6 +216,7 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
         return None
 
     # generate md5 for query sequence(s)
+    # create nested dicts for query and query_revcomp
     query_md5 = {}
     for seq in sequence_list:
         if seq is None:
@@ -222,7 +227,8 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
             logger.warning(f"clean_sequence returned None for sequence: {seq[:50]}...")
             continue
         md5_hash = generate_md5_hash(clean_seq)
-        if md5_hash is None:
+        md5_hash_revcomp = generate_md5_hash(revcomp(clean_seq))
+        if md5_hash is None or md5_hash_revcomp is None:
             logger.warning(
                 f"generate_md5_hash returned None for sequence: {seq[:50]}..."
             )

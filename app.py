@@ -116,7 +116,7 @@ def initialize_app():
     with server.app_context():
         from src.database.migrations import create_database_indexes
         from src.database.blastdb import create_dbs
-        from src.config.scheduler import run_scheduler
+        from src.config.celery_config import celery
 
         create_database_indexes()
         cleanup_old_cache()
@@ -129,8 +129,13 @@ def initialize_app():
         except Exception as e:
             logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
 
-        # Start the scheduler thread
-        run_scheduler()
+        # Initialize Celery with Flask app context
+        celery.conf.update(
+            task_always_eager=False,  # Ensure tasks run asynchronously
+            task_eager_propagates=True,
+        )
+        
+        logger.info("Celery initialized successfully")
 
 
 def serve_app_layout():

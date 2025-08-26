@@ -1,14 +1,12 @@
 from flask_caching import Cache
 import os
 import time
-
-from src.config.settings import DATA_DIR
-
+from src.config.settings import PROJECT_ROOT
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
-cache_dir = os.path.join(DATA_DIR, "cache")
+cache_dir = os.path.join(PROJECT_ROOT, "src", "database", "cache")
 os.makedirs(cache_dir, exist_ok=True)
 
 CACHE_TIMESTAMP = str(int(time.time()))
