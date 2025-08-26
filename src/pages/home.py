@@ -88,8 +88,9 @@ def create_feature_button(label, href, icon):
             gradient={"from": "indigo", "to": "cyan"},
             size="lg",
             radius="md",
-            fullWidth=True,
+            fullWidth=False,
             disabled=not is_connected,
+            style={"minWidth": "200px"},
         ),
         href=href,
         style={"textDecoration": "none"},  # Remove underline from link
@@ -214,57 +215,64 @@ starship_card = dmc.Paper(
 )
 
 
-working_features_card = dmc.Paper(
-    [
-        dmc.Title(
-            [
-                "What can I currently use ",
-                html.Span(
-                    "starbase",
-                    className="logo-text",
-                ),
-                " for?",
-            ],
-            order=2,
-            mb="md",
+working_features_card = dmc.Paper([
+    dmc.Stack([
+        dmc.Group([
+            dmc.Title(
+                [
+                    "What can I currently use ",
+                    html.Span(
+                        "starbase",
+                        className="logo-text",
+                    ),
+                    " for?",
+                ],
+                order=2,
+                mb="md",
+            ),
+            dmc.Stack(
+                working_buttons,
+                gap="md",
+                align="center",
+                justify="center",
+                style={"width": "100%", "alignItems": "center"},
+            ),
+        ],
+        justify="space-between",
+        align="center",
         ),
-        dmc.Stack(
-            working_buttons,
-            gap="md",
+        dmc.Group(
+            [
+                dmc.Title(
+                [
+                    "Most functions of ",
+                    html.Span(
+                        "starbase",
+                        className="logo-text",
+                    ),
+                    " are still under active development. We plan on implementing:",
+                ],
+                order=2,
+                mb="md",
+            ),
+            dmc.List(
+                [dmc.ListItem(dmc.Text(item, c="dimmed")) for item in not_working],
+                size="lg",
+                spacing="sm",
+            ),
+        ],
+            justify="space-between",
+            align="center",
         ),
     ],
+    justify="space-between",
+    align="center",
+    )],
     shadow="sm",
     p="xl",
     radius="md",
     withBorder=True,
     mb="xl",
-    h="100%",
-)
-
-developing_features_card = dmc.Paper(
-    [
-        dmc.Title(
-            [
-                "Most functions of ",
-                html.Span(
-                    "starbase",
-                    className="logo-text",
-                ),
-                " are still under active development. We plan on implementing:",
-            ],
-            order=2,
-            mb="md",
-        ),
-        dmc.List(
-            [dmc.ListItem(dmc.Text(item, c="dimmed")) for item in not_working],
-            size="lg",
-            spacing="sm",
-        ),
-    ],
-    shadow="sm",
-    p="xl",
-    radius="md",
-    withBorder=True,
     h="100%",
 )
 
@@ -331,12 +339,11 @@ def create_features_section():
                         [working_features_card], span={"base": 12, "sm": 6, "lg": 4}
                     ),
                     dmc.GridCol(
-                        [developing_features_card], span={"base": 12, "sm": 6, "lg": 4}
+                        [accession_card], span={"base": 12, "sm": 6, "lg": 4}
                     ),
                     dmc.GridCol(
                         [stats_section], span={"base": 12, "sm": 6, "lg": 4}
-                    ),
-                    dmc.GridCol([accession_card], span={"base": 12, "sm": 6, "lg": 4}),
+                    )
                 ],
                 grow=True,
                 gutter="xl",
