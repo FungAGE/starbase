@@ -41,7 +41,9 @@ title = dmc.Paper(
                             className="logo-text",
                             style={"color": "white"},
                         ),
-                        "A database and toolkit for exploring large eukaryotic transposable elements in Fungi",
+                        "A Database and Toolkit for Exploration of ",
+                        html.Span("Starship", style={"font-style": "italic"}),
+                        " Elements in Fungi",
                     ],
                     order=1,
                     style={
