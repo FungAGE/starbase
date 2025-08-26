@@ -10,8 +10,6 @@
 
 <!-- badges: end -->
 
-# `starbase`: A Database and Toolkit for Exploring Eukaryotic Transposable Elements in Fungi
-
 ## Overview
 
 `starbase` is a web-based application that provides various analytical and visualization tools for exploring large eukaryotic transposable elements known as _Starships_.
