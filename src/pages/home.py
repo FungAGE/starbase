@@ -289,7 +289,9 @@ accession_card = dmc.Paper(
                     ),
                     " Accessions",
                 ]
-            )
+            ),
+            order=2,
+            mb="md",
         ),
         dmc.Text(
             html.Div(
@@ -371,10 +373,12 @@ def create_publications_section():
                     dmc.Title(
                         html.Div(
                             [
-                                "Manuscripts Characterizing ",
+                                "Publications Characterizing ",
                                 html.Span("Starships", style={"font-style": "italic"}),
                             ]
-                        )
+                        ),
+                        order=2,
+                        mb="md",
                     ),
                     html.Div(make_paper_table(), style={"width": "100%"}),
                 ],

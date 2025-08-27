@@ -628,7 +628,34 @@ class PipelineState:
     
     def get_sequence(self, sequence_id: str) -> Optional[SequenceState]:
         """Get sequence state by ID"""
-        return self._sequences.get(sequence_id)
+        if sequence_id:
+            return self._sequences.get(sequence_id)
+        return None
+    
+    def resolve_sequence_id(self, sequence_id: str) -> Optional[str]:
+        """
+        Resolve sequence ID by trying different formats.
+        This helps when there are mismatches between tab IDs and base IDs.
+        """
+        if not sequence_id:
+            return None
+            
+        # Direct match
+        if sequence_id in self._sequences:
+            return sequence_id
+            
+        # Try without tab suffix
+        if "_tab_" in sequence_id:
+            base_sequence_id = sequence_id.split("_tab_")[0]
+            if base_sequence_id in self._sequences:
+                return base_sequence_id
+                
+        # Try with tab suffix
+        for stored_id in self._sequences.keys():
+            if stored_id.startswith(sequence_id) or sequence_id.startswith(stored_id):
+                return stored_id
+                
+        return None
     
     def get_active_sequence(self) -> Optional[SequenceState]:
         """Get the currently active sequence"""

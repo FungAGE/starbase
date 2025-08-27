@@ -35,7 +35,7 @@ def refresh_telemetry_task(ipstack_api_key):
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="cleanup_cache_task")
+@celery.task(name="src.tasks.cleanup_cache_task")
 def cleanup_cache_task():
     """Task to clean up cache files (formerly Celery task)"""
     try:
@@ -181,6 +181,21 @@ def run_classification_workflow_task(self, workflow_state, blast_data=None, clas
         blast_data_dict: BlastData object or dictionary
         classification_data_dict: ClassificationData object or dictionary
         meta_dict: MetaData object or dictionary
+    """
+    return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+
+
+def run_classification_workflow_sync(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+    """
+    Synchronous version of the classification workflow for direct calls.
+    This is the same as the Celery task but without the task decorator.
+    """
+    return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+
+
+def _run_classification_workflow_internal(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+    """
+    Internal implementation of the classification workflow.
     """
     from src.utils.classification_utils import run_classification_workflow
 

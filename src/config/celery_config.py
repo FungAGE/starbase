@@ -99,6 +99,19 @@ try:
 except ImportError as e:
     print(f"Warning: Could not import task modules: {e}")
 
+# Import tasks after celery app is created to avoid circular imports
+def _import_tasks():
+    """Import tasks to ensure they're registered with Celery."""
+    try:
+        import src.tasks
+        import src.telemetry.tasks
+        print("Task modules imported successfully")
+    except ImportError as e:
+        print(f"Warning: Could not import task modules: {e}")
+
+# Import tasks
+_import_tasks()
+
 # Final adjustment to ensure loggers are properly set
 # This needs to run after autodiscover_tasks
 if not IS_DEV:
