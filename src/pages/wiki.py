@@ -249,12 +249,22 @@ layout = dmc.Container(
         dmc.Paper(
             children=[
                 dmc.Title(
-                    "Starship Wiki",
+                    [
+                        html.Span(
+                            "starbase ",
+                            className="logo-text",
+                        ),
+                        " Wiki",
+                    ],
                     order=1,
                     mb="md",
                 ),
                 dmc.Text(
-                    "Search and explore the characteristics of different Starship families",
+                    [
+                        "Search and explore the characteristics of different ",
+                        html.Span("Starship", style={"font-style": "italic"}),
+                        " families"
+                    ],
                     c="dimmed",
                     size="lg",
                 ),
@@ -299,11 +309,13 @@ layout = dmc.Container(
                         dmc.Group(
                             children=[
                                 curated_switch(
-                                    text="Only show curated Starships",
+                                    text=html.Div(["Only show curated ",
+                                    html.Span("Starships", style={"font-style": "italic"})]),
                                     size="md",
                                 ),
                                 dereplicated_switch(
-                                    text="Only show dereplicated Starships",
+                                    text=html.Div(["Only show dereplicated ",
+                                    html.Span("Starships", style={"font-style": "italic"})]),
                                     size="md",
                                 ),
                             ],
@@ -368,15 +380,16 @@ layout = dmc.Container(
                                     ),
                                 ),
                             ],
-                            withBorder=True,
-                            shadow="sm",
+                            p="xl",
                             radius="md",
-                            p="md",
+                            withBorder=True,
+                            mb="xl",
                         ),
                         dmc.Space(h="sm"),
                         dmc.Paper(
                             children=[
-                                dmc.Title("Starship Families", order=2, mb="md"),
+                                dmc.Title(html.Div([html.Span("Starship", style={"font-style": "italic"}),
+                                " Families"]), order=2, mb="md"),
                                 dcc.Loading(
                                     id="wiki-loading",
                                     type="circle",
@@ -386,9 +399,10 @@ layout = dmc.Container(
                                     ),
                                 ),
                             ],
-                            p="md",
+                            p="xl",
                             radius="md",
                             withBorder=True,
+                            mb="xl",
                             style={
                                 "minHeight": "200px",  # Minimum height when collapsed
                                 "maxHeight": "calc(100vh - 200px)",  # Maximum height
@@ -578,17 +592,17 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             table_columns=table_columns,
         )
 
-        title = dmc.Title("Starship Table", order=2, mb="md")
-
         # Create the enhanced component similar to wiki_table_with_download
         enhanced_results = dmc.Paper(
             children=[
                 # Main Content
-                dmc.Title(title),
+                dmc.Title("Info Table and Downloads", order=2, mb="md"),
                 dmc.Stack(
                     [
                         dmc.Text(
-                            "Select individual Starships or download the complete dataset",
+                            html.Div(["Select individual ",
+                            html.Span("Starships", style={"font-style": "italic"}),
+                            " or download the complete dataset"]),
                             size="lg",
                             c="dimmed",
                         ),
@@ -598,7 +612,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                 gap="xl",
                                 children=[
                                     dmc.Button(
-                                        "Download All Starships",
+                                        html.Div(["Download All ",
+                                        html.Span("Starships", style={"font-style": "italic"})]),
                                         id="download-all-btn",
                                         variant="gradient",
                                         gradient={
@@ -615,7 +630,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                         },
                                     ),
                                     dmc.Button(
-                                        "Download Selected Starships",
+                                        html.Div(["Download Selected ",
+                                        html.Span("Starships", style={"font-style": "italic"})]),
                                         id="download-selected-btn",
                                         variant="gradient",
                                         gradient={"from": "teal", "to": "lime"},
@@ -650,7 +666,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                     c="dimmed",
                                 ),
                                 dmc.Text(
-                                    "Click rows to select Starships",
+                                    html.Div(["Click rows to select ",
+                                    html.Span("Starships", style={"font-style": "italic"})]),
                                     size="sm",
                                     c="dimmed",
                                     style={"fontStyle": "italic"},
@@ -1086,8 +1103,16 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
             children="No sequences found for download", color="red", title="Error"
         )
 
+    if num_sequences > 0:
+        if num_sequences == 1:
+            download_message = f"Downloading {num_sequences} sequence"
+        else:
+            download_message = f"Downloading {num_sequences} sequences"
+    else:
+        download_message = "No sequences found for download"
+
     return download_data, dmc.Alert(
-        children=f"Downloading {num_sequences} sequences",
+        children=download_message,
         color="green",
         title="Success",
     )

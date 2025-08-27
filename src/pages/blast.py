@@ -119,7 +119,12 @@ layout = dmc.Container(
                                 [
                                     dmc.Title("BLAST Search", order=1),
                                     dmc.Text(
-                                        "Search protein/nucleotide sequences for Starships and Starship-associated genes",
+                                        html.Div([
+                                            "Search protein/nucleotide sequences for ",
+                                            html.Span("Starships", style={"font-style": "italic"}),
+                                            " and ",
+                                            html.Span("Starship-associated genes", style={"font-style": "italic"}),
+                                        ]),
                                         c="dimmed",
                                         size="lg",
                                     ),
@@ -195,7 +200,9 @@ layout = dmc.Container(
                                                                     dmc.Stack(
                                                                         [
                                                                             curated_switch(
-                                                                                text="Only search curated Starships",
+                                                                                text=html.Div(["Only search curated ",
+                                                                                html.Span("Starships", style={"font-style": "italic"}),
+                                                                                ]),
                                                                                 size="sm",
                                                                             ),
                                                                         ],

@@ -63,9 +63,10 @@ layout = dmc.Container(
         # Header Section
         dmc.Paper(
             children=[
-                dmc.Title("Starship Genome Viewer", order=1, mb="md"),
+                dmc.Title(html.Div([html.Span("Starship", style={"font-style": "italic"}), " Genome Viewer"]), order=1, mb="md"),
                 dmc.Text(
-                    "Compare and visualize up to 4 Starship sequences",
+                    html.Div(["Compare and visualize up to 4 ",
+                    html.Span("Starship", style={"font-style": "italic"}), " sequences"]),
                     size="lg",
                     c="dimmed",
                 ),
@@ -82,7 +83,9 @@ layout = dmc.Container(
                     span={"base": 12, "md": 6},
                     children=dmc.Paper(
                         children=[
-                            dmc.Title("Select Starships", order=2),
+                            dmc.Title(html.Div(["Select ",
+                            html.Span("Starships", style={"font-style": "italic"}),
+                            " to visualize"]), order=2),
                             dmc.Stack(
                                 pos="relative",
                                 children=[
@@ -123,7 +126,9 @@ layout = dmc.Container(
                             ),
                             dmc.Space(h="md"),
                             dmc.Button(
-                                dmc.Text("Show Selected Starship(s)", size="lg"),
+                                dmc.Text(html.Div(["Show Selected ",
+                                html.Span("Starship(s)", style={"font-style": "italic"}),
+                                ]), size="lg"),
                                 id="update-button",
                                 variant="gradient",
                                 gradient={"from": "indigo", "to": "cyan"},
@@ -480,7 +485,11 @@ def update_pgv(n_clicks, selected_rows, row_data, len_thr, id_thr):
     if not n_clicks:
         return (
             no_update,
-            "Select Starships from the table and click 'Show Selected Starships'",
+            html.Div(["Select ",
+            html.Span("Starships", style={"font-style": "italic"}),
+            " from the table and click 'Show Selected ",
+            html.Span("Starship(s)", style={"font-style": "italic"}),
+            "'"]),
         )
 
     if n_clicks > 0:
