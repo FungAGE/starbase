@@ -35,7 +35,7 @@ def refresh_telemetry_task(ipstack_api_key):
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="cleanup_cache_task")
+@celery.task(name="src.tasks.cleanup_cache_task")
 def cleanup_cache_task():
     """Task to clean up cache files (formerly Celery task)"""
     try:
