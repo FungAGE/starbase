@@ -173,3 +173,4 @@ celerybeat*
 # db
 src/database/db/**
 src/database/db.tar.gz
+src/database/cache/**
