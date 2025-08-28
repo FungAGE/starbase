@@ -171,6 +171,9 @@ class Taxonomy(Base):
     species = Column(VARCHAR)
     section = Column(VARCHAR)
 
+    # Relationships
+    genomes = relationship("Genome", back_populates="taxonomy")
+
 
 class NavisHaplotype(Base):
     __tablename__ = "navis_haplotype"
