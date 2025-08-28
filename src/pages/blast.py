@@ -1323,8 +1323,17 @@ def process_additional_sequence(
         
         main_sequence_id = pipeline_state._active_sequence_id
         if not main_sequence_id:
-            logger.error("No active sequence ID found for tab processing")
-            raise PreventUpdate
+            # Try to find the main sequence ID from existing sequences
+            # Look for sequences that don't have "_tab_" in their ID
+            main_sequences = [seq_id for seq_id in pipeline_state._sequences.keys() 
+                            if "_tab_" not in seq_id]
+            if main_sequences:
+                main_sequence_id = main_sequences[0]
+                logger.info(f"Recovered main sequence ID: {main_sequence_id}")
+                pipeline_state.set_active_sequence(main_sequence_id)
+            else:
+                logger.error("No active sequence ID found for tab processing and no main sequences available")
+                raise PreventUpdate
         tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
 
         processed_sequences = results_store.get("processed_sequences", [])
@@ -1382,7 +1391,8 @@ def process_additional_sequence(
                 f"Running classification workflow for tab {tab_idx} (length: {sequence_length})"
             )
             try:
-                tab_sequence_state = pipeline_state.add_sequence(tab_sequence_id)
+                # Add tab sequence without changing the active sequence ID
+                tab_sequence_state = pipeline_state.add_sequence_without_activation(tab_sequence_id)
                 
                 # Use the FASTA file from the SequenceAnalysis
                 tmp_fasta = analysis.blast_result.fasta_file
@@ -1537,6 +1547,19 @@ def render_tab_content(active_tab, blast_data_dict):
         
         # Get the main sequence ID and create tab-specific ID
         main_sequence_id = pipeline_state._active_sequence_id
+        if not main_sequence_id:
+            # Try to find the main sequence ID from existing sequences
+            # Look for sequences that don't have "_tab_" in their ID
+            main_sequences = [seq_id for seq_id in pipeline_state._sequences.keys() 
+                            if "_tab_" not in seq_id]
+            if main_sequences:
+                main_sequence_id = main_sequences[0]
+                logger.info(f"Recovered main sequence ID in render_tab_content: {main_sequence_id}")
+                pipeline_state.set_active_sequence(main_sequence_id)
+            else:
+                logger.warning("No main sequence ID found in render_tab_content")
+                main_sequence_id = None
+                
         if main_sequence_id:
             tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
         else:

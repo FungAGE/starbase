@@ -621,9 +621,30 @@ class PipelineState:
         self._sequences[sequence_id] = sequence_state
         
         # Set as active sequence
+        old_active_id = self._active_sequence_id
         self._active_sequence_id = sequence_id
+        if old_active_id != sequence_id:
+            logger.debug(f"Changed active sequence ID from {old_active_id} to {sequence_id}")
             
         logger.debug(f"Added sequence {sequence_id} to pipeline state")
+        return sequence_state
+    
+    def add_sequence_without_activation(self, sequence_id: str, clear_existing: bool = False) -> SequenceState:
+        """Add a new sequence to track without changing the active sequence ID"""
+        if sequence_id in self._sequences:
+            if clear_existing:
+                logger.info(f"Clearing existing sequence {sequence_id} and creating new one")
+                # Clear the existing sequence state
+                del self._sequences[sequence_id]
+            else:
+                logger.warning(f"Sequence {sequence_id} already exists, returning existing")
+                return self._sequences[sequence_id]
+            
+        sequence_state = SequenceState(sequence_id=sequence_id)
+        self._sequences[sequence_id] = sequence_state
+        
+        # Don't change the active sequence ID
+        logger.debug(f"Added sequence {sequence_id} to pipeline state (without activation)")
         return sequence_state
     
     def get_sequence(self, sequence_id: str) -> Optional[SequenceState]:
@@ -666,15 +687,17 @@ class PipelineState:
     def set_active_sequence(self, sequence_id: str):
         """Set the active sequence"""
         if sequence_id in self._sequences:
+            old_active_id = self._active_sequence_id
             self._active_sequence_id = sequence_id
-            logger.debug(f"Set active sequence to {sequence_id}")
+            if old_active_id != sequence_id:
+                logger.debug(f"Explicitly set active sequence ID from {old_active_id} to {sequence_id}")
         else:
             logger.error(f"Cannot set active sequence to {sequence_id} - not found")
     
     def update_blast_data(self, sequence_id: str, blast_data: BlastData):
         """Update BLAST data for a sequence"""
         if sequence_id not in self._sequences:
-            self.add_sequence(sequence_id)
+            self.add_sequence_without_activation(sequence_id)
             
         self._sequences[sequence_id].blast_data = blast_data
         logger.debug(f"Updated BLAST data for sequence {sequence_id}")
@@ -682,7 +705,7 @@ class PipelineState:
     def update_workflow_state(self, sequence_id: str, workflow_state: WorkflowState):
         """Update workflow state for a sequence"""
         if sequence_id not in self._sequences:
-            self.add_sequence(sequence_id)
+            self.add_sequence_without_activation(sequence_id)
             
         self._sequences[sequence_id].workflow_state = workflow_state
         logger.debug(f"Updated workflow state for sequence {sequence_id}")
@@ -690,7 +713,7 @@ class PipelineState:
     def update_classification_data(self, sequence_id: str, classification_data: ClassificationData):
         """Update classification data for a sequence - SINGLE SOURCE OF TRUTH"""
         if sequence_id not in self._sequences:
-            self.add_sequence(sequence_id)
+            self.add_sequence_without_activation(sequence_id)
             
         sequence_state = self._sequences[sequence_id]
         sequence_state.classification_data = classification_data
