@@ -12,7 +12,7 @@ This script performs the following tasks more efficiently:
 import hashlib
 import pandas as pd
 from collections import defaultdict
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Tuple, Set, Optional
 from sqlalchemy import text
 from src.config.database import StarbaseSession
 from src.config.logging import get_logger
@@ -173,7 +173,7 @@ def find_reverse_complement_pairs(sequences_df: pd.DataFrame) -> List[Tuple[str,
 
 def find_nested_sequences(sequences_df: pd.DataFrame) -> List[Tuple[str, str]]:
     """
-    Find sequences that are nested within other sequences using approach.
+    Find sequences that are nested within other sequences using efficient batch alignment.
     
     Args:
         sequences_df (pd.DataFrame): DataFrame with sequences
@@ -201,39 +201,171 @@ def find_nested_sequences(sequences_df: pd.DataFrame) -> List[Tuple[str, str]]:
     
     logger.info(f"After removing exact duplicates: {len(sequences)} unique sequences")
     
-    total_comparisons = len(sequences) * (len(sequences) - 1) // 2
-    comparison_count = 0
+    # Use efficient batch alignment-based detection
+    logger.info("Using efficient batch alignment-based nested sequence detection")
     
-    logger.info(f"Starting nested sequence detection for {len(sequences)} sequences")
-    logger.info(f"Total comparisons needed: {total_comparisons}")
+    # Parameters for nested sequence detection
+    min_coverage = 0.95  # 95% coverage threshold
+    min_identity = 0.95  # 95% identity threshold
+    
+    logger.info(f"Parameters: min_coverage={min_coverage}, min_identity={min_identity}")
     
     start_time = time.time()
     
-    # Check each pair of sequences (only need to check shorter sequences against longer ones)
-    for i, (acc1, seq1) in enumerate(sequences):
-        if i % 50 == 0:
-            elapsed = time.time() - start_time
-            rate = comparison_count / elapsed if elapsed > 0 else 0
-            eta = (total_comparisons - comparison_count) / rate if rate > 0 else 0
-            logger.info(f"Progress: {i}/{len(sequences)} sequences, {comparison_count}/{total_comparisons} comparisons")
-            logger.info(f"Rate: {rate:.1f} comparisons/sec, ETA: {eta/60:.1f} minutes")
+    # Process sequences in batches for efficiency
+    batch_size = 50  # Process 50 sequences at a time
+    total_batches = (len(sequences) + batch_size - 1) // batch_size
+    
+    for batch_idx in range(0, len(sequences), batch_size):
+        batch_end = min(batch_idx + batch_size, len(sequences))
+        batch_sequences = sequences[batch_idx:batch_end]
         
-        # Only check against sequences that are longer (i.e., have smaller indices due to sorting)
-        for j in range(i + 1, len(sequences)):
-            acc2, seq2 = sequences[j]
-            comparison_count += 1
+        logger.info(f"Processing batch {batch_idx//batch_size + 1}/{total_batches} "
+                   f"(sequences {batch_idx+1}-{batch_end})")
+        
+        # For each sequence in the batch, check if it's nested in any longer sequence
+        for acc_query, seq_query in batch_sequences:
+            # Find all sequences that are longer than the query
+            longer_sequences = [(acc, seq) for acc, seq in sequences 
+                               if len(seq) > len(seq_query) and acc != acc_query]
             
-            # Check if seq2 (shorter) is contained within seq1 (longer)
-            # Also ensure they're not the same sequence and seq2 is actually shorter
-            if seq2 in seq1 and acc1 != acc2 and len(seq2) < len(seq1):
-                nested_pairs.append((acc2, acc1))
-                logger.debug(f"Found nested sequence: {acc2} is nested in {acc1}")
+            if not longer_sequences:
+                continue
+            
+            # Use batch alignment to check if query is contained in any longer sequence
+            containing_acc = check_sequence_containment_batch(seq_query, longer_sequences, 
+                                                            min_coverage, min_identity)
+            
+            if containing_acc:
+                nested_pairs.append((acc_query, containing_acc))
+                logger.debug(f"Found nested sequence: {acc_query} is nested in {containing_acc}")
     
     elapsed = time.time() - start_time
-    logger.info(f"Nested sequence detection completed in {elapsed:.1f} seconds")
+    logger.info(f"Batch alignment-based nested sequence detection completed in {elapsed:.1f} seconds")
     logger.info(f"Found {len(nested_pairs)} nested sequence pairs")
     
     return nested_pairs
+
+
+def check_sequence_containment_batch(query_seq: str, ref_sequences: List[Tuple[str, str]], 
+                                   min_coverage: float = 0.95, min_identity: float = 0.95) -> Optional[str]:
+    """
+    Check if query sequence is contained within any of the reference sequences using batch alignment.
+    
+    Args:
+        query_seq: Query sequence (shorter)
+        ref_sequences: List of (accession, sequence) tuples for reference sequences (longer)
+        min_coverage: Minimum coverage of query sequence required
+        min_identity: Minimum sequence identity required
+        
+    Returns:
+        str: Accession of the best containing sequence, or None if no containment found
+    """
+    import subprocess
+    import tempfile
+    
+    query_len = len(query_seq)
+    
+    # Use minimap2 for batch alignment-based detection
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as ref_file:
+            # Write query sequence
+            query_file.write(f">query\n{query_seq}\n")
+            query_file.flush()
+            
+            # Write all reference sequences
+            for acc, seq in ref_sequences:
+                ref_file.write(f">{acc}\n{seq}\n")
+            ref_file.flush()
+            
+            # Run minimap2 alignment with short read preset for better sensitivity
+            cmd = f"minimap2 -x sr -c -t 1 {ref_file.name} {query_file.name}"
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.debug(f"minimap2 failed for batch comparison: {result.stderr}")
+                return None
+            
+            # Parse alignment results and find the best match
+            best_match = None
+            best_score = 0
+            
+            for line in result.stdout.splitlines():
+                fields = line.split("\t")
+                if len(fields) < 10:
+                    continue
+                
+                ref_name = fields[5]  # Reference sequence name (accession)
+                matches = int(fields[9])
+                align_length = int(fields[10])
+                
+                coverage = align_length / query_len
+                identity = matches / align_length if align_length > 0 else 0
+                
+                if coverage >= min_coverage and identity >= min_identity:
+                    # Calculate a combined score (coverage * identity)
+                    score = coverage * identity
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_match = ref_name
+                        logger.debug(f"Found containment: {ref_name} (coverage={coverage:.3f}, identity={identity:.3f})")
+            
+            return best_match
+
+
+def check_sequence_containment(query_seq: str, ref_seq: str, min_coverage: float = 0.95, min_identity: float = 0.95) -> bool:
+    """
+    Check if query sequence is contained within reference sequence using alignment.
+    
+    Args:
+        query_seq: Query sequence (shorter)
+        ref_seq: Reference sequence (longer)
+        min_coverage: Minimum coverage of query sequence required
+        min_identity: Minimum sequence identity required
+        
+    Returns:
+        bool: True if query is contained within reference
+    """
+    import subprocess
+    import tempfile
+    
+    query_len = len(query_seq)
+    
+    # Use minimap2 for alignment-based detection
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as ref_file:
+            # Write sequences to temporary files
+            query_file.write(f">query\n{query_seq}\n")
+            ref_file.write(f">reference\n{ref_seq}\n")
+            query_file.flush()
+            ref_file.flush()
+            
+            # Run minimap2 alignment with short read preset for better sensitivity
+            cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.debug(f"minimap2 failed for sequence comparison: {result.stderr}")
+                return False
+            
+            # Parse alignment results
+            for line in result.stdout.splitlines():
+                fields = line.split("\t")
+                if len(fields) < 10:
+                    continue
+                
+                matches = int(fields[9])
+                align_length = int(fields[10])
+                
+                coverage = align_length / query_len
+                identity = matches / align_length if align_length > 0 else 0
+                
+                if coverage >= min_coverage and identity >= min_identity:
+                    logger.debug(f"Found containment: coverage={coverage:.3f}, identity={identity:.3f}")
+                    return True
+    
+    return False
 
 
 def consolidate_accessions_by_hash(hash_groups: Dict[str, List[str]]) -> List[Dict]:
