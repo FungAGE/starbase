@@ -174,3 +174,6 @@ celerybeat*
 src/database/db/**
 src/database/db.tar.gz
 src/database/cache/**
+
+# cleanup reports
+*report.txt
