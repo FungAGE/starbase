@@ -53,7 +53,7 @@ def fetch_all_sequences() -> pd.DataFrame:
     Fetch all sequences from the database with their accession information.
     
     Returns:
-        pd.DataFrame: DataFrame with accession_id, accession_tag, sequence, and md5
+        pd.DataFrame: DataFrame with accession_id, accession_tag, sequence, md5, and rev_comp_md5
     """
     session = StarbaseSession()
     
@@ -63,7 +63,8 @@ def fetch_all_sequences() -> pd.DataFrame:
         a.accession_tag,
         a.version_tag,
         s.sequence,
-        s.md5
+        s.md5,
+        s.rev_comp_md5
     FROM accessions a
     INNER JOIN ships s ON a.id = s.accession_id
     WHERE s.sequence IS NOT NULL AND s.sequence != ''
@@ -83,25 +84,29 @@ def fetch_all_sequences() -> pd.DataFrame:
 def analyze_sequence_hashes(sequences_df: pd.DataFrame) -> Dict[str, List[str]]:
     """
     Analyze sequences to find those with identical MD5 hashes for normal and reverse complement.
+    Uses database-stored MD5 values for efficiency.
     
     Args:
-        sequences_df (pd.DataFrame): DataFrame with sequences
+        sequences_df (pd.DataFrame): DataFrame with sequences, md5, and rev_comp_md5
         
     Returns:
         Dict[str, List[str]]: Dictionary mapping hash to list of accession tags
     """
     hash_groups = defaultdict(list)
     
-    logger.info("Analyzing sequence hashes...")
+    logger.info("Analyzing sequence hashes using database-stored MD5 values...")
     for idx, row in sequences_df.iterrows():
         if idx % 100 == 0:
             logger.info(f"Processed {idx}/{len(sequences_df)} sequences")
             
         accession_tag = row['accession_tag']
-        sequence = row['sequence']
+        normal_hash = row['md5']
+        rev_comp_hash = row['rev_comp_md5']
         
-        # Generate hashes
-        normal_hash, rev_comp_hash = generate_sequence_hashes(sequence)
+        # Skip if either hash is missing
+        if pd.isna(normal_hash) or pd.isna(rev_comp_hash):
+            logger.warning(f"Skipping {accession_tag}: missing MD5 values")
+            continue
         
         # Check if normal and reverse complement hashes are identical
         if normal_hash == rev_comp_hash:
@@ -120,16 +125,17 @@ def analyze_sequence_hashes(sequences_df: pd.DataFrame) -> Dict[str, List[str]]:
 def find_reverse_complement_pairs(sequences_df: pd.DataFrame) -> List[Tuple[str, str]]:
     """
     Find sequences that are reverse complements of each other.
+    Uses database-stored MD5 values for efficiency.
     
     Args:
-        sequences_df (pd.DataFrame): DataFrame with sequences
+        sequences_df (pd.DataFrame): DataFrame with sequences, md5, and rev_comp_md5
         
     Returns:
         List[Tuple[str, str]]: List of (accession1, accession2) pairs that are reverse complements
     """
     rev_comp_pairs = []
     
-    logger.info("Finding reverse complement pairs...")
+    logger.info("Finding reverse complement pairs using database-stored MD5 values...")
     
     # Create dictionaries mapping hashes to lists of accessions (to handle duplicates)
     normal_hash_to_accessions = defaultdict(list)
@@ -140,10 +146,13 @@ def find_reverse_complement_pairs(sequences_df: pd.DataFrame) -> List[Tuple[str,
             logger.info(f"Processed {idx}/{len(sequences_df)} sequences for reverse complement analysis")
             
         accession_tag = row['accession_tag']
-        sequence = row['sequence']
+        normal_hash = row['md5']
+        rev_comp_hash = row['rev_comp_md5']
         
-        # Generate hashes
-        normal_hash, rev_comp_hash = generate_sequence_hashes(sequence)
+        # Skip if either hash is missing
+        if pd.isna(normal_hash) or pd.isna(rev_comp_hash):
+            logger.warning(f"Skipping {accession_tag}: missing MD5 values")
+            continue
         
         # Store mappings (append to lists to handle duplicates)
         normal_hash_to_accessions[normal_hash].append(accession_tag)
