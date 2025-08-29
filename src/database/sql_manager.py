@@ -329,7 +329,7 @@ def fetch_ship_table(curated=False):
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
     LEFT JOIN ships s ON s.accession_id = a.id AND s.sequence IS NOT NULL
-    LEFT JOIN gff g ON g.ship_id = a.id
+    LEFT JOIN gff g ON g.ship_id = s.id
     """
 
     if curated:
@@ -380,7 +380,7 @@ def fetch_accession_ship(accession_tag):
     gff_query = """
     SELECT g.*
     FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
+    LEFT JOIN accessions a ON g.accession_id = a.id
     WHERE a.accession_tag = :accession_tag
     """
 
