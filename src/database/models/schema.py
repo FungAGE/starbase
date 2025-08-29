@@ -34,6 +34,7 @@ class Accessions(Base):
     gff_entries = relationship("Gff", back_populates="accession_obj")
     joined_ships = relationship("JoinedShips", back_populates="accession_obj")
     captains = relationship("Captains", back_populates="ship")
+    starship_features = relationship("StarshipFeatures", back_populates="accession")
 
 
 class Ships(Base):
@@ -200,6 +201,9 @@ class Gff(Base):
     score = Column(String)
     attributes = Column(String)
     ship_id = Column(Integer, ForeignKey("accessions.id"))
+
+    # Relationships
+    accession_obj = relationship("Accessions", back_populates="gff_entries")
 
 
 class JoinedShips(Base):
