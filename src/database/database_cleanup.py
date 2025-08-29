@@ -460,6 +460,16 @@ def generate_cleanup_report(all_issues: Dict) -> str:
 def main(dry_run: bool = True, output_report: str = None):
     """
     Main function to run comprehensive database cleanup.
+    Step 1: Run accession cleanup
+    - checks for matches to reverse complemented sequences
+    - checks for nested sequences
+    - aggregates sequences by accession
+    Step 2: Check genome table
+    Step 3: Check taxonomic table
+    Step 4: Check genomic features
+    Step 5: Check foreign keys
+    Step 6: Check schema violations
+    Step 7: Generate comprehensive report
     
     Args:
         dry_run (bool): If True, only analyze and report without making changes
@@ -469,31 +479,24 @@ def main(dry_run: bool = True, output_report: str = None):
     
     all_issues = {}
     
-    # Step 1: Run accession cleanup (already implemented)
     logger.info("Step 1: Running accession cleanup...")
     run_accession_cleanup(dry_run=dry_run)
     
-    # Step 2: Check genome table
     logger.info("Step 2: Checking genome table...")
     all_issues['genome'] = check_genome_table()
     
-    # Step 3: Check taxonomic table
     logger.info("Step 3: Checking taxonomic table...")
     all_issues['taxonomy'] = check_taxonomic_table()
     
-    # Step 4: Check genomic features
     logger.info("Step 4: Checking genomic features...")
     all_issues['features'] = check_genomic_features()
     
-    # Step 5: Check foreign keys
     logger.info("Step 5: Checking foreign key consistency...")
     all_issues['foreign_keys'] = check_foreign_keys()
     
-    # Step 6: Check schema violations
     logger.info("Step 6: Checking schema violations...")
     all_issues['schema'] = check_schema_violations()
     
-    # Step 7: Generate comprehensive report
     logger.info("Step 7: Generating comprehensive report...")
     report = generate_cleanup_report(all_issues)
     

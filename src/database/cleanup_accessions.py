@@ -16,7 +16,7 @@ from typing import Dict, List, Tuple, Set, Optional
 from sqlalchemy import text
 from src.config.database import StarbaseSession
 from src.config.logging import get_logger
-from src.database.models.schema import Accessions, Ships, JoinedShips
+from src.database.models.schema import Accessions, Ships, JoinedShips, Captains, StarshipFeatures, Gff
 from src.utils.seq_utils import revcomp
 import time
 
@@ -499,17 +499,56 @@ def apply_consolidations(consolidations: List[Dict], dry_run: bool = True) -> No
             
             # Update all secondary accessions to point to the primary accession
             for secondary_acc in secondary_accs:
-                # Update ships table
-                ships_updated = session.query(Ships).join(Accessions).filter(
+                # Get the secondary accession record
+                secondary_record = session.query(Accessions).filter(
                     Accessions.accession_tag == secondary_acc
-                ).update({Ships.accession_id: primary_record.id})
+                ).first()
                 
-                # Update joined_ships table
-                joined_updated = session.query(JoinedShips).join(Accessions).filter(
-                    Accessions.accession_tag == secondary_acc
-                ).update({JoinedShips.ship_id: primary_record.id})
+                if not secondary_record:
+                    logger.warning(f"Secondary accession {secondary_acc} not found, skipping")
+                    continue
                 
-                logger.info(f"Updated {ships_updated} ships and {joined_updated} joined_ships for {secondary_acc}")
+                # Update ships table - find ships that reference the secondary accession
+                ships_to_update = session.query(Ships).filter(
+                    Ships.accession_id == secondary_record.id
+                ).all()
+                
+                for ship in ships_to_update:
+                    ship.accession_id = primary_record.id
+                
+                # Update joined_ships table - find joined_ships that reference the secondary accession
+                joined_to_update = session.query(JoinedShips).filter(
+                    JoinedShips.ship_id == secondary_record.id
+                ).all()
+                
+                for joined in joined_to_update:
+                    joined.ship_id = primary_record.id
+                
+                # Update captains table - find captains that reference the secondary accession
+                captains_to_update = session.query(Captains).filter(
+                    Captains.ship_id == secondary_record.id
+                ).all()
+                
+                for captain in captains_to_update:
+                    captain.ship_id = primary_record.id
+                
+                # Update starship_features table - find features that reference the secondary accession
+                features_to_update = session.query(StarshipFeatures).filter(
+                    StarshipFeatures.ship_id == secondary_record.id
+                ).all()
+                
+                for feature in features_to_update:
+                    feature.ship_id = primary_record.id
+                
+                # Update gff_entries table - find gff entries that reference the secondary accession
+                gff_to_update = session.query(Gff).filter(
+                    Gff.ship_id == secondary_record.id
+                ).all()
+                
+                for gff in gff_to_update:
+                    gff.ship_id = primary_record.id
+                
+                logger.info(f"Updated {len(ships_to_update)} ships, {len(joined_to_update)} joined_ships, {len(captains_to_update)} captains, {len(features_to_update)} features, and {len(gff_to_update)} gff entries for {secondary_acc}")
             
             # Commit the changes
             session.commit()
@@ -577,38 +616,38 @@ def generate_consolidation_report(consolidations: List[Dict]) -> str:
 def main(dry_run: bool = True, output_report: str = None):
     """
     Main function to run the accession cleanup process.
-    
+    Step 1: Fetch all sequences
+    Step 2: Analyze sequence hashes    
+    Step 3: Find reverse complement pairs
+    Step 4: Find nested sequences
+    Step 5: Generate consolidation operations
+    Step 6: Generate report
+    Step 7: Apply consolidations (if not dry run)
+
     Args:
         dry_run (bool): If True, only analyze and report without making changes
         output_report (str): Path to save the consolidation report
     """
     logger.info("Starting database accession cleanup process")
     
-    # Step 1: Fetch all sequences
     logger.info("Step 1: Fetching all sequences from database")
     sequences_df = fetch_all_sequences()
     
-    # Step 2: Analyze sequence hashes
     logger.info("Step 2: Analyzing sequence hashes")
     hash_groups = analyze_sequence_hashes(sequences_df)
     
-    # Step 3: Find reverse complement pairs
     logger.info("Step 3: Finding reverse complement pairs")
     rev_comp_pairs = find_reverse_complement_pairs(sequences_df)
     
-    # Step 4: Find nested sequences
     logger.info("Step 4: Finding nested sequences")
     nested_pairs = find_nested_sequences(sequences_df)
     
-    # Step 5: Generate consolidation operations
     logger.info("Step 5: Generating consolidation operations")
     hash_consolidations = consolidate_accessions_by_hash(hash_groups)
     rev_comp_consolidations = consolidate_reverse_complement_pairs(rev_comp_pairs)
-    nested_consolidations = consolidate_nested_sequences(nested_pairs)
-    
+    nested_consolidations = consolidate_nested_sequences(nested_pairs)    
     all_consolidations = hash_consolidations + rev_comp_consolidations + nested_consolidations
     
-    # Step 5: Generate report
     logger.info("Step 5: Generating consolidation report")
     report = generate_consolidation_report(all_consolidations)
     
@@ -619,7 +658,6 @@ def main(dry_run: bool = True, output_report: str = None):
     else:
         print(report)
     
-    # Step 6: Apply consolidations (if not dry run)
     if not dry_run and all_consolidations:
         logger.info("Step 6: Applying consolidations to database")
         apply_consolidations(all_consolidations, dry_run=False)
