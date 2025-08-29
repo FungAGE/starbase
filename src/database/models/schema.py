@@ -43,6 +43,7 @@ class Ships(Base):
     id = Column(Integer, primary_key=True)
     sequence = Column(String)
     md5 = Column(String)
+    rev_comp_md5 = Column(String)
     accession_id = Column(Integer, ForeignKey("accessions.id"))
 
     # Relationships
