@@ -177,3 +177,7 @@ src/database/cache/**
 
 # cleanup reports
 *report.txt
+
+# Alembic cache files
+alembic/__pycache__/
+alembic/versions/__pycache__/
