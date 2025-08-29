@@ -6,6 +6,7 @@ from sqlalchemy import (
     String,
     Table,
     VARCHAR,
+    DateTime,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -176,22 +177,33 @@ class Taxonomy(Base):
     genomes = relationship("Genome", back_populates="taxonomy")
 
 
-class NavisHaplotype(Base):
-    __tablename__ = "navis_haplotype"
+class Navis(Base):
+    __tablename__ = "navis_names"
     id = Column(Integer, primary_key=True)
     navis_name = Column(String)
-    haplotype_name = Column(String)
+    previous_navis_name = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
 
     # Relationships
     family = relationship("FamilyNames")
 
+class Haplotype(Base):
+    __tablename__ = "haplotype_names"
+    id = Column(Integer, primary_key=True)
+    haplotype_name = Column(String)
+    previous_haplotype_name = Column(String)
+    navis_id = Column(Integer, ForeignKey("navis_names.id"))
+    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+
+    # Relationships
+    family = relationship("FamilyNames")
+    navis = relationship("Navis")
+
 
 class Gff(Base):
     __tablename__ = "gff"
     id = Column(Integer, primary_key=True)
-    contigID = Column(String)
-    accession = Column(String)
+    accession_id = Column(Integer, ForeignKey("accessions.id"))
     source = Column(String)
     type = Column(String)
     start = Column(Integer)
@@ -200,7 +212,7 @@ class Gff(Base):
     strand = Column(String)
     score = Column(String)
     attributes = Column(String)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="gff_entries")
@@ -210,48 +222,18 @@ class JoinedShips(Base):
     __tablename__ = "joined_ships"
     id = Column(Integer, primary_key=True)
     starshipID = Column(String)
-    genus = Column(String)
-    species = Column(String)
-    strain = Column(String)
     evidence = Column(String)
     source = Column(String)
-    contigID = Column(String)
-    captainID = Column(String)
-    elementBegin = Column(Integer)
-    elementEnd = Column(Integer)
-    size = Column(Integer)
-    strand = Column(String)
-    boundaryType = Column(String)
-    emptySiteID = Column(String)
-    emptyContig = Column(String)
-    emptyBegin = Column(Integer)
-    emptyEnd = Column(Integer)
-    emptySeq = Column(String)
-    upDR = Column(String)
-    downDR = Column(String)
-    DRedit = Column(String)
-    upTIR = Column(String)
-    downTIR = Column(String)
-    TIRedit = Column(String)
-    nestedInside = Column(String)
-    containNested = Column(String)
-    dr = Column(String)
-    tir = Column(String)
-    navis_name = Column(String)
-    haplotype_name = Column(String)
-    target = Column(String)
-    spok = Column(String)
-    ars = Column(String)
-    other = Column(String)
-    hgt = Column(String)
-    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
     curated_status = Column(String)
-    taxid = Column(Integer)
+    ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    tax_id = Column(Integer)
     ship_id = Column(Integer, ForeignKey("accessions.id"))
     genome_id = Column(String)
-    ome = Column(String)
-    orphan = Column(String)
-    captainID_new = Column(Integer)
+    captain_id = Column(Integer, ForeignKey("captains.id"))
+    ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
+    ship_haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="joined_ships")
