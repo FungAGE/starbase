@@ -535,11 +535,12 @@ def get_database_stats():
     try:
         # use metadata from previous query
         meta_df = fetch_meta_data(curated=False)
-        total_count = len(meta_df)
-        curated_count = len(meta_df[meta_df["curated_status"] == "curated"])
+        filtered_df = meta_df[meta_df["accession_tag"].notna()]
+        total_count = len(filtered_df["accession_tag"].unique())
+        curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"].unique())
         uncurated_count = total_count - curated_count
-        species_count = len(meta_df["name"].dropna().unique())
-        family_count = len(meta_df["familyName"].dropna().unique())
+        species_count = len(filtered_df["name"].unique())
+        family_count = len(filtered_df["familyName"].unique())
 
         stats = {
             "total_starships": total_count,
