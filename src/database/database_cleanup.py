@@ -1480,6 +1480,596 @@ def check_schema_violations() -> Dict:
     return issues
 
 
+def analyze_ship_id_relationships() -> Dict:
+    """
+    Analyze the current state of ship_id relationships across all tables.
+    
+    Returns:
+        Dict: Comprehensive analysis of relationship issues
+    """
+    logger.info("Analyzing ship_id relationships...")
+    session = StarbaseSession()
+    
+    analysis = {
+        'sequence_reference_stats': {},
+        'ships_table_analysis': {},
+        'joined_ships_analysis': {},
+        'relationship_issues': {},
+        'recommendations': []
+    }
+    
+    try:
+        # 1. Analyze sequence_reference table
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM sequence_reference")
+            total_refs = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(DISTINCT canonical_md5) FROM sequence_reference")
+            unique_md5s = cursor.fetchone()[0]
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error analyzing sequence_reference table: {str(e)}")
+            total_refs = 0
+            unique_md5s = 0
+        
+        analysis['sequence_reference_stats'] = {
+            'total_entries': total_refs,
+            'unique_sequences': unique_md5s,
+            'duplicate_sequences': total_refs - unique_md5s
+        }
+        
+        # 2. Analyze ships table
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM ships")
+            total_ships = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM ships WHERE sequence IS NOT NULL AND sequence != ''")
+            ships_with_sequences = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM ships WHERE md5 IS NOT NULL AND md5 != ''")
+            ships_with_md5 = cursor.fetchone()[0]
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error analyzing ships table: {str(e)}")
+            total_ships = 0
+            ships_with_sequences = 0
+            ships_with_md5 = 0
+        
+        analysis['ships_table_analysis'] = {
+            'total_ships': total_ships,
+            'ships_with_sequences': ships_with_sequences,
+            'ships_with_md5': ships_with_md5,
+            'ships_without_sequences': total_ships - ships_with_sequences
+        }
+        
+        # 3. Analyze joined_ships table
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM joined_ships")
+            total_joined = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM joined_ships WHERE ship_id IS NOT NULL")
+            joined_with_ship_id = cursor.fetchone()[0]
+            joined_without_ship_id = total_joined - joined_with_ship_id
+            
+            # Check for duplicate ship_ids (different starshipIDs with same ship_id)
+            cursor.execute("""
+                SELECT ship_id, COUNT(*) as count, GROUP_CONCAT(starshipID) as starshipIDs
+                FROM joined_ships 
+                WHERE ship_id IS NOT NULL 
+                GROUP BY ship_id 
+                HAVING COUNT(*) > 1
+            """)
+            duplicate_ship_ids = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error analyzing joined_ships table: {str(e)}")
+            total_joined = 0
+            joined_with_ship_id = 0
+            joined_without_ship_id = 0
+            duplicate_ship_ids = []
+        
+        analysis['joined_ships_analysis'] = {
+            'total_joined_ships': total_joined,
+            'with_ship_id': joined_with_ship_id,
+            'without_ship_id': joined_without_ship_id,
+            'duplicate_ship_ids': len(duplicate_ship_ids),
+            'duplicate_details': [
+                {
+                    'ship_id': row[0],
+                    'count': row[1],
+                    'starshipIDs': row[2].split(',') if row[2] else []
+                }
+                for row in duplicate_ship_ids
+            ]
+        }
+        
+        # 4. Identify relationship issues
+        issues = []
+        
+        # Issue 1: Joined_ships entries that should have ship_id but don't
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("""
+                SELECT js.id, js.starshipID, sr.starshipID as ref_starshipID
+                FROM joined_ships js
+                LEFT JOIN sequence_reference sr ON js.starshipID = sr.starshipID
+                WHERE js.ship_id IS NULL AND sr.starshipID IS NOT NULL
+            """)
+            missing_ship_ids = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error querying missing ship_ids: {str(e)}")
+            missing_ship_ids = []
+        
+        if missing_ship_ids:
+            issues.append({
+                'type': 'missing_ship_id',
+                'count': len(missing_ship_ids),
+                'description': 'Joined_ships entries that should have ship_id but don\'t',
+                'examples': [{'joined_id': row[0], 'starshipID': row[1]} for row in missing_ship_ids[:5]]
+            })
+        
+        # Issue 2: Joined_ships with ship_id that doesn't match sequence_reference
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("""
+                SELECT js.id, js.starshipID, js.ship_id, s.md5, sr.canonical_md5
+                FROM joined_ships js
+                JOIN ships s ON js.ship_id = s.id
+                JOIN sequence_reference sr ON js.starshipID = sr.starshipID
+                WHERE s.md5 != sr.canonical_md5 AND s.rev_comp_md5 != sr.canonical_md5
+            """)
+            mismatched_ship_ids = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error querying mismatched ship_ids: {str(e)}")
+            mismatched_ship_ids = []
+        
+        if mismatched_ship_ids:
+            issues.append({
+                'type': 'mismatched_ship_id',
+                'count': len(mismatched_ship_ids),
+                'description': 'Joined_ships with ship_id that doesn\'t match sequence_reference',
+                'examples': [{'joined_id': row[0], 'starshipID': row[1], 'ship_id': row[2]} for row in mismatched_ship_ids[:5]]
+            })
+        
+        # Issue 3: Ships that exist but aren't referenced by any joined_ships
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("""
+                SELECT s.id, s.md5
+                FROM ships s
+                LEFT JOIN joined_ships js ON s.id = js.ship_id
+                WHERE js.id IS NULL
+            """)
+            orphaned_ships = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error querying orphaned ships: {str(e)}")
+            orphaned_ships = []
+        
+        if orphaned_ships:
+            issues.append({
+                'type': 'orphaned_ships',
+                'count': len(orphaned_ships),
+                'description': 'Ships that exist but aren\'t referenced by any joined_ships',
+                'examples': [{'ship_id': row[0], 'md5': row[1]} for row in orphaned_ships[:5]]
+            })
+        
+        analysis['relationship_issues'] = issues
+        
+        # 5. Generate recommendations
+        recommendations = []
+        
+        if len(missing_ship_ids) > 0:
+            recommendations.append(f"Fix {len(missing_ship_ids)} joined_ships entries missing ship_id")
+        
+        if len(mismatched_ship_ids) > 0:
+            recommendations.append(f"Fix {len(mismatched_ship_ids)} joined_ships entries with mismatched ship_id")
+        
+        if len(orphaned_ships) > 0:
+            recommendations.append(f"Handle {len(orphaned_ships)} orphaned ships")
+        
+        if len(duplicate_ship_ids) > 0:
+            recommendations.append(f"Resolve {len(duplicate_ship_ids)} cases of duplicate ship_id assignments")
+        
+        analysis['recommendations'] = recommendations
+        
+    except Exception as e:
+        logger.error(f"Error analyzing relationships: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return analysis
+
+
+def fix_ship_id_relationships(dry_run: bool = True) -> Dict:
+    """
+    Fix ship_id relationships using sequence_reference table as source of truth.
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of fixes applied or would be applied
+    """
+    logger.info("Fixing ship_id relationships...")
+    session = StarbaseSession()
+    
+    fixes = {
+        'missing_ship_ids_fixed': [],
+        'mismatched_ship_ids_fixed': [],
+        'orphaned_ships_handled': [],
+        'duplicate_ship_ids_resolved': [],
+        'warnings': []
+    }
+    
+    try:
+        # Fix 1: Add missing ship_id to joined_ships entries
+        missing_ship_ids = session.execute("""
+            SELECT js.id, js.starshipID, sr.canonical_md5
+            FROM joined_ships js
+            JOIN sequence_reference sr ON js.starshipID = sr.starshipID
+            WHERE js.ship_id IS NULL
+        """).fetchall()
+        
+        for row in missing_ship_ids:
+            joined_id, starshipID, canonical_md5 = row
+            
+            # Validate canonical_md5 is not None or empty
+            if not canonical_md5 or canonical_md5.strip() == '':
+                fixes['warnings'].append({
+                    'joined_id': joined_id,
+                    'starshipID': starshipID,
+                    'issue': f'Empty or None canonical_md5 for starshipID {starshipID}'
+                })
+                continue
+            
+            # Find the corresponding ship using raw sqlite3
+            try:
+                raw_conn = session.connection().connection
+                cursor = raw_conn.cursor()
+                cursor.execute("""
+                    SELECT id FROM ships 
+                    WHERE md5 = ? OR rev_comp_md5 = ?
+                """, (canonical_md5, canonical_md5))
+                ship = cursor.fetchone()
+                cursor.close()
+            except Exception as e:
+                logger.error(f"Error finding ship for {starshipID}: {str(e)}")
+                fixes['warnings'].append({
+                    'joined_id': joined_id,
+                    'starshipID': starshipID,
+                    'issue': f'Error finding ship: {str(e)}'
+                })
+                continue
+            
+            if ship:
+                if not dry_run:
+                    try:
+                        raw_conn = session.connection().connection
+                        cursor = raw_conn.cursor()
+                        cursor.execute("""
+                            UPDATE joined_ships SET ship_id = ? WHERE id = ?
+                        """, (ship[0], joined_id))
+                        cursor.close()
+                        
+                        fixes['missing_ship_ids_fixed'].append({
+                            'joined_id': joined_id,
+                            'starshipID': starshipID,
+                            'ship_id': ship[0],
+                            'action': f'Added missing ship_id {ship[0]}'
+                        })
+                    except Exception as e:
+                        logger.error(f"Error updating joined_ships for {starshipID}: {str(e)}")
+                        fixes['warnings'].append({
+                            'joined_id': joined_id,
+                            'starshipID': starshipID,
+                            'issue': f'Error updating: {str(e)}'
+                        })
+                else:
+                    fixes['missing_ship_ids_fixed'].append({
+                        'joined_id': joined_id,
+                        'starshipID': starshipID,
+                        'ship_id': ship[0] if ship else 'UNKNOWN',
+                        'action': f'Would add missing ship_id {ship[0] if ship else "UNKNOWN"}'
+                    })
+            else:
+                fixes['warnings'].append({
+                    'joined_id': joined_id,
+                    'starshipID': starshipID,
+                    'issue': f'No ship found for canonical_md5 {canonical_md5}'
+                })
+        
+        # Fix 2: Fix mismatched ship_id assignments
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("""
+                SELECT js.id, js.starshipID, js.ship_id, s.md5, sr.canonical_md5
+                FROM joined_ships js
+                JOIN ships s ON js.ship_id = s.id
+                JOIN sequence_reference sr ON js.starshipID = sr.starshipID
+                WHERE s.md5 != sr.canonical_md5 AND s.rev_comp_md5 != sr.canonical_md5
+            """)
+            mismatched_ship_ids = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error querying mismatched ship_ids: {str(e)}")
+            mismatched_ship_ids = []
+        
+        for row in mismatched_ship_ids:
+            joined_id, starshipID, current_ship_id, current_md5, correct_canonical_md5 = row
+            
+            # Validate correct_canonical_md5 is not None or empty
+            if not correct_canonical_md5 or correct_canonical_md5.strip() == '':
+                fixes['warnings'].append({
+                    'joined_id': joined_id,
+                    'starshipID': starshipID,
+                    'issue': f'Empty or None canonical_md5 for starshipID {starshipID}'
+                })
+                continue
+            
+            # Find the correct ship using raw sqlite3
+            try:
+                raw_conn = session.connection().connection
+                cursor = raw_conn.cursor()
+                cursor.execute("""
+                    SELECT id FROM ships 
+                    WHERE md5 = ? OR rev_comp_md5 = ?
+                """, (correct_canonical_md5, correct_canonical_md5))
+                correct_ship = cursor.fetchone()
+                cursor.close()
+            except Exception as e:
+                logger.error(f"Error finding correct ship for {starshipID}: {str(e)}")
+                fixes['warnings'].append({
+                    'joined_id': joined_id,
+                    'starshipID': starshipID,
+                    'issue': f'Error finding correct ship: {str(e)}'
+                })
+                continue
+            
+            if correct_ship and correct_ship[0] != current_ship_id:
+                if not dry_run:
+                    try:
+                        raw_conn = session.connection().connection
+                        cursor = raw_conn.cursor()
+                        cursor.execute("""
+                            UPDATE joined_ships SET ship_id = ? WHERE id = ?
+                        """, (correct_ship[0], joined_id))
+                        cursor.close()
+                        
+                        fixes['mismatched_ship_ids_fixed'].append({
+                            'joined_id': joined_id,
+                            'starshipID': starshipID,
+                            'old_ship_id': current_ship_id,
+                            'new_ship_id': correct_ship[0],
+                            'action': f'Fixed ship_id from {current_ship_id} to {correct_ship[0]}'
+                        })
+                    except Exception as e:
+                        logger.error(f"Error updating mismatched ship_id for {starshipID}: {str(e)}")
+                        fixes['warnings'].append({
+                            'joined_id': joined_id,
+                            'starshipID': starshipID,
+                            'issue': f'Error updating mismatched ship_id: {str(e)}'
+                        })
+                else:
+                    fixes['mismatched_ship_ids_fixed'].append({
+                        'joined_id': joined_id,
+                        'starshipID': starshipID,
+                        'old_ship_id': current_ship_id,
+                        'new_ship_id': correct_ship[0],
+                        'action': f'Would fix ship_id from {current_ship_id} to {correct_ship[0]}'
+                    })
+        
+        # Fix 3: Handle orphaned ships (ships not referenced by any joined_ships)
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("""
+                SELECT s.id, s.md5
+                FROM ships s
+                LEFT JOIN joined_ships js ON s.id = js.ship_id
+                WHERE js.id IS NULL
+            """)
+            orphaned_ships = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error querying orphaned ships: {str(e)}")
+            orphaned_ships = []
+        
+        for row in orphaned_ships:
+            ship_id, md5 = row
+            
+            # Check if this ship should be referenced by a joined_ships entry
+            try:
+                raw_conn = session.connection().connection
+                cursor = raw_conn.cursor()
+                cursor.execute("""
+                    SELECT starshipID FROM sequence_reference 
+                    WHERE canonical_md5 = ?
+                """, (md5,))
+                matching_ref = cursor.fetchone()
+                cursor.close()
+            except Exception as e:
+                logger.error(f"Error finding matching reference for ship {ship_id}: {str(e)}")
+                fixes['warnings'].append({
+                    'ship_id': ship_id,
+                    'md5': md5,
+                    'issue': f'Error finding matching reference: {str(e)}'
+                })
+                continue
+            
+            if matching_ref:
+                # This ship should be referenced - find the joined_ships entry
+                try:
+                    raw_conn = session.connection().connection
+                    cursor = raw_conn.cursor()
+                    cursor.execute("""
+                        SELECT id FROM joined_ships 
+                        WHERE starshipID = ? AND ship_id IS NULL
+                    """, (matching_ref[0],))
+                    joined_entry = cursor.fetchone()
+                    cursor.close()
+                except Exception as e:
+                    logger.error(f"Error finding joined_ships entry for {matching_ref[0]}: {str(e)}")
+                    fixes['warnings'].append({
+                        'ship_id': ship_id,
+                        'md5': md5,
+                        'issue': f'Error finding joined_ships entry: {str(e)}'
+                    })
+                    continue
+                
+                if joined_entry:
+                    if not dry_run:
+                        try:
+                            raw_conn = session.connection().connection
+                            cursor = raw_conn.cursor()
+                            cursor.execute("""
+                                UPDATE joined_ships SET ship_id = ? WHERE id = ?
+                            """, (ship_id, joined_entry[0]))
+                            cursor.close()
+                            
+                            fixes['orphaned_ships_handled'].append({
+                                'ship_id': ship_id,
+                                'joined_id': joined_entry[0],
+                                'starshipID': matching_ref[0],
+                                'action': f'Linked orphaned ship {ship_id} to joined_ships {joined_entry[0]}'
+                            })
+                        except Exception as e:
+                            logger.error(f"Error linking orphaned ship {ship_id}: {str(e)}")
+                            fixes['warnings'].append({
+                                'ship_id': ship_id,
+                                'md5': md5,
+                                'issue': f'Error linking orphaned ship: {str(e)}'
+                            })
+                    else:
+                        fixes['orphaned_ships_handled'].append({
+                            'ship_id': ship_id,
+                            'joined_id': joined_entry[0] if joined_entry else 'UNKNOWN',
+                            'starshipID': matching_ref[0],
+                            'action': f'Would link orphaned ship {ship_id} to joined_ships {joined_entry[0] if joined_entry else "UNKNOWN"}'
+                        })
+                else:
+                    fixes['warnings'].append({
+                        'ship_id': ship_id,
+                        'md5': md5,
+                        'issue': f'Orphaned ship with no matching joined_ships entry for {matching_ref[0]}'
+                    })
+            else:
+                fixes['warnings'].append({
+                    'ship_id': ship_id,
+                    'md5': md5,
+                    'issue': 'Orphaned ship with no matching sequence_reference entry'
+                })
+        
+        # Fix 4: Resolve duplicate ship_id assignments
+        try:
+            raw_conn = session.connection().connection
+            cursor = raw_conn.cursor()
+            cursor.execute("""
+                SELECT ship_id, COUNT(*) as count, GROUP_CONCAT(starshipID) as starshipIDs
+                FROM joined_ships 
+                WHERE ship_id IS NOT NULL 
+                GROUP BY ship_id 
+                HAVING COUNT(*) > 1
+            """)
+            duplicate_ship_ids = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error querying duplicate ship_ids: {str(e)}")
+            duplicate_ship_ids = []
+        
+        for row in duplicate_ship_ids:
+            ship_id, count, starshipIDs_str = row
+            starshipIDs = starshipIDs_str.split(',') if starshipIDs_str else []
+            
+            # For each starshipID, verify if it should actually reference this ship_id
+            for starshipID in starshipIDs:
+                # Check if this starshipID should reference this ship_id
+                try:
+                    raw_conn = session.connection().connection
+                    cursor = raw_conn.cursor()
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM sequence_reference sr
+                        JOIN ships s ON sr.canonical_md5 = s.md5 OR sr.canonical_md5 = s.rev_comp_md5
+                        WHERE sr.starshipID = ? AND s.id = ?
+                    """, (starshipID, ship_id))
+                    should_reference = cursor.fetchone()[0]
+                    cursor.close()
+                except Exception as e:
+                    logger.error(f"Error checking if {starshipID} should reference ship_id {ship_id}: {str(e)}")
+                    continue
+                
+                if not should_reference:
+                    # This is a wrong assignment - find the correct ship_id
+                    try:
+                        raw_conn = session.connection().connection
+                        cursor = raw_conn.cursor()
+                        cursor.execute("""
+                            SELECT s.id FROM sequence_reference sr
+                            JOIN ships s ON sr.canonical_md5 = s.md5 OR sr.canonical_md5 = s.rev_comp_md5
+                            WHERE sr.starshipID = ?
+                        """, (starshipID,))
+                        correct_ship = cursor.fetchone()
+                        cursor.close()
+                    except Exception as e:
+                        logger.error(f"Error finding correct ship for {starshipID}: {str(e)}")
+                        continue
+                    
+                    if correct_ship:
+                        if not dry_run:
+                            try:
+                                raw_conn = session.connection().connection
+                                cursor = raw_conn.cursor()
+                                cursor.execute("""
+                                    UPDATE joined_ships SET ship_id = ? WHERE starshipID = ?
+                                """, (correct_ship[0], starshipID))
+                                cursor.close()
+                                
+                                fixes['duplicate_ship_ids_resolved'].append({
+                                    'starshipID': starshipID,
+                                    'old_ship_id': ship_id,
+                                    'new_ship_id': correct_ship[0],
+                                    'action': f'Fixed duplicate ship_id assignment'
+                                })
+                            except Exception as e:
+                                logger.error(f"Error fixing duplicate ship_id for {starshipID}: {str(e)}")
+                                fixes['warnings'].append({
+                                    'starshipID': starshipID,
+                                    'issue': f'Error fixing duplicate ship_id: {str(e)}'
+                                })
+                        else:
+                            fixes['duplicate_ship_ids_resolved'].append({
+                                'starshipID': starshipID,
+                                'old_ship_id': ship_id,
+                                'new_ship_id': correct_ship[0],
+                                'action': f'Would fix duplicate ship_id assignment'
+                            })
+        
+        if not dry_run:
+            session.commit()
+            logger.info("Ship_id relationships fixed successfully")
+        else:
+            logger.info("Dry run completed - no changes made")
+            
+    except Exception as e:
+        logger.error(f"Error fixing relationships: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return fixes
+
+
 def generate_cleanup_report(all_issues: Dict) -> str:
     """
     Generate a comprehensive report of all database issues found.
@@ -1556,6 +2146,29 @@ def generate_cleanup_report(all_issues: Dict) -> str:
     report.append(f"Null/empty violations: {len(schema_issues.get('null_violations', []))}")
     report.append("")
     
+    # Ship_id relationship issues
+    ship_id_issues = all_issues.get('ship_id_relationships', {})
+    report.append("SHIP_ID RELATIONSHIP ISSUES")
+    report.append("-" * 50)
+    if 'sequence_reference_stats' in ship_id_issues:
+        stats = ship_id_issues['sequence_reference_stats']
+        report.append(f"Sequence reference entries: {stats.get('total_entries', 0)}")
+        report.append(f"Unique sequences: {stats.get('unique_sequences', 0)}")
+        report.append("")
+    if 'joined_ships_analysis' in ship_id_issues:
+        joined_stats = ship_id_issues['joined_ships_analysis']
+        report.append(f"Joined_ships with ship_id: {joined_stats.get('with_ship_id', 0)}")
+        report.append(f"Joined_ships without ship_id: {joined_stats.get('without_ship_id', 0)}")
+        report.append(f"Duplicate ship_id cases: {joined_stats.get('duplicate_ship_ids', 0)}")
+        report.append("")
+    if 'relationship_issues' in ship_id_issues:
+        for issue in ship_id_issues['relationship_issues']:
+            report.append(f"{issue['type']}: {issue['count']} - {issue['description']}")
+    if 'recommendations' in ship_id_issues:
+        for rec in ship_id_issues['recommendations']:
+            report.append(f"  - {rec}")
+    report.append("")
+    
     # Summary
     total_issues = sum(
         len(issues) for category in all_issues.values() 
@@ -1579,8 +2192,9 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
     Step 5: Check foreign keys
     Step 6: Check ships-accessions-joined_ships relationships
     Step 7: Check schema violations
-    Step 8: Generate comprehensive report
-    Step 9: Apply fixes (if requested)
+    Step 8: Validate and fix ship_id relationships using sequence_reference table
+    Step 9: Generate comprehensive report
+    Step 10: Apply fixes (if requested)
     
     Args:
         dry_run (bool): If True, only analyze and report without making changes
@@ -1616,7 +2230,10 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
     logger.info("Step 7: Checking schema violations...")
     all_issues['schema'] = check_schema_violations()
     
-    logger.info("Step 8: Generating comprehensive report...")
+    logger.info("Step 8: Validating ship_id relationships using sequence_reference table...")
+    all_issues['ship_id_relationships'] = analyze_ship_id_relationships()
+    
+    logger.info("Step 9: Generating comprehensive report...")
     report = generate_cleanup_report(all_issues)
     
     if output_report:
@@ -1627,8 +2244,14 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
         print(report)
     
     if apply_fixes:
-        logger.info("Step 9: Applying fixes to identified issues...")
+        logger.info("Step 10: Applying fixes to identified issues...")
+        
+        # Apply general relationship fixes
         fixes_report = fix_ships_accessions_joined_ships_relationships(dry_run=False)
+        
+        # Apply ship_id relationship fixes
+        ship_id_fixes = fix_ship_id_relationships(dry_run=False)
+        
         logger.info("Fixes applied successfully")
         
         # Add fixes report to output
@@ -1637,10 +2260,17 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
                 f.write("\n\n" + "=" * 80 + "\n")
                 f.write("FIXES APPLIED\n")
                 f.write("=" * 80 + "\n")
+                f.write("GENERAL RELATIONSHIP FIXES:\n")
                 f.write(f"Ships fixed: {len(fixes_report['ships_fixed'])}\n")
                 f.write(f"Accessions fixed: {len(fixes_report['accessions_fixed'])}\n")
                 f.write(f"JoinedShips fixed: {len(fixes_report['joined_ships_fixed'])}\n")
                 f.write(f"New joined_ships entries created: {len(fixes_report['new_joined_ships_created'])}\n")
+                f.write("\nSHIP_ID RELATIONSHIP FIXES:\n")
+                f.write(f"Missing ship_ids fixed: {len(ship_id_fixes['missing_ship_ids_fixed'])}\n")
+                f.write(f"Mismatched ship_ids fixed: {len(ship_id_fixes['mismatched_ship_ids_fixed'])}\n")
+                f.write(f"Orphaned ships handled: {len(ship_id_fixes['orphaned_ships_handled'])}\n")
+                f.write(f"Duplicate ship_ids resolved: {len(ship_id_fixes['duplicate_ship_ids_resolved'])}\n")
+                f.write(f"Warnings: {len(ship_id_fixes['warnings'])}\n")
     
     logger.info("Comprehensive database cleanup process completed")
 
@@ -1659,6 +2289,10 @@ if __name__ == "__main__":
                        help="Run detailed analysis of table relationships only")
     parser.add_argument("--skip-accession-cleanup", action="store_true",
                        help="Skip the slow accession cleanup step")
+    parser.add_argument("--validate-ship-relationships", action="store_true",
+                       help="Run ship_id relationship validation only")
+    parser.add_argument("--fix-ship-relationships", action="store_true",
+                       help="Apply ship_id relationship fixes")
     
     args = parser.parse_args()
     
@@ -1689,6 +2323,73 @@ if __name__ == "__main__":
             print("\nRECOMMENDATIONS:")
             for rec in analysis['recommendations']:
                 print(f"  - {rec}")
+    elif args.validate_ship_relationships:
+        # Run only ship_id relationship validation
+        print("🔍 Validating ship_id relationships...")
+        analysis = analyze_ship_id_relationships()
+        
+        print("\n" + "=" * 80)
+        print("SHIP_ID RELATIONSHIP ANALYSIS")
+        print("=" * 80)
+        
+        # Sequence reference stats
+        print(f"\n📊 SEQUENCE REFERENCE TABLE:")
+        stats = analysis['sequence_reference_stats']
+        print(f"   Total entries: {stats['total_entries']}")
+        print(f"   Unique sequences: {stats['unique_sequences']}")
+        print(f"   Duplicate sequences: {stats['duplicate_sequences']}")
+        
+        # Ships table analysis
+        print(f"\n🚢 SHIPS TABLE:")
+        ships = analysis['ships_table_analysis']
+        print(f"   Total ships: {ships['total_ships']}")
+        print(f"   With sequences: {ships['ships_with_sequences']}")
+        print(f"   With MD5: {ships['ships_with_md5']}")
+        print(f"   Without sequences: {ships['ships_without_sequences']}")
+        
+        # Joined ships analysis
+        print(f"\n🔗 JOINED_SHIPS TABLE:")
+        joined = analysis['joined_ships_analysis']
+        print(f"   Total entries: {joined['total_joined_ships']}")
+        print(f"   With ship_id: {joined['with_ship_id']}")
+        print(f"   Without ship_id: {joined['without_ship_id']}")
+        print(f"   Duplicate ship_id cases: {joined['duplicate_ship_ids']}")
+        
+        if joined['duplicate_details']:
+            print(f"   Duplicate details:")
+            for dup in joined['duplicate_details'][:3]:  # Show first 3
+                print(f"     ship_id {dup['ship_id']}: {dup['count']} entries ({', '.join(dup['starshipIDs'][:3])})")
+        
+        # Relationship issues
+        print(f"\n⚠️  RELATIONSHIP ISSUES:")
+        issues = analysis['relationship_issues']
+        if not issues:
+            print("   ✅ No issues found!")
+        else:
+            for issue in issues:
+                print(f"   {issue['type']}: {issue['count']} - {issue['description']}")
+                if issue['examples']:
+                    print(f"     Examples: {issue['examples']}")
+        
+        # Recommendations
+        print(f"\n💡 RECOMMENDATIONS:")
+        recommendations = analysis['recommendations']
+        if not recommendations:
+            print("   ✅ No fixes needed!")
+        else:
+            for i, rec in enumerate(recommendations, 1):
+                print(f"   {i}. {rec}")
+        
+        if args.fix_ship_relationships:
+            print(f"\n🔧 Applying ship_id relationship fixes...")
+            fixes = fix_ship_id_relationships(dry_run=False)
+            
+            print(f"\n📈 FIXES APPLIED:")
+            print(f"   Missing ship_ids fixed: {len(fixes['missing_ship_ids_fixed'])}")
+            print(f"   Mismatched ship_ids fixed: {len(fixes['mismatched_ship_ids_fixed'])}")
+            print(f"   Orphaned ships handled: {len(fixes['orphaned_ships_handled'])}")
+            print(f"   Duplicate ship_ids resolved: {len(fixes['duplicate_ship_ids_resolved'])}")
+            print(f"   Warnings: {len(fixes['warnings'])}")
     else:
         # Run full cleanup process
         main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup)
