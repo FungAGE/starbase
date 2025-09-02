@@ -6,14 +6,26 @@ Runner script for comprehensive database cleanup.
 import sys
 import os
 
+import pandas as pd
+from sqlalchemy import text, func
+from typing import Dict
+from datetime import datetime
+
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.database.database_cleanup import (
-    main,
+from src.database.cleanup.utils.database_cleanup import (
+    check_genome_table,
+    check_taxonomic_table,
+    check_genomic_features,
+    check_foreign_keys,
+    check_schema_violations,
+    analyze_ship_id_relationships,
+    generate_cleanup_report,
     check_ships_accessions_joined_ships_relationships,
     analyze_table_relationships,
     fix_ships_accessions_joined_ships_relationships,
+    fix_ship_id_relationships,
     identify_duplicate_joined_ships,
     cleanup_duplicate_joined_ships,
     analyze_ship_id_mislabeling,
@@ -21,10 +33,121 @@ from src.database.database_cleanup import (
     consolidate_duplicate_ships
 )
 
+try:
+    from ..config.logging import get_logger
+    from .cleanup.utils.cleanup_accessions import main as run_accession_cleanup
+except ImportError:
+    # Fallback for when running the script directly
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+    
+    from src.config.logging import get_logger
+    from src.database.cleanup.utils.cleanup_accessions import main as run_accession_cleanup
+
+logger = get_logger(__name__)
+
+
+def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = False, skip_accession_cleanup: bool = False):
+    """
+    Main function to run comprehensive database cleanup.
+    Step 1: Run accession cleanup (optional, can be skipped)
+    - checks for matches to reverse complemented sequences
+    - checks for nested sequences
+    - aggregates sequences by accession
+    Step 2: Check genome table
+    Step 3: Check taxonomic table
+    Step 4: Check genomic features
+    Step 5: Check foreign keys
+    Step 6: Check ships-accessions-joined_ships relationships
+    Step 7: Check schema violations
+    Step 8: Validate and fix ship_id relationships using sequence_reference table
+    Step 9: Generate comprehensive report
+    Step 10: Apply fixes (if requested)
+    
+    Args:
+        dry_run (bool): If True, only analyze and report without making changes
+        output_report (str): Path to save the cleanup report
+        apply_fixes (bool): If True, apply fixes to the identified issues
+        skip_accession_cleanup (bool): If True, skip the slow accession cleanup step
+    """
+    logger.info("Starting comprehensive database cleanup process")
+    
+    all_issues = {}
+    
+    if skip_accession_cleanup:
+        logger.info("Step 1: Skipping accession cleanup (--skip-accession-cleanup specified)")
+    else:
+        logger.info("Step 1: Running accession cleanup...")
+        run_accession_cleanup(dry_run=dry_run)
+    
+    logger.info("Step 2: Checking genome table...")
+    all_issues['genome'] = check_genome_table()
+    
+    logger.info("Step 3: Checking taxonomic table...")
+    all_issues['taxonomy'] = check_taxonomic_table()
+    
+    logger.info("Step 4: Checking genomic features...")
+    all_issues['features'] = check_genomic_features()
+    
+    logger.info("Step 5: Checking foreign key consistency...")
+    all_issues['foreign_keys'] = check_foreign_keys()
+    
+    logger.info("Step 6: Checking ships-accessions-joined_ships relationships...")
+    all_issues['ships_accessions_joined_ships'] = check_ships_accessions_joined_ships_relationships()
+    
+    logger.info("Step 7: Checking schema violations...")
+    all_issues['schema'] = check_schema_violations()
+    
+    logger.info("Step 8: Validating ship_id relationships using sequence_reference table...")
+    all_issues['ship_id_relationships'] = analyze_ship_id_relationships()
+    
+    logger.info("Step 9: Generating comprehensive report...")
+    report = generate_cleanup_report(all_issues)
+    
+    if output_report:
+        with open(output_report, 'w') as f:
+            f.write(report)
+        logger.info(f"Report saved to {output_report}")
+    else:
+        print(report)
+    
+    if apply_fixes:
+        logger.info("Step 10: Applying fixes to identified issues...")
+        
+        # Apply general relationship fixes
+        fixes_report = fix_ships_accessions_joined_ships_relationships(dry_run=False)
+        
+        # Apply ship_id relationship fixes
+        ship_id_fixes = fix_ship_id_relationships(dry_run=False)
+        
+        logger.info("Fixes applied successfully")
+        
+        # Add fixes report to output
+        if output_report:
+            with open(output_report, 'a') as f:
+                f.write("\n\n" + "=" * 80 + "\n")
+                f.write("FIXES APPLIED\n")
+                f.write("=" * 80 + "\n")
+                f.write("GENERAL RELATIONSHIP FIXES:\n")
+                f.write(f"Ships fixed: {len(fixes_report['ships_fixed'])}\n")
+                f.write(f"Accessions fixed: {len(fixes_report['accessions_fixed'])}\n")
+                f.write(f"JoinedShips fixed: {len(fixes_report['joined_ships_fixed'])}\n")
+                f.write(f"New joined_ships entries created: {len(fixes_report['new_joined_ships_created'])}\n")
+                f.write("\nSHIP_ID RELATIONSHIP FIXES:\n")
+                f.write(f"Missing ship_ids fixed: {len(ship_id_fixes['missing_ship_ids_fixed'])}\n")
+                f.write(f"Mismatched ship_ids fixed: {len(ship_id_fixes['mismatched_ship_ids_fixed'])}\n")
+                f.write(f"Orphaned ships handled: {len(ship_id_fixes['orphaned_ships_handled'])}\n")
+                f.write(f"Duplicate ship_ids resolved: {len(ship_id_fixes['duplicate_ship_ids_resolved'])}\n")
+                f.write(f"Warnings: {len(ship_id_fixes['warnings'])}\n")
+    
+    logger.info("Comprehensive database cleanup process completed")
+
+
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Run comprehensive database cleanup")
+    parser = argparse.ArgumentParser(description="Comprehensive database cleanup for starbase")
     parser.add_argument("--apply", action="store_true", 
                        help="Apply changes to database (default is dry run)")
     parser.add_argument("--apply-fixes", action="store_true",
@@ -32,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("--report", type=str, 
                        help="Path to save cleanup report")
     parser.add_argument("--analyze-relationships", action="store_true",
-                       help="Run only relationship analysis")
+                       help="Run detailed analysis of table relationships only")
     parser.add_argument("--check-relationships", action="store_true",
                        help="Check for relationship issues")
     parser.add_argument("--skip-accession-cleanup", action="store_true",
@@ -47,14 +170,15 @@ if __name__ == "__main__":
                        help="Fix ship_id mislabeling in joined_ships table")
     parser.add_argument("--consolidate-duplicate-ships", action="store_true",
                        help="Consolidate duplicate sequences in ships table while maintaining foreign key relationships")
-    
+    parser.add_argument("--validate-ship-relationships", action="store_true",
+                       help="Run ship_id relationship validation only")
+    parser.add_argument("--fix-ship-relationships", action="store_true",
+                       help="Apply ship_id relationship fixes")
     args = parser.parse_args()
     
     if args.analyze_relationships:
         # Run only the relationship analysis
-        print("Running relationship analysis...")
         analysis = analyze_table_relationships()
-        
         print("\n" + "=" * 80)
         print("TABLE RELATIONSHIP ANALYSIS")
         print("=" * 80)
@@ -79,7 +203,75 @@ if __name__ == "__main__":
             print("\nRECOMMENDATIONS:")
             for rec in analysis['recommendations']:
                 print(f"  - {rec}")
-    
+
+    elif args.validate_ship_relationships:
+        # Run only ship_id relationship validation
+        print("🔍 Validating ship_id relationships...")
+        analysis = analyze_ship_id_relationships()
+        
+        print("\n" + "=" * 80)
+        print("SHIP_ID RELATIONSHIP ANALYSIS")
+        print("=" * 80)
+        
+        # Sequence reference stats
+        print(f"\n📊 SEQUENCE REFERENCE TABLE:")
+        stats = analysis['sequence_reference_stats']
+        print(f"   Total entries: {stats['total_entries']}")
+        print(f"   Unique sequences: {stats['unique_sequences']}")
+        print(f"   Duplicate sequences: {stats['duplicate_sequences']}")
+        
+        # Ships table analysis
+        print(f"\n🚢 SHIPS TABLE:")
+        ships = analysis['ships_table_analysis']
+        print(f"   Total ships: {ships['total_ships']}")
+        print(f"   With sequences: {ships['ships_with_sequences']}")
+        print(f"   With MD5: {ships['ships_with_md5']}")
+        print(f"   Without sequences: {ships['ships_without_sequences']}")
+        
+        # Joined ships analysis
+        print(f"\n🔗 JOINED_SHIPS TABLE:")
+        joined = analysis['joined_ships_analysis']
+        print(f"   Total entries: {joined['total_joined_ships']}")
+        print(f"   With ship_id: {joined['with_ship_id']}")
+        print(f"   Without ship_id: {joined['without_ship_id']}")
+        print(f"   Duplicate ship_id cases: {joined['duplicate_ship_ids']}")
+        
+        if joined['duplicate_details']:
+            print(f"   Duplicate details:")
+            for dup in joined['duplicate_details'][:3]:  # Show first 3
+                print(f"     ship_id {dup['ship_id']}: {dup['count']} entries ({', '.join(dup['starshipIDs'][:3])})")
+        
+        # Relationship issues
+        print(f"\n⚠️  RELATIONSHIP ISSUES:")
+        issues = analysis['relationship_issues']
+        if not issues:
+            print("   ✅ No issues found!")
+        else:
+            for issue in issues:
+                print(f"   {issue['type']}: {issue['count']} - {issue['description']}")
+                if issue['examples']:
+                    print(f"     Examples: {issue['examples']}")
+        
+        # Recommendations
+        print(f"\n💡 RECOMMENDATIONS:")
+        recommendations = analysis['recommendations']
+        if not recommendations:
+            print("   ✅ No fixes needed!")
+        else:
+            for i, rec in enumerate(recommendations, 1):
+                print(f"   {i}. {rec}")
+        
+        if args.fix_ship_relationships:
+            print(f"\n🔧 Applying ship_id relationship fixes...")
+            fixes = fix_ship_id_relationships(dry_run=False)
+            
+            print(f"\n📈 FIXES APPLIED:")
+            print(f"   Missing ship_ids fixed: {len(fixes['missing_ship_ids_fixed'])}")
+            print(f"   Mismatched ship_ids fixed: {len(fixes['mismatched_ship_ids_fixed'])}")
+            print(f"   Orphaned ships handled: {len(fixes['orphaned_ships_handled'])}")
+            print(f"   Duplicate ship_ids resolved: {len(fixes['duplicate_ship_ids_resolved'])}")
+            print(f"   Warnings: {len(fixes['warnings'])}")
+
     elif args.check_relationships:
         # Check for relationship issues
         print("Checking relationships...")
@@ -210,4 +402,4 @@ if __name__ == "__main__":
     
     else:
         # Run full cleanup process
-        main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup)
+        main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup) 
