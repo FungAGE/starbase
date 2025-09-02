@@ -1149,7 +1149,8 @@ def process_multiple_sequences(
         first_seq = seq_list[0]
         logger.debug(f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}")
 
-        sequence_analysis = process_single_sequence(first_seq, evalue_threshold, curated)
+        # Process the sequence with the correct sequence ID
+        sequence_analysis = process_single_sequence(first_seq, evalue_threshold, curated, sequence_id)
         
         if not sequence_analysis:
             logger.warning("No sequence analysis returned from process_single_sequence")
@@ -1162,13 +1163,33 @@ def process_multiple_sequences(
             logger.warning("Failed to convert sequence analysis to legacy format")
             return _return_error_state(adapter, sequence_id, "Failed to convert sequence data")
 
+        # Create BlastData with the sequence result
         blast_data = BlastData(
             processed_sequences=[0],
             sequence_results={"0": sequence_result},
             total_sequences=len(seq_list)
         )
+        
+        # Update the centralized state with BLAST data using the submission ID
         pipeline_state.update_blast_data(sequence_id, blast_data)
+        
+        # Also store the sequence analysis directly in the centralized state
+        # This ensures the data is available for the workflow
+        if sequence_analysis.blast_result:
+            # Update the sequence state with the blast result
+            sequence_state = pipeline_state.get_sequence(sequence_id)
+            if sequence_state:
+                # Store the blast content and file in the blast data
+                blast_data.blast_content = sequence_analysis.blast_result.blast_content
+                blast_data.blast_file = sequence_analysis.blast_result.blast_file
+                blast_data.fasta_file = sequence_analysis.blast_result.fasta_file
+                blast_data.seq_type = sequence_analysis.sequence_type.value
+                blast_data.processed = sequence_analysis.is_complete()
+                
+                # Update the blast data again with the complete information
+                pipeline_state.update_blast_data(sequence_id, blast_data)
 
+        # Create workflow state using the submission ID
         workflow_state = WorkflowState(
             stages={
                 stage["id"]: {"progress": 0, "complete": False}
@@ -1177,6 +1198,9 @@ def process_multiple_sequences(
             workflow_started=False,
             task_id=sequence_id
         )
+        
+        # Ensure the sequence ID is properly set
+        logger.debug(f"Created workflow state with task_id: {workflow_state.task_id}")
         
         sequence_length = len(sequence_analysis.sequence or "")
         skip_classification = (
@@ -2054,6 +2078,8 @@ def update_single_sequence_classification(blast_results_dict, workflow_state_dic
     # Get classification data from centralized state - SINGLE SOURCE OF TRUTH
     classification_data = adapter.get_sequence_classification_for_ui(sequence_id)
     
+    logger.debug(f"update_single_sequence_classification: sequence_id={sequence_id}, classification_data={classification_data is not None}")
+    
     if classification_data:
         logger.info(f"Found classification data in centralized state: {classification_data}")
     else:
@@ -2128,10 +2154,12 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
             logger.info(f"Resolved sequence ID: {sequence_id}")
         
         sequence_state = pipeline_state.get_sequence(sequence_id)
+        active_sequence_id = pipeline_state._active_sequence_id
+        
         if not sequence_state:
             logger.error(f"No sequence state found for {sequence_id}")
             # Create a new sequence state to prevent further errors
-            pipeline_state.add_sequence(sequence_id)
+            pipeline_state.add_sequence_without_activation(sequence_id)
             sequence_state = pipeline_state.get_sequence(sequence_id)
             logger.info(f"Created new sequence state for {sequence_id}")
         
