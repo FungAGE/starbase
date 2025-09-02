@@ -9,21 +9,1114 @@ This script performs all database cleaning tasks outlined in the plan:
 4. Genomic features validation
 5. Foreign key consistency updates
 6. General schema validation
+7. Ships-Accessions-JoinedShips relationship validation
 """
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import text, func
 from typing import Dict
-from src.config.database import StarbaseSession
-from src.config.logging import get_logger
-from src.database.models.schema import (
-    Accessions, Ships, JoinedShips, Genome, Taxonomy, 
-    StarshipFeatures, Captains
-)
-from src.database.cleanup_accessions import main as run_accession_cleanup
-import time
+from datetime import datetime
+try:
+    from ..config.database import StarbaseSession
+    from ..config.logging import get_logger
+    from .models.schema import (
+        Accessions, Ships, JoinedShips, Genome, Taxonomy, 
+        StarshipFeatures, Captains
+    )
+    from .cleanup_accessions import main as run_accession_cleanup
+except ImportError:
+    # Fallback for when running the script directly
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+    
+    from src.config.database import StarbaseSession
+    from src.config.logging import get_logger
+    from src.database.models.schema import (
+        Accessions, Ships, JoinedShips, Genome, Taxonomy, 
+        StarshipFeatures, Captains
+    )
+    from src.database.cleanup_accessions import main as run_accession_cleanup
 
 logger = get_logger(__name__)
+
+
+def check_ships_accessions_joined_ships_relationships() -> Dict:
+    """
+    Check the relationships and consistency between ships, accessions, and joined_ships tables.
+    
+    Based on the expected relationships:
+    - joined_ships should contain the most number of records
+    - not all entries in joined_ships will be present in ships (only if it has a sequence)
+    - not all entries in joined_ships will have an accession_id (only after classification)
+    - ships should link to accessions when they have an accession assigned
+    
+    Returns:
+        Dict: Report of relationship issues found
+    """
+    logger.info("Checking ships-accessions-joined_ships relationships...")
+    session = StarbaseSession()
+    
+    issues = {
+        'orphaned_ships': [],
+        'orphaned_accessions': [],
+        'inconsistent_joined_ships': [],
+        'missing_sequence_links': [],
+        'orphaned_joined_ships': [],
+        'ships_missing_from_joined_ships': [],
+        'summary_stats': {}
+    }
+    
+    try:
+        # Get basic counts for summary
+        total_ships = session.query(Ships).count()
+        total_accessions = session.query(Accessions).count()
+        total_joined_ships = session.query(JoinedShips).count()
+        
+        issues['summary_stats'] = {
+            'total_ships': total_ships,
+            'total_accessions': total_accessions,
+            'total_joined_ships': total_joined_ships
+        }
+        
+        logger.info(f"Table counts - Ships: {total_ships}, Accessions: {total_accessions}, JoinedShips: {total_joined_ships}")
+        
+        # Check 1: Ships that reference non-existent accessions
+        orphaned_ships = session.query(Ships).outerjoin(Accessions, Ships.accession_id == Accessions.id).filter(
+            (Ships.accession_id.isnot(None)) & (Accessions.id.is_(None))
+        ).all()
+        
+        for ship in orphaned_ships:
+            issues['orphaned_ships'].append({
+                'ship_id': ship.id,
+                'accession_id': ship.accession_id,
+                'md5': ship.md5,
+                'issue': 'Ship references non-existent accession'
+            })
+        
+        # Check 2: Accessions that have no associated ships or joined_ships
+        orphaned_accessions = session.query(Accessions).outerjoin(Ships, Accessions.id == Ships.accession_id).outerjoin(
+            JoinedShips, Accessions.id == JoinedShips.ship_id
+        ).filter(
+            (Ships.id.is_(None)) & (JoinedShips.id.is_(None))
+        ).all()
+        
+        for acc in orphaned_accessions:
+            issues['orphaned_accessions'].append({
+                'accession_id': acc.id,
+                'accession_tag': acc.accession_tag,
+                'ship_name': acc.ship_name,
+                'issue': 'Accession has no associated ships or joined_ships'
+            })
+        
+        # Check 3: JoinedShips entries that reference non-existent accessions
+        orphaned_joined_ships = session.query(JoinedShips).outerjoin(Accessions, JoinedShips.ship_id == Accessions.id).filter(
+            (JoinedShips.ship_id.isnot(None)) & (Accessions.id.is_(None))
+        ).all()
+        
+        for joined in orphaned_joined_ships:
+            issues['orphaned_joined_ships'].append({
+                'joined_id': joined.id,
+                'starshipID': joined.starshipID,
+                'ship_id': joined.ship_id,
+                'issue': 'JoinedShips references non-existent accession'
+            })
+        
+        # Check 4: JoinedShips entries that should have sequences but don't link to ships
+        # This is more complex - we need to identify which joined_ships entries should have sequences
+        # For now, we'll check for joined_ships with ship_id but no corresponding ship entry
+        missing_sequence_links = session.query(JoinedShips).outerjoin(Ships, JoinedShips.ship_id == Ships.accession_id).filter(
+            (JoinedShips.ship_id.isnot(None)) & (Ships.id.is_(None))
+        ).all()
+        
+        for joined in missing_sequence_links:
+            issues['missing_sequence_links'].append({
+                'joined_id': joined.id,
+                'starshipID': joined.starshipID,
+                'ship_id': joined.ship_id,
+                'issue': 'JoinedShips has accession_id but no corresponding ship entry (missing sequence)'
+            })
+        
+        # Check 5: Ships that are missing from joined_ships
+        # This ensures all ships have corresponding entries in the main connecting table
+        ships_missing_from_joined = session.query(Ships).outerjoin(JoinedShips, Ships.id == JoinedShips.ship_id).filter(
+            JoinedShips.id.is_(None)
+        ).all()
+        
+        # Debug: Log the count to see what's happening
+        logger.info(f"Found {len(ships_missing_from_joined)} ships missing from joined_ships")
+        
+        for ship in ships_missing_from_joined:
+            issues['ships_missing_from_joined_ships'].append({
+                'ship_id': ship.id,
+                'md5': ship.md5,
+                'accession_id': ship.accession_id,
+                'issue': 'Ship exists but has no corresponding entry in joined_ships table'
+            })
+        
+        # Check 6: Inconsistent joined_ships entries
+        # Check for joined_ships with missing essential information
+        inconsistent_joined = session.query(JoinedShips).filter(
+            (JoinedShips.starshipID.is_(None)) | 
+            (JoinedShips.starshipID == '') |
+            (JoinedShips.evidence.is_(None)) |
+            (JoinedShips.evidence == '')
+        ).all()
+        
+        for joined in inconsistent_joined:
+            issues['inconsistent_joined_ships'].append({
+                'joined_id': joined.id,
+                'starshipID': joined.starshipID,
+                'evidence': joined.evidence,
+                'issue': 'Missing essential information (starshipID or evidence)'
+            })
+        
+        # Log summary of issues found
+        logger.info(f"Found {len(issues['orphaned_ships'])} ships with broken accession links")
+        logger.info(f"Found {len(issues['orphaned_accessions'])} orphaned accessions")
+        logger.info(f"Found {len(issues['orphaned_joined_ships'])} joined_ships with broken accession links")
+        logger.info(f"Found {len(issues['missing_sequence_links'])} joined_ships missing sequence links")
+        logger.info(f"Found {len(issues['ships_missing_from_joined_ships'])} ships missing from joined_ships")
+        logger.info(f"Found {len(issues['inconsistent_joined_ships'])} inconsistent joined_ships entries")
+        
+    except Exception as e:
+        logger.error(f"Error checking ships-accessions-joined_ships relationships: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return issues
+
+
+def fix_ships_accessions_joined_ships_relationships(dry_run: bool = True) -> Dict:
+    """
+    Fix the relationship issues found between ships, accessions, and joined_ships tables.
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed without making changes
+        
+    Returns:
+        Dict: Report of fixes applied or would be applied
+    """
+    logger.info("Fixing ships-accessions-joined_ships relationships...")
+    session = StarbaseSession()
+    
+    fixes_applied = {
+        'ships_fixed': [],
+        'accessions_fixed': [],
+        'joined_ships_fixed': [],
+        'new_joined_ships_created': [],
+        'warnings': []
+    }
+    
+    try:
+        # Fix 1: Remove broken accession_id references from ships
+        orphaned_ships = session.query(Ships).outerjoin(Accessions, Ships.accession_id == Accessions.id).filter(
+            (Ships.accession_id.isnot(None)) & (Accessions.id.is_(None))
+        ).all()
+        
+        for ship in orphaned_ships:
+            if not dry_run:
+                old_accession_id = ship.accession_id
+                ship.accession_id = None
+                session.add(ship)
+                fixes_applied['ships_fixed'].append({
+                    'ship_id': ship.id,
+                    'action': f'Removed broken accession_id reference: {old_accession_id} -> None'
+                })
+            else:
+                fixes_applied['ships_fixed'].append({
+                    'ship_id': ship.id,
+                    'action': f'Would remove broken accession_id reference: {ship.accession_id} -> None'
+                })
+        
+        # Fix 2: Remove orphaned accessions that have no associated data
+        orphaned_accessions = session.query(Accessions).outerjoin(Ships, Accessions.id == Ships.accession_id).outerjoin(
+            JoinedShips, Accessions.id == JoinedShips.ship_id
+        ).filter(
+            (Ships.id.is_(None)) & (JoinedShips.id.is_(None))
+        ).all()
+        
+        for acc in orphaned_accessions:
+            if not dry_run:
+                session.delete(acc)
+                fixes_applied['accessions_fixed'].append({
+                    'accession_id': acc.id,
+                    'accession_tag': acc.accession_tag,
+                    'action': 'Deleted orphaned accession'
+                })
+            else:
+                fixes_applied['accessions_fixed'].append({
+                    'accession_id': acc.id,
+                    'accession_tag': acc.accession_tag,
+                    'action': 'Would delete orphaned accession'
+                })
+        
+        # Fix 3: Remove broken ship_id references from joined_ships
+        orphaned_joined_ships = session.query(JoinedShips).outerjoin(Accessions, JoinedShips.ship_id == Accessions.id).filter(
+            (JoinedShips.ship_id.isnot(None)) & (Accessions.id.is_(None))
+        ).all()
+        
+        for joined in orphaned_joined_ships:
+            if not dry_run:
+                old_ship_id = joined.ship_id
+                joined.ship_id = None
+                session.add(joined)
+                fixes_applied['joined_ships_fixed'].append({
+                    'joined_id': joined.id,
+                    'starshipID': joined.starshipID,
+                    'action': f'Removed broken ship_id reference: {old_ship_id} -> None'
+                })
+            else:
+                fixes_applied['joined_ships_fixed'].append({
+                    'joined_id': joined.id,
+                    'starshipID': joined.starshipID,
+                    'action': f'Would remove broken ship_id reference: {joined.ship_id} -> None'
+                })
+        
+        # Fix 4: Create missing joined_ships entries for ships that don't have them
+        # Use a more explicit query to avoid duplicates
+        ships_missing_from_joined = session.query(Ships).outerjoin(
+            JoinedShips, Ships.id == JoinedShips.ship_id
+        ).filter(
+            JoinedShips.id.is_(None)
+        ).all()
+        
+        # Debug: Log the count to see what's happening
+        logger.info(f"Creating {len(ships_missing_from_joined)} new joined_ships entries")
+        
+        for ship in ships_missing_from_joined:
+            if not dry_run:
+                # Double-check that this ship doesn't already have a joined_ships entry
+                existing_entry = session.query(JoinedShips).filter(JoinedShips.ship_id == ship.id).first()
+                if existing_entry:
+                    logger.warning(f"Ship {ship.id} already has joined_ships entry {existing_entry.id}, skipping creation")
+                    continue
+                
+                # Create a new joined_ships entry for this ship
+                new_joined_ship = JoinedShips(
+                    starshipID=f"SHIP_{ship.id}",
+                    evidence="AUTO_CREATED",
+                    source="database_cleanup",
+                    curated_status="auto_created",
+                    ship_id=ship.id,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now()
+                )
+                
+                session.add(new_joined_ship)
+                fixes_applied['new_joined_ships_created'].append({
+                    'ship_id': ship.id,
+                    'md5': ship.md5,
+                    'action': f'Created new joined_ships entry with ID: SHIP_{ship.id}'
+                })
+            else:
+                fixes_applied['new_joined_ships_created'].append({
+                    'ship_id': ship.id,
+                    'md5': ship.md5,
+                    'action': f'Would create new joined_ships entry with ID: SHIP_{ship.id}'
+                })
+        
+        # Fix 5: Clean up inconsistent joined_ships entries
+        inconsistent_joined = session.query(JoinedShips).filter(
+            (JoinedShips.starshipID.is_(None)) | 
+            (JoinedShips.starshipID == '') |
+            (JoinedShips.evidence.is_(None)) |
+            (JoinedShips.evidence == '')
+        ).all()
+        
+        for joined in inconsistent_joined:
+            if not dry_run:
+                # Set default values for missing required fields
+                if not joined.starshipID or joined.starshipID == '':
+                    joined.starshipID = f"UNKNOWN_{joined.id}"
+                if not joined.evidence or joined.evidence == '':
+                    joined.evidence = "UNKNOWN"
+                
+                session.add(joined)
+                fixes_applied['joined_ships_fixed'].append({
+                    'joined_id': joined.id,
+                    'starshipID': joined.starshipID,
+                    'action': 'Fixed missing required fields with default values'
+                })
+            else:
+                fixes_applied['joined_ships_fixed'].append({
+                    'joined_id': joined.id,
+                    'starshipID': joined.starshipID,
+                    'action': 'Would fix missing required fields with default values'
+                })
+        
+        # Commit changes if not dry run
+        if not dry_run:
+            session.commit()
+            logger.info("Applied fixes to database")
+        else:
+            logger.info("Dry run - no changes applied to database")
+        
+        # Log summary of fixes
+        logger.info(f"Fixed {len(fixes_applied['ships_fixed'])} ship issues")
+        logger.info(f"Fixed {len(fixes_applied['accessions_fixed'])} accession issues")
+        logger.info(f"Fixed {len(fixes_applied['joined_ships_fixed'])} joined_ships issues")
+        logger.info(f"Created {len(fixes_applied['new_joined_ships_created'])} new joined_ships entries")
+        
+    except Exception as e:
+        logger.error(f"Error fixing ships-accessions-joined_ships relationships: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return fixes_applied
+
+
+def analyze_table_relationships() -> Dict:
+    """
+    Perform detailed analysis of the relationships between ships, accessions, and joined_ships tables.
+    
+    This function provides insights into:
+    - How many records in each table have relationships with other tables
+    - The distribution of relationship types
+    - Potential data quality issues
+    
+    Returns:
+        Dict: Detailed analysis of table relationships
+    """
+    logger.info("Analyzing table relationships in detail...")
+    session = StarbaseSession()
+    
+    analysis = {
+        'relationship_counts': {},
+        'data_distribution': {},
+        'potential_issues': {},
+        'recommendations': []
+    }
+    
+    try:
+        # Count total records in each table
+        total_ships = session.query(Ships).count()
+        total_accessions = session.query(Accessions).count()
+        total_joined_ships = session.query(JoinedShips).count()
+        
+        # Count ships with accession_id
+        ships_with_accession = session.query(Ships).filter(Ships.accession_id.isnot(None)).count()
+        ships_without_accession = total_ships - ships_with_accession
+        
+        # Count joined_ships with ship_id (accession_id)
+        joined_with_ship = session.query(JoinedShips).filter(JoinedShips.ship_id.isnot(None)).count()
+        joined_without_ship = total_joined_ships - joined_with_ship
+        
+        # Count accessions that are referenced by ships
+        accessions_referenced_by_ships = session.query(Accessions).join(Ships, Accessions.id == Ships.accession_id).count()
+        
+        # Count accessions that are referenced by joined_ships
+        accessions_referenced_by_joined = session.query(Accessions).join(JoinedShips, Accessions.id == JoinedShips.ship_id).count()
+        
+        # Count accessions that are referenced by both
+        accessions_referenced_by_both = session.query(Accessions).join(Ships, Accessions.id == Ships.accession_id).join(
+            JoinedShips, Accessions.id == JoinedShips.ship_id
+        ).count()
+        
+        analysis['relationship_counts'] = {
+            'total_ships': total_ships,
+            'total_accessions': total_accessions,
+            'total_joined_ships': total_joined_ships,
+            'ships_with_accession': ships_with_accession,
+            'ships_without_accession': ships_without_accession,
+            'joined_with_ship': joined_with_ship,
+            'joined_without_ship': joined_without_ship,
+            'accessions_referenced_by_ships': accessions_referenced_by_ships,
+            'accessions_referenced_by_joined': accessions_referenced_by_joined,
+            'accessions_referenced_by_both': accessions_referenced_by_both
+        }
+        
+        # Calculate percentages and ratios
+        analysis['data_distribution'] = {
+            'ships_with_accession_pct': (ships_with_accession / total_ships * 100) if total_ships > 0 else 0,
+            'joined_with_ship_pct': (joined_with_ship / total_joined_ships * 100) if total_joined_ships > 0 else 0,
+            'accessions_utilization_pct': (max(accessions_referenced_by_ships, accessions_referenced_by_joined) / total_accessions * 100) if total_accessions > 0 else 0
+        }
+        
+        # Identify potential issues
+        potential_issues = []
+        
+        if ships_without_accession > 0:
+            potential_issues.append(f"{ships_without_accession} ships have no accession assigned")
+        
+        if joined_without_ship > 0:
+            potential_issues.append(f"{joined_without_ship} joined_ships entries have no ship/accession link")
+        
+        if total_accessions > 0 and accessions_referenced_by_ships == 0 and accessions_referenced_by_joined == 0:
+            potential_issues.append("All accessions are orphaned (no references from ships or joined_ships)")
+        
+        analysis['potential_issues'] = potential_issues
+        
+        # Generate recommendations
+        recommendations = []
+        
+        if ships_without_accession > 0:
+            recommendations.append("Consider assigning accessions to ships that have sequences but no accession")
+        
+        if joined_without_ship > 0:
+            recommendations.append("Review joined_ships entries without ship links - these may need accession assignment after classification")
+        
+        if total_accessions > 0 and accessions_referenced_by_ships == 0 and accessions_referenced_by_joined == 0:
+            recommendations.append("Investigate why all accessions are orphaned - this may indicate a data import issue")
+        
+        analysis['recommendations'] = recommendations
+        
+        # Log analysis summary
+        logger.info(f"Analysis complete:")
+        logger.info(f"  - {ships_with_accession}/{total_ships} ships have accessions ({analysis['data_distribution']['ships_with_accession_pct']:.1f}%)")
+        logger.info(f"  - {joined_with_ship}/{total_joined_ships} joined_ships have ship links ({analysis['data_distribution']['joined_with_ship_pct']:.1f}%)")
+        logger.info(f"  - {len(potential_issues)} potential issues identified")
+        logger.info(f"  - {len(recommendations)} recommendations generated")
+        
+    except Exception as e:
+        logger.error(f"Error analyzing table relationships: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return analysis
+
+
+def consolidate_duplicate_ships(dry_run: bool = True) -> Dict:
+    """
+    Consolidate duplicate sequences in the ships table while maintaining foreign key relationships.
+    
+    This function will:
+    1. Find ships with identical sequences (same MD5 or reverse complement MD5)
+    2. Keep one ship entry and update all references to point to it
+    3. Delete duplicate ship entries
+    4. Maintain referential integrity in joined_ships table
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of consolidations made or would be made
+    """
+    logger.info("Consolidating duplicate sequences in ships table...")
+    session = StarbaseSession()
+    
+    consolidations = {
+        'duplicate_groups_found': [],
+        'ships_consolidated': [],
+        'joined_ships_updated': [],
+        'duplicate_ships_removed': [],
+        'summary': {}
+    }
+    
+    try:
+        # Import the sequence utilities
+        try:
+            from ..utils.seq_utils import clean_sequence, revcomp
+            from ..utils.classification_utils import generate_md5_hash
+        except ImportError:
+            # Fallback for when running the script directly
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+            from src.utils.seq_utils import clean_sequence, revcomp
+            from src.utils.classification_utils import generate_md5_hash
+        
+        # Get all ships with sequences
+        all_ships = session.query(Ships).filter(
+            (Ships.sequence.isnot(None)) & 
+            (Ships.sequence != '')
+        ).all()
+        
+        logger.info(f"Analyzing {len(all_ships)} ships with sequences for duplicates")
+        
+        # Create a mapping of canonical MD5 -> list of ships
+        # Canonical MD5 is the lexicographically smaller of original and reverse complement
+        canonical_md5_groups = {}
+        
+        for ship in all_ships:
+            if ship.sequence is None or ship.sequence == '':
+                continue
+                
+            # Clean the sequence
+            clean_seq = clean_sequence(ship.sequence)
+            if clean_seq is None:
+                logger.warning(f"Could not clean sequence for ship {ship.id}, skipping")
+                continue
+            
+            # Generate both MD5 hashes
+            md5_hash = generate_md5_hash(clean_seq)
+            md5_hash_revcomp = generate_md5_hash(revcomp(clean_seq))
+            
+            if md5_hash is None or md5_hash_revcomp is None:
+                logger.warning(f"Could not generate MD5 for ship {ship.id}, skipping")
+                continue
+            
+            # Use the lexicographically smaller MD5 as the canonical key
+            canonical_md5 = min(md5_hash, md5_hash_revcomp)
+            
+            if canonical_md5 not in canonical_md5_groups:
+                canonical_md5_groups[canonical_md5] = []
+            canonical_md5_groups[canonical_md5].append(ship)
+        
+        logger.info(f"Found {len(canonical_md5_groups)} unique sequence groups (considering reverse complements)")
+        
+        total_consolidated = 0
+        total_joined_ships_updated = 0
+        total_duplicate_ships_removed = 0
+        
+        # Process groups with multiple ships (duplicates)
+        for canonical_md5, ships in canonical_md5_groups.items():
+            if len(ships) == 1:
+                continue  # No duplicates in this group
+            
+            # Sort ships by ID to ensure consistent primary selection
+            ships.sort(key=lambda s: s.id)
+            primary_ship = ships[0]
+            duplicate_ships = ships[1:]
+            
+            consolidations['duplicate_groups_found'].append({
+                'canonical_md5': canonical_md5,
+                'primary_ship_id': primary_ship.id,
+                'duplicate_ship_ids': [s.id for s in duplicate_ships],
+                'count': len(ships),
+                'original_md5s': [s.md5 for s in ships]
+            })
+            
+            if not dry_run:
+                # Update all joined_ships entries that reference duplicate ships
+                for duplicate_ship in duplicate_ships:
+                    # Find all joined_ships entries that reference this duplicate ship
+                    joined_entries = session.query(JoinedShips).filter(
+                        JoinedShips.ship_id == duplicate_ship.id
+                    ).all()
+                    
+                    for entry in joined_entries:
+                        old_ship_id = entry.ship_id
+                        entry.ship_id = primary_ship.id
+                        session.add(entry)
+                        total_joined_ships_updated += 1
+                        
+                        consolidations['joined_ships_updated'].append({
+                            'entry_id': entry.id,
+                            'starshipID': entry.starshipID,
+                            'old_ship_id': old_ship_id,
+                            'new_ship_id': primary_ship.id,
+                            'action': f'Updated reference from duplicate ship {old_ship_id} to primary ship {primary_ship.id}'
+                        })
+                    
+                    # Delete the duplicate ship
+                    session.delete(duplicate_ship)
+                    total_duplicate_ships_removed += 1
+                    
+                    consolidations['duplicate_ships_removed'].append({
+                        'ship_id': duplicate_ship.id,
+                        'md5': duplicate_ship.md5,
+                        'action': f'Deleted duplicate ship, consolidated into primary ship {primary_ship.id}'
+                    })
+                
+                total_consolidated += 1
+                
+                consolidations['ships_consolidated'].append({
+                    'primary_ship_id': primary_ship.id,
+                    'canonical_md5': canonical_md5,
+                    'duplicates_consolidated': len(duplicate_ships),
+                    'action': f'Consolidated {len(duplicate_ships)} duplicate ships into primary ship {primary_ship.id}'
+                })
+            else:
+                # Dry run - just report what would be done
+                consolidations['ships_consolidated'].append({
+                    'primary_ship_id': primary_ship.id,
+                    'canonical_md5': canonical_md5,
+                    'duplicates_consolidated': len(duplicate_ships),
+                    'action': f'Would consolidate {len(duplicate_ships)} duplicate ships into primary ship {primary_ship.id}'
+                })
+                
+                # Count what would be updated
+                for duplicate_ship in duplicate_ships:
+                    joined_entries = session.query(JoinedShips).filter(
+                        JoinedShips.ship_id == duplicate_ship.id
+                    ).all()
+                    
+                    for entry in joined_entries:
+                        consolidations['joined_ships_updated'].append({
+                            'entry_id': entry.id,
+                            'starshipID': entry.starshipID,
+                            'old_ship_id': duplicate_ship.id,
+                            'new_ship_id': primary_ship.id,
+                            'action': f'Would update reference from duplicate ship {duplicate_ship.id} to primary ship {primary_ship.id}'
+                        })
+                        total_joined_ships_updated += 1
+                    
+                    consolidations['duplicate_ships_removed'].append({
+                        'ship_id': duplicate_ship.id,
+                        'md5': duplicate_ship.md5,
+                        'action': f'Would delete duplicate ship, consolidate into primary ship {primary_ship.id}'
+                    })
+                    total_duplicate_ships_removed += 1
+                
+                total_consolidated += 1
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Consolidated {total_consolidated} duplicate groups, updated {total_joined_ships_updated} joined_ships entries, removed {total_duplicate_ships_removed} duplicate ships")
+        else:
+            logger.info(f"Would consolidate {total_consolidated} duplicate groups, would update {total_joined_ships_updated} joined_ships entries, would remove {total_duplicate_ships_removed} duplicate ships")
+        
+        consolidations['summary'] = {
+            'total_groups_consolidated': total_consolidated,
+            'total_joined_ships_updated': total_joined_ships_updated,
+            'total_duplicate_ships_removed': total_duplicate_ships_removed,
+            'unique_sequence_groups': len(canonical_md5_groups),
+            'recommendation': 'Run duplicate detection again after consolidation to verify cleanup'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error consolidating duplicate ships: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return consolidations
+
+
+def analyze_ship_id_mislabeling() -> Dict:
+    """
+    Analyze the current joined_ships table to detect if ship_id is incorrectly 
+    pointing to accessions.id instead of ships.id.
+    
+    This function will help identify the scope of the mislabeling issue.
+    
+    Returns:
+        Dict: Analysis of the mislabeling issue
+    """
+    logger.info("Analyzing ship_id mislabeling in joined_ships table...")
+    session = StarbaseSession()
+    
+    analysis = {
+        'mislabeling_indicators': [],
+        'potential_corrections': [],
+        'summary': {}
+    }
+    
+    try:
+        # Get all joined_ships entries with ship_id populated
+        joined_entries = session.query(JoinedShips).filter(
+            JoinedShips.ship_id.isnot(None)
+        ).all()
+        
+        total_entries = len(joined_entries)
+        logger.info(f"Analyzing {total_entries} joined_ships entries with ship_id")
+        
+        # Check 1: How many ship_id values actually exist in ships table
+        ship_ids_in_joined = [e.ship_id for e in joined_entries]
+        ships_exist = session.query(Ships).filter(Ships.id.in_(ship_ids_in_joined)).count()
+        
+        # Check 2: How many ship_id values exist in accessions table
+        accessions_exist = session.query(Accessions).filter(Accessions.id.in_(ship_ids_in_joined)).count()
+        
+        # Check 3: Find entries where ship_id points to accessions but should point to ships
+        mislabeled_entries = []
+        for entry in joined_entries:
+            # Check if this ship_id exists in accessions but not in ships
+            accession_exists = session.query(Accessions).filter(Accessions.id == entry.ship_id).first()
+            ship_exists = session.query(Ships).filter(Ships.id == entry.ship_id).first()
+            
+            if accession_exists and not ship_exists:
+                # This entry is mislabeled - ship_id points to accessions.id
+                mislabeled_entries.append({
+                    'joined_id': entry.id,
+                    'ship_id': entry.ship_id,
+                    'starshipID': entry.starshipID,
+                    'source': entry.source,
+                    'issue': 'ship_id points to accessions.id instead of ships.id'
+                })
+        
+        # Check 4: Find ships that should have joined_ships entries but don't
+        ships_without_joined = session.query(Ships).outerjoin(
+            JoinedShips, Ships.id == JoinedShips.ship_id
+        ).filter(JoinedShips.id.is_(None)).all()
+        
+        # Check 5: Find accessions that are incorrectly referenced as ship_id
+        accessions_incorrectly_referenced = session.query(Accessions).join(
+            JoinedShips, Accessions.id == JoinedShips.ship_id
+        ).all()
+        
+        analysis['mislabeling_indicators'] = {
+            'total_joined_entries': total_entries,
+            'ship_ids_exist_in_ships': ships_exist,
+            'ship_ids_exist_in_accessions': accessions_exist,
+            'mislabeled_entries': len(mislabeled_entries),
+            'ships_without_joined': len(ships_without_joined),
+            'accessions_incorrectly_referenced': len(accessions_incorrectly_referenced)
+        }
+        
+        # Generate potential corrections
+        for entry in mislabeled_entries[:100]:  # Limit to first 100 for analysis
+            # Find the correct ship_id by looking for ships with this accession
+            correct_ship = session.query(Ships).filter(
+                Ships.accession_id == entry['ship_id']
+            ).first()
+            
+            if correct_ship:
+                analysis['potential_corrections'].append({
+                    'joined_id': entry['joined_id'],
+                    'current_ship_id': entry['ship_id'],
+                    'correct_ship_id': correct_ship.id,
+                    'starshipID': entry['starshipID'],
+                    'action': f'Change ship_id from {entry["ship_id"]} (accession) to {correct_ship.id} (ship)'
+                })
+        
+        analysis['summary'] = {
+            'mislabeling_detected': len(mislabeled_entries) > 0,
+            'total_corrections_needed': len(analysis['potential_corrections']),
+            'recommendation': 'Fix ship_id references to point to ships.id instead of accessions.id'
+        }
+        
+        logger.info(f"Analysis complete:")
+        logger.info(f"  - {ships_exist}/{total_entries} ship_id values exist in ships table")
+        logger.info(f"  - {accessions_exist}/{total_entries} ship_id values exist in accessions table")
+        logger.info(f"  - {len(mislabeled_entries)} entries have mislabeled ship_id")
+        logger.info(f"  - {len(ships_without_joined)} ships missing from joined_ships")
+        
+    except Exception as e:
+        logger.error(f"Error analyzing ship_id mislabeling: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return analysis
+
+
+def fix_ship_id_mislabeling(dry_run: bool = True) -> Dict:
+    """
+    Fix the mislabeling of ship_id in joined_ships table by correcting references
+    from accessions.id to the correct ships.id.
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of fixes applied or would be applied
+    """
+    logger.info("Fixing ship_id mislabeling in joined_ships table...")
+    session = StarbaseSession()
+    
+    fixes_applied = {
+        'entries_fixed': [],
+        'entries_skipped': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find all mislabeled entries
+        joined_entries = session.query(JoinedShips).filter(
+            JoinedShips.ship_id.isnot(None)
+        ).all()
+        
+        total_fixed = 0
+        total_skipped = 0
+        
+        for entry in joined_entries:
+            # Check if this ship_id exists in accessions but not in ships
+            accession_exists = session.query(Accessions).filter(Accessions.id == entry.ship_id).first()
+            ship_exists = session.query(Ships).filter(Ships.id == entry.ship_id).first()
+            
+            if accession_exists and not ship_exists:
+                # This entry is mislabeled - find the correct ship_id
+                correct_ship = session.query(Ships).filter(
+                    Ships.accession_id == entry.ship_id
+                ).first()
+                
+                if correct_ship:
+                    if not dry_run:
+                        # Fix the mislabeled ship_id
+                        old_ship_id = entry.ship_id
+                        entry.ship_id = correct_ship.id
+                        session.add(entry)
+                        
+                        fixes_applied['entries_fixed'].append({
+                            'joined_id': entry.id,
+                            'starshipID': entry.starshipID,
+                            'old_ship_id': old_ship_id,
+                            'new_ship_id': correct_ship.id,
+                            'action': f'Fixed ship_id from {old_ship_id} (accession) to {correct_ship.id} (ship)'
+                        })
+                        total_fixed += 1
+                    else:
+                        fixes_applied['entries_fixed'].append({
+                            'joined_id': entry.id,
+                            'starshipID': entry.starshipID,
+                            'old_ship_id': entry.ship_id,
+                            'new_ship_id': correct_ship.id if correct_ship else 'UNKNOWN',
+                            'action': f'Would fix ship_id from {entry.ship_id} (accession) to {correct_ship.id if correct_ship else "UNKNOWN"} (ship)'
+                        })
+                        total_fixed += 1
+                else:
+                    # No corresponding ship found - this is a problem
+                    fixes_applied['entries_skipped'].append({
+                        'joined_id': entry.id,
+                        'starshipID': entry.starshipID,
+                        'ship_id': entry.ship_id,
+                        'issue': 'No corresponding ship found for this accession'
+                    })
+                    total_skipped += 1
+            else:
+                # This entry is correctly labeled
+                total_skipped += 1
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Fixed {total_fixed} mislabeled ship_id references")
+        else:
+            logger.info(f"Would fix {total_fixed} mislabeled ship_id references")
+        
+        logger.info(f"Skipped {total_skipped} correctly labeled entries")
+        
+        fixes_applied['summary'] = {
+            'total_fixed': total_fixed,
+            'total_skipped': total_skipped,
+            'recommendation': 'Run duplicate detection again after fixing mislabeling'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fixing ship_id mislabeling: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return fixes_applied
+
+
+def identify_duplicate_joined_ships() -> Dict:
+    """
+    Identify duplicate joined_ships entries that may have been created by previous cleanup runs.
+    
+    Returns:
+        Dict: Report of duplicate entries found
+    """
+    logger.info("Identifying duplicate joined_ships entries...")
+    session = StarbaseSession()
+    
+    duplicates = {
+        'duplicate_ship_ids': [],
+        'duplicate_starship_ids': [],
+        'auto_created_duplicates': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find ships with multiple joined_ships entries
+        duplicate_ship_entries = session.query(
+            JoinedShips.ship_id, 
+            func.count(JoinedShips.id).label('count')
+        ).filter(
+            JoinedShips.ship_id.isnot(None)
+        ).group_by(JoinedShips.ship_id).having(
+            func.count(JoinedShips.id) > 1
+        ).all()
+        
+        for ship_id, count in duplicate_ship_entries:
+            # Get all entries for this ship_id
+            entries = session.query(JoinedShips).filter(JoinedShips.ship_id == ship_id).all()
+            
+            duplicates['duplicate_ship_ids'].append({
+                'ship_id': ship_id,
+                'count': count,
+                'entry_ids': [e.id for e in entries],
+                'entries': [
+                    {
+                        'id': e.id,
+                        'starshipID': e.starshipID,
+                        'source': e.source,
+                        'created_at': e.created_at
+                    } for e in entries
+                ]
+            })
+        
+        # Find duplicate starshipIDs
+        duplicate_starship_entries = session.query(
+            JoinedShips.starshipID, 
+            func.count(JoinedShips.id).label('count')
+        ).filter(
+            JoinedShips.starshipID.isnot(None)
+        ).group_by(JoinedShips.starshipID).having(
+            func.count(JoinedShips.id) > 1
+        ).all()
+        
+        for starship_id, count in duplicate_starship_entries:
+            entries = session.query(JoinedShips).filter(JoinedShips.starshipID == starship_id).all()
+            duplicates['duplicate_starship_ids'].append({
+                'starshipID': starship_id,
+                'count': count,
+                'entry_ids': [e.id for e in entries]
+            })
+        
+        # Find auto-created duplicates (entries with same source and similar patterns)
+        auto_created_duplicates = session.query(
+            JoinedShips.source,
+            func.count(JoinedShips.id).label('count')
+        ).filter(
+            JoinedShips.source == 'database_cleanup'
+        ).group_by(JoinedShips.source).all()
+        
+        for source, count in auto_created_duplicates:
+            duplicates['auto_created_duplicates'].append({
+                'source': source,
+                'count': count
+            })
+        
+        # Summary
+        duplicates['summary'] = {
+            'total_duplicate_ship_ids': len(duplicates['duplicate_ship_ids']),
+            'total_duplicate_starship_ids': len(duplicates['duplicate_starship_ids']),
+            'total_auto_created': sum(d['count'] for d in duplicates['auto_created_duplicates'])
+        }
+        
+        logger.info(f"Found {duplicates['summary']['total_duplicate_ship_ids']} ships with duplicate joined_ships entries")
+        logger.info(f"Found {duplicates['summary']['total_duplicate_starship_ids']} duplicate starshipIDs")
+        logger.info(f"Found {duplicates['summary']['total_auto_created']} auto-created entries")
+        
+    except Exception as e:
+        logger.error(f"Error identifying duplicate joined_ships: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return duplicates
+
+
+def cleanup_duplicate_joined_ships(dry_run: bool = True) -> Dict:
+    """
+    Clean up duplicate joined_ships entries, keeping only the most appropriate one for each ship.
+    
+    Strategy:
+    1. For each ship with duplicates, keep the entry with the most complete information
+    2. Prefer entries that are NOT from 'database_cleanup' source
+    3. Prefer entries with more complete data
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be cleaned up
+        
+    Returns:
+        Dict: Report of cleanup actions taken
+    """
+    logger.info("Cleaning up duplicate joined_ships entries...")
+    session = StarbaseSession()
+    
+    cleanup_report = {
+        'duplicates_cleaned': [],
+        'entries_removed': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find ships with duplicate entries
+        duplicate_ship_entries = session.query(
+            JoinedShips.ship_id, 
+            func.count(JoinedShips.id).label('count')
+        ).filter(
+            JoinedShips.ship_id.isnot(None)
+        ).group_by(JoinedShips.ship_id).having(
+            func.count(JoinedShips.id) > 1
+        ).all()
+        
+        total_entries_to_remove = 0
+        
+        for ship_id, count in duplicate_ship_entries:
+            # Get all entries for this ship_id
+            entries = session.query(JoinedShips).filter(JoinedShips.ship_id == ship_id).order_by(
+                JoinedShips.id
+            ).all()
+            
+            if len(entries) <= 1:
+                continue
+            
+            # Score entries to determine which one to keep
+            # Higher score = better entry to keep
+            scored_entries = []
+            for entry in entries:
+                score = 0
+                
+                # Prefer entries NOT from database_cleanup
+                if entry.source != 'database_cleanup':
+                    score += 100
+                
+                # Prefer entries with more complete data
+                if entry.evidence and entry.evidence != '':
+                    score += 10
+                if entry.starshipID and entry.starshipID != '':
+                    score += 10
+                if entry.curated_status and entry.curated_status != '':
+                    score += 5
+                
+                # Prefer older entries (more likely to be original)
+                if entry.created_at:
+                    score += 1
+                
+                scored_entries.append((entry, score))
+            
+            # Sort by score (highest first) and keep the best one
+            scored_entries.sort(key=lambda x: x[1], reverse=True)
+            entry_to_keep = scored_entries[0][0]
+            entries_to_remove = [e for e, _ in scored_entries[1:]]
+            
+            if not dry_run:
+                # Remove duplicate entries
+                for entry in entries_to_remove:
+                    session.delete(entry)
+                    cleanup_report['entries_removed'].append({
+                        'entry_id': entry.id,
+                        'ship_id': entry.ship_id,
+                        'starshipID': entry.starshipID,
+                        'source': entry.source,
+                        'action': 'Removed duplicate entry'
+                    })
+                
+                total_entries_to_remove += len(entries_to_remove)
+            else:
+                # Just report what would be done
+                for entry in entries_to_remove:
+                    cleanup_report['entries_removed'].append({
+                        'entry_id': entry.id,
+                        'ship_id': entry.ship_id,
+                        'starshipID': entry.starshipID,
+                        'source': entry.source,
+                        'action': 'Would remove duplicate entry'
+                    })
+                
+                total_entries_to_remove += len(entries_to_remove)
+            
+            cleanup_report['duplicates_cleaned'].append({
+                'ship_id': ship_id,
+                'entries_found': len(entries),
+                'entry_kept': entry_to_keep.id,
+                'entries_removed': len(entries_to_remove)
+            })
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Removed {total_entries_to_remove} duplicate joined_ships entries")
+        else:
+            logger.info(f"Would remove {total_entries_to_remove} duplicate joined_ships entries")
+        
+        cleanup_report['summary'] = {
+            'ships_with_duplicates': len(cleanup_report['duplicates_cleaned']),
+            'total_entries_removed': total_entries_to_remove
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up duplicate joined_ships: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return cleanup_report
 
 
 def check_genome_table() -> Dict:
@@ -403,6 +1496,22 @@ def generate_cleanup_report(all_issues: Dict) -> str:
     report.append("=" * 80)
     report.append("")
     
+    # Ships-Accessions-JoinedShips relationship issues
+    relationship_issues = all_issues.get('ships_accessions_joined_ships', {})
+    report.append("SHIPS-ACCESSIONS-JOINED_SHIPS RELATIONSHIP ISSUES")
+    report.append("-" * 60)
+    if 'summary_stats' in relationship_issues:
+        stats = relationship_issues['summary_stats']
+        report.append(f"Table counts - Ships: {stats.get('total_ships', 0)}, Accessions: {stats.get('total_accessions', 0)}, JoinedShips: {stats.get('total_joined_ships', 0)}")
+        report.append("")
+    report.append(f"Orphaned ships: {len(relationship_issues.get('orphaned_ships', []))}")
+    report.append(f"Orphaned accessions: {len(relationship_issues.get('orphaned_accessions', []))}")
+    report.append(f"Orphaned joined_ships: {len(relationship_issues.get('orphaned_joined_ships', []))}")
+    report.append(f"Missing sequence links: {len(relationship_issues.get('missing_sequence_links', []))}")
+    report.append(f"Ships missing from joined_ships: {len(relationship_issues.get('ships_missing_from_joined_ships', []))}")
+    report.append(f"Inconsistent joined_ships: {len(relationship_issues.get('inconsistent_joined_ships', []))}")
+    report.append("")
+    
     # Genome table issues
     genome_issues = all_issues.get('genome', {})
     report.append("GENOME TABLE ISSUES")
@@ -457,10 +1566,10 @@ def generate_cleanup_report(all_issues: Dict) -> str:
     return "\n".join(report)
 
 
-def main(dry_run: bool = True, output_report: str = None):
+def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = False, skip_accession_cleanup: bool = False):
     """
     Main function to run comprehensive database cleanup.
-    Step 1: Run accession cleanup
+    Step 1: Run accession cleanup (optional, can be skipped)
     - checks for matches to reverse complemented sequences
     - checks for nested sequences
     - aggregates sequences by accession
@@ -468,19 +1577,26 @@ def main(dry_run: bool = True, output_report: str = None):
     Step 3: Check taxonomic table
     Step 4: Check genomic features
     Step 5: Check foreign keys
-    Step 6: Check schema violations
-    Step 7: Generate comprehensive report
+    Step 6: Check ships-accessions-joined_ships relationships
+    Step 7: Check schema violations
+    Step 8: Generate comprehensive report
+    Step 9: Apply fixes (if requested)
     
     Args:
         dry_run (bool): If True, only analyze and report without making changes
         output_report (str): Path to save the cleanup report
+        apply_fixes (bool): If True, apply fixes to the identified issues
+        skip_accession_cleanup (bool): If True, skip the slow accession cleanup step
     """
     logger.info("Starting comprehensive database cleanup process")
     
     all_issues = {}
     
-    logger.info("Step 1: Running accession cleanup...")
-    run_accession_cleanup(dry_run=dry_run)
+    if skip_accession_cleanup:
+        logger.info("Step 1: Skipping accession cleanup (--skip-accession-cleanup specified)")
+    else:
+        logger.info("Step 1: Running accession cleanup...")
+        run_accession_cleanup(dry_run=dry_run)
     
     logger.info("Step 2: Checking genome table...")
     all_issues['genome'] = check_genome_table()
@@ -494,10 +1610,13 @@ def main(dry_run: bool = True, output_report: str = None):
     logger.info("Step 5: Checking foreign key consistency...")
     all_issues['foreign_keys'] = check_foreign_keys()
     
-    logger.info("Step 6: Checking schema violations...")
+    logger.info("Step 6: Checking ships-accessions-joined_ships relationships...")
+    all_issues['ships_accessions_joined_ships'] = check_ships_accessions_joined_ships_relationships()
+    
+    logger.info("Step 7: Checking schema violations...")
     all_issues['schema'] = check_schema_violations()
     
-    logger.info("Step 7: Generating comprehensive report...")
+    logger.info("Step 8: Generating comprehensive report...")
     report = generate_cleanup_report(all_issues)
     
     if output_report:
@@ -506,6 +1625,22 @@ def main(dry_run: bool = True, output_report: str = None):
         logger.info(f"Report saved to {output_report}")
     else:
         print(report)
+    
+    if apply_fixes:
+        logger.info("Step 9: Applying fixes to identified issues...")
+        fixes_report = fix_ships_accessions_joined_ships_relationships(dry_run=False)
+        logger.info("Fixes applied successfully")
+        
+        # Add fixes report to output
+        if output_report:
+            with open(output_report, 'a') as f:
+                f.write("\n\n" + "=" * 80 + "\n")
+                f.write("FIXES APPLIED\n")
+                f.write("=" * 80 + "\n")
+                f.write(f"Ships fixed: {len(fixes_report['ships_fixed'])}\n")
+                f.write(f"Accessions fixed: {len(fixes_report['accessions_fixed'])}\n")
+                f.write(f"JoinedShips fixed: {len(fixes_report['joined_ships_fixed'])}\n")
+                f.write(f"New joined_ships entries created: {len(fixes_report['new_joined_ships_created'])}\n")
     
     logger.info("Comprehensive database cleanup process completed")
 
@@ -516,10 +1651,45 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Comprehensive database cleanup for Starbase")
     parser.add_argument("--apply", action="store_true", 
                        help="Apply changes to database (default is dry run)")
+    parser.add_argument("--apply-fixes", action="store_true",
+                       help="Apply fixes to ships-accessions-joined_ships relationship issues")
     parser.add_argument("--report", type=str, 
                        help="Path to save cleanup report")
+    parser.add_argument("--analyze-relationships", action="store_true",
+                       help="Run detailed analysis of table relationships only")
+    parser.add_argument("--skip-accession-cleanup", action="store_true",
+                       help="Skip the slow accession cleanup step")
     
     args = parser.parse_args()
     
-    main(dry_run=not args.apply, output_report=args.report)
+    if args.analyze_relationships:
+        # Run only the relationship analysis
+        analysis = analyze_table_relationships()
+        print("\n" + "=" * 80)
+        print("TABLE RELATIONSHIP ANALYSIS")
+        print("=" * 80)
+        
+        print("\nRELATIONSHIP COUNTS:")
+        for key, value in analysis['relationship_counts'].items():
+            print(f"  {key}: {value}")
+        
+        print("\nDATA DISTRIBUTION:")
+        for key, value in analysis['data_distribution'].items():
+            if 'pct' in key:
+                print(f"  {key}: {value:.1f}%")
+            else:
+                print(f"  {key}: {value}")
+        
+        if analysis['potential_issues']:
+            print("\nPOTENTIAL ISSUES:")
+            for issue in analysis['potential_issues']:
+                print(f"  - {issue}")
+        
+        if analysis['recommendations']:
+            print("\nRECOMMENDATIONS:")
+            for rec in analysis['recommendations']:
+                print(f"  - {rec}")
+    else:
+        # Run full cleanup process
+        main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup)
  
