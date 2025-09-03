@@ -118,6 +118,51 @@ def create_genome_headers(df):
     return headers
 
 
+def create_genome_cards(df):
+    """
+    Create a list of card components, one per genome, to avoid wide tables
+    that overflow small viewports.
+    """
+    cards = []
+    for i in range(len(df)):
+        header_value = safe_get_value(df, "assembly_accession", i, default="")
+        if not header_value or header_value == "N/A":
+            header_value = f"Genome {i + 1}"
+
+        genome_source = safe_get_value(df, "genomeSource", i, default="N/A")
+        contig_id = safe_get_value(df, "contigID", i, default="N/A")
+        position = safe_get_position(df, "elementBegin", "elementEnd", i, default="N/A")
+        length_bp = safe_get_value(
+            df,
+            "elementLength",
+            i,
+            default="N/A",
+            format_func=lambda x: f"{int(float(x))} bp",
+        )
+
+        cards.append(
+            dmc.Paper(
+                p="md",
+                withBorder=True,
+                radius="sm",
+                children=[
+                    dmc.Text(header_value, fw=700, mb=6),
+                    dmc.Stack(
+                        gap="xs",
+                        children=[
+                            dmc.Group([dmc.Text("Genome Source:", fw=700), dmc.Text(genome_source)]),
+                            dmc.Group([dmc.Text("ContigID:", fw=700), dmc.Text(contig_id)]),
+                            dmc.Group([dmc.Text("Element Position:", fw=700), dmc.Text(position)]),
+                            dmc.Group([dmc.Text("Size:", fw=700), dmc.Text(length_bp)]),
+                        ],
+                    ),
+                ],
+            )
+        )
+
+    return cards
+
+
 download_ships_button = dmc.Anchor(
     dmc.Button(
         [
@@ -227,17 +272,7 @@ def create_accession_modal(accession):
             .apply(lambda x: x.strip("[]").split("/")[-1].strip())
         )
 
-        # First try to find exact match with the full accession (including version)
-        if "accession_display" in initial_df.columns:
-            modal_data = initial_df[initial_df["accession_display"] == accession]
-            if modal_data.empty:
-                # If no exact match, try with base accession
-                modal_data = initial_df[initial_df["accession_tag"] == base_accession]
-        else:
-            # Fallback to original behavior if accession_display is not available
-            modal_data = initial_df[initial_df["accession_tag"] == accession]
-
-        if modal_data.empty:
+        if initial_df.empty:
             return (
                 dmc.Stack(
                     [
@@ -254,7 +289,7 @@ def create_accession_modal(accession):
             )
 
         # Validate modal_data
-        if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
+        if not isinstance(initial_df, pd.DataFrame) or initial_df.empty:
             logger.warning("Invalid or empty modal_data received")
             return (
                 dmc.Alert(
@@ -265,15 +300,10 @@ def create_accession_modal(accession):
                 f"Error: {accession}",
             )
 
-        # Log data info for debugging
-        logger.debug(
-            f"Modal data shape: {modal_data.shape}, columns: {list(modal_data.columns)}"
-        )
-
         # Check for required columns
         required_columns = ["starshipID", "familyName"]
         missing_columns = [
-            col for col in required_columns if col not in modal_data.columns
+            col for col in required_columns if col not in initial_df.columns
         ]
         if missing_columns:
             logger.warning(f"Missing required columns: {missing_columns}")
@@ -285,6 +315,26 @@ def create_accession_modal(accession):
                 ),
                 f"Error: {accession}",
             )
+
+        # First try to find exact match with the full accession (including version)
+        if "accession_display" in initial_df.columns:
+            modal_data = initial_df[initial_df["accession_display"] == accession]
+            if modal_data.empty:
+                # If no exact match, try with base accession
+                modal_data = initial_df[initial_df["accession_tag"] == base_accession]
+        else:
+            # Fallback to original behavior if accession_display is not available
+            modal_data = initial_df[initial_df["accession_tag"] == accession]
+
+        # Log data info for debugging
+        logger.debug(
+            f"Modal data shape: {modal_data.shape}, columns: {list(modal_data.columns)}"
+        )
+
+        # HACK: applying a fix for extra rows in the starship_features table, only take the first begin/end coordinates for each ship_id/accession_id
+        # ! this might cause some issues if coordinates are not updated for all rows for a ship_id/accession_id pair, updated only if begin/end coordinates are the same
+        # TODO: split features table or move coordinate information to separate table or another existing table
+        modal_data = modal_data.groupby("accession_tag").first().reset_index()
 
         # create variables for each data used in the sections of the modal
         starshipID = safe_get_value(modal_data, "starshipID")
@@ -424,69 +474,10 @@ def create_accession_modal(accession):
             children=[
                 dmc.Title("Genome Details", order=4, mb=10),
                 (
-                    dmc.ScrollArea(
-                        children=[
-                            dmc.Table(
-                                striped=True,
-                                highlightOnHover=True,
-                                withColumnBorders=True,
-                                children=[
-                                    html.Thead(
-                                        html.Tr(
-                                            [
-                                                html.Th(
-                                                    "Field",
-                                                    style={
-                                                        "backgroundColor": "#f8f9fa"
-                                                    },
-                                                ),
-                                                *create_genome_headers(modal_data),
-                                            ]
-                                        )
-                                    ),
-                                    html.Tbody(
-                                        [
-                                            html.Tr(
-                                                [
-                                                    html.Td("Genome Source"),
-                                                    *create_table_cells(
-                                                        modal_data, "genomeSource"
-                                                    ),
-                                                ]
-                                            ),
-                                            html.Tr(
-                                                [
-                                                    html.Td("ContigID"),
-                                                    *create_table_cells(
-                                                        modal_data, "contigID"
-                                                    ),
-                                                ]
-                                            ),
-                                            html.Tr(
-                                                [
-                                                    html.Td("Element Position"),
-                                                    *create_position_cells(
-                                                        modal_data,
-                                                        "elementBegin",
-                                                        "elementEnd",
-                                                    ),
-                                                ]
-                                            ),
-                                            html.Tr(
-                                                [
-                                                    html.Td("Size"),
-                                                    *create_table_cells(
-                                                        modal_data,
-                                                        "elementLength",
-                                                        format_func=lambda x: f"{int(float(x))} bp",
-                                                    ),
-                                                ]
-                                            ),
-                                        ]
-                                    ),
-                                ],
-                            )
-                        ]
+                    dmc.SimpleGrid(
+                        cols={"base": 1, "sm": 2, "md": 3},
+                        spacing="lg",
+                        children=create_genome_cards(modal_data),
                     )
                     if len(modal_data) > 1
                     else dmc.SimpleGrid(
