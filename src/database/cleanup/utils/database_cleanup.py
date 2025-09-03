@@ -3,6 +3,10 @@ from sqlalchemy import text, func
 from typing import Dict
 import json
 from datetime import datetime
+import csv
+import time
+import urllib.parse
+import urllib.request
 try:
     from ...config.database import StarbaseSession
     from ...config.logging import get_logger
@@ -2334,6 +2338,943 @@ def record_cleanup_issues(all_issues: Dict, source: str = "pipeline", dry_run: b
     except Exception as e:
         logger.error(f"Error recording cleanup issues: {str(e)}")
         session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def fix_missing_genome_info(dry_run: bool = True) -> Dict:
+    """
+    Fix missing genome information, particularly missing taxonomy_id.
+    
+    Strategy:
+    1. For genomes with missing taxonomy_id but existing ome, look for other genomes
+       with the same ome that have a taxonomy_id and copy it
+    2. For genomes with missing ome but existing taxonomy_id, look for other genomes
+       with the same taxonomy_id that have an ome and copy it
+    3. Optionally, could integrate with NCBI taxonomy database for more comprehensive fixes
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of fixes applied or would be applied
+    """
+    logger.info("Fixing missing genome information...")
+    session = StarbaseSession()
+    
+    fixes = {
+        'taxonomy_id_fixed': [],
+        'ome_fixed': [],
+        'no_match_found': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find genomes with missing taxonomy_id but existing ome
+        genomes_missing_taxonomy = session.query(Genome).filter(
+            (Genome.taxonomy_id.is_(None)) & 
+            (Genome.ome.isnot(None)) & 
+            (Genome.ome != '')
+        ).all()
+        
+        logger.info(f"Found {len(genomes_missing_taxonomy)} genomes with missing taxonomy_id but existing ome")
+        
+        for genome in genomes_missing_taxonomy:
+            # Look for other genomes with the same ome that have a taxonomy_id
+            matching_genome = session.query(Genome).filter(
+                (Genome.ome == genome.ome) & 
+                (Genome.taxonomy_id.isnot(None)) &
+                (Genome.id != genome.id)
+            ).first()
+            
+            if matching_genome:
+                if not dry_run:
+                    old_taxonomy_id = genome.taxonomy_id
+                    genome.taxonomy_id = matching_genome.taxonomy_id
+                    session.add(genome)
+                    
+                    fixes['taxonomy_id_fixed'].append({
+                        'genome_id': genome.id,
+                        'ome': genome.ome,
+                        'old_taxonomy_id': old_taxonomy_id,
+                        'new_taxonomy_id': matching_genome.taxonomy_id,
+                        'source_genome_id': matching_genome.id,
+                        'action': f'Copied taxonomy_id {matching_genome.taxonomy_id} from genome {matching_genome.id}'
+                    })
+                else:
+                    fixes['taxonomy_id_fixed'].append({
+                        'genome_id': genome.id,
+                        'ome': genome.ome,
+                        'old_taxonomy_id': None,
+                        'new_taxonomy_id': matching_genome.taxonomy_id,
+                        'source_genome_id': matching_genome.id,
+                        'action': f'Would copy taxonomy_id {matching_genome.taxonomy_id} from genome {matching_genome.id}'
+                    })
+            else:
+                fixes['no_match_found'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'issue': 'No other genome with same ome found to copy taxonomy_id from'
+                })
+        
+        # Find genomes with missing ome but existing taxonomy_id
+        genomes_missing_ome = session.query(Genome).filter(
+            (Genome.ome.is_(None) | (Genome.ome == '')) & 
+            (Genome.taxonomy_id.isnot(None))
+        ).all()
+        
+        logger.info(f"Found {len(genomes_missing_ome)} genomes with missing ome but existing taxonomy_id")
+        
+        for genome in genomes_missing_ome:
+            # Look for other genomes with the same taxonomy_id that have an ome
+            matching_genome = session.query(Genome).filter(
+                (Genome.taxonomy_id == genome.taxonomy_id) & 
+                (Genome.ome.isnot(None)) & 
+                (Genome.ome != '') &
+                (Genome.id != genome.id)
+            ).first()
+            
+            if matching_genome:
+                if not dry_run:
+                    old_ome = genome.ome
+                    genome.ome = matching_genome.ome
+                    session.add(genome)
+                    
+                    fixes['ome_fixed'].append({
+                        'genome_id': genome.id,
+                        'taxonomy_id': genome.taxonomy_id,
+                        'old_ome': old_ome,
+                        'new_ome': matching_genome.ome,
+                        'source_genome_id': matching_genome.id,
+                        'action': f'Copied ome {matching_genome.ome} from genome {matching_genome.id}'
+                    })
+                else:
+                    fixes['ome_fixed'].append({
+                        'genome_id': genome.id,
+                        'taxonomy_id': genome.taxonomy_id,
+                        'old_ome': None,
+                        'new_ome': matching_genome.ome,
+                        'source_genome_id': matching_genome.id,
+                        'action': f'Would copy ome {matching_genome.ome} from genome {matching_genome.id}'
+                    })
+            else:
+                fixes['no_match_found'].append({
+                    'genome_id': genome.id,
+                    'taxonomy_id': genome.taxonomy_id,
+                    'issue': 'No other genome with same taxonomy_id found to copy ome from'
+                })
+        
+        if not dry_run:
+            session.commit()
+            logger.info("Applied genome information fixes")
+        else:
+            logger.info("Dry run completed - no changes made")
+        
+        # Summary
+        fixes['summary'] = {
+            'taxonomy_id_fixed_count': len(fixes['taxonomy_id_fixed']),
+            'ome_fixed_count': len(fixes['ome_fixed']),
+            'no_match_found_count': len(fixes['no_match_found']),
+            'recommendation': 'Consider NCBI taxonomy lookup for remaining unfixed genomes'
+        }
+        
+        logger.info(f"Fixed {len(fixes['taxonomy_id_fixed'])} missing taxonomy_id issues")
+        logger.info(f"Fixed {len(fixes['ome_fixed'])} missing ome issues")
+        logger.info(f"Could not fix {len(fixes['no_match_found'])} genomes (no matching reference found)")
+        
+    except Exception as e:
+        logger.error(f"Error fixing missing genome information: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return fixes
+
+
+def analyze_missing_genome_info() -> Dict:
+    """
+    Analyze the scope of missing genome information to help prioritize fixes.
+    
+    Returns:
+        Dict: Analysis of missing genome information
+    """
+    logger.info("Analyzing missing genome information...")
+    session = StarbaseSession()
+    
+    analysis = {
+        'missing_taxonomy_id': [],
+        'missing_ome': [],
+        'missing_both': [],
+        'potential_fixes': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find all genomes with missing information
+        all_genomes = session.query(Genome).all()
+        
+        for genome in all_genomes:
+            missing_taxonomy = genome.taxonomy_id is None
+            missing_ome = genome.ome is None or genome.ome == ''
+            
+            if missing_taxonomy and missing_ome:
+                analysis['missing_both'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'taxonomy_id': genome.taxonomy_id,
+                    'issue': 'Missing both ome and taxonomy_id'
+                })
+            elif missing_taxonomy:
+                analysis['missing_taxonomy_id'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'taxonomy_id': genome.taxonomy_id,
+                    'issue': 'Missing taxonomy_id'
+                })
+            elif missing_ome:
+                analysis['missing_ome'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'taxonomy_id': genome.taxonomy_id,
+                    'issue': 'Missing ome'
+                })
+        
+        # Analyze potential fixes
+        # Group by ome to see how many could be fixed by copying taxonomy_id
+        ome_groups = {}
+        for genome in analysis['missing_taxonomy_id']:
+            ome = genome['ome']
+            if ome not in ome_groups:
+                ome_groups[ome] = []
+            ome_groups[ome].append(genome)
+        
+        # Find omes that have some genomes with taxonomy_id
+        for ome, genomes in ome_groups.items():
+            # Check if any genome with this ome has a taxonomy_id
+            reference_genome = session.query(Genome).filter(
+                (Genome.ome == ome) & 
+                (Genome.taxonomy_id.isnot(None))
+            ).first()
+            
+            if reference_genome:
+                analysis['potential_fixes'].append({
+                    'fix_type': 'copy_taxonomy_id',
+                    'ome': ome,
+                    'genomes_to_fix': len(genomes),
+                    'reference_genome_id': reference_genome.id,
+                    'reference_taxonomy_id': reference_genome.taxonomy_id,
+                    'description': f'Copy taxonomy_id {reference_genome.taxonomy_id} to {len(genomes)} genomes with ome {ome}'
+                })
+        
+        # Group by taxonomy_id to see how many could be fixed by copying ome
+        taxonomy_groups = {}
+        for genome in analysis['missing_ome']:
+            taxonomy_id = genome['taxonomy_id']
+            if taxonomy_id not in taxonomy_groups:
+                taxonomy_groups[taxonomy_id] = []
+            taxonomy_groups[taxonomy_id].append(genome)
+        
+        for taxonomy_id, genomes in taxonomy_groups.items():
+            # Check if any genome with this taxonomy_id has an ome
+            reference_genome = session.query(Genome).filter(
+                (Genome.taxonomy_id == taxonomy_id) & 
+                (Genome.ome.isnot(None)) & 
+                (Genome.ome != '')
+            ).first()
+            
+            if reference_genome:
+                analysis['potential_fixes'].append({
+                    'fix_type': 'copy_ome',
+                    'taxonomy_id': taxonomy_id,
+                    'genomes_to_fix': len(genomes),
+                    'reference_genome_id': reference_genome.id,
+                    'reference_ome': reference_genome.ome,
+                    'description': f'Copy ome {reference_genome.ome} to {len(genomes)} genomes with taxonomy_id {taxonomy_id}'
+                })
+        
+        # Summary
+        analysis['summary'] = {
+            'total_genomes': len(all_genomes),
+            'missing_taxonomy_id_count': len(analysis['missing_taxonomy_id']),
+            'missing_ome_count': len(analysis['missing_ome']),
+            'missing_both_count': len(analysis['missing_both']),
+            'potential_fixes_count': len(analysis['potential_fixes']),
+            'recommendation': 'Run fix_missing_genome_info() to apply available fixes'
+        }
+        
+        logger.info(f"Analysis complete:")
+        logger.info(f"  - {len(analysis['missing_taxonomy_id'])} genomes missing taxonomy_id")
+        logger.info(f"  - {len(analysis['missing_ome'])} genomes missing ome")
+        logger.info(f"  - {len(analysis['missing_both'])} genomes missing both")
+        logger.info(f"  - {len(analysis['potential_fixes'])} potential fixes identified")
+        
+    except Exception as e:
+        logger.error(f"Error analyzing missing genome information: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return analysis
+
+
+def fix_missing_genome_taxonomy_from_joined_ships(dry_run: bool = True) -> Dict:
+    """
+    Fill missing Genome.taxonomy_id using the most common joined_ships.tax_id
+    for entries linked to that genome.
+
+    Args:
+        dry_run: If True, do not write changes, only report.
+
+    Returns:
+        Dict: Report of updates applied or that would be applied.
+    """
+    logger.info("Setting missing Genome.taxonomy_id from joined_ships.tax_id...")
+    session = StarbaseSession()
+
+    report = {
+        'genomes_updated': [],
+        'no_tax_id_found': [],
+        'summary': {}
+    }
+
+    try:
+        # Get genomes missing taxonomy_id
+        genomes = session.query(Genome).filter(Genome.taxonomy_id.is_(None)).all()
+        logger.info(f"Found {len(genomes)} genomes missing taxonomy_id")
+
+        total_updated = 0
+        for genome in genomes:
+            # Aggregate tax_id counts from joined_ships for this genome
+            tax_counts = (
+                session.query(JoinedShips.tax_id, func.count(JoinedShips.id))
+                .filter(
+                    (JoinedShips.genome_id == genome.id) &
+                    (JoinedShips.tax_id.isnot(None))
+                )
+                .group_by(JoinedShips.tax_id)
+                .order_by(func.count(JoinedShips.id).desc())
+                .all()
+            )
+
+            if tax_counts:
+                chosen_tax_id = tax_counts[0][0]
+                if not dry_run:
+                    old_taxonomy_id = genome.taxonomy_id
+                    genome.taxonomy_id = chosen_tax_id
+                    session.add(genome)
+                report['genomes_updated'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'new_taxonomy_id': chosen_tax_id,
+                    'source': 'joined_ships.mode_tax_id'
+                })
+                total_updated += 1
+            else:
+                report['no_tax_id_found'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'issue': 'No joined_ships.tax_id for this genome'
+                })
+
+        if not dry_run:
+            session.commit()
+            logger.info(f"Updated taxonomy_id for {total_updated} genomes")
+        else:
+            logger.info(f"Would update taxonomy_id for {total_updated} genomes")
+
+        report['summary'] = {
+            'total_missing': len(genomes),
+            'total_updated': total_updated,
+            'total_unresolved': len(report['no_tax_id_found'])
+        }
+
+    except Exception as e:
+        logger.error(f"Error setting genome taxonomy from joined_ships: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+
+    return report
+
+
+def _ncbi_taxonomy_search(scientific_name: str, email: str = None, api_key: str = None) -> Dict:
+    """
+    Query NCBI Taxonomy for a scientific name and return minimal info.
+    Returns dict with keys: taxid (str), scientific_name (str). Empty dict if not found.
+    """
+    params = {
+        'db': 'taxonomy',
+        'term': scientific_name,
+        'retmode': 'json'
+    }
+    if email:
+        params['email'] = email
+    if api_key:
+        params['api_key'] = api_key
+    url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?' + urllib.parse.urlencode(params)
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        ids = data.get('esearchresult', {}).get('idlist', [])
+        if not ids:
+            return {}
+        taxid = ids[0]
+        # Fetch summary to get scientific name
+        sum_params = {
+            'db': 'taxonomy',
+            'id': taxid,
+            'retmode': 'json'
+        }
+        if email:
+            sum_params['email'] = email
+        if api_key:
+            sum_params['api_key'] = api_key
+        sum_url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?' + urllib.parse.urlencode(sum_params)
+        with urllib.request.urlopen(sum_url, timeout=15) as resp2:
+            sum_data = json.loads(resp2.read().decode('utf-8'))
+        docsum = (sum_data.get('result', {}) or {}).get(taxid, {})
+        sci_name = docsum.get('scientificname') or docsum.get('title') or scientific_name
+        return {'taxid': str(taxid), 'scientific_name': sci_name}
+    except Exception as e:
+        logger.warning(f"NCBI lookup failed for '{scientific_name}': {str(e)}")
+        return {}
+
+
+def fix_missing_genome_taxonomy_via_ncbi(map_csv: str = None, email: str = None, api_key: str = None, dry_run: bool = True, delay_seconds: float = 0.34) -> Dict:
+    """
+    Resolve missing Genome.taxonomy_id by querying NCBI Taxonomy.
+    
+    Workflow:
+    - Optionally load an ome->scientific_name CSV map to derive names.
+    - For each genome with missing taxonomy_id, get candidate name from map or skip.
+    - Query NCBI Taxonomy (esearch+esummary) to get taxid and scientific name.
+    - If a taxonomy row with matching taxID or name exists, reuse it.
+    - Else, create a new taxonomy row (minimal fields) and link genome to it.
+    - Respects dry_run; delay between requests to be polite (default ~3/sec).
+    
+    Args:
+        map_csv: Path to CSV with columns ome,scientific_name (header required).
+        email: Contact email for NCBI E-utilities etiquette.
+        api_key: Optional NCBI API key.
+        dry_run: If True, don't write changes.
+        delay_seconds: Sleep between NCBI calls to respect rate limits.
+    
+    Returns:
+        Dict summary and lists of actions.
+    """
+    logger.info("Fixing missing genome taxonomy via NCBI...")
+    session = StarbaseSession()
+
+    report = {
+        'genomes_linked': [],
+        'taxa_created': [],
+        'skipped_no_name': [],
+        'skipped_not_found': [],
+        'errors': [],
+        'summary': {}
+    }
+
+    ome_to_name = {}
+    if map_csv:
+        try:
+            with open(map_csv, 'r', newline='') as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    ome = (row.get('ome') or '').strip()
+                    name = (row.get('scientific_name') or '').strip()
+                    if ome and name:
+                        ome_to_name[ome] = name
+            logger.info(f"Loaded {len(ome_to_name)} ome->name mappings from {map_csv}")
+        except Exception as e:
+            logger.error(f"Failed to read map CSV {map_csv}: {str(e)}")
+            raise
+
+    try:
+        genomes = session.query(Genome).filter(Genome.taxonomy_id.is_(None)).all()
+        logger.info(f"Processing {len(genomes)} genomes with missing taxonomy_id for NCBI lookup")
+
+        linked = 0
+        created_taxa = 0
+        for genome in genomes:
+            candidate_name = ome_to_name.get(genome.ome) if genome.ome else None
+            if not candidate_name:
+                report['skipped_no_name'].append({'genome_id': genome.id, 'ome': genome.ome, 'issue': 'No mapping to scientific name'})
+                continue
+
+            ncbi = _ncbi_taxonomy_search(candidate_name, email=email, api_key=api_key)
+            if not ncbi:
+                report['skipped_not_found'].append({'genome_id': genome.id, 'ome': genome.ome, 'query': candidate_name})
+                time.sleep(delay_seconds)
+                continue
+
+            taxid_str = ncbi['taxid']
+            sci_name = ncbi['scientific_name']
+
+            # Try to find existing taxonomy row by taxID or name
+            existing = session.query(Taxonomy).filter(
+                (Taxonomy.taxID == taxid_str) | (Taxonomy.name == sci_name)
+            ).first()
+
+            taxonomy_row = existing
+            if not taxonomy_row and not dry_run:
+                taxonomy_row = Taxonomy(name=sci_name, taxID=taxid_str)
+                session.add(taxonomy_row)
+                session.flush()  # assign id
+                report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': sci_name, 'taxID': taxid_str})
+                created_taxa += 1
+
+            if taxonomy_row:
+                if not dry_run:
+                    genome.taxonomy_id = taxonomy_row.id
+                    session.add(genome)
+                report['genomes_linked'].append({'genome_id': genome.id, 'ome': genome.ome, 'taxonomy_id': taxonomy_row.id, 'name': sci_name})
+                linked += 1
+            else:
+                # dry_run path: we still need a placeholder id in report
+                report['genomes_linked'].append({'genome_id': genome.id, 'ome': genome.ome, 'taxonomy_id': '(new)', 'name': sci_name})
+                linked += 1
+
+            time.sleep(delay_seconds)
+
+        if not dry_run:
+            session.commit()
+            logger.info(f"Linked {linked} genomes; created {created_taxa} taxonomy rows")
+        else:
+            logger.info(f"Would link {linked} genomes; would create {created_taxa} taxonomy rows")
+
+        report['summary'] = {
+            'total_missing': len(genomes),
+            'linked': linked,
+            'taxa_created': created_taxa,
+            'skipped_no_name': len(report['skipped_no_name']),
+            'skipped_not_found': len(report['skipped_not_found'])
+        }
+        return report
+
+    except Exception as e:
+        logger.error(f"Error during NCBI taxonomy fix: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        report['errors'].append(str(e))
+        raise
+    finally:
+        session.close()
+
+
+def _parse_taxdump_names(names_dmp_path: str, include_synonyms: bool = False) -> Dict[str, str]:
+    """
+    Parse NCBI taxdump names.dmp and return a mapping name -> taxID (as string).
+    By default only 'scientific name' entries are included; if include_synonyms is True,
+    also include 'synonym' and 'equivalent name' classes.
+    """
+    wanted = {"scientific name"}
+    if include_synonyms:
+        wanted.update({"synonym", "equivalent name", "genbank common name", "common name"})
+
+    mapping = {}
+    try:
+        with open(names_dmp_path, 'r', encoding='utf-8', errors='ignore') as fh:
+            for line in fh:
+                # Format: tax_id | name_txt | unique name | name class |
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) < 4:
+                    continue
+                tax_id = parts[0]
+                name_txt = parts[1]
+                name_class = parts[3]
+                if name_class in wanted and name_txt:
+                    # Prefer first seen scientific name mapping; don't overwrite
+                    if name_txt not in mapping:
+                        mapping[name_txt] = tax_id
+        logger.info(f"Loaded {len(mapping)} names from {names_dmp_path} (include_synonyms={include_synonyms})")
+        return mapping
+    except Exception as e:
+        logger.error(f"Failed to parse names.dmp at {names_dmp_path}: {str(e)}")
+        raise
+
+
+def _normalize_name(value: str) -> str:
+    if value is None:
+        return ''
+    s = value.replace('_', ' ').strip().lower()
+    # collapse multiple spaces
+    return ' '.join(s.split())
+
+
+def fix_missing_genome_taxonomy_via_taxdump(names_dmp_path: str, include_synonyms: bool = False, dry_run: bool = True) -> Dict:
+    """
+    Resolve missing Genome.taxonomy_id by matching genome.ome to names in NCBI taxdump names.dmp.
+    Matching strategy:
+      - names.dmp exact/case-insensitive/underscore-to-space match
+      - fallback to existing Taxonomy rows by (in order):
+        1) Taxonomy.name
+        2) Taxonomy.genus + ' ' + Taxonomy.species
+        3) Taxonomy.genus
+    If a matching Taxonomy already exists (by taxID or name), reuse it; otherwise create it (minimal fields).
+    """
+    logger.info("Fixing missing genome taxonomy via taxdump names.dmp...")
+    session = StarbaseSession()
+
+    report = {
+        'genomes_linked': [],
+        'taxa_created': [],
+        'skipped_no_match': [],
+        'summary': {}
+    }
+
+    name_to_taxid = _parse_taxdump_names(names_dmp_path, include_synonyms=include_synonyms)
+    # Build normalized lookup maps for robustness
+    lower_map = {k.lower(): v for k, v in name_to_taxid.items()}
+    underspaced_map = {k.replace('_', ' ').lower(): v for k, v in name_to_taxid.items()}
+
+    try:
+        genomes = session.query(Genome).filter(Genome.taxonomy_id.is_(None)).all()
+        logger.info(f"Processing {len(genomes)} genomes with missing taxonomy_id using names.dmp + taxonomy fallbacks")
+
+        linked = 0
+        created = 0
+        for genome in genomes:
+            ome = genome.ome or ''
+            if ome == '':
+                report['skipped_no_match'].append({'genome_id': genome.id, 'ome': genome.ome})
+                continue
+
+            norm_ome = _normalize_name(ome)
+            taxid = None
+            sci_name = None
+            taxonomy_row = None
+
+            # 1) Try names.dmp mappings
+            if ome in name_to_taxid:
+                taxid = name_to_taxid[ome]
+                sci_name = ome
+            else:
+                low = ome.lower()
+                if low in lower_map:
+                    taxid = lower_map[low]
+                    sci_name = next((k for k, v in name_to_taxid.items() if k.lower() == low and v == taxid), ome)
+                else:
+                    norm = ome.replace('_', ' ').lower()
+                    if norm in underspaced_map:
+                        taxid = underspaced_map[norm]
+                        sci_name = next((k for k, v in name_to_taxid.items() if k.replace('_',' ').lower() == norm and v == taxid), ome.replace('_', ' '))
+
+            if taxid:
+                taxonomy_row = session.query(Taxonomy).filter(
+                    (Taxonomy.taxID == str(taxid)) | (Taxonomy.name == sci_name)
+                ).first()
+                if not taxonomy_row and not dry_run:
+                    taxonomy_row = Taxonomy(name=sci_name, taxID=str(taxid))
+                    session.add(taxonomy_row)
+                    session.flush()
+                    report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': sci_name, 'taxID': str(taxid)})
+                    created += 1
+
+            # 2) Fallback: Existing Taxonomy by normalized name
+            if taxonomy_row is None:
+                taxonomy_row = (
+                    session.query(Taxonomy)
+                    .filter(Taxonomy.name.isnot(None))
+                    .all()
+                )
+                taxonomy_row = next((t for t in taxonomy_row if _normalize_name(t.name) == norm_ome), None)
+
+            # 3) Fallback: genus + species
+            if taxonomy_row is None:
+                candidates = session.query(Taxonomy).filter(
+                    (Taxonomy.genus.isnot(None)) & (Taxonomy.genus != '') &
+                    (Taxonomy.species.isnot(None)) & (Taxonomy.species != '')
+                ).all()
+                taxonomy_row = next((t for t in candidates if _normalize_name(f"{t.genus} {t.species}") == norm_ome), None)
+
+            # 4) Fallback: genus only
+            if taxonomy_row is None:
+                candidates = session.query(Taxonomy).filter(
+                    (Taxonomy.genus.isnot(None)) & (Taxonomy.genus != '')
+                ).all()
+                taxonomy_row = next((t for t in candidates if _normalize_name(t.genus) == norm_ome), None)
+
+            if taxonomy_row:
+                if not dry_run:
+                    genome.taxonomy_id = taxonomy_row.id
+                    session.add(genome)
+                report['genomes_linked'].append({'genome_id': genome.id, 'ome': genome.ome, 'taxonomy_id': taxonomy_row.id, 'name': taxonomy_row.name})
+                linked += 1
+            else:
+                report['skipped_no_match'].append({'genome_id': genome.id, 'ome': genome.ome})
+
+        if not dry_run:
+            session.commit()
+            logger.info(f"Linked {linked} genomes; created {created} taxonomy rows (names.dmp + fallbacks)")
+        else:
+            logger.info(f"Would link {linked} genomes; would create {created} taxonomy rows (names.dmp + fallbacks)")
+
+        report['summary'] = {
+            'total_missing': len(genomes),
+            'linked': linked,
+            'taxa_created': created,
+            'skipped_no_match': len(report['skipped_no_match'])
+        }
+        return report
+
+    except Exception as e:
+        logger.error(f"Error during taxdump-based taxonomy fix: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _parse_ome_tax_map(map_path: str) -> Dict[str, Dict[str, str]]:
+    """
+    Parse a tab-delimited mapping file with columns like:
+    ome\tgenus\tspecies_epithet\tstrain\tjson_tax\t...
+    Returns map: ome -> {genus, species, strain, name}
+    Where name is 'Genus species' (and optionally strain ignored for taxonomy name).
+    """
+    mapping: Dict[str, Dict[str, str]] = {}
+    try:
+        with open(map_path, 'r', encoding='utf-8', errors='ignore') as fh:
+            for line in fh:
+                line = line.rstrip('\n')
+                if not line or line.startswith('#'):
+                    continue
+                cols = line.split('\t')
+                if len(cols) < 3:
+                    continue
+                ome = cols[0].strip()
+                genus = (cols[1] or '').strip()
+                species_part = (cols[2] or '').strip()
+                strain = (cols[3] or '').strip() if len(cols) > 3 else ''
+                json_blob = (cols[4] or '').strip() if len(cols) > 4 else ''
+
+                # Prefer JSON values when available
+                try:
+                    if json_blob:
+                        jd = json.loads(json_blob)
+                        genus_json = (jd.get('genus') or '').strip()
+                        species_json = (jd.get('species') or '').strip()
+                        strain_json = (jd.get('strain') or '').strip()
+                        if genus_json:
+                            genus = genus_json
+                        if species_json:
+                            # JSON 'species' might include full 'Genus species'; prefer epithet if genus present
+                            if genus and species_json.lower().startswith(genus.lower() + ' '):
+                                species_part = species_json[len(genus) + 1:].strip()
+                            else:
+                                species_part = species_json
+                        if strain_json:
+                            strain = strain_json
+                except Exception:
+                    pass
+
+                if not ome or not genus:
+                    continue
+                species_epithet = species_part
+                # Build scientific name
+                sci_name = genus if not species_epithet else f"{genus} {species_epithet}".strip()
+                mapping[ome] = {
+                    'genus': genus,
+                    'species_epithet': species_epithet,
+                    'strain': strain,
+                    'name': sci_name
+                }
+        logger.info(f"Loaded {len(mapping)} OME taxonomy mappings from {map_path}")
+        return mapping
+    except Exception as e:
+        logger.error(f"Failed to parse OME taxonomy map at {map_path}: {str(e)}")
+        raise
+
+
+def fix_missing_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Dict:
+    """
+    Use an OME->taxonomy mapping to assign genomes.taxonomy_id.
+    Strategy per genome with missing taxonomy_id:
+    - If OME exists in map, try to find existing Taxonomy by exact name; then by taxonomic parts
+      (genus+species). Only fall back to genus if species is absent in the map AND genus uniquely identifies
+      a single taxonomy row. Otherwise skip to avoid mislabeling.
+    - If not found, create minimal Taxonomy row (name, genus, species) and link genome.
+    """
+    logger.info("Fixing missing genome taxonomy via OME mapping file...")
+    session = StarbaseSession()
+
+    report = {
+        'genomes_linked': [],
+        'taxa_created': [],
+        'skipped_no_map': [],
+        'skipped_ambiguous_genus': [],
+        'summary': {}
+    }
+
+    ome_map = _parse_ome_tax_map(map_path)
+
+    try:
+        genomes = session.query(Genome).filter(Genome.taxonomy_id.is_(None)).all()
+        logger.info(f"Processing {len(genomes)} genomes with missing taxonomy_id using OME map")
+
+        linked = 0
+        created = 0
+        for genome in genomes:
+            ome = genome.ome or ''
+            if ome == '' or ome not in ome_map:
+                report['skipped_no_map'].append({'genome_id': genome.id, 'ome': genome.ome})
+                continue
+
+            genus = ome_map[ome]['genus']
+            species_epithet = ome_map[ome]['species_epithet']
+            name = ome_map[ome]['name']
+
+            taxonomy_row = None
+            # Try exact name
+            if name:
+                taxonomy_row = session.query(Taxonomy).filter(Taxonomy.name == name).first()
+            # Try genus + species
+            if taxonomy_row is None and genus and species_epithet:
+                taxonomy_row = session.query(Taxonomy).filter(
+                    (Taxonomy.genus == genus) & (Taxonomy.species == species_epithet)
+                ).first()
+            # Only if species missing in map, consider genus, but require uniqueness
+            if taxonomy_row is None and genus and not species_epithet:
+                genus_matches = session.query(Taxonomy).filter(Taxonomy.genus == genus).all()
+                if len(genus_matches) == 1:
+                    taxonomy_row = genus_matches[0]
+                elif len(genus_matches) > 1:
+                    report['skipped_ambiguous_genus'].append({'genome_id': genome.id, 'ome': genome.ome, 'genus': genus, 'matches': len(genus_matches)})
+
+            if taxonomy_row is None and not dry_run:
+                taxonomy_row = Taxonomy(name=name, genus=genus, species=species_epithet)
+                session.add(taxonomy_row)
+                session.flush()
+                report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': name})
+                created += 1
+
+            if taxonomy_row:
+                if not dry_run:
+                    genome.taxonomy_id = taxonomy_row.id
+                    session.add(genome)
+                report['genomes_linked'].append({'genome_id': genome.id, 'ome': genome.ome, 'taxonomy_id': taxonomy_row.id, 'name': taxonomy_row.name})
+                linked += 1
+
+        if not dry_run:
+            session.commit()
+            logger.info(f"Linked {linked} genomes; created {created} taxonomy rows (OME map)")
+        else:
+            logger.info(f"Would link {linked} genomes; would create {created} taxonomy rows (OME map)")
+
+        report['summary'] = {
+            'total_missing': len(genomes),
+            'linked': linked,
+            'taxa_created': created,
+            'skipped_no_map': len(report['skipped_no_map']),
+            'skipped_ambiguous_genus': len(report.get('skipped_ambiguous_genus', []))
+        }
+        return report
+
+    except Exception as e:
+        logger.error(f"Error during OME map taxonomy fix: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Dict:
+    """
+    Reconcile genomes that already have taxonomy_id but differ from the OME mapping.
+    If mapped name (Genus species) doesn't match taxonomy.name or (genus,species), update to the mapped taxonomy
+    (reuse existing row by name/genus+species or create a new one).
+    """
+    logger.info("Reconciling genome taxonomy according to OME mapping file...")
+    session = StarbaseSession()
+
+    report = {
+        'genomes_updated': [],
+        'taxa_created': [],
+        'skipped_no_map': [],
+        'summary': {}
+    }
+
+    ome_map = _parse_ome_tax_map(map_path)
+
+    try:
+        genomes = session.query(Genome).filter(Genome.taxonomy_id.isnot(None)).all()
+        logger.info(f"Checking {len(genomes)} genomes with existing taxonomy_id against OME map")
+
+        updated = 0
+        created = 0
+        for genome in genomes:
+            ome = genome.ome or ''
+            if ome == '' or ome not in ome_map:
+                report['skipped_no_map'].append({'genome_id': genome.id, 'ome': genome.ome})
+                continue
+
+            mapped_genus = ome_map[ome]['genus']
+            mapped_species_epithet = ome_map[ome]['species_epithet']
+            mapped_name = ome_map[ome]['name']
+
+            current_tax = session.query(Taxonomy).get(genome.taxonomy_id)
+            current_name = current_tax.name if current_tax else None
+            current_genus = current_tax.genus if current_tax else None
+            current_species = current_tax.species if current_tax else None
+
+            matches = (
+                (current_name == mapped_name) or
+                (current_genus == mapped_genus and (current_species or '') == (mapped_species_epithet or ''))
+            )
+            if matches:
+                continue
+
+            # Find or create the mapped taxonomy row
+            taxonomy_row = session.query(Taxonomy).filter(Taxonomy.name == mapped_name).first()
+            if taxonomy_row is None and mapped_genus and mapped_species_epithet:
+                taxonomy_row = session.query(Taxonomy).filter(
+                    (Taxonomy.genus == mapped_genus) & (Taxonomy.species == mapped_species_epithet)
+                ).first()
+            if taxonomy_row is None and not dry_run:
+                taxonomy_row = Taxonomy(name=mapped_name, genus=mapped_genus, species=mapped_species_epithet)
+                session.add(taxonomy_row)
+                session.flush()
+                report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': mapped_name})
+                created += 1
+
+            if taxonomy_row:
+                if not dry_run:
+                    genome.taxonomy_id = taxonomy_row.id
+                    session.add(genome)
+                report['genomes_updated'].append({
+                    'genome_id': genome.id,
+                    'ome': genome.ome,
+                    'old_taxonomy_id': current_tax.id if current_tax else None,
+                    'new_taxonomy_id': taxonomy_row.id,
+                    'name': taxonomy_row.name
+                })
+                updated += 1
+
+        if not dry_run:
+            session.commit()
+            logger.info(f"Updated taxonomy for {updated} genomes; created {created} taxonomy rows (reconcile)")
+        else:
+            logger.info(f"Would update taxonomy for {updated} genomes; would create {created} taxonomy rows (reconcile)")
+
+        report['summary'] = {
+            'checked': len(genomes),
+            'updated': updated,
+            'taxa_created': created,
+            'skipped_no_map': len(report['skipped_no_map'])
+        }
+        return report
+
+    except Exception as e:
+        logger.error(f"Error during OME map taxonomy reconciliation: {str(e)}")
+        if not dry_run:
+            session.rollback()
         raise
     finally:
         session.close()

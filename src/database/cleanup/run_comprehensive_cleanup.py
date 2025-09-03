@@ -39,7 +39,14 @@ try:
         cleanup_duplicate_joined_ships,
         analyze_ship_id_mislabeling,
         fix_ship_id_mislabeling,
-        consolidate_duplicate_ships
+        consolidate_duplicate_ships,
+        analyze_missing_genome_info,
+        fix_missing_genome_info,
+        fix_missing_genome_taxonomy_from_joined_ships,
+        fix_missing_genome_taxonomy_via_ncbi,
+        fix_missing_genome_taxonomy_via_taxdump,
+        fix_missing_genome_taxonomy_via_map,
+        reconcile_genome_taxonomy_via_map
     )
 
 except ImportError:
@@ -69,7 +76,14 @@ except ImportError:
         cleanup_duplicate_joined_ships,
         analyze_ship_id_mislabeling,
         fix_ship_id_mislabeling,
-        consolidate_duplicate_ships
+        consolidate_duplicate_ships,
+        analyze_missing_genome_info,
+        fix_missing_genome_info,
+        fix_missing_genome_taxonomy_from_joined_ships,
+        fix_missing_genome_taxonomy_via_ncbi,
+        fix_missing_genome_taxonomy_via_taxdump,
+        fix_missing_genome_taxonomy_via_map,
+        reconcile_genome_taxonomy_via_map
     )
 
 logger = get_logger(__name__)
@@ -210,6 +224,34 @@ if __name__ == "__main__":
                        help="Run ship_id relationship validation only")
     parser.add_argument("--fix-ship-relationships", action="store_true",
                        help="Apply ship_id relationship fixes")
+    parser.add_argument("--analyze-missing-genome-info", action="store_true",
+                       help="Analyze missing genome information")
+    parser.add_argument("--fix-missing-genome-info", action="store_true",
+                       help="Fix missing genome information")
+    parser.add_argument("--fix-missing-genome-taxonomy-from-joined", action="store_true",
+                       help="Fill missing Genome.taxonomy_id from joined_ships.tax_id (mode)")
+    parser.add_argument("--fix-missing-genome-taxonomy-via-ncbi", action="store_true",
+                       help="Fill missing Genome.taxonomy_id by querying NCBI Taxonomy (requires --ome-name-map)")
+    parser.add_argument("--ome-name-map", type=str,
+                       help="CSV file with columns: ome,scientific_name for NCBI lookup")
+    parser.add_argument("--ncbi-email", type=str,
+                       help="Contact email for NCBI E-utilities")
+    parser.add_argument("--ncbi-api-key", type=str,
+                       help="Optional NCBI API key for higher rate limits")
+    parser.add_argument("--fix-missing-genome-taxonomy-via-taxdump", action="store_true",
+                       help="Fill missing Genome.taxonomy_id using NCBI taxdump names.dmp")
+    parser.add_argument("--names-dmp", type=str,
+                       help="Path to NCBI taxdump names.dmp file")
+    parser.add_argument("--include-synonyms", action="store_true",
+                       help="Include synonyms/equivalent/common names from names.dmp")
+    parser.add_argument("--fix-missing-genome-taxonomy-via-map", action="store_true",
+                       help="Fill missing Genome.taxonomy_id using an OME->taxonomy mapping TSV")
+    parser.add_argument("--ome-tax-map", type=str,
+                       help="Path to OME taxonomy mapping TSV (columns: ome, genus, species_epithet, strain, json_tax, ...) ")
+    parser.add_argument("--reconcile-genome-taxonomy-via-map", action="store_true",
+                       help="Reconcile existing genome taxonomy_ids to match OME mapping TSV")
+    parser.add_argument("--reconcile-ome-tax-map", type=str,
+                       help="Path to OME taxonomy mapping TSV for reconciliation")
     args = parser.parse_args()
     
     if args.analyze_relationships:
@@ -436,6 +478,240 @@ if __name__ == "__main__":
             if len(consolidation_report['ships_consolidated']) > 5:
                 print(f"  ... and {len(consolidation_report['ships_consolidated']) - 5} more")
     
+    elif args.analyze_missing_genome_info:
+        # Analyze missing genome information
+        print("Analyzing missing genome information...")
+        analysis = analyze_missing_genome_info()
+        
+        print("\n" + "=" * 80)
+        print("MISSING GENOME INFORMATION ANALYSIS")
+        print("=" * 80)
+        
+        summary = analysis['summary']
+        print(f"\n📊 SUMMARY:")
+        print(f"   Total genomes: {summary['total_genomes']}")
+        print(f"   Missing taxonomy_id: {summary['missing_taxonomy_id_count']}")
+        print(f"   Missing ome: {summary['missing_ome_count']}")
+        print(f"   Missing both: {summary['missing_both_count']}")
+        print(f"   Potential fixes: {summary['potential_fixes_count']}")
+        
+        if analysis['potential_fixes']:
+            print(f"\n🔧 POTENTIAL FIXES:")
+            for fix in analysis['potential_fixes'][:10]:  # Show first 10
+                print(f"   {fix['description']}")
+            if len(analysis['potential_fixes']) > 10:
+                print(f"   ... and {len(analysis['potential_fixes']) - 10} more")
+        
+        if analysis['missing_taxonomy_id']:
+            print(f"\n❌ GENOMES MISSING TAXONOMY_ID:")
+            for genome in analysis['missing_taxonomy_id'][:5]:  # Show first 5
+                print(f"   Genome {genome['genome_id']}: ome='{genome['ome']}'")
+            if len(analysis['missing_taxonomy_id']) > 5:
+                print(f"   ... and {len(analysis['missing_taxonomy_id']) - 5} more")
+        
+        if analysis['missing_ome']:
+            print(f"\n❌ GENOMES MISSING OME:")
+            for genome in analysis['missing_ome'][:5]:  # Show first 5
+                print(f"   Genome {genome['genome_id']}: taxonomy_id={genome['taxonomy_id']}")
+            if len(analysis['missing_ome']) > 5:
+                print(f"   ... and {len(analysis['missing_ome']) - 5} more")
+        
+        print(f"\n💡 RECOMMENDATION: {summary['recommendation']}")
+    
+    elif args.fix_missing_genome_info:
+        # Fix missing genome information
+        print("Fixing missing genome information...")
+        fix_report = fix_missing_genome_info(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("MISSING GENOME INFORMATION FIX REPORT")
+        print("=" * 80)
+        
+        summary = fix_report['summary']
+        print(f"\n📈 FIXES APPLIED:")
+        print(f"   Taxonomy_id fixed: {summary['taxonomy_id_fixed_count']}")
+        print(f"   Ome fixed: {summary['ome_fixed_count']}")
+        print(f"   No match found: {summary['no_match_found_count']}")
+        print(f"   Recommendation: {summary['recommendation']}")
+        
+        if fix_report['taxonomy_id_fixed']:
+            print(f"\n✅ TAXONOMY_ID FIXES:")
+            for fix in fix_report['taxonomy_id_fixed'][:5]:  # Show first 5
+                print(f"   {fix['action']}")
+            if len(fix_report['taxonomy_id_fixed']) > 5:
+                print(f"   ... and {len(fix_report['taxonomy_id_fixed']) - 5} more")
+        
+        if fix_report['ome_fixed']:
+            print(f"\n✅ OME FIXES:")
+            for fix in fix_report['ome_fixed'][:5]:  # Show first 5
+                print(f"   {fix['action']}")
+            if len(fix_report['ome_fixed']) > 5:
+                print(f"   ... and {len(fix_report['ome_fixed']) - 5} more")
+        
+        if fix_report['no_match_found']:
+            print(f"\n⚠️  COULD NOT FIX:")
+            for issue in fix_report['no_match_found'][:5]:  # Show first 5
+                print(f"   Genome {issue['genome_id']}: {issue['issue']}")
+            if len(fix_report['no_match_found']) > 5:
+                print(f"   ... and {len(fix_report['no_match_found']) - 5} more")
+    
+    elif args.fix_missing_genome_taxonomy_from_joined:
+        print("Fixing missing genome taxonomy_id from joined_ships (mode tax_id)...")
+        fix_report = fix_missing_genome_taxonomy_from_joined_ships(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("GENOME TAXONOMY FROM JOINED_SHIPS FIX REPORT")
+        print("=" * 80)
+        
+        summary = fix_report['summary']
+        print(f"\n📈 FIXES:")
+        print(f"   Total missing: {summary['total_missing']}")
+        print(f"   Total updated: {summary['total_updated']}")
+        print(f"   Total unresolved: {summary['total_unresolved']}")
+        
+        if fix_report['genomes_updated']:
+            print("\n✅ UPDATED (first 10):")
+            for item in fix_report['genomes_updated'][:10]:
+                print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id={item['new_taxonomy_id']}")
+        
+        if fix_report['no_tax_id_found']:
+            print("\n⚠️  UNRESOLVED (first 10):")
+            for item in fix_report['no_tax_id_found'][:10]:
+                print(f"   Genome {item['genome_id']} ome='{item['ome']}': {item['issue']}")
+
+    elif args.fix_missing_genome_taxonomy_via_ncbi:
+        if not args.ome_name_map:
+            print("Error: --ome-name-map is required for --fix-missing-genome-taxonomy-via-ncbi")
+        else:
+            print("Fixing missing genome taxonomy_id via NCBI...")
+            fix_report = fix_missing_genome_taxonomy_via_ncbi(
+                map_csv=args.ome_name_map,
+                email=args.ncbi_email,
+                api_key=args.ncbi_api_key,
+                dry_run=not args.apply
+            )
+
+            print("\n" + "=" * 80)
+            print("GENOME TAXONOMY VIA NCBI FIX REPORT")
+            print("=" * 80)
+            
+            summary = fix_report['summary']
+            print(f"\n📈 FIXES:")
+            print(f"   Total missing: {summary['total_missing']}")
+            print(f"   Linked: {summary['linked']}")
+            print(f"   Taxa created: {summary['taxa_created']}")
+            print(f"   Skipped (no name): {summary['skipped_no_name']}")
+            print(f"   Skipped (not found): {summary['skipped_not_found']}")
+
+            if fix_report['genomes_linked']:
+                print("\n✅ LINKED (first 10):")
+                for item in fix_report['genomes_linked'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id={item['taxonomy_id']} ({item['name']})")
+
+            if fix_report['taxa_created']:
+                print("\n🆕 TAXA CREATED (first 10):")
+                for item in fix_report['taxa_created'][:10]:
+                    print(f"   Taxonomy {item['taxonomy_id']}: {item['name']} (taxID={item['taxID']})")
+
+            if fix_report['skipped_no_name']:
+                print("\n⚠️  SKIPPED (no name) (first 10):")
+                for item in fix_report['skipped_no_name'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}'")
+
+            if fix_report['skipped_not_found']:
+                print("\n⚠️  SKIPPED (not found) (first 10):")
+                for item in fix_report['skipped_not_found'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}', query='{item['query']}'")
+
+    elif args.fix_missing_genome_taxonomy_via_taxdump:
+        if not args.names_dmp:
+            print("Error: --names-dmp is required for --fix-missing-genome-taxonomy-via-taxdump")
+        else:
+            print("Fixing missing genome taxonomy_id via taxdump names.dmp...")
+            fix_report = fix_missing_genome_taxonomy_via_taxdump(
+                names_dmp_path=args.names_dmp,
+                include_synonyms=args.include_synonyms,
+                dry_run=not args.apply
+            )
+
+            print("\n" + "=" * 80)
+            print("GENOME TAXONOMY VIA TAXDUMP FIX REPORT")
+            print("=" * 80)
+            
+            summary = fix_report['summary']
+            print(f"\n📈 FIXES:")
+            print(f"   Total missing: {summary['total_missing']}")
+            print(f"   Linked: {summary['linked']}")
+            print(f"   Taxa created: {summary['taxa_created']}")
+            print(f"   Skipped (no match): {summary['skipped_no_match']}")
+
+            if fix_report['genomes_linked']:
+                print("\n✅ LINKED (first 10):")
+                for item in fix_report['genomes_linked'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id={item['taxonomy_id']} ({item['name']})")
+
+            if fix_report['taxa_created']:
+                print("\n🆕 TAXA CREATED (first 10):")
+                for item in fix_report['taxa_created'][:10]:
+                    print(f"   Taxonomy {item['taxonomy_id']}: {item['name']} (taxID={item['taxID']})")
+
+    elif args.fix_missing_genome_taxonomy_via_map:
+        if not args.ome_tax_map:
+            print("Error: --ome-tax-map is required for --fix-missing-genome-taxonomy-via-map")
+        else:
+            print("Fixing missing genome taxonomy_id via OME mapping TSV...")
+            fix_report = fix_missing_genome_taxonomy_via_map(
+                map_path=args.ome_tax_map,
+                dry_run=not args.apply
+            )
+
+            print("\n" + "=" * 80)
+            print("GENOME TAXONOMY VIA OME MAP FIX REPORT")
+            print("=" * 80)
+            
+            summary = fix_report['summary']
+            print(f"\n📈 FIXES:")
+            print(f"   Total missing: {summary['total_missing']}")
+            print(f"   Linked: {summary['linked']}")
+            print(f"   Taxa created: {summary['taxa_created']}")
+            print(f"   Skipped (no map): {summary['skipped_no_map']}")
+
+            if fix_report['genomes_linked']:
+                print("\n✅ LINKED (first 10):")
+                for item in fix_report['genomes_linked'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id={item['taxonomy_id']} ({item['name']})")
+
+            if fix_report['taxa_created']:
+                print("\n🆕 TAXA CREATED (first 10):")
+                for item in fix_report['taxa_created'][:10]:
+                    print(f"   Taxonomy {item['taxonomy_id']}: {item['name']}")
+
+    elif args.reconcile_genome_taxonomy_via_map:
+        if not args.reconcile_ome_tax_map:
+            print("Error: --reconcile-ome-tax-map is required for --reconcile-genome-taxonomy-via-map")
+        else:
+            print("Reconciling genome taxonomy_id according to OME mapping TSV...")
+            fix_report = reconcile_genome_taxonomy_via_map(
+                map_path=args.reconcile_ome_tax_map,
+                dry_run=not args.apply
+            )
+
+            print("\n" + "=" * 80)
+            print("GENOME TAXONOMY RECONCILIATION REPORT")
+            print("=" * 80)
+            
+            summary = fix_report['summary']
+            print(f"\n📈 CHANGES:")
+            print(f"   Checked: {summary['checked']}")
+            print(f"   Updated: {summary['updated']}")
+            print(f"   Taxa created: {summary['taxa_created']}")
+            print(f"   Skipped (no map): {summary['skipped_no_map']}")
+
+            if fix_report['genomes_updated']:
+                print("\n✅ UPDATED (first 10):")
+                for item in fix_report['genomes_updated'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id {item['old_taxonomy_id']} => {item['new_taxonomy_id']} ({item['name']})")
+
     else:
         # Run full cleanup process
         main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup) 
