@@ -1,11 +1,12 @@
 import pandas as pd
 from sqlalchemy import text, func
 from typing import Dict
+import json
 from datetime import datetime
 try:
-    from ..config.database import StarbaseSession
-    from ..config.logging import get_logger
-    from .models.schema import (
+    from ...config.database import StarbaseSession
+    from ...config.logging import get_logger
+    from ...database.models.schema import (
         Accessions, Ships, JoinedShips, Genome, Taxonomy, 
         StarshipFeatures, Captains
     )
@@ -14,7 +15,9 @@ except ImportError:
     # Fallback for when running the script directly
     import sys
     import os
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    if PROJECT_ROOT not in sys.path:
+        sys.path.append(PROJECT_ROOT)
     
     from src.config.database import StarbaseSession
     from src.config.logging import get_logger
@@ -22,7 +25,7 @@ except ImportError:
         Accessions, Ships, JoinedShips, Genome, Taxonomy, 
         StarshipFeatures, Captains
     )
-    from src.database.cleanup_accessions import main as run_accession_cleanup
+    from src.database.cleanup.utils.cleanup_accessions import main as run_accession_cleanup
 
 logger = get_logger(__name__)
 
@@ -2163,3 +2166,174 @@ def generate_cleanup_report(all_issues: Dict) -> str:
     report.append(f"SUMMARY: {total_issues} total issues found across all categories")
     
     return "\n".join(report)
+
+
+def create_cleanup_issues_table() -> None:
+    """
+    Create the cleanup_issues tracking table and indexes if they do not exist.
+    """
+    logger.info("Ensuring cleanup_issues table exists...")
+    session = StarbaseSession()
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cleanup_issues (
+                id INTEGER PRIMARY KEY,
+                issue_type TEXT NOT NULL,
+                category TEXT NOT NULL,
+                table_name TEXT,
+                record_id INTEGER,
+                details TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'OPEN',
+                source TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        # Unique index to avoid duplicate rows for the same issue
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_cleanup_issues_identity
+            ON cleanup_issues (category, issue_type, table_name, record_id, details)
+            """
+        )
+        # Helpful indexes
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_cleanup_issues_status
+            ON cleanup_issues (status)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_cleanup_issues_table_record
+            ON cleanup_issues (table_name, record_id)
+            """
+        )
+        cursor.close()
+        session.commit()
+        logger.info("cleanup_issues table ready")
+    except Exception as e:
+        logger.error(f"Error creating cleanup_issues table: {str(e)}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _infer_table_and_record_id(issue_item: Dict) -> (str, int):
+    """
+    Infer table_name and record_id from an issue dict by checking common *_id keys.
+    Preference order: joined_id → ship_id → accession_id → genome_id → captain_id → taxonomy_id.
+    """
+    key_order = [
+        ("joined_id", "joined_ships"),
+        ("ship_id", "ships"),
+        ("accession_id", "accessions"),
+        ("genome_id", "genomes"),
+        ("captain_id", "captains"),
+        ("taxonomy_id", "taxonomy"),
+    ]
+    for key, table in key_order:
+        if key in issue_item and issue_item[key] is not None:
+            try:
+                return table, int(issue_item[key])
+            except Exception:
+                return table, None
+    # Fallbacks for alternate naming
+    if "id" in issue_item and isinstance(issue_item["id"], int):
+        return None, issue_item["id"]
+    return None, None
+
+
+def record_cleanup_issues(all_issues: Dict, source: str = "pipeline", dry_run: bool = True) -> Dict:
+    """
+    Persist issues discovered by the cleanup pipeline into cleanup_issues table.
+
+    Args:
+        all_issues: Dict produced by the pipeline aggregating issue lists per category.
+        source: String label for where these issues originated from.
+        dry_run: If True, do not write to the database, just return a summary.
+
+    Returns:
+        Dict summary with counts by category and total inserted/skipped.
+    """
+    logger.info("Recording cleanup issues to cleanup_issues table...")
+    create_cleanup_issues_table()
+
+    session = StarbaseSession()
+    summary = {"by_category": {}, "inserted": 0, "skipped": 0}
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        insert_sql = (
+            """
+            INSERT OR IGNORE INTO cleanup_issues
+            (issue_type, category, table_name, record_id, details, status, source)
+            VALUES (?, ?, ?, ?, ?, 'OPEN', ?)
+            """
+        )
+
+        for category_name, category_payload in (all_issues or {}).items():
+            # category_payload is expected to be a dict with lists
+            inserted_this_category = 0
+            if not isinstance(category_payload, dict):
+                continue
+
+            for key, value in category_payload.items():
+                if not isinstance(value, list):
+                    continue
+                issue_type = key
+                for item in value:
+                    if not isinstance(item, dict):
+                        # Wrap non-dict entries
+                        item = {"value": item}
+
+                    table_name, record_id = _infer_table_and_record_id(item)
+                    details_text = json.dumps(item, ensure_ascii=False, sort_keys=True)
+
+                    if dry_run:
+                        summary["inserted"] += 1
+                        inserted_this_category += 1
+                        continue
+
+                    try:
+                        cursor.execute(
+                            insert_sql,
+                            (issue_type, category_name, table_name, record_id, details_text, source),
+                        )
+                        # Use rowcount to infer if inserted or ignored as duplicate
+                        if cursor.rowcount and cursor.rowcount > 0:
+                            summary["inserted"] += 1
+                            inserted_this_category += 1
+                        else:
+                            summary["skipped"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to insert cleanup issue ({category_name}/{issue_type}): {str(e)}")
+                        summary["skipped"] += 1
+
+            if inserted_this_category:
+                summary["by_category"][category_name] = inserted_this_category
+
+        if not dry_run:
+            cursor.close()
+            session.commit()
+        else:
+            cursor.close()
+
+        logger.info(
+            f"Recorded issues summary: inserted={summary['inserted']} skipped={summary['skipped']}"
+        )
+        return summary
+
+    except Exception as e:
+        logger.error(f"Error recording cleanup issues: {str(e)}")
+        session.rollback()
+        raise
+    finally:
+        session.close()

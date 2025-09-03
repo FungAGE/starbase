@@ -11,39 +11,66 @@ from sqlalchemy import text, func
 from typing import Dict
 from datetime import datetime
 
-# Add the src directory to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-
-from src.database.cleanup.utils.database_cleanup import (
-    check_genome_table,
-    check_taxonomic_table,
-    check_genomic_features,
-    check_foreign_keys,
-    check_schema_violations,
-    analyze_ship_id_relationships,
-    generate_cleanup_report,
-    check_ships_accessions_joined_ships_relationships,
-    analyze_table_relationships,
-    fix_ships_accessions_joined_ships_relationships,
-    fix_ship_id_relationships,
-    identify_duplicate_joined_ships,
-    cleanup_duplicate_joined_ships,
-    analyze_ship_id_mislabeling,
-    fix_ship_id_mislabeling,
-    consolidate_duplicate_ships
-)
+# Add the project root to the Python path (for direct script execution)
+_HERE = os.path.dirname(__file__)
+_PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..', '..'))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 try:
-    from ..config.logging import get_logger
-    from .cleanup.utils.cleanup_accessions import main as run_accession_cleanup
+    from ...config.logging import get_logger
+    from .utils.cleanup_accessions import main as run_accession_cleanup
+
+    from .utils.database_cleanup import (
+        check_genome_table,
+        check_taxonomic_table,
+        check_genomic_features,
+        check_foreign_keys,
+        check_schema_violations,
+        analyze_ship_id_relationships,
+        generate_cleanup_report,
+        create_cleanup_issues_table,
+        record_cleanup_issues,
+        check_ships_accessions_joined_ships_relationships,
+        analyze_table_relationships,
+        fix_ships_accessions_joined_ships_relationships,
+        fix_ship_id_relationships,
+        identify_duplicate_joined_ships,
+        cleanup_duplicate_joined_ships,
+        analyze_ship_id_mislabeling,
+        fix_ship_id_mislabeling,
+        consolidate_duplicate_ships
+    )
+
 except ImportError:
     # Fallback for when running the script directly
     import sys
     import os
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+    sys.path.append(_PROJECT_ROOT)
     
     from src.config.logging import get_logger
     from src.database.cleanup.utils.cleanup_accessions import main as run_accession_cleanup
+
+    from src.database.cleanup.utils.database_cleanup import (
+        check_genome_table,
+        check_taxonomic_table,
+        check_genomic_features,
+        check_foreign_keys,
+        check_schema_violations,
+        analyze_ship_id_relationships,
+        generate_cleanup_report,
+        create_cleanup_issues_table,
+        record_cleanup_issues,
+        check_ships_accessions_joined_ships_relationships,
+        analyze_table_relationships,
+        fix_ships_accessions_joined_ships_relationships,
+        fix_ship_id_relationships,
+        identify_duplicate_joined_ships,
+        cleanup_duplicate_joined_ships,
+        analyze_ship_id_mislabeling,
+        fix_ship_id_mislabeling,
+        consolidate_duplicate_ships
+    )
 
 logger = get_logger(__name__)
 
@@ -111,6 +138,15 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
         logger.info(f"Report saved to {output_report}")
     else:
         print(report)
+
+    # Record issues into tracking table (table creation happens even in dry-run)
+    try:
+        logger.info("Recording issues into cleanup_issues table...")
+        create_cleanup_issues_table()
+        record_summary = record_cleanup_issues(all_issues, source='pipeline', dry_run=dry_run)
+        logger.info(f"Recorded issues summary: inserted={record_summary['inserted']} skipped={record_summary['skipped']}")
+    except Exception as e:
+        logger.error(f"Failed to record cleanup issues: {str(e)}")
     
     if apply_fixes:
         logger.info("Step 10: Applying fixes to identified issues...")
