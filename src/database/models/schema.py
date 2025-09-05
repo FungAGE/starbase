@@ -55,7 +55,7 @@ class Captains(Base):
     id = Column(Integer, primary_key=True)
     captainID = Column(String, unique=True)
     sequence = Column(String)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     reviewed = Column(String)
 
     # Relationships
@@ -74,7 +74,7 @@ class Genome(Base):
     citation = Column(String(50))
     biosample = Column(String(50))
     acquisition_date = Column(Integer)
-
+    assembly_accession = Column(String(50))
     taxonomy = relationship("Taxonomy", back_populates="genomes")
 
 
@@ -102,7 +102,7 @@ class StarshipFeatures(Base):
     TIRedit = Column(String)
     nestedInside = Column(String)
     containNested = Column(String)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     captain_id = Column(Integer, ForeignKey("captains.id"))
 
     # Relationships
@@ -228,7 +228,7 @@ class JoinedShips(Base):
     curated_status = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
     tax_id = Column(Integer)
-    ship_id = Column(Integer, ForeignKey("accessions.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     genome_id = Column(String)
     captain_id = Column(Integer, ForeignKey("captains.id"))
     ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
