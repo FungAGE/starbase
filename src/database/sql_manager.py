@@ -537,7 +537,7 @@ def get_database_stats():
         meta_df = fetch_meta_data(curated=False)
         filtered_df = meta_df[meta_df["accession_tag"].notna()]
         total_count = len(filtered_df["accession_tag"].unique())
-        curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"].unique())
+        curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"]["accession_tag"].unique())
         uncurated_count = total_count - curated_count
         species_count = len(filtered_df["name"].unique())
         family_count = len(filtered_df["familyName"].unique())
