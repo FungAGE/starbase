@@ -7,6 +7,7 @@ import csv
 import time
 import urllib.parse
 import urllib.request
+import re
 try:
     from ...config.database import StarbaseSession
     from ...config.logging import get_logger
@@ -3031,7 +3032,7 @@ def fix_missing_genome_taxonomy_via_taxdump(names_dmp_path: str, include_synonym
         session.close()
 
 
-def _parse_ome_tax_map(map_path: str) -> Dict[str, Dict[str, str]]:
+def _parse_ome_map(map_path: str) -> Dict[str, Dict[str, str]]:
     """
     Parse a tab-delimited mapping file with columns like:
     ome\tgenus\tspecies_epithet\tstrain\tjson_tax\t...
@@ -3053,6 +3054,7 @@ def _parse_ome_tax_map(map_path: str) -> Dict[str, Dict[str, str]]:
                 species_part = (cols[2] or '').strip()
                 strain = (cols[3] or '').strip() if len(cols) > 3 else ''
                 json_blob = (cols[4] or '').strip() if len(cols) > 4 else ''
+                assembly_accession = (cols[10] or '').strip() if len(cols) > 10 else ''
 
                 # Prefer JSON values when available
                 try:
@@ -3083,7 +3085,8 @@ def _parse_ome_tax_map(map_path: str) -> Dict[str, Dict[str, str]]:
                     'genus': genus,
                     'species_epithet': species_epithet,
                     'strain': strain,
-                    'name': sci_name
+                    'name': sci_name,
+                    'assembly_accession': assembly_accession
                 }
         logger.info(f"Loaded {len(mapping)} OME taxonomy mappings from {map_path}")
         return mapping
@@ -3091,126 +3094,41 @@ def _parse_ome_tax_map(map_path: str) -> Dict[str, Dict[str, str]]:
         logger.error(f"Failed to parse OME taxonomy map at {map_path}: {str(e)}")
         raise
 
-
-def fix_missing_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Dict:
+def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Dict:
     """
-    Use an OME->taxonomy mapping to assign genomes.taxonomy_id.
-    Strategy per genome with missing taxonomy_id:
-    - If OME exists in map, try to find existing Taxonomy by exact name; then by taxonomic parts
-      (genus+species). Only fall back to genus if species is absent in the map AND genus uniquely identifies
-      a single taxonomy row. Otherwise skip to avoid mislabeling.
-    - If not found, create minimal Taxonomy row (name, genus, species) and link genome.
+    Reconcile existing genome entries against OME mapping to ensure consistency.
+    - If mapped assembly accession doesn't match genome.assembly_accession, update to the mapped assembly accession
+    - If mapped name (Genus species) doesn't match taxonomy.name or (genus,species), update to the mapped taxonomy
+        - (reuse existing row by name/genus+species or create a new one).
+    Only processes genomes that already have taxonomy_id assigned.
     """
-    logger.info("Fixing missing genome taxonomy via OME mapping file...")
+    logger.info("Reconciling genome info according to OME mapping file...")
     session = StarbaseSession()
 
     report = {
         'genomes_linked': [],
-        'taxa_created': [],
-        'skipped_no_map': [],
-        'skipped_ambiguous_genus': [],
-        'summary': {}
-    }
-
-    ome_map = _parse_ome_tax_map(map_path)
-
-    try:
-        genomes = session.query(Genome).filter(Genome.taxonomy_id.is_(None)).all()
-        logger.info(f"Processing {len(genomes)} genomes with missing taxonomy_id using OME map")
-
-        linked = 0
-        created = 0
-        for genome in genomes:
-            ome = genome.ome or ''
-            if ome == '' or ome not in ome_map:
-                report['skipped_no_map'].append({'genome_id': genome.id, 'ome': genome.ome})
-                continue
-
-            genus = ome_map[ome]['genus']
-            species_epithet = ome_map[ome]['species_epithet']
-            name = ome_map[ome]['name']
-
-            taxonomy_row = None
-            # Try exact name
-            if name:
-                taxonomy_row = session.query(Taxonomy).filter(Taxonomy.name == name).first()
-            # Try genus + species
-            if taxonomy_row is None and genus and species_epithet:
-                taxonomy_row = session.query(Taxonomy).filter(
-                    (Taxonomy.genus == genus) & (Taxonomy.species == species_epithet)
-                ).first()
-            # Only if species missing in map, consider genus, but require uniqueness
-            if taxonomy_row is None and genus and not species_epithet:
-                genus_matches = session.query(Taxonomy).filter(Taxonomy.genus == genus).all()
-                if len(genus_matches) == 1:
-                    taxonomy_row = genus_matches[0]
-                elif len(genus_matches) > 1:
-                    report['skipped_ambiguous_genus'].append({'genome_id': genome.id, 'ome': genome.ome, 'genus': genus, 'matches': len(genus_matches)})
-
-            if taxonomy_row is None and not dry_run:
-                taxonomy_row = Taxonomy(name=name, genus=genus, species=species_epithet)
-                session.add(taxonomy_row)
-                session.flush()
-                report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': name})
-                created += 1
-
-            if taxonomy_row:
-                if not dry_run:
-                    genome.taxonomy_id = taxonomy_row.id
-                    session.add(genome)
-                report['genomes_linked'].append({'genome_id': genome.id, 'ome': genome.ome, 'taxonomy_id': taxonomy_row.id, 'name': taxonomy_row.name})
-                linked += 1
-
-        if not dry_run:
-            session.commit()
-            logger.info(f"Linked {linked} genomes; created {created} taxonomy rows (OME map)")
-        else:
-            logger.info(f"Would link {linked} genomes; would create {created} taxonomy rows (OME map)")
-
-        report['summary'] = {
-            'total_missing': len(genomes),
-            'linked': linked,
-            'taxa_created': created,
-            'skipped_no_map': len(report['skipped_no_map']),
-            'skipped_ambiguous_genus': len(report.get('skipped_ambiguous_genus', []))
-        }
-        return report
-
-    except Exception as e:
-        logger.error(f"Error during OME map taxonomy fix: {str(e)}")
-        if not dry_run:
-            session.rollback()
-        raise
-    finally:
-        session.close()
-
-
-def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Dict:
-    """
-    Reconcile genomes that already have taxonomy_id but differ from the OME mapping.
-    If mapped name (Genus species) doesn't match taxonomy.name or (genus,species), update to the mapped taxonomy
-    (reuse existing row by name/genus+species or create a new one).
-    """
-    logger.info("Reconciling genome taxonomy according to OME mapping file...")
-    session = StarbaseSession()
-
-    report = {
         'genomes_updated': [],
         'taxa_created': [],
         'skipped_no_map': [],
+        'skipped_ambiguous_genus': [],
+        'assembly_accessions_updated': [],
         'summary': {}
     }
 
-    ome_map = _parse_ome_tax_map(map_path)
+    ome_map = _parse_ome_map(map_path)
 
     try:
         genomes = session.query(Genome).filter(Genome.taxonomy_id.isnot(None)).all()
         logger.info(f"Checking {len(genomes)} genomes with existing taxonomy_id against OME map")
 
-        updated = 0
+        linked = 0
         created = 0
+        updated = 0
+        assembly_accessions_updated = 0
+
         for genome in genomes:
             ome = genome.ome or ''
+            assembly_accession = genome.assembly_accession or ''
             if ome == '' or ome not in ome_map:
                 report['skipped_no_map'].append({'genome_id': genome.id, 'ome': genome.ome})
                 continue
@@ -3218,6 +3136,7 @@ def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Di
             mapped_genus = ome_map[ome]['genus']
             mapped_species_epithet = ome_map[ome]['species_epithet']
             mapped_name = ome_map[ome]['name']
+            mapped_assembly_accession = ome_map[ome]['assembly_accession']
 
             current_tax = session.query(Taxonomy).get(genome.taxonomy_id)
             current_name = current_tax.name if current_tax else None
@@ -3237,6 +3156,14 @@ def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Di
                 taxonomy_row = session.query(Taxonomy).filter(
                     (Taxonomy.genus == mapped_genus) & (Taxonomy.species == mapped_species_epithet)
                 ).first()
+
+            # If mapped assembly accession doesn't match genome.assembly_accession, update to the mapped assembly accession
+            if assembly_accession != mapped_assembly_accession and not dry_run:
+                genome.assembly_accession = mapped_assembly_accession
+                session.add(genome)
+                report['assembly_accessions_updated'].append({'genome_id': genome.id, 'ome': genome.ome, 'old_assembly_accession': assembly_accession, 'new_assembly_accession': mapped_assembly_accession})
+                assembly_accessions_updated += 1
+
             if taxonomy_row is None and not dry_run:
                 taxonomy_row = Taxonomy(name=mapped_name, genus=mapped_genus, species=mapped_species_epithet)
                 session.add(taxonomy_row)
@@ -3267,7 +3194,8 @@ def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Di
             'checked': len(genomes),
             'updated': updated,
             'taxa_created': created,
-            'skipped_no_map': len(report['skipped_no_map'])
+            'skipped_no_map': len(report['skipped_no_map']),
+            'assembly_accessions_updated': assembly_accessions_updated
         }
         return report
 
@@ -3275,6 +3203,202 @@ def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Di
         logger.error(f"Error during OME map taxonomy reconciliation: {str(e)}")
         if not dry_run:
             session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _normalize_contig_id(raw_contig_id: str) -> str:
+    """
+    Normalize contigID for lookup:
+    - Remove leading genome OME code prefix before the first underscore (e.g., altals1_)
+    - Also remove a literal 'ome' prefix if present
+    - Trim whitespace
+    """
+    if raw_contig_id is None:
+        return ''
+    s = raw_contig_id.strip()
+    # Remove literal 'ome' prefix if the field was mistakenly prefixed that way
+    if s.startswith('ome'):
+        s = s[3:]
+    s = s.strip()
+    # Remove leading OME token up to first underscore (e.g., altals1_)
+    if '_' in s:
+        # Only strip if it looks like a compact token (letters/digits/dots) followed by underscore
+        # Allow stripping even if there's a leading underscore from 'ome' removal
+        m = re.match(r'^_?[A-Za-z0-9\.]+_(.+)$', s)
+        if m:
+            s = m.group(1)
+    return s.strip()
+
+
+def _ncbi_esearch_assembly(term: str, email: str = None, api_key: str = None) -> str:
+    """
+    Query NCBI E-utilities esearch for an assembly UID given a term.
+    Returns assembly UID as string or '' if none.
+    """
+    params = {
+        'db': 'assembly',
+        'term': term,
+        'retmode': 'json',
+        'retmax': '1'
+    }
+    if email:
+        params['email'] = email
+    if api_key:
+        params['api_key'] = api_key
+    url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?' + urllib.parse.urlencode(params)
+    try:
+        with urllib.request.urlopen(url, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        ids = data.get('esearchresult', {}).get('idlist', [])
+        return ids[0] if ids else ''
+    except Exception as e:
+        logger.warning(f"esearch failure for term '{term}': {str(e)}")
+        return ''
+
+
+def _ncbi_assembly_esummary(uid: str, email: str = None, api_key: str = None) -> Dict:
+    """
+    Query NCBI E-utilities esummary for an assembly UID.
+    Returns dict with keys: assemblyaccession, organism, bioproject, biosample.
+    """
+    if not uid:
+        return {}
+    params = {
+        'db': 'assembly',
+        'id': uid,
+        'retmode': 'json'
+    }
+    if email:
+        params['email'] = email
+    if api_key:
+        params['api_key'] = api_key
+    url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?' + urllib.parse.urlencode(params)
+    try:
+        with urllib.request.urlopen(url, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        result = (data.get('result') or {})
+        doc = result.get(uid) or {}
+        return {
+            'assemblyaccession': doc.get('assemblyaccession') or '',
+            'organism': doc.get('organism') or '',
+            'bioproject': doc.get('bioproject') or '',
+            'biosample': doc.get('biosample') or ''
+        }
+    except Exception as e:
+        logger.warning(f"esummary failure for UID '{uid}': {str(e)}")
+        return {}
+
+
+def lookup_assembly_accessions_from_contigs(email: str = None, api_key: str = None, limit: int = 0, dry_run: bool = True) -> Dict:
+    """
+    For each unique contigID in starship_features, remove any leading 'ome' prefix, attempt to resolve
+    an assembly accession via NCBI E-utilities (esearch+esummary), and record results to cleanup_issues.
+
+    Args:
+        email: Optional contact email for NCBI etiquette
+        api_key: Optional API key
+        limit: Optional cap on number of distinct contigIDs to query (0 = no limit)
+        dry_run: If True, do not write to cleanup_issues; just return a summary
+
+    Returns:
+        Dict summary with counts and first few mappings
+    """
+    logger.info("Looking up assembly accessions from contigIDs via NCBI esearch...")
+    session = StarbaseSession()
+
+    summary = {
+        'total_contigs': 0,
+        'queried': 0,
+        'resolved': 0,
+        'skipped_empty': 0,
+        'examples': []
+    }
+
+    try:
+        # Collect unique contigIDs
+        contigs = session.query(StarshipFeatures.contigID).filter(
+            StarshipFeatures.contigID.isnot(None),
+            StarshipFeatures.contigID != ''
+        ).distinct().all()
+        unique_contigs = [row[0] for row in contigs]
+        summary['total_contigs'] = len(unique_contigs)
+
+        # Prepare cleanup_issues table
+        create_cleanup_issues_table()
+
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+        insert_sql = (
+            """
+            INSERT OR IGNORE INTO cleanup_issues
+            (issue_type, category, table_name, record_id, details, status, source)
+            VALUES (?, ?, ?, ?, ?, 'OPEN', ?)
+            """
+        )
+
+        queried = 0
+        resolved = 0
+        for contig in unique_contigs:
+            if limit and queried >= limit:
+                break
+            term_raw = _normalize_contig_id(contig)
+            if not term_raw:
+                summary['skipped_empty'] += 1
+                continue
+            queried += 1
+
+            uid = _ncbi_esearch_assembly(term_raw, email=email, api_key=api_key)
+            meta = _ncbi_assembly_esummary(uid, email=email, api_key=api_key) if uid else {}
+
+            details_obj = {
+                'contigID': contig,
+                'normalized_term': term_raw,
+                'assembly_uid': uid,
+                'assemblyaccession': meta.get('assemblyaccession') or '',
+                'organism': meta.get('organism') or '',
+                'bioproject': meta.get('bioproject') or '',
+                'biosample': meta.get('biosample') or ''
+            }
+
+            if details_obj['assemblyaccession']:
+                resolved += 1
+
+            if not dry_run:
+                try:
+                    cursor.execute(
+                        insert_sql,
+                        (
+                            'assembly_mapping',
+                            'assembly_lookup',
+                            'starship_features',
+                            None,
+                            json.dumps(details_obj, ensure_ascii=False, sort_keys=True),
+                            'pipeline'
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record assembly mapping for contig '{contig}': {str(e)}")
+            else:
+                # Capture a few examples in dry-run mode
+                if len(summary['examples']) < 5:
+                    summary['examples'].append(details_obj)
+
+        if not dry_run:
+            cursor.close()
+            session.commit()
+        else:
+            cursor.close()
+
+        summary['queried'] = queried
+        summary['resolved'] = resolved
+        logger.info(f"Assembly lookup complete: queried={queried}, resolved={resolved}")
+        return summary
+
+    except Exception as e:
+        logger.error(f"Error during assembly lookup: {str(e)}")
+        session.rollback()
         raise
     finally:
         session.close()
