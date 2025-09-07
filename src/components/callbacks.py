@@ -346,7 +346,6 @@ def create_accession_modal(accession):
         haplotype_name = safe_get_value(modal_data, "haplotype_name")
         order = safe_get_value(modal_data, "order")
         species_name = safe_get_value(modal_data, "name")
-        strain_name = safe_get_value(modal_data, "strain")
         tax_id = safe_get_numeric(modal_data, "taxID")
         assembly_accession = safe_get_value(
             modal_data, "assembly_accession", default=""
@@ -436,12 +435,6 @@ def create_accession_modal(accession):
                             [
                                 dmc.Text("Species:", fw=700),
                                 dmc.Text(species_name),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Strain:", fw=700),
-                                dmc.Text(strain_name),
                             ]
                         ),
                         dmc.Group(
