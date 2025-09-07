@@ -18,7 +18,10 @@ from src.config.database import StarbaseSession
 from src.config.logging import get_logger
 from src.database.models.schema import Accessions, Ships, JoinedShips, Captains, StarshipFeatures, Gff
 from src.utils.seq_utils import revcomp
+from src.database.sql_manager import fetch_ships
+from src.utils.classification_utils import generate_new_accession
 import time
+import sys
 
 logger = get_logger(__name__)
 
@@ -621,6 +624,91 @@ def generate_consolidation_report(consolidations: List[Dict]) -> str:
     
     return "\n".join(report)
 
+def add_new_accession(ship_id, new_accession):
+    """
+    Create a new accession for a ship entry and update related records.
+    
+    Args:
+        ship_id (int): The ID of the ship that needs an accession
+        new_accession (str): The new accession tag to assign
+    """
+    session = StarbaseSession()
+    try:
+        # Fetch the ship entry
+        ship = session.query(Ships).filter_by(id=ship_id).one_or_none()
+        if not ship:
+            raise ValueError(f"No Ship found with id {ship_id}")
+
+        # Check if ship already has an accession
+        if ship.accession_id is not None:
+            logger.warning(f"Ship {ship_id} already has accession_id {ship.accession_id}, skipping")
+            return
+
+        # Check if the accession tag already exists
+        existing_accession = session.query(Accessions).filter_by(accession_tag=new_accession).first()
+        if existing_accession:
+            raise ValueError(f"Accession tag {new_accession} already exists with id {existing_accession.id}")
+
+        # Try to find a joined_ships entry that might correspond to this ship
+        # Look for joined_ships entries that reference this specific ship_id
+        joined_ship = session.query(JoinedShips).filter_by(ship_id=ship_id).first()
+        
+        if joined_ship:
+            ship_name = joined_ship.starshipID or f"SHIP_{ship_id}"
+        else:
+            # Look for orphaned joined_ships entries without ship_id
+            orphaned_joined_ship = session.query(JoinedShips).filter(
+                JoinedShips.ship_id.is_(None),
+                JoinedShips.starshipID.isnot(None)
+            ).first()
+            
+            if orphaned_joined_ship:
+                ship_name = orphaned_joined_ship.starshipID
+                # Link this orphaned entry to our ship
+                orphaned_joined_ship.ship_id = ship_id
+                joined_ship = orphaned_joined_ship
+            else:
+                ship_name = f"SHIP_{ship_id}"  # fallback name
+
+        # Create new accession entry
+        accession = Accessions(
+            ship_name=ship_name,
+            accession_tag=new_accession,
+            version_tag="1",
+        )
+        session.add(accession)
+        session.flush()  # assign accession.id before commit
+
+        # Update ship to reference the new accession
+        ship.accession_id = accession.id
+
+        if joined_ship:
+            logger.info(f"Linked joined_ships entry {joined_ship.id} (starshipID: {joined_ship.starshipID}) to ship {ship_id}")
+
+        # Update related tables that reference ships.id
+        # GFF and StarshipFeatures should already be properly linked to ship_id (ships.id)
+        # We don't need to update them since they should already reference the correct ship_id
+        
+        # Log existing relationships for verification
+        gffs = session.query(Gff).filter_by(ship_id=ship_id).all()
+        if gffs:
+            logger.info(f"Found {len(gffs)} existing GFF entries already linked to ship {ship_id}")
+
+        features = session.query(StarshipFeatures).filter_by(ship_id=ship_id).all()
+        if features:
+            logger.info(f"Found {len(features)} existing StarshipFeatures entries already linked to ship {ship_id}")
+
+        # Persist everything
+        session.commit()
+        logger.info(f"Successfully created accession {new_accession} for ship {ship_id}")
+
+    except Exception as e:
+        logger.error(f"Error adding new accession: {str(e)}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
 
 def main(dry_run: bool = True, output_report: str = None):
     """
@@ -632,6 +720,7 @@ def main(dry_run: bool = True, output_report: str = None):
     Step 5: Generate consolidation operations
     Step 6: Generate report
     Step 7: Apply consolidations (if not dry run)
+    Step 8: assign new accessions if all the other checks pass (if not dry run)
 
     Args:
         dry_run (bool): If True, only analyze and report without making changes
@@ -656,8 +745,8 @@ def main(dry_run: bool = True, output_report: str = None):
     rev_comp_consolidations = consolidate_reverse_complement_pairs(rev_comp_pairs)
     nested_consolidations = consolidate_nested_sequences(nested_pairs)    
     all_consolidations = hash_consolidations + rev_comp_consolidations + nested_consolidations
-    
-    logger.info("Step 5: Generating consolidation report")
+
+    logger.info("Step 6: Generating consolidation report")
     report = generate_consolidation_report(all_consolidations)
     
     if output_report:
@@ -668,11 +757,49 @@ def main(dry_run: bool = True, output_report: str = None):
         print(report)
     
     if not dry_run and all_consolidations:
-        logger.info("Step 6: Applying consolidations to database")
+        logger.info("Step 7: Applying consolidations to database")
         apply_consolidations(all_consolidations, dry_run=False)
     elif dry_run:
-        logger.info("Step 6: Skipping database changes (dry run mode)")
+        logger.info("Step 7: Skipping database changes (dry run mode)")
     
+    if not dry_run:
+        logger.info("Step 8: Assigning new accessions to ships that are still missing them")
+        try:
+            # Fetch all existing ships to get the latest accession numbers
+            existing_ships = fetch_ships(curated=False, with_sequence=False)  # Get all ships for numbering
+            
+            # Find ships that don't have accessions
+            session = StarbaseSession()
+            ships_without_accessions = session.query(Ships).filter(
+                Ships.accession_id.is_(None),
+                Ships.sequence.isnot(None),
+                Ships.sequence != ''
+            ).all()
+            session.close()
+            
+            logger.info(f"Found {len(ships_without_accessions)} ships without accessions")
+            
+            for ship in ships_without_accessions:
+                # Generate a new accession number
+                new_accession = generate_new_accession(existing_ships)
+                
+                # Add the new accession
+                add_new_accession(ship.id, new_accession)
+                
+                # Update the existing_ships dataframe to include the new accession
+                # This ensures subsequent accessions get the next number
+                new_row = pd.DataFrame({
+                    'accession_tag': [new_accession],
+                    'accession_id': [ship.id]  # temporary placeholder
+                })
+                existing_ships = pd.concat([existing_ships, new_row], ignore_index=True)
+                
+                logger.info(f"Assigned accession {new_accession} to ship {ship.id}")
+                
+        except Exception as e:
+            logger.error(f"Error in Step 8 (assigning new accessions): {str(e)}")
+            raise
+
     logger.info("Optimized database accession cleanup process completed")
 
 
