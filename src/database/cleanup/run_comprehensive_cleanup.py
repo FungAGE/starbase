@@ -21,33 +21,7 @@ try:
     from ...config.logging import get_logger
     from .utils.cleanup_accessions import main as run_accession_cleanup
 
-    from .utils.database_cleanup import (
-        check_genome_table,
-        check_taxonomic_table,
-        check_genomic_features,
-        check_foreign_keys,
-        check_schema_violations,
-        analyze_ship_id_relationships,
-        generate_cleanup_report,
-        create_cleanup_issues_table,
-        record_cleanup_issues,
-        check_ships_accessions_joined_ships_relationships,
-        analyze_table_relationships,
-        fix_ships_accessions_joined_ships_relationships,
-        fix_ship_id_relationships,
-        identify_duplicate_joined_ships,
-        cleanup_duplicate_joined_ships,
-        analyze_ship_id_mislabeling,
-        fix_ship_id_mislabeling,
-        consolidate_duplicate_ships,
-        analyze_missing_genome_info,
-        fix_missing_genome_info,
-        fix_missing_genome_taxonomy_from_joined_ships,
-        fix_missing_genome_taxonomy_via_ncbi,
-        fix_missing_genome_taxonomy_via_taxdump,
-        fix_missing_genome_taxonomy_via_map,
-        reconcile_genome_taxonomy_via_map
-    )
+    from .utils.database_cleanup import *
 
 except ImportError:
     # Fallback for when running the script directly
@@ -58,33 +32,7 @@ except ImportError:
     from src.config.logging import get_logger
     from src.database.cleanup.utils.cleanup_accessions import main as run_accession_cleanup
 
-    from src.database.cleanup.utils.database_cleanup import (
-        check_genome_table,
-        check_taxonomic_table,
-        check_genomic_features,
-        check_foreign_keys,
-        check_schema_violations,
-        analyze_ship_id_relationships,
-        generate_cleanup_report,
-        create_cleanup_issues_table,
-        record_cleanup_issues,
-        check_ships_accessions_joined_ships_relationships,
-        analyze_table_relationships,
-        fix_ships_accessions_joined_ships_relationships,
-        fix_ship_id_relationships,
-        identify_duplicate_joined_ships,
-        cleanup_duplicate_joined_ships,
-        analyze_ship_id_mislabeling,
-        fix_ship_id_mislabeling,
-        consolidate_duplicate_ships,
-        analyze_missing_genome_info,
-        fix_missing_genome_info,
-        fix_missing_genome_taxonomy_from_joined_ships,
-        fix_missing_genome_taxonomy_via_ncbi,
-        fix_missing_genome_taxonomy_via_taxdump,
-        fix_missing_genome_taxonomy_via_map,
-        reconcile_genome_taxonomy_via_map
-    )
+    from src.database.cleanup.utils.database_cleanup import *
 
 logger = get_logger(__name__)
 
@@ -226,14 +174,10 @@ if __name__ == "__main__":
                        help="Apply ship_id relationship fixes")
     parser.add_argument("--analyze-missing-genome-info", action="store_true",
                        help="Analyze missing genome information")
-    parser.add_argument("--fix-missing-genome-info", action="store_true",
-                       help="Fix missing genome information")
     parser.add_argument("--fix-missing-genome-taxonomy-from-joined", action="store_true",
                        help="Fill missing Genome.taxonomy_id from joined_ships.tax_id (mode)")
     parser.add_argument("--fix-missing-genome-taxonomy-via-ncbi", action="store_true",
                        help="Fill missing Genome.taxonomy_id by querying NCBI Taxonomy (requires --ome-name-map)")
-    parser.add_argument("--ome-name-map", type=str,
-                       help="CSV file with columns: ome,scientific_name for NCBI lookup")
     parser.add_argument("--ncbi-email", type=str,
                        help="Contact email for NCBI E-utilities")
     parser.add_argument("--ncbi-api-key", type=str,
@@ -244,14 +188,14 @@ if __name__ == "__main__":
                        help="Path to NCBI taxdump names.dmp file")
     parser.add_argument("--include-synonyms", action="store_true",
                        help="Include synonyms/equivalent/common names from names.dmp")
-    parser.add_argument("--fix-missing-genome-taxonomy-via-map", action="store_true",
-                       help="Fill missing Genome.taxonomy_id using an OME->taxonomy mapping TSV")
-    parser.add_argument("--ome-tax-map", type=str,
-                       help="Path to OME taxonomy mapping TSV (columns: ome, genus, species_epithet, strain, json_tax, ...) ")
-    parser.add_argument("--reconcile-genome-taxonomy-via-map", action="store_true",
+    parser.add_argument("--fix-missing-genome-info-via-ome-map", action="store_true",
                        help="Reconcile existing genome taxonomy_ids to match OME mapping TSV")
-    parser.add_argument("--reconcile-ome-tax-map", type=str,
-                       help="Path to OME taxonomy mapping TSV for reconciliation")
+    parser.add_argument("--ome-map", type=str,
+                       help="Path to OME taxonomy mapping TSV (columns: ome, genus, species_epithet, strain, json_tax, ...) ")
+    parser.add_argument("--lookup-assemblies-from-contigs", action="store_true",
+                       help="Query NCBI to map contigIDs to assembly accessions and record results to cleanup_issues")
+    parser.add_argument("--lookup-limit", type=int, default=0,
+                       help="Limit number of unique contigIDs to query (0 = no limit)")
     args = parser.parse_args()
     
     if args.analyze_relationships:
@@ -518,43 +462,6 @@ if __name__ == "__main__":
         
         print(f"\n💡 RECOMMENDATION: {summary['recommendation']}")
     
-    elif args.fix_missing_genome_info:
-        # Fix missing genome information
-        print("Fixing missing genome information...")
-        fix_report = fix_missing_genome_info(dry_run=not args.apply)
-        
-        print("\n" + "=" * 80)
-        print("MISSING GENOME INFORMATION FIX REPORT")
-        print("=" * 80)
-        
-        summary = fix_report['summary']
-        print(f"\n📈 FIXES APPLIED:")
-        print(f"   Taxonomy_id fixed: {summary['taxonomy_id_fixed_count']}")
-        print(f"   Ome fixed: {summary['ome_fixed_count']}")
-        print(f"   No match found: {summary['no_match_found_count']}")
-        print(f"   Recommendation: {summary['recommendation']}")
-        
-        if fix_report['taxonomy_id_fixed']:
-            print(f"\n✅ TAXONOMY_ID FIXES:")
-            for fix in fix_report['taxonomy_id_fixed'][:5]:  # Show first 5
-                print(f"   {fix['action']}")
-            if len(fix_report['taxonomy_id_fixed']) > 5:
-                print(f"   ... and {len(fix_report['taxonomy_id_fixed']) - 5} more")
-        
-        if fix_report['ome_fixed']:
-            print(f"\n✅ OME FIXES:")
-            for fix in fix_report['ome_fixed'][:5]:  # Show first 5
-                print(f"   {fix['action']}")
-            if len(fix_report['ome_fixed']) > 5:
-                print(f"   ... and {len(fix_report['ome_fixed']) - 5} more")
-        
-        if fix_report['no_match_found']:
-            print(f"\n⚠️  COULD NOT FIX:")
-            for issue in fix_report['no_match_found'][:5]:  # Show first 5
-                print(f"   Genome {issue['genome_id']}: {issue['issue']}")
-            if len(fix_report['no_match_found']) > 5:
-                print(f"   ... and {len(fix_report['no_match_found']) - 5} more")
-    
     elif args.fix_missing_genome_taxonomy_from_joined:
         print("Fixing missing genome taxonomy_id from joined_ships (mode tax_id)...")
         fix_report = fix_missing_genome_taxonomy_from_joined_ships(dry_run=not args.apply)
@@ -655,49 +562,18 @@ if __name__ == "__main__":
                 for item in fix_report['taxa_created'][:10]:
                     print(f"   Taxonomy {item['taxonomy_id']}: {item['name']} (taxID={item['taxID']})")
 
-    elif args.fix_missing_genome_taxonomy_via_map:
-        if not args.ome_tax_map:
-            print("Error: --ome-tax-map is required for --fix-missing-genome-taxonomy-via-map")
+    elif args.fix_missing_genome_info_via_ome_map:
+        if not args.ome_map:
+            print("Error: --ome-map is required for --fix-genome-info-via-ome-map")
         else:
-            print("Fixing missing genome taxonomy_id via OME mapping TSV...")
-            fix_report = fix_missing_genome_taxonomy_via_map(
-                map_path=args.ome_tax_map,
-                dry_run=not args.apply
-            )
-
-            print("\n" + "=" * 80)
-            print("GENOME TAXONOMY VIA OME MAP FIX REPORT")
-            print("=" * 80)
-            
-            summary = fix_report['summary']
-            print(f"\n📈 FIXES:")
-            print(f"   Total missing: {summary['total_missing']}")
-            print(f"   Linked: {summary['linked']}")
-            print(f"   Taxa created: {summary['taxa_created']}")
-            print(f"   Skipped (no map): {summary['skipped_no_map']}")
-
-            if fix_report['genomes_linked']:
-                print("\n✅ LINKED (first 10):")
-                for item in fix_report['genomes_linked'][:10]:
-                    print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id={item['taxonomy_id']} ({item['name']})")
-
-            if fix_report['taxa_created']:
-                print("\n🆕 TAXA CREATED (first 10):")
-                for item in fix_report['taxa_created'][:10]:
-                    print(f"   Taxonomy {item['taxonomy_id']}: {item['name']}")
-
-    elif args.reconcile_genome_taxonomy_via_map:
-        if not args.reconcile_ome_tax_map:
-            print("Error: --reconcile-ome-tax-map is required for --reconcile-genome-taxonomy-via-map")
-        else:
-            print("Reconciling genome taxonomy_id according to OME mapping TSV...")
+            print("Reconciling genome info according to OME mapping TSV...")
             fix_report = reconcile_genome_taxonomy_via_map(
-                map_path=args.reconcile_ome_tax_map,
+                map_path=args.ome_map,
                 dry_run=not args.apply
             )
 
             print("\n" + "=" * 80)
-            print("GENOME TAXONOMY RECONCILIATION REPORT")
+            print("GENOME INFO RECONCILIATION REPORT")
             print("=" * 80)
             
             summary = fix_report['summary']
@@ -705,12 +581,38 @@ if __name__ == "__main__":
             print(f"   Checked: {summary['checked']}")
             print(f"   Updated: {summary['updated']}")
             print(f"   Taxa created: {summary['taxa_created']}")
+            print(f"   Assembly accessions updated: {summary['assembly_accessions_updated']}")
             print(f"   Skipped (no map): {summary['skipped_no_map']}")
 
             if fix_report['genomes_updated']:
                 print("\n✅ UPDATED (first 10):")
                 for item in fix_report['genomes_updated'][:10]:
                     print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> taxonomy_id {item['old_taxonomy_id']} => {item['new_taxonomy_id']} ({item['name']})")
+
+            if fix_report['assembly_accessions_updated']:
+                print("\n🔄 ASSEMBLY ACCESSIONS UPDATED (first 10):")
+                for item in fix_report['assembly_accessions_updated'][:10]:
+                    print(f"   Genome {item['genome_id']} ome='{item['ome']}' -> assembly_accession '{item['old_assembly_accession']}' => '{item['new_assembly_accession']}'")
+
+    elif args.lookup_assemblies_from_contigs:
+        print("Looking up assembly accessions from contigIDs via NCBI...")
+        result = lookup_assembly_accessions_from_contigs(
+            email=args.ncbi_email,
+            api_key=args.ncbi_api_key,
+            limit=args.lookup_limit,
+            dry_run=not args.apply
+        )
+
+        print("\n" + "=" * 80)
+        print("ASSEMBLY LOOKUP FROM CONTIGIDS")
+        print("=" * 80)
+        print(f"\nQueried: {result['queried']} of {result['total_contigs']} unique contigs")
+        print(f"Resolved assemblies: {result['resolved']}")
+        print(f"Skipped empty: {result['skipped_empty']}")
+        if result.get('examples'):
+            print("\nExamples:")
+            for ex in result['examples']:
+                print(f"  contigID='{ex['contigID']}', term='{ex['normalized_term']}', assembly='{ex['assemblyaccession']}', organism='{ex['organism']}'")
 
     else:
         # Run full cleanup process
