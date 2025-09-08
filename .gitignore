@@ -177,3 +177,8 @@ src/database/db.tar.gz
 # Local development data
 src/database/cache/
 src/database/logs/
+
+tests/*.png
+
+src/database/complete_cleanup_report.txt
+src/utils/mysql_config.json

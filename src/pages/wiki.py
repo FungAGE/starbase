@@ -188,15 +188,6 @@ table_columns = [
         "presentation": "markdown",
     },
     {
-        "name": "Number of Genomes",
-        "id": "n_genomes",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-        "type": "numericColumn",
-        "valueFormatter": "value.toLocaleString()",
-    },
-    {
         "name": "Order",
         "id": "order",
         "deletable": False,
@@ -223,15 +214,6 @@ table_columns = [
         "deletable": False,
         "selectable": False,
         "presentation": "markdown",
-    },
-    {
-        "name": "Element Length (bp)",
-        "id": "elementLength",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-        "type": "numericColumn",
-        "valueFormatter": "value.toLocaleString()",
     },
 ]
 
@@ -575,13 +557,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
         if filtered_meta_df.empty:
             return dmc.Text("No results found", size="lg", c="dimmed")
 
-        # Convert numeric columns to appropriate type
-        filtered_meta_df["n_genomes"] = pd.to_numeric(
-            filtered_meta_df["n_genomes"], errors="coerce"
-        )
-        filtered_meta_df["elementLength"] = pd.to_numeric(
-            filtered_meta_df["elementLength"], errors="coerce"
-        )
+        # drop unnecessary columns
+        filtered_meta_df = filtered_meta_df.drop(columns=["n_genomes", "elementLength"])
 
         # Fill NA values
         filtered_meta_df = filtered_meta_df.fillna("")

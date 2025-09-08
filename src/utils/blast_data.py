@@ -797,6 +797,8 @@ class PipelineState:
                     blast_dict["sequence_results"][seq_key]["classification"] = sequence_state.classification_data.to_dict()
                     
             return blast_dict
+        else:
+            logger.debug(f"to_blast_data_dict: no sequence_state or blast_data")
         return None
     
     def to_workflow_state_dict(self, sequence_id: str = None) -> Optional[Dict[str, Any]]:
@@ -1060,7 +1062,9 @@ class DashStateAdapter:
     
     def get_blast_data_store(self, sequence_id: str = None) -> Optional[Dict[str, Any]]:
         """Get data for blast-data-store"""
-        return self.pipeline_state.to_blast_data_dict(sequence_id)
+        result = self.pipeline_state.to_blast_data_dict(sequence_id)
+        logger.debug(f"get_blast_data_store({sequence_id}) returned: {result is not None}")
+        return result
     
     def update_blast_data_store(self, sequence_id: str, blast_data_dict: Dict[str, Any]):
         """Update from blast-data-store"""
