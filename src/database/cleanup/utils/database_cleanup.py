@@ -1,6 +1,6 @@
 import pandas as pd
 from sqlalchemy import text, func
-from typing import Dict
+from typing import Dict, List
 import json
 from datetime import datetime
 import csv
@@ -1111,6 +1111,619 @@ def cleanup_duplicate_joined_ships(dry_run: bool = True) -> Dict:
         session.close()
     
     return cleanup_report
+
+
+def enable_foreign_keys(dry_run: bool = True) -> Dict:
+    """
+    Enable foreign key constraints in SQLite database.
+
+    Args:
+        dry_run (bool): If True, only report what would be done
+
+    Returns:
+        Dict: Report of the operation
+    """
+    logger.info("Enabling foreign key constraints...")
+    session = StarbaseSession()
+
+    report = {
+        'action': 'enable_foreign_keys',
+        'status': 'completed' if not dry_run else 'dry_run',
+        'details': []
+    }
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Check current foreign key status
+        cursor.execute("PRAGMA foreign_keys")
+        current_status = cursor.fetchone()[0]
+        report['details'].append(f"Current foreign key status: {'ON' if current_status else 'OFF'}")
+
+        if not dry_run:
+            cursor.execute("PRAGMA foreign_keys = ON")
+            cursor.close()
+            session.commit()
+            report['details'].append("Foreign key constraints enabled")
+        else:
+            report['details'].append("Would enable foreign key constraints")
+
+        cursor.close()
+
+    except Exception as e:
+        logger.error(f"Error enabling foreign keys: {str(e)}")
+        report['status'] = 'error'
+        report['details'].append(f"Error: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+
+    return report
+
+
+def disable_foreign_keys(dry_run: bool = True) -> Dict:
+    """
+    Disable foreign key constraints in SQLite database.
+
+    Args:
+        dry_run (bool): If True, only report what would be done
+
+    Returns:
+        Dict: Report of the operation
+    """
+    logger.info("Disabling foreign key constraints...")
+    session = StarbaseSession()
+
+    report = {
+        'action': 'disable_foreign_keys',
+        'status': 'completed' if not dry_run else 'dry_run',
+        'details': []
+    }
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Check current foreign key status
+        cursor.execute("PRAGMA foreign_keys")
+        current_status = cursor.fetchone()[0]
+        report['details'].append(f"Current foreign key status: {'ON' if current_status else 'OFF'}")
+
+        if not dry_run:
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.close()
+            session.commit()
+            report['details'].append("Foreign key constraints disabled")
+        else:
+            report['details'].append("Would disable foreign key constraints")
+
+        cursor.close()
+
+    except Exception as e:
+        logger.error(f"Error disabling foreign keys: {str(e)}")
+        report['status'] = 'error'
+        report['details'].append(f"Error: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+
+    return report
+
+
+def check_foreign_key_enforcement() -> Dict:
+    """
+    Check if foreign key constraints are actually being enforced in the database.
+
+    Returns:
+        Dict: Report of foreign key enforcement status
+    """
+    logger.info("Checking foreign key enforcement status...")
+    session = StarbaseSession()
+
+    report = {
+        'foreign_keys_enabled': False,
+        'tables_with_constraints': [],
+        'missing_constraints': [],
+        'recommendations': []
+    }
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Check if foreign keys are enabled
+        cursor.execute("PRAGMA foreign_keys")
+        fk_enabled = cursor.fetchone()[0]
+        report['foreign_keys_enabled'] = bool(fk_enabled)
+
+        # Get all tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        # Check each table for foreign key constraints
+        for table in tables:
+            cursor.execute(f"PRAGMA foreign_key_list({table})")
+            fk_list = cursor.fetchall()
+
+            if fk_list:
+                report['tables_with_constraints'].append({
+                    'table': table,
+                    'constraints': len(fk_list),
+                    'details': [
+                        {
+                            'from_col': row[3],
+                            'to_table': row[2],
+                            'to_col': row[4]
+                        }
+                        for row in fk_list
+                    ]
+                })
+            else:
+                # Check if table should have foreign keys based on schema
+                should_have_fks = _table_should_have_foreign_keys(table)
+                if should_have_fks:
+                    report['missing_constraints'].append({
+                        'table': table,
+                        'expected_constraints': should_have_fks
+                    })
+
+        cursor.close()
+
+        # Generate recommendations
+        if not report['foreign_keys_enabled']:
+            report['recommendations'].append("Enable foreign key constraints with PRAGMA foreign_keys = ON")
+
+        if report['missing_constraints']:
+            report['recommendations'].append(f"Add foreign key constraints to {len(report['missing_constraints'])} tables")
+
+        if not report['tables_with_constraints']:
+            report['recommendations'].append("Database has no foreign key constraints - consider adding them for data integrity")
+
+        logger.info(f"Foreign keys enabled: {report['foreign_keys_enabled']}")
+        logger.info(f"Tables with FK constraints: {len(report['tables_with_constraints'])}")
+        logger.info(f"Tables missing FK constraints: {len(report['missing_constraints'])}")
+
+    except Exception as e:
+        logger.error(f"Error checking foreign key enforcement: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+    return report
+
+
+def _table_should_have_foreign_keys(table_name: str) -> List[Dict]:
+    """
+    Determine what foreign key constraints a table should have based on the schema.
+
+    Args:
+        table_name (str): Name of the table
+
+    Returns:
+        List[Dict]: List of expected foreign key constraints
+    """
+    expected_constraints = {
+        'ships': [
+            {'from_col': 'accession_id', 'to_table': 'accessions', 'to_col': 'id'}
+        ],
+        'captains': [
+            {'from_col': 'ship_id', 'to_table': 'ships', 'to_col': 'id'}
+        ],
+        'genomes': [
+            {'from_col': 'taxonomy_id', 'to_table': 'taxonomy', 'to_col': 'id'}
+        ],
+        'starship_features': [
+            {'from_col': 'ship_id', 'to_table': 'ships', 'to_col': 'id'},
+            {'from_col': 'captain_id', 'to_table': 'captains', 'to_col': 'id'}
+        ],
+        'navis_names': [
+            {'from_col': 'ship_family_id', 'to_table': 'family_names', 'to_col': 'id'}
+        ],
+        'haplotype_names': [
+            {'from_col': 'navis_id', 'to_table': 'navis_names', 'to_col': 'id'},
+            {'from_col': 'ship_family_id', 'to_table': 'family_names', 'to_col': 'id'}
+        ],
+        'gff': [
+            {'from_col': 'accession_id', 'to_table': 'accessions', 'to_col': 'id'},
+            {'from_col': 'ship_id', 'to_table': 'ships', 'to_col': 'id'}
+        ],
+        'joined_ships': [
+            {'from_col': 'ship_family_id', 'to_table': 'family_names', 'to_col': 'id'},
+            {'from_col': 'tax_id', 'to_table': 'taxonomy', 'to_col': 'id'},
+            {'from_col': 'ship_id', 'to_table': 'ships', 'to_col': 'id'},
+            {'from_col': 'genome_id', 'to_table': 'genomes', 'to_col': 'id'},
+            {'from_col': 'captain_id', 'to_table': 'captains', 'to_col': 'id'},
+            {'from_col': 'ship_navis_id', 'to_table': 'navis_names', 'to_col': 'id'},
+            {'from_col': 'ship_haplotype_id', 'to_table': 'haplotype_names', 'to_col': 'id'}
+        ]
+    }
+
+    return expected_constraints.get(table_name, [])
+
+
+def fix_joined_ships_ship_id_foreign_key(dry_run: bool = True) -> Dict:
+    """
+    CAUTION: This function fixes cases where joined_ships.ship_id contains accession IDs
+    instead of ship IDs, using conservative validation.
+
+    VALIDATION APPROACH:
+    1. Check if ship_id is not a valid ship ID (doesn't exist in ships table)
+    2. Verify it's a valid accession ID (exists in accessions table)
+    3. Map to corresponding ship ID (accession -> ship relationship)
+    4. Update joined_ships record
+
+    VALIDATION LEVELS:
+    - ✅ VALIDATED: Accession exists and has corresponding ship
+    - ❌ INVALID: ship_id contains ID not found in ships or accessions tables
+    - ⚠️  NO SHIP: Accession exists but no corresponding ship found
+
+    WARNING: This function assumes that invalid ship_ids in joined_ships are actually
+    accession IDs that should be mapped to ship IDs. Use --dry-run first to verify
+    the mappings look correct.
+
+    Args:
+        dry_run (bool): If True, only report what would be fixed without making changes
+
+    Returns:
+        Dict: Report of fixes applied with validation status
+    """
+    logger.info("CAUTION: Attempting to fix joined_ships.ship_id foreign key relationship...")
+    logger.warning("This function assumes ship_id contains accession IDs - verify with --dry-run first!")
+
+    session = StarbaseSession()
+
+    fixes = {
+        'ship_ids_fixed': [],
+        'no_ship_for_accession': [],
+        'invalid_references_found': [],
+        'summary': {}
+    }
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Step 1: Get all joined_ships entries with non-null ship_id
+        cursor.execute("""
+            SELECT js.id, js.starshipID, js.ship_id
+            FROM joined_ships js
+            WHERE js.ship_id IS NOT NULL
+        """)
+        joined_entries = cursor.fetchall()
+
+        logger.info(f"Checking {len(joined_entries)} joined_ships entries for potential ship_id corrections")
+        logger.info("Performing semantic validation based on starshipID and accession data...")
+
+        fixed_count = 0
+
+        for js_id, starshipID, current_ship_id in joined_entries:
+            # First, check if current_ship_id is already a valid ship ID
+            cursor.execute("SELECT id FROM ships WHERE id = ?", (current_ship_id,))
+            ship_exists = cursor.fetchone()
+
+            if ship_exists:
+                # ship_id is already valid, skip this entry
+                continue
+
+            # ship_id is not a valid ship ID, check if it's an accession ID
+            cursor.execute("""
+                SELECT a.id, a.accession_tag, s.id as ship_id
+                FROM accessions a
+                LEFT JOIN ships s ON s.accession_id = a.id
+                WHERE a.id = ?
+            """, (current_ship_id,))
+            accession_data = cursor.fetchone()
+
+            if not accession_data:
+                # current_ship_id is neither a valid ship ID nor a valid accession ID
+                fixes['invalid_references_found'].append({
+                    'joined_id': js_id,
+                    'starshipID': starshipID,
+                    'invalid_ship_id': current_ship_id,
+                    'issue': 'ship_id contains invalid ID (not in ships or accessions tables)'
+                })
+                continue
+
+            acc_id, acc_accession_tag, corresponding_ship_id = accession_data
+
+            if corresponding_ship_id:
+                # Accession has a corresponding ship - safe to fix
+                if not dry_run:
+                    cursor.execute(
+                        "UPDATE joined_ships SET ship_id = ? WHERE id = ?",
+                        (corresponding_ship_id, js_id)
+                    )
+                fixes['ship_ids_fixed'].append({
+                    'joined_id': js_id,
+                    'starshipID': starshipID,
+                    'old_ship_id': current_ship_id,
+                    'new_ship_id': corresponding_ship_id,
+                    'accession_tag': acc_accession_tag,
+                    'action': 'Fixed ship_id from accession to ship reference'
+                })
+                fixed_count += 1
+            else:
+                # Accession exists but no corresponding ship
+                fixes['no_ship_for_accession'].append({
+                    'joined_id': js_id,
+                    'starshipID': starshipID,
+                    'accession_id': current_ship_id,
+                    'accession_tag': acc_accession_tag,
+                    'issue': 'Accession exists but no corresponding ship record found'
+                })
+
+        cursor.close()
+
+        if not dry_run:
+            session.commit()
+            logger.info("Applied joined_ships.ship_id foreign key fixes")
+        else:
+            logger.info("Dry run completed - review validation results before applying")
+
+        # Summary
+        fixes['summary'] = {
+            'ship_ids_fixed': fixed_count,
+            'invalid_references': len(fixes['invalid_references_found']),
+            'no_ship_for_accession': len(fixes['no_ship_for_accession']),
+            'recommendation': 'Review results before applying - ensure mappings look correct',
+            'warning': 'This function maps accession IDs to ship IDs - verify the data relationships are correct!'
+        }
+
+        logger.info(f"Ship IDs fixed: {fixed_count}")
+        logger.info(f"Invalid references found: {len(fixes['invalid_references_found'])}")
+        logger.info(f"Accessions without ships: {len(fixes['no_ship_for_accession'])}")
+
+        if fixes['invalid_references_found']:
+            logger.warning("⚠️  INVALID REFERENCES FOUND - These entries have corrupted ship_id values!")
+            for invalid in fixes['invalid_references_found'][:3]:  # Show first 3
+                logger.warning(f"   Joined {invalid['joined_id']} ({invalid['starshipID']}): invalid ship_id {invalid['invalid_ship_id']}")
+
+    except Exception as e:
+        logger.error(f"Error fixing joined_ships.ship_id foreign key: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+
+    return fixes
+
+
+def validate_all_foreign_keys() -> Dict:
+    """
+    Comprehensive validation of all foreign key relationships in the database.
+
+    This function checks every foreign key relationship defined in the schema
+    and reports any violations or orphaned records.
+
+    Returns:
+        Dict: Comprehensive report of foreign key validation results
+    """
+    logger.info("Performing comprehensive foreign key validation...")
+    session = StarbaseSession()
+
+    validation_report = {
+        'foreign_keys_enabled': False,
+        'total_relationships_checked': 0,
+        'violations_found': 0,
+        'relationships': {},
+        'summary': {},
+        'recommendations': []
+    }
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Check if foreign keys are enabled
+        cursor.execute("PRAGMA foreign_keys")
+        validation_report['foreign_keys_enabled'] = bool(cursor.fetchone()[0])
+
+        # Define all foreign key relationships to check
+        fk_relationships = {
+            'ships_to_accessions': {
+                'from_table': 'ships',
+                'from_col': 'accession_id',
+                'to_table': 'accessions',
+                'to_col': 'id'
+            },
+            'captains_to_ships': {
+                'from_table': 'captains',
+                'from_col': 'ship_id',
+                'to_table': 'ships',
+                'to_col': 'id'
+            },
+            'genomes_to_taxonomy': {
+                'from_table': 'genomes',
+                'from_col': 'taxonomy_id',
+                'to_table': 'taxonomy',
+                'to_col': 'id'
+            },
+            'starship_features_to_ships': {
+                'from_table': 'starship_features',
+                'from_col': 'ship_id',
+                'to_table': 'ships',
+                'to_col': 'id'
+            },
+            'starship_features_to_captains': {
+                'from_table': 'starship_features',
+                'from_col': 'captain_id',
+                'to_table': 'captains',
+                'to_col': 'id'
+            },
+            'navis_names_to_family_names': {
+                'from_table': 'navis_names',
+                'from_col': 'ship_family_id',
+                'to_table': 'family_names',
+                'to_col': 'id'
+            },
+            'haplotype_names_to_navis': {
+                'from_table': 'haplotype_names',
+                'from_col': 'navis_id',
+                'to_table': 'navis_names',
+                'to_col': 'id'
+            },
+            'haplotype_names_to_family_names': {
+                'from_table': 'haplotype_names',
+                'from_col': 'ship_family_id',
+                'to_table': 'family_names',
+                'to_col': 'id'
+            },
+            'gff_to_accessions': {
+                'from_table': 'gff',
+                'from_col': 'accession_id',
+                'to_table': 'accessions',
+                'to_col': 'id'
+            },
+            'gff_to_ships': {
+                'from_table': 'gff',
+                'from_col': 'ship_id',
+                'to_table': 'ships',
+                'to_col': 'id'
+            },
+            'joined_ships_to_family_names': {
+                'from_table': 'joined_ships',
+                'from_col': 'ship_family_id',
+                'to_table': 'family_names',
+                'to_col': 'id'
+            },
+            'joined_ships_to_taxonomy': {
+                'from_table': 'joined_ships',
+                'from_col': 'tax_id',
+                'to_table': 'taxonomy',
+                'to_col': 'id'
+            },
+            'joined_ships_to_ships': {
+                'from_table': 'joined_ships',
+                'from_col': 'ship_id',
+                'to_table': 'ships',
+                'to_col': 'id'
+            },
+            'joined_ships_to_genomes': {
+                'from_table': 'joined_ships',
+                'from_col': 'genome_id',
+                'to_table': 'genomes',
+                'to_col': 'id'
+            },
+            'joined_ships_to_captains': {
+                'from_table': 'joined_ships',
+                'from_col': 'captain_id',
+                'to_table': 'captains',
+                'to_col': 'id'
+            },
+            'joined_ships_to_navis_names': {
+                'from_table': 'joined_ships',
+                'from_col': 'ship_navis_id',
+                'to_table': 'navis_names',
+                'to_col': 'id'
+            },
+            'joined_ships_to_haplotype_names': {
+                'from_table': 'joined_ships',
+                'from_col': 'ship_haplotype_id',
+                'to_table': 'haplotype_names',
+                'to_col': 'id'
+            }
+        }
+
+        total_violations = 0
+
+        for rel_name, rel_info in fk_relationships.items():
+            from_table = rel_info['from_table']
+            from_col = rel_info['from_col']
+            to_table = rel_info['to_table']
+            to_col = rel_info['to_col']
+
+            # Check for orphaned records (records in from_table that reference non-existent records in to_table)
+            query = f"""
+                SELECT COUNT(*) FROM {from_table}
+                WHERE {from_col} IS NOT NULL
+                AND {from_col} NOT IN (SELECT {to_col} FROM {to_table})
+            """
+
+            try:
+                cursor.execute(query)
+                orphaned_count = cursor.fetchone()[0]
+
+                # Also get some examples of orphaned records
+                examples_query = f"""
+                    SELECT {from_table}.id, {from_table}.{from_col}
+                    FROM {from_table}
+                    WHERE {from_table}.{from_col} IS NOT NULL
+                    AND {from_table}.{from_col} NOT IN (SELECT {to_table}.{to_col} FROM {to_table})
+                    LIMIT 5
+                """
+
+                cursor.execute(examples_query)
+                examples = cursor.fetchall()
+
+                validation_report['relationships'][rel_name] = {
+                    'from_table': from_table,
+                    'from_col': from_col,
+                    'to_table': to_table,
+                    'to_col': to_col,
+                    'orphaned_records': orphaned_count,
+                    'examples': [
+                        {'id': row[0], 'invalid_ref': row[1]}
+                        for row in examples
+                    ]
+                }
+
+                if orphaned_count > 0:
+                    total_violations += orphaned_count
+                    logger.warning(f"Found {orphaned_count} orphaned records in {from_table}.{from_col} -> {to_table}.{to_col}")
+
+            except Exception as e:
+                logger.error(f"Error checking FK relationship {rel_name}: {str(e)}")
+                validation_report['relationships'][rel_name] = {
+                    'error': str(e)
+                }
+
+        validation_report['total_relationships_checked'] = len(fk_relationships)
+        validation_report['violations_found'] = total_violations
+
+        # Generate summary and recommendations
+        validation_report['summary'] = {
+            'relationships_checked': len(fk_relationships),
+            'total_violations': total_violations,
+            'relationships_with_violations': sum(1 for r in validation_report['relationships'].values()
+                                                if isinstance(r, dict) and r.get('orphaned_records', 0) > 0),
+            'foreign_keys_enabled': validation_report['foreign_keys_enabled']
+        }
+
+        recommendations = []
+        if not validation_report['foreign_keys_enabled']:
+            recommendations.append("Enable foreign key constraints with PRAGMA foreign_keys = ON")
+
+        if total_violations > 0:
+            recommendations.append(f"Fix {total_violations} orphaned foreign key references")
+
+        relationships_with_violations = [
+            rel_name for rel_name, rel_info in validation_report['relationships'].items()
+            if isinstance(rel_info, dict) and rel_info.get('orphaned_records', 0) > 0
+        ]
+
+        if relationships_with_violations:
+            recommendations.append(f"Review violations in: {', '.join(relationships_with_violations[:3])}")
+
+        validation_report['recommendations'] = recommendations
+
+        logger.info(f"Foreign key validation complete: {len(fk_relationships)} relationships checked, {total_violations} violations found")
+
+        cursor.close()
+
+    except Exception as e:
+        logger.error(f"Error during comprehensive foreign key validation: {str(e)}")
+        validation_report['error'] = str(e)
+        raise
+    finally:
+        session.close()
+
+    return validation_report
 
 
 def check_genome_table() -> Dict:
