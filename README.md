@@ -26,15 +26,14 @@ _Starships_ are extremely large (~20-700 kb) DNA transposons that can constitute
 
 ## Usage
 
-- [Download _Starship_ sequences](https://starbase.serve.scilifelab.se/download): Browse and select individual or collections of _Starship_ sequences for download.
-- [Access the Wiki](https://starbase.serve.scilifelab.se/wiki): View detailed information about _Starship_ Families and their general characteristics.
-- [Search for _Starships_](https://starbase.serve.scilifelab.se/blast): Utilize the BLAST/HMMER search functions to analyze sequences against the existing database.
+- [Explore existing _Starship_ sequences](https://starbase.serve.scilifelab.se/wiki): Browse and select individual or collections of _Starship_ sequences for download. View detailed information about _Starship_ Families and their general characteristics.
+- [Search for _Starships_](https://starbase.serve.scilifelab.se/blast): Utilize the BLAST/HMMER search functions to analyze sequences against the existing database. Runs a classification workflow to compare identify if the sequence is within an existing family/navis/haplotype.
 - [Submit a Sequence](https://starbase.serve.scilifelab.se/submit): Use the submission tab to upload new _Starship_ sequences for curation and inclusion in the database.
 
 ### Features Under Development
 
 - `starfish` webserver
-- [_Starship_ Browser/Comparison](https://starbase.serve.scilifelab.se/pgv): Visualize and compare _Starships_ and their gene annotations.
+- [_Starship_ `Browser/Comparison](https://starbase.serve.scilifelab.se/pgv): Visualize and compare _Starships_ and their gene annotations.
 
 ## Contributions
 
