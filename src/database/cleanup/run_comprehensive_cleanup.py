@@ -37,7 +37,7 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = False, skip_accession_cleanup: bool = False):
+def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = False, skip_accession_cleanup: bool = False, no_record_issues: bool = False):
     """
     Main function to run comprehensive database cleanup.
     Step 1: Run accession cleanup (optional, can be skipped)
@@ -51,14 +51,17 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
     Step 6: Check ships-accessions-joined_ships relationships
     Step 7: Check schema violations
     Step 8: Validate and fix ship_id relationships using sequence_reference table
-    Step 9: Generate comprehensive report
-    Step 10: Apply fixes (if requested)
-    
+    Step 9: Perform comprehensive foreign key validation
+    Step 10: Generate comprehensive report
+    Step 11: Record issues and fixes to cleanup_issues table (optional)
+    Step 12: Apply fixes (if requested)
+
     Args:
         dry_run (bool): If True, only analyze and report without making changes
         output_report (str): Path to save the cleanup report
         apply_fixes (bool): If True, apply fixes to the identified issues
         skip_accession_cleanup (bool): If True, skip the slow accession cleanup step
+        no_record_issues (bool): If True, skip recording issues and fixes to cleanup_issues table
     """
     logger.info("Starting comprehensive database cleanup process")
     
@@ -90,8 +93,11 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
     
     logger.info("Step 8: Validating ship_id relationships using sequence_reference table...")
     all_issues['ship_id_relationships'] = analyze_ship_id_relationships()
-    
-    logger.info("Step 9: Generating comprehensive report...")
+
+    logger.info("Step 9: Performing comprehensive foreign key validation...")
+    all_issues['foreign_key_validation'] = validate_all_foreign_keys()
+
+    logger.info("Step 10: Generating comprehensive report...")
     report = generate_cleanup_report(all_issues)
     
     if output_report:
@@ -102,25 +108,47 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
         print(report)
 
     # Record issues into tracking table (table creation happens even in dry-run)
-    try:
-        logger.info("Recording issues into cleanup_issues table...")
-        create_cleanup_issues_table()
-        record_summary = record_cleanup_issues(all_issues, source='pipeline', dry_run=dry_run)
-        logger.info(f"Recorded issues summary: inserted={record_summary['inserted']} skipped={record_summary['skipped']}")
-    except Exception as e:
-        logger.error(f"Failed to record cleanup issues: {str(e)}")
-    
+    if not no_record_issues:
+        try:
+            logger.info("Step 11: Recording issues into cleanup_issues table...")
+            create_cleanup_issues_table()
+            record_summary = record_cleanup_issues(all_issues, source='pipeline', dry_run=dry_run)
+            logger.info(f"Recorded issues summary: inserted={record_summary['inserted']} skipped={record_summary['skipped']}")
+        except Exception as e:
+            logger.error(f"Failed to record cleanup issues: {str(e)}")
+    else:
+        logger.info("Step 11: Skipping issue recording (--no-record-issues specified)")
+
     if apply_fixes:
-        logger.info("Step 10: Applying fixes to identified issues...")
-        
+        logger.info("Step 12: Applying fixes to identified issues...")
+
         # Apply general relationship fixes
         fixes_report = fix_ships_accessions_joined_ships_relationships(dry_run=False)
-        
+
         # Apply ship_id relationship fixes
         ship_id_fixes = fix_ship_id_relationships(dry_run=False)
-        
+
+        # Apply joined_ships.ship_id foreign key fix
+        joined_ships_fixes = fix_joined_ships_ship_id_foreign_key(dry_run=False)
+
         logger.info("Fixes applied successfully")
-        
+
+        # Record fix results into cleanup_issues table
+        try:
+            logger.info("Recording fix results into cleanup_issues table...")
+
+            # Collect all fix results
+            all_fixes = {
+                'ships_accessions_joined_ships': fixes_report,
+                'ship_id_relationships': ship_id_fixes,
+                'joined_ships_ship_id': joined_ships_fixes
+            }
+
+            fixes_record_summary = record_cleanup_fixes(all_fixes, source='pipeline', dry_run=False)
+            logger.info(f"Recorded fixes summary: fixes={fixes_record_summary['fixes_recorded']} skipped={fixes_record_summary['skipped']}")
+        except Exception as e:
+            logger.error(f"Failed to record cleanup fixes: {str(e)}")
+
         # Add fixes report to output
         if output_report:
             with open(output_report, 'a') as f:
@@ -138,6 +166,10 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
                 f.write(f"Orphaned ships handled: {len(ship_id_fixes['orphaned_ships_handled'])}\n")
                 f.write(f"Duplicate ship_ids resolved: {len(ship_id_fixes['duplicate_ship_ids_resolved'])}\n")
                 f.write(f"Warnings: {len(ship_id_fixes['warnings'])}\n")
+                f.write("\nJOINED_SHIPS SHIP_ID FOREIGN KEY FIXES:\n")
+                f.write(f"Ship IDs fixed: {joined_ships_fixes['summary']['ship_ids_fixed']}\n")
+                f.write(f"Invalid references found: {joined_ships_fixes['summary']['invalid_references']}\n")
+                f.write(f"Accessions without ships: {joined_ships_fixes['summary']['no_ship_for_accession']}\n")
     
     logger.info("Comprehensive database cleanup process completed")
 
@@ -196,6 +228,23 @@ if __name__ == "__main__":
                        help="Query NCBI to map contigIDs to assembly accessions and record results to cleanup_issues")
     parser.add_argument("--lookup-limit", type=int, default=0,
                        help="Limit number of unique contigIDs to query (0 = no limit)")
+
+    # Foreign key management options
+    parser.add_argument("--enable-foreign-keys", action="store_true",
+                       help="Enable foreign key constraints in the database")
+    parser.add_argument("--disable-foreign-keys", action="store_true",
+                       help="Disable foreign key constraints in the database")
+    parser.add_argument("--check-foreign-key-enforcement", action="store_true",
+                       help="Check if foreign key constraints are actually being enforced")
+    parser.add_argument("--fix-joined-ships-ship-id", action="store_true",
+                       help="Fix joined_ships.ship_id foreign key to point to ships.id instead of accessions.id")
+    parser.add_argument("--validate-all-foreign-keys", action="store_true",
+                       help="Perform comprehensive validation of all foreign key relationships")
+    parser.add_argument("--no-record-issues", action="store_true",
+                       help="Skip recording issues and fixes to cleanup_issues table")
+    parser.add_argument("--show-issues-summary", action="store_true",
+                       help="Show summary of issues in cleanup_issues table")
+
     args = parser.parse_args()
     
     if args.analyze_relationships:
@@ -614,6 +663,138 @@ if __name__ == "__main__":
             for ex in result['examples']:
                 print(f"  contigID='{ex['contigID']}', term='{ex['normalized_term']}', assembly='{ex['assemblyaccession']}', organism='{ex['organism']}'")
 
+    elif args.enable_foreign_keys:
+        print("Enabling foreign key constraints...")
+        result = enable_foreign_keys(dry_run=not args.apply)
+
+        print("\n" + "=" * 80)
+        print("FOREIGN KEY CONSTRAINTS ENABLED")
+        print("=" * 80)
+        print(f"\nStatus: {result['status']}")
+        for detail in result['details']:
+            print(f"  {detail}")
+
+    elif args.disable_foreign_keys:
+        print("Disabling foreign key constraints...")
+        result = disable_foreign_keys(dry_run=not args.apply)
+
+        print("\n" + "=" * 80)
+        print("FOREIGN KEY CONSTRAINTS DISABLED")
+        print("=" * 80)
+        print(f"\nStatus: {result['status']}")
+        for detail in result['details']:
+            print(f"  {detail}")
+
+    elif args.check_foreign_key_enforcement:
+        print("Checking foreign key enforcement...")
+        result = check_foreign_key_enforcement()
+
+        print("\n" + "=" * 80)
+        print("FOREIGN KEY ENFORCEMENT CHECK")
+        print("=" * 80)
+        print(f"\nForeign keys enabled: {result['foreign_keys_enabled']}")
+        print(f"Tables with constraints: {len(result['tables_with_constraints'])}")
+        print(f"Tables missing constraints: {len(result['missing_constraints'])}")
+
+        if result['tables_with_constraints']:
+            print("\nTables with foreign key constraints:")
+            for table_info in result['tables_with_constraints']:
+                print(f"  {table_info['table']}: {table_info['constraints']} constraints")
+
+        if result['missing_constraints']:
+            print("\nTables missing expected foreign key constraints:")
+            for missing in result['missing_constraints']:
+                print(f"  {missing['table']}: {len(missing['expected_constraints'])} expected constraints")
+
+        if result['recommendations']:
+            print("\nRecommendations:")
+            for rec in result['recommendations']:
+                print(f"  - {rec}")
+
+    elif args.fix_joined_ships_ship_id:
+        print("Fixing joined_ships.ship_id foreign key...")
+        result = fix_joined_ships_ship_id_foreign_key(dry_run=not args.apply)
+
+        print("\n" + "=" * 80)
+        print("JOINED_SHIPS SHIP_ID FOREIGN KEY FIX")
+        print("=" * 80)
+        print(f"\n⚠️  CAUTION: This function maps accession IDs to ship IDs")
+        print(f"Ship IDs fixed: {result['summary']['ship_ids_fixed']}")
+        print(f"Invalid references found: {result['summary']['invalid_references']}")
+        print(f"Accessions without ships: {result['summary']['no_ship_for_accession']}")
+
+        if result['ship_ids_fixed']:
+            print(f"\n✅ SHIP IDs FIXED (first 5):")
+            for fix in result['ship_ids_fixed'][:5]:
+                print(f"  {fix['starshipID']}: {fix['old_ship_id']} -> {fix['new_ship_id']} (accession: {fix['accession_tag']})")
+
+        if result['no_ship_for_accession']:
+            print(f"\n⚠️  ACCESSIONS WITHOUT SHIPS (first 5):")
+            for item in result['no_ship_for_accession'][:5]:
+                print(f"  {item['starshipID']}: accession {item['accession_tag']} has no ship record")
+
+        if result['invalid_references_found']:
+            print(f"\n❌ INVALID REFERENCES FOUND (first 5):")
+            for invalid in result['invalid_references_found'][:5]:
+                print(f"  {invalid['starshipID']}: invalid ship_id {invalid['invalid_ship_id']}")
+
+        print(f"\n💡 Recommendation: {result['summary']['recommendation']}")
+        print(f"⚠️  Warning: {result['summary']['warning']}")
+
+    elif args.validate_all_foreign_keys:
+        print("Performing comprehensive foreign key validation...")
+        result = validate_all_foreign_keys()
+
+        print("\n" + "=" * 80)
+        print("COMPREHENSIVE FOREIGN KEY VALIDATION")
+        print("=" * 80)
+        print(f"\nForeign keys enabled: {result['foreign_keys_enabled']}")
+        print(f"Relationships checked: {result['total_relationships_checked']}")
+        print(f"Total violations found: {result['violations_found']}")
+        print(f"Relationships with violations: {result['summary']['relationships_with_violations']}")
+
+        if result['relationships']:
+            print("\nRelationship details:")
+            for rel_name, rel_info in result['relationships'].items():
+                if isinstance(rel_info, dict) and 'orphaned_records' in rel_info:
+                    if rel_info['orphaned_records'] > 0:
+                        print(f"  ❌ {rel_name}: {rel_info['orphaned_records']} orphaned records")
+                        if rel_info['examples']:
+                            print(f"     Examples: {rel_info['examples'][:3]}")
+                    else:
+                        print(f"  ✅ {rel_name}: OK")
+                elif 'error' in rel_info:
+                    print(f"  ⚠️  {rel_name}: Error - {rel_info['error']}")
+
+        if result['recommendations']:
+            print("\nRecommendations:")
+            for rec in result['recommendations']:
+                print(f"  - {rec}")
+
+    elif args.show_issues_summary:
+        print("Showing cleanup_issues table summary...")
+        result = get_cleanup_issues_summary()
+
+        print("\n" + "=" * 80)
+        print("CLEANUP ISSUES SUMMARY")
+        print("=" * 80)
+
+        print(f"\n📊 OVERVIEW:")
+        print(f"   Total issues: {result['total_issues']}")
+        print(f"   Open issues: {result['open_issues']}")
+        print(f"   Fixed issues: {result['fixed_issues']}")
+        print(f"   Issues by category: {result['issues_by_category']}")
+
+        if result['recent_issues']:
+            print(f"\n🕒 RECENT ISSUES (last 10):")
+            for issue in result['recent_issues']:
+                status_icon = "✅" if issue['status'] == 'FIXED' else "🔓"
+                print(f"   {status_icon} {issue['category']}/{issue['issue_type']}: {issue['table_name']}.{issue['record_id']} ({issue['created_at']})")
+
+        print(f"\n📈 STATUS BREAKDOWN:")
+        for status, count in result['status_breakdown'].items():
+            print(f"   {status}: {count}")
+
     else:
         # Run full cleanup process
-        main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup) 
+        main(dry_run=not args.apply, output_report=args.report, apply_fixes=args.apply_fixes, skip_accession_cleanup=args.skip_accession_cleanup, no_record_issues=args.no_record_issues) 
