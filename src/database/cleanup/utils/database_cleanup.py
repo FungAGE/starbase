@@ -2883,7 +2883,7 @@ def record_cleanup_issues(all_issues: Dict, source: str = "pipeline", dry_run: b
     create_cleanup_issues_table()
 
     session = StarbaseSession()
-    summary = {"by_category": {}, "inserted": 0, "skipped": 0}
+    summary = {"by_category": {}, "inserted": 0, "skipped": 0, "updated": 0}
 
     try:
         raw_conn = session.connection().connection
@@ -2897,6 +2897,7 @@ def record_cleanup_issues(all_issues: Dict, source: str = "pipeline", dry_run: b
             """
         )
 
+        # Record issues found during analysis
         for category_name, category_payload in (all_issues or {}).items():
             # category_payload is expected to be a dict with lists
             inserted_this_category = 0
@@ -2955,6 +2956,287 @@ def record_cleanup_issues(all_issues: Dict, source: str = "pipeline", dry_run: b
         raise
     finally:
         session.close()
+
+
+def record_cleanup_fixes(all_fixes: Dict, source: str = "pipeline", dry_run: bool = True) -> Dict:
+    """
+    Record the results of fixes applied by the cleanup pipeline.
+
+    This function records successful fixes and can update the status of related issues
+    from 'OPEN' to 'FIXED' or 'RESOLVED'.
+
+    Args:
+        all_fixes: Dict containing results from fix operations
+        source: String label for where these fixes originated from
+        dry_run: If True, do not write to the database, just return a summary
+
+    Returns:
+        Dict summary with counts of recorded fixes and status updates
+    """
+    logger.info("Recording cleanup fixes to cleanup_issues table...")
+    create_cleanup_issues_table()
+
+    session = StarbaseSession()
+    summary = {"fixes_recorded": 0, "issues_updated": 0, "skipped": 0}
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Record fix results
+        fix_insert_sql = (
+            """
+            INSERT OR IGNORE INTO cleanup_issues
+            (issue_type, category, table_name, record_id, details, status, source)
+            VALUES (?, ?, ?, ?, ?, 'FIXED', ?)
+            """
+        )
+
+        # Update existing issue status
+        update_status_sql = (
+            """
+            UPDATE cleanup_issues
+            SET status = 'FIXED', updated_at = CURRENT_TIMESTAMP, details = ?
+            WHERE category = ? AND issue_type = ? AND table_name = ? AND record_id = ?
+            """
+        )
+
+        # Process different types of fixes
+        for fix_category, fix_data in (all_fixes or {}).items():
+            if not isinstance(fix_data, dict) or 'summary' not in fix_data:
+                continue
+
+            # Record individual fix actions
+            if 'ships_fixed' in fix_data and isinstance(fix_data['ships_fixed'], list):
+                for fix in fix_data['ships_fixed']:
+                    if not isinstance(fix, dict):
+                        continue
+
+                    table_name, record_id = _infer_table_and_record_id(fix)
+                    details_text = json.dumps({
+                        **fix,
+                        'fix_category': fix_category,
+                        'fix_timestamp': datetime.now().isoformat()
+                    }, ensure_ascii=False, sort_keys=True)
+
+                    if dry_run:
+                        summary["fixes_recorded"] += 1
+                        continue
+
+                    try:
+                        cursor.execute(
+                            fix_insert_sql,
+                            ('fixed_ship_reference', 'ships_accessions_joined_ships',
+                             table_name, record_id, details_text, source),
+                        )
+                        if cursor.rowcount and cursor.rowcount > 0:
+                            summary["fixes_recorded"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to record ship fix: {str(e)}")
+                        summary["skipped"] += 1
+
+            # Record ship_id relationship fixes
+            if 'missing_ship_ids_fixed' in fix_data and isinstance(fix_data['missing_ship_ids_fixed'], list):
+                for fix in fix_data['missing_ship_ids_fixed']:
+                    if not isinstance(fix, dict):
+                        continue
+
+                    table_name, record_id = _infer_table_and_record_id(fix)
+                    details_text = json.dumps({
+                        **fix,
+                        'fix_category': 'ship_id_relationships',
+                        'fix_timestamp': datetime.now().isoformat()
+                    }, ensure_ascii=False, sort_keys=True)
+
+                    if dry_run:
+                        summary["fixes_recorded"] += 1
+                        continue
+
+                    try:
+                        cursor.execute(
+                            fix_insert_sql,
+                            ('fixed_ship_id', 'ship_id_relationships',
+                             table_name, record_id, details_text, source),
+                        )
+                        if cursor.rowcount and cursor.rowcount > 0:
+                            summary["fixes_recorded"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to record ship_id fix: {str(e)}")
+                        summary["skipped"] += 1
+
+            # Record joined_ships ship_id fixes
+            if 'ship_ids_fixed' in fix_data and isinstance(fix_data['ship_ids_fixed'], list):
+                for fix in fix_data['ship_ids_fixed']:
+                    if not isinstance(fix, dict):
+                        continue
+
+                    table_name, record_id = _infer_table_and_record_id(fix)
+                    details_text = json.dumps({
+                        **fix,
+                        'fix_category': 'joined_ships_ship_id',
+                        'fix_timestamp': datetime.now().isoformat()
+                    }, ensure_ascii=False, sort_keys=True)
+
+                    if dry_run:
+                        summary["fixes_recorded"] += 1
+                        continue
+
+                    try:
+                        cursor.execute(
+                            fix_insert_sql,
+                            ('fixed_joined_ship_id', 'joined_ships_ship_id',
+                             table_name, record_id, details_text, source),
+                        )
+                        if cursor.rowcount and cursor.rowcount > 0:
+                            summary["fixes_recorded"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to record joined_ships fix: {str(e)}")
+                        summary["skipped"] += 1
+
+        if not dry_run:
+            cursor.close()
+            session.commit()
+        else:
+            cursor.close()
+
+        logger.info(
+            f"Recorded fixes summary: fixes={summary['fixes_recorded']} issues_updated={summary['issues_updated']} skipped={summary['skipped']}"
+        )
+        return summary
+
+    except Exception as e:
+        logger.error(f"Error recording cleanup fixes: {str(e)}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def update_issue_status(table_name: str, record_id: int, status: str = "FIXED", details: Dict = None, dry_run: bool = True) -> bool:
+    """
+    Update the status of a specific issue in the cleanup_issues table.
+
+    Args:
+        table_name: Name of the table the issue relates to
+        record_id: ID of the record the issue relates to
+        status: New status ('OPEN', 'FIXED', 'RESOLVED', 'CLOSED')
+        details: Additional details to add to the existing details
+        dry_run: If True, do not write to the database
+
+    Returns:
+        bool: True if update was successful
+    """
+    if dry_run:
+        logger.info(f"DRY RUN: Would update issue status for {table_name}.{record_id} to {status}")
+        return True
+
+    session = StarbaseSession()
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Get current details
+        cursor.execute(
+            "SELECT details FROM cleanup_issues WHERE table_name = ? AND record_id = ? ORDER BY id DESC LIMIT 1",
+            (table_name, record_id)
+        )
+        current_details_row = cursor.fetchone()
+
+        if current_details_row:
+            current_details = json.loads(current_details_row[0])
+            if details:
+                current_details.update(details)
+            updated_details = json.dumps(current_details, ensure_ascii=False, sort_keys=True)
+
+            cursor.execute(
+                "UPDATE cleanup_issues SET status = ?, details = ?, updated_at = CURRENT_TIMESTAMP WHERE table_name = ? AND record_id = ?",
+                (status, updated_details, table_name, record_id)
+            )
+
+            session.commit()
+            logger.info(f"Updated issue status for {table_name}.{record_id} to {status}")
+            return True
+        else:
+            logger.warning(f"No issue found for {table_name}.{record_id}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error updating issue status: {str(e)}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+
+def get_cleanup_issues_summary() -> Dict:
+    """
+    Get a summary of issues in the cleanup_issues table.
+
+    Returns:
+        Dict: Summary statistics about cleanup issues
+    """
+    logger.info("Getting cleanup issues summary...")
+    session = StarbaseSession()
+
+    summary = {
+        'total_issues': 0,
+        'open_issues': 0,
+        'fixed_issues': 0,
+        'issues_by_category': {},
+        'status_breakdown': {},
+        'recent_issues': []
+    }
+
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+
+        # Get total counts
+        cursor.execute("SELECT COUNT(*) FROM cleanup_issues")
+        summary['total_issues'] = cursor.fetchone()[0]
+
+        # Get status breakdown
+        cursor.execute("SELECT status, COUNT(*) FROM cleanup_issues GROUP BY status")
+        summary['status_breakdown'] = dict(cursor.fetchall())
+
+        summary['open_issues'] = summary['status_breakdown'].get('OPEN', 0)
+        summary['fixed_issues'] = summary['status_breakdown'].get('FIXED', 0)
+
+        # Get issues by category
+        cursor.execute("SELECT category, COUNT(*) FROM cleanup_issues GROUP BY category")
+        summary['issues_by_category'] = dict(cursor.fetchall())
+
+        # Get recent issues (last 10)
+        cursor.execute("""
+            SELECT category, issue_type, table_name, record_id, status, created_at
+            FROM cleanup_issues
+            ORDER BY created_at DESC
+            LIMIT 10
+        """)
+        recent_rows = cursor.fetchall()
+        summary['recent_issues'] = [
+            {
+                'category': row[0],
+                'issue_type': row[1],
+                'table_name': row[2],
+                'record_id': row[3],
+                'status': row[4],
+                'created_at': row[5][:19] if row[5] else 'N/A'  # Format timestamp
+            }
+            for row in recent_rows
+        ]
+
+        cursor.close()
+
+        logger.info(f"Found {summary['total_issues']} total issues, {summary['open_issues']} open, {summary['fixed_issues']} fixed")
+
+    except Exception as e:
+        logger.error(f"Error getting cleanup issues summary: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+    return summary
 
 
 def fix_missing_genome_info(dry_run: bool = True) -> Dict:
