@@ -33,9 +33,6 @@ class Accessions(Base):
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")
     gff_entries = relationship("Gff", back_populates="accession_obj")
-    joined_ships = relationship("JoinedShips", back_populates="accession_obj")
-    captains = relationship("Captains", back_populates="ship")
-    starship_features = relationship("StarshipFeatures", back_populates="accession")
 
 
 class Ships(Base):
@@ -59,7 +56,7 @@ class Captains(Base):
     reviewed = Column(String)
 
     # Relationships
-    ship = relationship("Accessions", back_populates="captains")
+    ship = relationship("Ships")
     features = relationship("StarshipFeatures", back_populates="captain")
 
 
@@ -106,7 +103,6 @@ class StarshipFeatures(Base):
     captain_id = Column(Integer, ForeignKey("captains.id"))
 
     # Relationships
-    accession = relationship("Accessions", back_populates="starship_features")
     captain = relationship("Captains", back_populates="features")
 
 
@@ -173,6 +169,9 @@ class Taxonomy(Base):
     genus = Column(VARCHAR)
     species = Column(VARCHAR)
     section = Column(VARCHAR)
+    species_group = Column(VARCHAR)
+    subgenus = Column(VARCHAR)
+    strain = Column(VARCHAR)
 
     # Relationships
     genomes = relationship("Genome", back_populates="taxonomy")
@@ -227,9 +226,9 @@ class JoinedShips(Base):
     source = Column(String)
     curated_status = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
-    tax_id = Column(Integer)
+    tax_id = Column(Integer, ForeignKey("taxonomy.id"))
     ship_id = Column(Integer, ForeignKey("ships.id"))
-    genome_id = Column(String)
+    genome_id = Column(Integer, ForeignKey("genomes.id"))
     captain_id = Column(Integer, ForeignKey("captains.id"))
     ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
     ship_haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
@@ -237,5 +236,10 @@ class JoinedShips(Base):
     updated_at = Column(DateTime)
 
     # Relationships
-    accession_obj = relationship("Accessions", back_populates="joined_ships")
     family = relationship("FamilyNames")
+    taxonomy = relationship("Taxonomy")
+    ship = relationship("Ships")
+    genome = relationship("Genome")
+    captain = relationship("Captains")
+    navis = relationship("Navis")
+    haplotype = relationship("Haplotype")
