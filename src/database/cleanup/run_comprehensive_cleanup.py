@@ -246,6 +246,10 @@ if __name__ == "__main__":
                        help="Skip recording issues and fixes to cleanup_issues table")
     parser.add_argument("--show-issues-summary", action="store_true",
                        help="Show summary of issues in cleanup_issues table")
+    parser.add_argument("--identify-taxonomy-duplicates", action="store_true",
+                       help="Identify duplicate taxonomy entries based on taxID and consistent information")
+    parser.add_argument("--consolidate-taxonomy-duplicates", action="store_true",
+                       help="Consolidate duplicate taxonomy entries, keeping lowest ID and updating references")
 
     args = parser.parse_args()
     
@@ -852,6 +856,87 @@ if __name__ == "__main__":
         print(f"\n📈 STATUS BREAKDOWN:")
         for status, count in result['status_breakdown'].items():
             print(f"   {status}: {count}")
+
+    elif args.identify_taxonomy_duplicates:
+        # Identify taxonomy duplicates
+        print("Identifying taxonomy duplicates...")
+        duplicates = identify_taxonomy_duplicates()
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY DUPLICATES ANALYSIS")
+        print("=" * 80)
+        
+        print(f"\nTaxID duplicate groups: {duplicates['summary']['taxid_duplicate_groups']}")
+        print(f"Total taxID duplicates: {duplicates['summary']['total_taxid_duplicates']}")
+        print(f"Consistent duplicate groups: {duplicates['summary']['consistent_duplicate_groups']}")
+        print(f"Total consistent duplicates: {duplicates['summary']['total_consistent_duplicates']}")
+        print(f"Total entries to remove: {duplicates['summary']['total_entries_to_remove']}")
+        
+        if duplicates['taxid_duplicates']:
+            print("\nTaxID DUPLICATE GROUPS:")
+            for group in duplicates['taxid_duplicates'][:10]:  # Show first 10
+                status = "✅ CONSISTENT" if group['consistent'] else "❌ INCONSISTENT"
+                print(f"  TaxID {group['taxID']} ({status}): {group['count']} entries")
+                print(f"    Primary: ID {group['primary_id']}")
+                print(f"    Duplicates: {group['duplicate_ids']}")
+                if not group['consistent']:
+                    print(f"    Conflicts: {len(group['inconsistent_fields'])} field(s)")
+                for entry in group['entries']:
+                    print(f"      - ID {entry['id']}: {entry['name']} ({entry['genus']} {entry['species']} sect. {entry['section'] or 'N/A'})")
+                print()
+            if len(duplicates['taxid_duplicates']) > 10:
+                print(f"  ... and {len(duplicates['taxid_duplicates']) - 10} more groups")
+        
+        if duplicates['consistent_duplicates']:
+            print(f"\nCONSISTENT SEMANTIC DUPLICATES:")
+            for group in duplicates['consistent_duplicates'][:5]:  # Show first 5
+                print(f"  Group: {group['count']} entries with different taxIDs")
+                print(f"    Primary: ID {group['primary_id']}")
+                print(f"    Duplicates: {group['duplicate_ids']}")
+                print(f"    TaxIDs: {group['taxids']}")
+                for entry in group['entries']:
+                    print(f"      - ID {entry['id']}: {entry['name']} (taxID: {entry['taxID']})")
+                print()
+            if len(duplicates['consistent_duplicates']) > 5:
+                print(f"  ... and {len(duplicates['consistent_duplicates']) - 5} more groups")
+
+    elif args.consolidate_taxonomy_duplicates:
+        # Consolidate taxonomy duplicates
+        print("Consolidating taxonomy duplicates...")
+        consolidation = consolidate_taxonomy_duplicates(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY DUPLICATES CONSOLIDATION")
+        print("=" * 80)
+        
+        print(f"\nGroups consolidated: {consolidation['summary']['groups_consolidated']}")
+        print(f"References updated: {consolidation['summary']['total_references_updated']}")
+        print(f"Entries deleted: {consolidation['summary']['total_entries_deleted']}")
+        
+        if consolidation['entries_consolidated']:
+            print("\nCONSOLIDATED GROUPS:")
+            for group in consolidation['entries_consolidated'][:10]:  # Show first 10
+                if 'taxID' in group:
+                    print(f"  TaxID {group['taxID']}: consolidated {group['duplicates_removed']} duplicates into ID {group['primary_id']}")
+                else:
+                    print(f"  Semantic group: consolidated {group['duplicates_removed']} duplicates into ID {group['primary_id']}")
+                print(f"    References updated: {group['references_updated']}")
+            if len(consolidation['entries_consolidated']) > 10:
+                print(f"  ... and {len(consolidation['entries_consolidated']) - 10} more groups")
+        
+        if consolidation['references_updated']:
+            print(f"\nREFERENCES UPDATED (first 10):")
+            for ref in consolidation['references_updated'][:10]:
+                print(f"  {ref['table']}.{ref['record_id']}: {ref['old_taxonomy_id']} → {ref['new_taxonomy_id']}")
+            if len(consolidation['references_updated']) > 10:
+                print(f"  ... and {len(consolidation['references_updated']) - 10} more")
+        
+        if consolidation['entries_deleted']:
+            print(f"\nENTRIES DELETED (first 10):")
+            for deleted in consolidation['entries_deleted'][:10]:
+                print(f"  ID {deleted['taxonomy_id']}: {deleted['name']} (taxID: {deleted['taxID']})")
+            if len(consolidation['entries_deleted']) > 10:
+                print(f"  ... and {len(consolidation['entries_deleted']) - 10} more")
 
     else:
         # Run full cleanup process

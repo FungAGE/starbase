@@ -4381,6 +4381,395 @@ def _ncbi_assembly_esummary(uid: str, email: str = None, api_key: str = None) ->
         return {}
 
 
+def identify_taxonomy_duplicates() -> Dict:
+    """
+    Identify duplicate taxonomy entries based on taxID and consistent information.
+    
+    Duplicates are defined as:
+    - Multiple entries with the same taxID (not NULL)
+    - OR entries with consistent information across all non-NULL columns
+      (excluding potentially variable fields: species, section, species_group, subgenus, strain)
+    
+    Returns:
+        Dict: Report of duplicate groups found
+    """
+    logger.info("Identifying taxonomy duplicates...")
+    session = StarbaseSession()
+    
+    duplicates = {
+        'taxid_duplicates': [],
+        'consistent_duplicates': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find duplicates by taxID (excluding NULL taxIDs)
+        taxid_groups = session.query(
+            Taxonomy.taxID,
+            func.count(Taxonomy.id).label('count')
+        ).filter(
+            Taxonomy.taxID.isnot(None),
+            Taxonomy.taxID != ''
+        ).group_by(Taxonomy.taxID).having(
+            func.count(Taxonomy.id) > 1
+        ).all()
+        
+        for taxid, count in taxid_groups:
+            # Get all entries for this taxID
+            entries = session.query(Taxonomy).filter(Taxonomy.taxID == taxid).order_by(Taxonomy.id).all()
+            
+            # Check if entries are consistent across non-variable fields
+            primary_entry = entries[0]  # Lowest ID (oldest)
+            consistent = True
+            inconsistent_fields = []
+            
+            # Fields to check for consistency (excluding variable fields)
+            check_fields = [
+                'name', 'superkingdom', 'clade', 'kingdom', 'subkingdom', 
+                'phylum', 'subphylum', 'class_', 'subclass', 'order', 
+                'suborder', 'family', 'genus'
+            ]
+            
+            for entry in entries[1:]:
+                for field in check_fields:
+                    primary_val = getattr(primary_entry, field)
+                    entry_val = getattr(entry, field)
+                    
+                    # Only compare if both values are not None/empty
+                    if (primary_val and primary_val.strip() and 
+                        entry_val and entry_val.strip() and 
+                        primary_val.strip() != entry_val.strip()):
+                        consistent = False
+                        inconsistent_fields.append({
+                            'field': field,
+                            'primary_value': primary_val,
+                            'conflicting_value': entry_val,
+                            'conflicting_id': entry.id
+                        })
+            
+            duplicates['taxid_duplicates'].append({
+                'taxID': taxid,
+                'count': count,
+                'primary_id': primary_entry.id,
+                'duplicate_ids': [e.id for e in entries[1:]],
+                'consistent': consistent,
+                'inconsistent_fields': inconsistent_fields,
+                'entries': [
+                    {
+                        'id': e.id,
+                        'name': e.name,
+                        'taxID': e.taxID,
+                        'genus': e.genus,
+                        'species': e.species,
+                        'section': e.section
+                    } for e in entries
+                ]
+            })
+        
+        # Find potential semantic duplicates (same core taxonomy but different/missing taxID)
+        # Group by (name, genus, superkingdom, kingdom, phylum, family) combination
+        all_taxonomies = session.query(Taxonomy).all()
+        semantic_groups = {}
+        
+        for tax in all_taxonomies:
+            # Create a key from core taxonomic fields
+            key_parts = []
+            for field in ['name', 'genus', 'superkingdom', 'kingdom', 'phylum', 'family']:
+                val = getattr(tax, field)
+                key_parts.append((val or '').strip().lower())
+            key = tuple(key_parts)
+            
+            if key not in semantic_groups:
+                semantic_groups[key] = []
+            semantic_groups[key].append(tax)
+        
+        # Find groups with multiple entries
+        for key, entries in semantic_groups.items():
+            if len(entries) > 1:
+                # Skip if all entries have the same taxID (already covered above)
+                taxids = set((e.taxID or '').strip() for e in entries)
+                if len(taxids) <= 1:
+                    continue
+                
+                # Check if entries are consistent
+                primary_entry = min(entries, key=lambda x: x.id)  # Lowest ID
+                consistent = True
+                inconsistent_fields = []
+                
+                check_fields = [
+                    'name', 'superkingdom', 'clade', 'kingdom', 'subkingdom', 
+                    'phylum', 'subphylum', 'class_', 'subclass', 'order', 
+                    'suborder', 'family', 'genus'
+                ]
+                
+                for entry in entries:
+                    if entry.id == primary_entry.id:
+                        continue
+                    for field in check_fields:
+                        primary_val = getattr(primary_entry, field)
+                        entry_val = getattr(entry, field)
+                        
+                        # Only compare if both values are not None/empty
+                        if (primary_val and primary_val.strip() and 
+                            entry_val and entry_val.strip() and 
+                            primary_val.strip() != entry_val.strip()):
+                            consistent = False
+                            inconsistent_fields.append({
+                                'field': field,
+                                'primary_value': primary_val,
+                                'conflicting_value': entry_val,
+                                'conflicting_id': entry.id
+                            })
+                
+                if consistent:  # Only report if consistent
+                    duplicates['consistent_duplicates'].append({
+                        'key': str(key),
+                        'count': len(entries),
+                        'primary_id': primary_entry.id,
+                        'duplicate_ids': [e.id for e in entries if e.id != primary_entry.id],
+                        'taxids': list(taxids),
+                        'entries': [
+                            {
+                                'id': e.id,
+                                'name': e.name,
+                                'taxID': e.taxID,
+                                'genus': e.genus,
+                                'species': e.species,
+                                'section': e.section
+                            } for e in entries
+                        ]
+                    })
+        
+        # Summary
+        total_taxid_duplicates = sum(d['count'] - 1 for d in duplicates['taxid_duplicates'])
+        total_consistent_duplicates = sum(d['count'] - 1 for d in duplicates['consistent_duplicates'])
+        
+        duplicates['summary'] = {
+            'taxid_duplicate_groups': len(duplicates['taxid_duplicates']),
+            'total_taxid_duplicates': total_taxid_duplicates,
+            'consistent_duplicate_groups': len(duplicates['consistent_duplicates']),
+            'total_consistent_duplicates': total_consistent_duplicates,
+            'total_entries_to_remove': total_taxid_duplicates + total_consistent_duplicates
+        }
+        
+        logger.info(f"Found {len(duplicates['taxid_duplicates'])} taxID duplicate groups ({total_taxid_duplicates} entries to remove)")
+        logger.info(f"Found {len(duplicates['consistent_duplicates'])} consistent duplicate groups ({total_consistent_duplicates} entries to remove)")
+        
+    except Exception as e:
+        logger.error(f"Error identifying taxonomy duplicates: {str(e)}")
+        raise
+    finally:
+        session.close()
+    
+    return duplicates
+
+
+def consolidate_taxonomy_duplicates(dry_run: bool = True) -> Dict:
+    """
+    Consolidate duplicate taxonomy entries by:
+    1. Keeping the entry with the lowest ID (first created)
+    2. Updating all references to point to the retained entry
+    3. Deleting the duplicate entries
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be done
+        
+    Returns:
+        Dict: Report of consolidations performed
+    """
+    logger.info("Consolidating taxonomy duplicates...")
+    session = StarbaseSession()
+    
+    consolidation = {
+        'entries_consolidated': [],
+        'references_updated': [],
+        'entries_deleted': [],
+        'summary': {}
+    }
+    
+    try:
+        # First identify duplicates
+        duplicates_report = identify_taxonomy_duplicates()
+        
+        total_updated_refs = 0
+        total_deleted = 0
+        
+        # Process taxID duplicates
+        for duplicate_group in duplicates_report['taxid_duplicates']:
+            if not duplicate_group['consistent']:
+                logger.warning(f"Skipping inconsistent taxID group {duplicate_group['taxID']} - manual review needed")
+                continue
+            
+            primary_id = duplicate_group['primary_id']
+            duplicate_ids = duplicate_group['duplicate_ids']
+            
+            # Update all references to point to primary_id
+            for dup_id in duplicate_ids:
+                # Update genomes.taxonomy_id
+                genomes_updated = session.query(Genome).filter(Genome.taxonomy_id == dup_id).all()
+                for genome in genomes_updated:
+                    if not dry_run:
+                        genome.taxonomy_id = primary_id
+                        session.add(genome)
+                    
+                    consolidation['references_updated'].append({
+                        'table': 'genomes',
+                        'record_id': genome.id,
+                        'old_taxonomy_id': dup_id,
+                        'new_taxonomy_id': primary_id,
+                        'action': f'Updated genome {genome.id} taxonomy_id from {dup_id} to {primary_id}'
+                    })
+                    total_updated_refs += 1
+                
+                # Update joined_ships.tax_id
+                joined_ships_updated = session.query(JoinedShips).filter(JoinedShips.tax_id == dup_id).all()
+                for joined in joined_ships_updated:
+                    if not dry_run:
+                        joined.tax_id = primary_id
+                        session.add(joined)
+                    
+                    consolidation['references_updated'].append({
+                        'table': 'joined_ships',
+                        'record_id': joined.id,
+                        'old_taxonomy_id': dup_id,
+                        'new_taxonomy_id': primary_id,
+                        'action': f'Updated joined_ships {joined.id} tax_id from {dup_id} to {primary_id}'
+                    })
+                    total_updated_refs += 1
+                
+                # Delete the duplicate taxonomy entry
+                if not dry_run:
+                    duplicate_entry = session.query(Taxonomy).filter(Taxonomy.id == dup_id).first()
+                    if duplicate_entry:
+                        session.delete(duplicate_entry)
+                        consolidation['entries_deleted'].append({
+                            'taxonomy_id': dup_id,
+                            'name': duplicate_entry.name,
+                            'taxID': duplicate_entry.taxID,
+                            'action': f'Deleted duplicate taxonomy entry {dup_id}'
+                        })
+                        total_deleted += 1
+                else:
+                    duplicate_entry = session.query(Taxonomy).filter(Taxonomy.id == dup_id).first()
+                    if duplicate_entry:
+                        consolidation['entries_deleted'].append({
+                            'taxonomy_id': dup_id,
+                            'name': duplicate_entry.name,
+                            'taxID': duplicate_entry.taxID,
+                            'action': f'Would delete duplicate taxonomy entry {dup_id}'
+                        })
+                        total_deleted += 1
+            
+            consolidation['entries_consolidated'].append({
+                'taxID': duplicate_group['taxID'],
+                'primary_id': primary_id,
+                'duplicate_ids': duplicate_ids,
+                'duplicates_removed': len(duplicate_ids),
+                'references_updated': len([r for r in consolidation['references_updated'] 
+                                         if r['new_taxonomy_id'] == primary_id]),
+                'action': f'Consolidated {len(duplicate_ids)} duplicates into taxonomy {primary_id}'
+            })
+        
+        # Process consistent semantic duplicates
+        for duplicate_group in duplicates_report['consistent_duplicates']:
+            primary_id = duplicate_group['primary_id']
+            duplicate_ids = duplicate_group['duplicate_ids']
+            
+            # Update all references to point to primary_id
+            for dup_id in duplicate_ids:
+                # Update genomes.taxonomy_id
+                genomes_updated = session.query(Genome).filter(Genome.taxonomy_id == dup_id).all()
+                for genome in genomes_updated:
+                    if not dry_run:
+                        genome.taxonomy_id = primary_id
+                        session.add(genome)
+                    
+                    consolidation['references_updated'].append({
+                        'table': 'genomes',
+                        'record_id': genome.id,
+                        'old_taxonomy_id': dup_id,
+                        'new_taxonomy_id': primary_id,
+                        'action': f'Updated genome {genome.id} taxonomy_id from {dup_id} to {primary_id}'
+                    })
+                    total_updated_refs += 1
+                
+                # Update joined_ships.tax_id
+                joined_ships_updated = session.query(JoinedShips).filter(JoinedShips.tax_id == dup_id).all()
+                for joined in joined_ships_updated:
+                    if not dry_run:
+                        joined.tax_id = primary_id
+                        session.add(joined)
+                    
+                    consolidation['references_updated'].append({
+                        'table': 'joined_ships',
+                        'record_id': joined.id,
+                        'old_taxonomy_id': dup_id,
+                        'new_taxonomy_id': primary_id,
+                        'action': f'Updated joined_ships {joined.id} tax_id from {dup_id} to {primary_id}'
+                    })
+                    total_updated_refs += 1
+                
+                # Delete the duplicate taxonomy entry
+                if not dry_run:
+                    duplicate_entry = session.query(Taxonomy).filter(Taxonomy.id == dup_id).first()
+                    if duplicate_entry:
+                        session.delete(duplicate_entry)
+                        consolidation['entries_deleted'].append({
+                            'taxonomy_id': dup_id,
+                            'name': duplicate_entry.name,
+                            'taxID': duplicate_entry.taxID,
+                            'action': f'Deleted duplicate taxonomy entry {dup_id}'
+                        })
+                        total_deleted += 1
+                else:
+                    duplicate_entry = session.query(Taxonomy).filter(Taxonomy.id == dup_id).first()
+                    if duplicate_entry:
+                        consolidation['entries_deleted'].append({
+                            'taxonomy_id': dup_id,
+                            'name': duplicate_entry.name,
+                            'taxID': duplicate_entry.taxID,
+                            'action': f'Would delete duplicate taxonomy entry {dup_id}'
+                        })
+                        total_deleted += 1
+            
+            consolidation['entries_consolidated'].append({
+                'key': duplicate_group['key'],
+                'primary_id': primary_id,
+                'duplicate_ids': duplicate_ids,
+                'duplicates_removed': len(duplicate_ids),
+                'references_updated': len([r for r in consolidation['references_updated'] 
+                                         if r['new_taxonomy_id'] == primary_id]),
+                'action': f'Consolidated {len(duplicate_ids)} semantic duplicates into taxonomy {primary_id}'
+            })
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Consolidated {len(consolidation['entries_consolidated'])} duplicate groups")
+            logger.info(f"Updated {total_updated_refs} references")
+            logger.info(f"Deleted {total_deleted} duplicate entries")
+        else:
+            logger.info(f"Would consolidate {len(consolidation['entries_consolidated'])} duplicate groups")
+            logger.info(f"Would update {total_updated_refs} references")
+            logger.info(f"Would delete {total_deleted} duplicate entries")
+        
+        consolidation['summary'] = {
+            'groups_consolidated': len(consolidation['entries_consolidated']),
+            'total_references_updated': total_updated_refs,
+            'total_entries_deleted': total_deleted,
+            'recommendation': 'Review inconsistent groups manually before processing'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error consolidating taxonomy duplicates: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return consolidation
+
+
 def lookup_assembly_accessions_from_contigs(email: str = None, api_key: str = None, limit: int = 0, dry_run: bool = True) -> Dict:
     """
     For each unique contigID in starship_features, remove any leading 'ome' prefix, attempt to resolve
