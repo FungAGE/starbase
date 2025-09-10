@@ -211,7 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("--fix-missing-genome-taxonomy-from-joined", action="store_true",
                        help="Fill missing Genome.taxonomy_id from joined_ships.tax_id (mode)")
     parser.add_argument("--fix-missing-genome-taxonomy-via-ncbi", action="store_true",
-                       help="Fill missing Genome.taxonomy_id by querying NCBI Taxonomy (requires --ome-name-map)")
+                       help="Fill missing Genome.taxonomy_id by querying NCBI Taxonomy (requires --ome-map)")
     parser.add_argument("--ncbi-email", type=str,
                        help="Contact email for NCBI E-utilities")
     parser.add_argument("--ncbi-api-key", type=str,
@@ -344,6 +344,38 @@ if __name__ == "__main__":
             print(f"   Orphaned ships handled: {len(fixes['orphaned_ships_handled'])}")
             print(f"   Duplicate ship_ids resolved: {len(fixes['duplicate_ship_ids_resolved'])}")
             print(f"   Warnings: {len(fixes['warnings'])}")
+
+    elif args.fix_ship_relationships:
+        # Apply ship_id relationship fixes as standalone operation
+        print("🔧 Applying ship_id relationship fixes...")
+        fixes = fix_ship_id_relationships(dry_run=not args.apply)
+        
+        print(f"\n📈 FIXES APPLIED:")
+        print(f"   Missing ship_ids fixed: {len(fixes['missing_ship_ids_fixed'])}")
+        print(f"   Mismatched ship_ids fixed: {len(fixes['mismatched_ship_ids_fixed'])}")
+        print(f"   Orphaned ships handled: {len(fixes['orphaned_ships_handled'])}")
+        print(f"   Duplicate ship_ids resolved: {len(fixes['duplicate_ship_ids_resolved'])}")
+        print(f"   Warnings: {len(fixes['warnings'])}")
+
+        if fixes['missing_ship_ids_fixed']:
+            print("\n✅ MISSING SHIP_IDs FIXED (first 10):")
+            for fix in fixes['missing_ship_ids_fixed'][:10]:
+                print(f"   {fix['starshipID']}: ship_id={fix['ship_id']}")
+        
+        if fixes['mismatched_ship_ids_fixed']:
+            print("\n🔄 MISMATCHED SHIP_IDs FIXED (first 10):")
+            for fix in fixes['mismatched_ship_ids_fixed'][:10]:
+                print(f"   {fix['starshipID']}: {fix['old_ship_id']} -> {fix['new_ship_id']}")
+        
+        if fixes['orphaned_ships_handled']:
+            print("\n🔗 ORPHANED SHIPS HANDLED (first 10):")
+            for fix in fixes['orphaned_ships_handled'][:10]:
+                print(f"   Ship {fix['ship_id']}: linked to joined_ships {fix['joined_id']}")
+        
+        if fixes['warnings']:
+            print("\n⚠️  WARNINGS (first 5):")
+            for warning in fixes['warnings'][:5]:
+                print(f"   {warning}")
 
     elif args.check_relationships:
         # Check for relationship issues
@@ -562,12 +594,12 @@ if __name__ == "__main__":
                 print(f"   Genome {item['genome_id']} ome='{item['ome']}': {item['issue']}")
 
     elif args.fix_missing_genome_taxonomy_via_ncbi:
-        if not args.ome_name_map:
-            print("Error: --ome-name-map is required for --fix-missing-genome-taxonomy-via-ncbi")
+        if not args.ome_map:
+            print("Error: --ome-map is required for --fix-missing-genome-taxonomy-via-ncbi")
         else:
             print("Fixing missing genome taxonomy_id via NCBI...")
             fix_report = fix_missing_genome_taxonomy_via_ncbi(
-                map_csv=args.ome_name_map,
+                map_csv=args.ome_map,
                 email=args.ncbi_email,
                 api_key=args.ncbi_api_key,
                 dry_run=not args.apply
@@ -639,7 +671,7 @@ if __name__ == "__main__":
 
     elif args.fix_missing_genome_info_via_ome_map:
         if not args.ome_map:
-            print("Error: --ome-map is required for --fix-genome-info-via-ome-map")
+            print("Error: --ome-map is required for --fix-missing-genome-info-via-ome-map")
         else:
             print("Reconciling genome info according to OME mapping TSV...")
             fix_report = reconcile_genome_taxonomy_via_map(
