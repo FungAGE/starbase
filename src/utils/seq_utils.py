@@ -20,6 +20,10 @@ def clean_sequence(seq):
     if seq is None:
         return None
 
+    # Ensure seq is a string
+    if not isinstance(seq, str):
+        seq = str(seq)
+
     # Remove any content within parentheses
     seq = re.sub(r"\(.*?\)", "", seq)
     seq = seq.upper()
@@ -235,13 +239,20 @@ def revcomp(seq: str) -> str:
     """
     Reverse complement a sequence. Able to handle both strings and Seq objects.
     """
+    if seq is None:
+        return None
+
+    # Ensure seq is a string
+    if not isinstance(seq, str):
+        seq = str(seq)
+
     if type(seq) == str:
         rv_comp_seq = Seq(seq).reverse_complement()
     elif type(seq) == Seq:
         rv_comp_seq = seq.reverse_complement()
     else:
         return None
-    return rv_comp_seq
+    return str(rv_comp_seq)
 
 
 def find_longest_orf(aa_seq, min_length=50):
