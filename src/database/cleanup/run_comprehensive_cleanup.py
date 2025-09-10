@@ -943,7 +943,10 @@ if __name__ == "__main__":
     elif args.fix_missing_tax_id_via_ome:
         # Fix missing tax_id using ome code consistency
         print("Fixing missing tax_id in joined_ships using ome code consistency...")
-        fix_report = fix_missing_tax_id_via_ome_consistency(dry_run=not args.apply)
+        fix_report = fix_missing_tax_id_via_ome_consistency(
+            dry_run=not args.apply,
+            ome_map_path=args.ome_map
+        )
         
         print("\n" + "=" * 80)
         print("OME TAX_ID CONSISTENCY FIX")
@@ -953,6 +956,8 @@ if __name__ == "__main__":
         print(f"OME groups analyzed: {fix_report['summary']['ome_groups_analyzed']}")
         print(f"Tax_ids filled: {fix_report['summary']['tax_ids_filled']}")
         print(f"Inconsistent groups: {fix_report['summary']['inconsistent_groups']}")
+        print(f"Genomes created: {fix_report['summary']['genomes_created']}")
+        print(f"OME map used: {fix_report['summary']['ome_map_used']}")
         print(f"Warnings: {fix_report['summary']['warnings']}")
         
         if fix_report['tax_ids_filled']:
@@ -968,8 +973,17 @@ if __name__ == "__main__":
                 print(f"  {group['ome_code']}: {group['total_entries']} entries, {group['status']}")
                 if group['status'] == 'consistent':
                     print(f"    → Filled {group['filled']} missing tax_ids with {group['consensus_tax_id']}")
+                elif group['status'] == 'created_from_ome_map':
+                    print(f"    → Created genome {group['genome_id']}, filled {group['filled']} missing tax_ids with {group['consensus_tax_id']}")
             if len(fix_report['ome_groups_analyzed']) > 10:
                 print(f"  ... and {len(fix_report['ome_groups_analyzed']) - 10} more")
+        
+        if fix_report['genomes_created']:
+            print(f"\nGENOMES CREATED FROM OME MAP (first 10):")
+            for genome in fix_report['genomes_created'][:10]:
+                print(f"  {genome['ome_code']}: genome_id={genome['genome_id']}, taxonomy_id={genome['taxonomy_id']} ({genome['name']})")
+            if len(fix_report['genomes_created']) > 10:
+                print(f"  ... and {len(fix_report['genomes_created']) - 10} more")
         
         if fix_report['inconsistent_ome_groups']:
             print(f"\nINCONSISTENT OME GROUPS (manual review needed):")

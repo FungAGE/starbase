@@ -3693,7 +3693,7 @@ def analyze_missing_genome_info() -> Dict:
             'missing_ome_count': len(analysis['missing_ome']),
             'missing_both_count': len(analysis['missing_both']),
             'potential_fixes_count': len(analysis['potential_fixes']),
-            'recommendation': 'Run fix_missing_genome_info() to apply available fixes'
+            'recommendation': 'Run fix_missing_genome_info_via_ome_map() to apply available fixes'
         }
         
         logger.info(f"Analysis complete:")
@@ -4819,15 +4819,70 @@ def consolidate_taxonomy_duplicates(dry_run: bool = True) -> Dict:
     return consolidation
 
 
-def fix_missing_tax_id_via_ome_consistency(dry_run: bool = True) -> Dict:
+def _find_or_create_genome_from_ome(ome_code: str, ome_map: Dict, session) -> int:
+    """
+    Find existing genome by ome code or create new one using OME map data.
+    
+    Args:
+        ome_code (str): The OME code to find/create
+        ome_map (Dict): OME mapping data from _parse_ome_map()
+        session: Database session
+        
+    Returns:
+        int: Genome ID (existing or newly created)
+    """
+    # First try to find existing genome
+    existing_genome = session.query(Genome).filter(Genome.ome == ome_code).first()
+    if existing_genome:
+        return existing_genome.id
+    
+    # Check if we have OME map data for this code
+    if ome_code not in ome_map:
+        raise ValueError(f"No OME map data found for {ome_code}")
+    
+    ome_data = ome_map[ome_code]
+    
+    # Create or find taxonomy entry
+    taxonomy_id = _find_or_create_taxonomy(
+        name=ome_data['name'],
+        taxid=None,  # OME map doesn't typically have taxIDs
+        session=session
+    )
+    
+    # Update taxonomy with additional fields from OME map
+    taxonomy = session.query(Taxonomy).filter(Taxonomy.id == taxonomy_id).first()
+    if taxonomy:
+        if ome_data['genus'] and not taxonomy.genus:
+            taxonomy.genus = ome_data['genus']
+        if ome_data['species_epithet'] and not taxonomy.species:
+            taxonomy.species = ome_data['species_epithet']
+        session.add(taxonomy)
+    
+    # Create new genome entry
+    new_genome = Genome(
+        ome=ome_code,
+        taxonomy_id=taxonomy_id,
+        assembly_accession=ome_data.get('assembly_accession') or None
+    )
+    session.add(new_genome)
+    session.flush()  # Get the ID
+    
+    return new_genome.id
+
+
+def fix_missing_tax_id_via_ome_consistency(dry_run: bool = True, ome_map_path: str = None) -> Dict:
     """
     Fix missing tax_id in joined_ships table by using ome code consistency.
     
     For entries with starshipID that have "ome" codes as prefix (e.g., 'altbur1_sequence1'),
     extract the ome code and ensure all entries with the same ome code have consistent tax_id.
     
+    If no existing tax_id is available and ome_map_path is provided, will create
+    missing genome and taxonomy entries from the OME map data.
+    
     Args:
         dry_run (bool): If True, only analyze and report what would be fixed
+        ome_map_path (str): Optional path to OME mapping file for creating missing entries
         
     Returns:
         Dict: Report of fixes applied
@@ -4839,9 +4894,21 @@ def fix_missing_tax_id_via_ome_consistency(dry_run: bool = True) -> Dict:
         'tax_ids_filled': [],
         'ome_groups_analyzed': [],
         'inconsistent_ome_groups': [],
+        'genomes_created': [],
+        'taxonomies_created': [],
         'warnings': [],
         'summary': {}
     }
+    
+    # Load OME map if provided
+    ome_map = {}
+    if ome_map_path:
+        try:
+            ome_map = _parse_ome_map(ome_map_path)
+            logger.info(f"Loaded {len(ome_map)} OME mappings from {ome_map_path}")
+        except Exception as e:
+            logger.error(f"Failed to load OME map from {ome_map_path}: {str(e)}")
+            raise
     
     try:
         # Get all joined_ships entries with starshipIDs that look like ome codes
@@ -4888,12 +4955,66 @@ def fix_missing_tax_id_via_ome_consistency(dry_run: bool = True) -> Dict:
             
             if len(unique_tax_ids) == 0:
                 # No tax_id assignments for this ome group
+                # Try to create genome and taxonomy from OME map if available
+                if ome_map and ome_code in ome_map and not dry_run:
+                    try:
+                        # Find or create genome entry
+                        genome_id = _find_or_create_genome_from_ome(ome_code, ome_map, session)
+                        
+                        # Get the taxonomy_id from the genome
+                        genome = session.query(Genome).filter(Genome.id == genome_id).first()
+                        if genome and genome.taxonomy_id:
+                            consensus_tax_id = genome.taxonomy_id
+                            
+                            # Fill tax_id for all entries in this ome group
+                            for entry in entries_without_tax_id:
+                                # Update joined_ships to link to the genome
+                                entry.tax_id = consensus_tax_id
+                                entry.genome_id = genome_id
+                                session.add(entry)
+                                
+                                fixes['tax_ids_filled'].append({
+                                    'joined_ships_id': entry.id,
+                                    'starshipID': entry.starshipID,
+                                    'ome_code': ome_code,
+                                    'assigned_tax_id': consensus_tax_id,
+                                    'genome_id': genome_id,
+                                    'action': f'Created genome and taxonomy for ome {ome_code}, assigned tax_id {consensus_tax_id}'
+                                })
+                            
+                            # Track creation
+                            if genome_id not in [g['genome_id'] for g in fixes['genomes_created']]:
+                                fixes['genomes_created'].append({
+                                    'genome_id': genome_id,
+                                    'ome_code': ome_code,
+                                    'taxonomy_id': consensus_tax_id,
+                                    'name': ome_map[ome_code]['name']
+                                })
+                            
+                            fixes['ome_groups_analyzed'].append({
+                                'ome_code': ome_code,
+                                'total_entries': len(entries),
+                                'with_tax_id': 0,
+                                'without_tax_id': len(entries_without_tax_id),
+                                'consensus_tax_id': consensus_tax_id,
+                                'genome_id': genome_id,
+                                'filled': len(entries_without_tax_id),
+                                'status': 'created_from_ome_map'
+                            })
+                            continue
+                        else:
+                            logger.warning(f"Created genome {genome_id} for ome {ome_code} but no taxonomy_id assigned")
+                    except Exception as e:
+                        logger.error(f"Failed to create genome/taxonomy for ome {ome_code}: {str(e)}")
+                        fixes['warnings'].append(f"Failed to create entries for ome {ome_code}: {str(e)}")
+                
+                # No tax_id available and either no OME map or creation failed
                 fixes['ome_groups_analyzed'].append({
                     'ome_code': ome_code,
                     'total_entries': len(entries),
                     'with_tax_id': 0,
                     'without_tax_id': len(entries_without_tax_id),
-                    'status': 'no_tax_id_available'
+                    'status': 'no_tax_id_available' + (' (no_ome_map)' if not ome_map else ' (creation_failed)' if ome_code in ome_map else ' (not_in_ome_map)')
                 })
                 continue
                 
@@ -4951,8 +5072,10 @@ def fix_missing_tax_id_via_ome_consistency(dry_run: bool = True) -> Dict:
             'ome_groups_analyzed': len(fixes['ome_groups_analyzed']),
             'tax_ids_filled': len(fixes['tax_ids_filled']),
             'inconsistent_groups': len(fixes['inconsistent_ome_groups']),
+            'genomes_created': len(fixes['genomes_created']),
             'warnings': len(fixes['warnings']),
-            'recommendation': 'Review inconsistent ome groups manually'
+            'ome_map_used': bool(ome_map),
+            'recommendation': 'Review inconsistent ome groups manually' + ('; Use --ome-map to create missing genomes/taxonomies' if not ome_map else '')
         }
         
         logger.info(f"Analyzed {len(ome_groups)} ome groups")
