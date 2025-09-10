@@ -103,9 +103,9 @@ def check_ships_accessions_joined_ships_relationships() -> Dict:
                 'issue': 'Accession has no associated ships or joined_ships'
             })
         
-        # Check 3: JoinedShips entries that reference non-existent accessions
-        orphaned_joined_ships = session.query(JoinedShips).outerjoin(Accessions, JoinedShips.ship_id == Accessions.id).filter(
-            (JoinedShips.ship_id.isnot(None)) & (Accessions.id.is_(None))
+        # Check 3: JoinedShips entries that reference non-existent ships
+        orphaned_joined_ships = session.query(JoinedShips).outerjoin(Ships, JoinedShips.ship_id == Ships.id).filter(
+            (JoinedShips.ship_id.isnot(None)) & (Ships.id.is_(None))
         ).all()
         
         for joined in orphaned_joined_ships:
@@ -113,14 +113,14 @@ def check_ships_accessions_joined_ships_relationships() -> Dict:
                 'joined_id': joined.id,
                 'starshipID': joined.starshipID,
                 'ship_id': joined.ship_id,
-                'issue': 'JoinedShips references non-existent accession'
+                'issue': 'JoinedShips references non-existent ship'
             })
         
-        # Check 4: JoinedShips entries that should have sequences but don't link to ships
-        # This is more complex - we need to identify which joined_ships entries should have sequences
-        # For now, we'll check for joined_ships with ship_id but no corresponding ship entry
-        missing_sequence_links = session.query(JoinedShips).outerjoin(Ships, JoinedShips.ship_id == Ships.accession_id).filter(
-            (JoinedShips.ship_id.isnot(None)) & (Ships.id.is_(None))
+        # Check 4: JoinedShips entries that reference ships with no sequences
+        # Check for joined_ships with ship_id but the referenced ship has no sequence
+        missing_sequence_links = session.query(JoinedShips).join(Ships, JoinedShips.ship_id == Ships.id).filter(
+            (JoinedShips.ship_id.isnot(None)) &
+            ((Ships.sequence.is_(None)) | (Ships.sequence == ''))
         ).all()
         
         for joined in missing_sequence_links:
@@ -128,7 +128,7 @@ def check_ships_accessions_joined_ships_relationships() -> Dict:
                 'joined_id': joined.id,
                 'starshipID': joined.starshipID,
                 'ship_id': joined.ship_id,
-                'issue': 'JoinedShips has accession_id but no corresponding ship entry (missing sequence)'
+                'issue': 'JoinedShips has ship_id but the referenced ship has no sequence'
             })
         
         # Check 5: Ships that are missing from joined_ships
@@ -247,8 +247,8 @@ def fix_ships_accessions_joined_ships_relationships(dry_run: bool = True) -> Dic
                 })
         
         # Fix 3: Remove broken ship_id references from joined_ships
-        orphaned_joined_ships = session.query(JoinedShips).outerjoin(Accessions, JoinedShips.ship_id == Accessions.id).filter(
-            (JoinedShips.ship_id.isnot(None)) & (Accessions.id.is_(None))
+        orphaned_joined_ships = session.query(JoinedShips).outerjoin(Ships, JoinedShips.ship_id == Ships.id).filter(
+            (JoinedShips.ship_id.isnot(None)) & (Ships.id.is_(None))
         ).all()
         
         for joined in orphaned_joined_ships:
@@ -287,10 +287,24 @@ def fix_ships_accessions_joined_ships_relationships(dry_run: bool = True) -> Dic
                     logger.warning(f"Ship {ship.id} already has joined_ships entry {existing_entry.id}, skipping creation")
                     continue
                 
+                # Determine proper starshipID based on available information
+                starship_id = f"SHIP_{ship.id}"  # fallback
+                evidence = "AUTO_CREATED"
+                
+                # If ship has an accession, use the accession information
+                if ship.accession_id:
+                    accession = session.query(Accessions).filter(Accessions.id == ship.accession_id).first()
+                    if accession and accession.ship_name:
+                        starship_id = accession.ship_name
+                        evidence = "AUTO_CREATED_FROM_ACCESSION"
+                    elif accession and accession.accession_tag:
+                        starship_id = accession.accession_tag
+                        evidence = "AUTO_CREATED_FROM_ACCESSION_TAG"
+                
                 # Create a new joined_ships entry for this ship
                 new_joined_ship = JoinedShips(
-                    starshipID=f"SHIP_{ship.id}",
-                    evidence="AUTO_CREATED",
+                    starshipID=starship_id,
+                    evidence=evidence,
                     source="database_cleanup",
                     curated_status="auto_created",
                     ship_id=ship.id,
@@ -302,13 +316,31 @@ def fix_ships_accessions_joined_ships_relationships(dry_run: bool = True) -> Dic
                 fixes_applied['new_joined_ships_created'].append({
                     'ship_id': ship.id,
                     'md5': ship.md5,
-                    'action': f'Created new joined_ships entry with ID: SHIP_{ship.id}'
+                    'starshipID': starship_id,
+                    'evidence': evidence,
+                    'action': f'Created new joined_ships entry with starshipID: {starship_id}'
                 })
             else:
+                # For dry run, also calculate what the starshipID would be
+                starship_id = f"SHIP_{ship.id}"  # fallback
+                evidence = "AUTO_CREATED"
+                
+                # If ship has an accession, use the accession information
+                if ship.accession_id:
+                    accession = session.query(Accessions).filter(Accessions.id == ship.accession_id).first()
+                    if accession and accession.ship_name:
+                        starship_id = accession.ship_name
+                        evidence = "AUTO_CREATED_FROM_ACCESSION"
+                    elif accession and accession.accession_tag:
+                        starship_id = accession.accession_tag
+                        evidence = "AUTO_CREATED_FROM_ACCESSION_TAG"
+                
                 fixes_applied['new_joined_ships_created'].append({
                     'ship_id': ship.id,
                     'md5': ship.md5,
-                    'action': f'Would create new joined_ships entry with ID: SHIP_{ship.id}'
+                    'starshipID': starship_id,
+                    'evidence': evidence,
+                    'action': f'Would create new joined_ships entry with starshipID: {starship_id}'
                 })
         
         # Fix 5: Clean up inconsistent joined_ships entries
@@ -981,6 +1013,145 @@ def identify_duplicate_joined_ships() -> Dict:
         session.close()
     
     return duplicates
+
+
+def fix_placeholder_starship_ids(dry_run: bool = True) -> Dict:
+    """
+    Fix joined_ships entries that have placeholder starshipID patterns like 'SHIP_XXX'
+    and replace them with proper accession-based starshipIDs.
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of fixes applied or would be applied
+    """
+    logger.info("Fixing placeholder starshipID entries...")
+    session = StarbaseSession()
+    
+    fixes_applied = {
+        'placeholder_ids_fixed': [],
+        'no_accession_found': [],
+        'warnings': [],
+        'summary': {}
+    }
+    
+    try:
+        # Find joined_ships entries with placeholder starshipID patterns
+        placeholder_entries = session.query(JoinedShips).filter(
+            JoinedShips.starshipID.like('SHIP_%')
+        ).all()
+        
+        logger.info(f"Found {len(placeholder_entries)} entries with placeholder starshipID patterns")
+        
+        for entry in placeholder_entries:
+            # Get the associated ship
+            ship = session.query(Ships).filter(Ships.id == entry.ship_id).first()
+            if not ship:
+                fixes_applied['warnings'].append({
+                    'joined_id': entry.id,
+                    'starshipID': entry.starshipID,
+                    'issue': 'No associated ship found'
+                })
+                continue
+            
+            # Check if the ship has an accession
+            if not ship.accession_id:
+                fixes_applied['no_accession_found'].append({
+                    'joined_id': entry.id,
+                    'starshipID': entry.starshipID,
+                    'ship_id': ship.id,
+                    'issue': 'Ship has no accession_id'
+                })
+                continue
+            
+            # Get the accession information
+            accession = session.query(Accessions).filter(Accessions.id == ship.accession_id).first()
+            if not accession:
+                fixes_applied['warnings'].append({
+                    'joined_id': entry.id,
+                    'starshipID': entry.starshipID,
+                    'ship_id': ship.id,
+                    'accession_id': ship.accession_id,
+                    'issue': 'Accession not found'
+                })
+                continue
+            
+            # Determine the proper starshipID
+            new_starship_id = None
+            new_evidence = None
+            
+            if accession.ship_name:
+                new_starship_id = accession.ship_name
+                new_evidence = "FIXED_FROM_ACCESSION"
+            elif accession.accession_tag:
+                new_starship_id = accession.accession_tag
+                new_evidence = "FIXED_FROM_ACCESSION_TAG"
+            
+            if new_starship_id:
+                if not dry_run:
+                    old_starship_id = entry.starshipID
+                    entry.starshipID = new_starship_id
+                    entry.evidence = new_evidence
+                    entry.updated_at = datetime.now()
+                    session.add(entry)
+                    
+                    fixes_applied['placeholder_ids_fixed'].append({
+                        'joined_id': entry.id,
+                        'old_starshipID': old_starship_id,
+                        'new_starshipID': new_starship_id,
+                        'evidence': new_evidence,
+                        'ship_id': ship.id,
+                        'accession_tag': accession.accession_tag,
+                        'action': f'Fixed placeholder {old_starship_id} -> {new_starship_id}'
+                    })
+                else:
+                    fixes_applied['placeholder_ids_fixed'].append({
+                        'joined_id': entry.id,
+                        'old_starshipID': entry.starshipID,
+                        'new_starshipID': new_starship_id,
+                        'evidence': new_evidence,
+                        'ship_id': ship.id,
+                        'accession_tag': accession.accession_tag,
+                        'action': f'Would fix placeholder {entry.starshipID} -> {new_starship_id}'
+                    })
+            else:
+                fixes_applied['no_accession_found'].append({
+                    'joined_id': entry.id,
+                    'starshipID': entry.starshipID,
+                    'ship_id': ship.id,
+                    'accession_id': ship.accession_id,
+                    'issue': 'Accession has no ship_name or accession_tag'
+                })
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Fixed {len(fixes_applied['placeholder_ids_fixed'])} placeholder starshipID entries")
+        else:
+            logger.info(f"Would fix {len(fixes_applied['placeholder_ids_fixed'])} placeholder starshipID entries")
+        
+        fixes_applied['summary'] = {
+            'total_placeholder_entries': len(placeholder_entries),
+            'fixed_count': len(fixes_applied['placeholder_ids_fixed']),
+            'no_accession_count': len(fixes_applied['no_accession_found']),
+            'warnings_count': len(fixes_applied['warnings']),
+            'recommendation': 'Run again after fixing accession assignments for remaining entries'
+        }
+        
+        logger.info(f"Found {len(placeholder_entries)} placeholder entries")
+        logger.info(f"Fixed {len(fixes_applied['placeholder_ids_fixed'])} entries")
+        logger.info(f"Could not fix {len(fixes_applied['no_accession_found'])} entries (no accession)")
+        logger.info(f"Warnings: {len(fixes_applied['warnings'])}")
+        
+    except Exception as e:
+        logger.error(f"Error fixing placeholder starshipID entries: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return fixes_applied
 
 
 def cleanup_duplicate_joined_ships(dry_run: bool = True) -> Dict:
@@ -2773,6 +2944,30 @@ def generate_cleanup_report(all_issues: Dict) -> str:
             report.append(f"{issue['type']}: {issue['count']} - {issue['description']}")
     if 'recommendations' in ship_id_issues:
         for rec in ship_id_issues['recommendations']:
+            report.append(f"  - {rec}")
+    report.append("")
+
+    # Foreign key validation issues
+    fk_validation = all_issues.get('foreign_key_validation', {})
+    report.append("FOREIGN KEY VALIDATION ISSUES")
+    report.append("-" * 50)
+    if 'foreign_keys_enabled' in fk_validation:
+        report.append(f"Foreign keys enabled: {fk_validation['foreign_keys_enabled']}")
+    if 'summary' in fk_validation:
+        summary = fk_validation['summary']
+        report.append(f"Relationships checked: {summary.get('relationships_checked', 0)}")
+        report.append(f"Total violations: {summary.get('total_violations', 0)}")
+        report.append(f"Relationships with violations: {summary.get('relationships_with_violations', 0)}")
+        report.append("")
+    if 'relationships' in fk_validation:
+        for rel_name, rel_info in fk_validation['relationships'].items():
+            if isinstance(rel_info, dict) and 'orphaned_records' in rel_info:
+                if rel_info['orphaned_records'] > 0:
+                    report.append(f"❌ {rel_name}: {rel_info['orphaned_records']} orphaned records")
+                else:
+                    report.append(f"✅ {rel_name}: OK")
+    if 'recommendations' in fk_validation:
+        for rec in fk_validation['recommendations']:
             report.append(f"  - {rec}")
     report.append("")
     

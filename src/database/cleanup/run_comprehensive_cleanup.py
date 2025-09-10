@@ -194,6 +194,8 @@ if __name__ == "__main__":
                        help="Identify duplicate joined_ships entries")
     parser.add_argument("--cleanup-duplicates", action="store_true",
                        help="Clean up duplicate joined_ships entries")
+    parser.add_argument("--fix-placeholder-starship-ids", action="store_true",
+                       help="Fix placeholder starshipID entries like 'SHIP_XXX' with proper accession-based IDs")
     parser.add_argument("--analyze-mislabeling", action="store_true",
                        help="Analyze ship_id mislabeling in joined_ships table")
     parser.add_argument("--fix-mislabeling", action="store_true",
@@ -395,6 +397,30 @@ if __name__ == "__main__":
                 print(f"  - ID: {entry['entry_id']}, Ship: {entry['ship_id']}, StarshipID: {entry['starshipID']}, Source: {entry['source']}")
             if len(cleanup_report['entries_removed']) > 10:
                 print(f"  ... and {len(cleanup_report['entries_removed']) - 10} more")
+    
+    elif args.fix_placeholder_starship_ids:
+        # Fix placeholder starshipID entries
+        print("Fixing placeholder starshipID entries...")
+        fix_report = fix_placeholder_starship_ids(dry_run=not args.apply)
+        
+        print(f"\nFound {fix_report['summary']['total_placeholder_entries']} placeholder entries")
+        print(f"Fixed: {fix_report['summary']['fixed_count']}")
+        print(f"No accession found: {fix_report['summary']['no_accession_count']}")
+        print(f"Warnings: {fix_report['summary']['warnings_count']}")
+        
+        if fix_report['placeholder_ids_fixed']:
+            print("\nFixed placeholder entries:")
+            for fix in fix_report['placeholder_ids_fixed'][:10]:  # Show first 10
+                print(f"  - {fix['old_starshipID']} -> {fix['new_starshipID']} (Joined ID: {fix['joined_id']}, Ship: {fix['ship_id']})")
+            if len(fix_report['placeholder_ids_fixed']) > 10:
+                print(f"  ... and {len(fix_report['placeholder_ids_fixed']) - 10} more")
+        
+        if fix_report['no_accession_found']:
+            print("\nEntries without accession information:")
+            for entry in fix_report['no_accession_found'][:5]:  # Show first 5
+                print(f"  - {entry['starshipID']} (Joined ID: {entry['joined_id']}, Ship: {entry['ship_id']})")
+            if len(fix_report['no_accession_found']) > 5:
+                print(f"  ... and {len(fix_report['no_accession_found']) - 5} more")
     
     elif args.analyze_mislabeling:
         # Analyze ship_id mislabeling
