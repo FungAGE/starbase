@@ -28,6 +28,7 @@ from src.utils.classification_utils import WORKFLOW_STAGES
 from src.tasks import (
     run_blast_search_task,
     run_classification_workflow_task,
+    run_classification_workflow_sync,
 )
 
 from src.config.logging import get_logger
@@ -118,7 +119,12 @@ layout = dmc.Container(
                                 [
                                     dmc.Title("BLAST Search", order=1),
                                     dmc.Text(
-                                        "Search protein/nucleotide sequences for Starships and Starship-associated genes",
+                                        html.Div([
+                                            "Search protein/nucleotide sequences for ",
+                                            html.Span("Starships", style={"font-style": "italic"}),
+                                            " and ",
+                                            html.Span("Starship-associated genes", style={"font-style": "italic"}),
+                                        ]),
                                         c="dimmed",
                                         size="lg",
                                     ),
@@ -194,7 +200,9 @@ layout = dmc.Container(
                                                                     dmc.Stack(
                                                                         [
                                                                             curated_switch(
-                                                                                text="Only search curated Starships",
+                                                                                text=html.Div(["Only search curated ",
+                                                                                html.Span("Starships", style={"font-style": "italic"}),
+                                                                                ]),
                                                                                 size="sm",
                                                                             ),
                                                                         ],
@@ -1141,7 +1149,8 @@ def process_multiple_sequences(
         first_seq = seq_list[0]
         logger.debug(f"Processing first sequence: header={first_seq.get('header', 'unknown')[:30]}..., length={len(first_seq.get('sequence', ''))}")
 
-        sequence_analysis = process_single_sequence(first_seq, evalue_threshold, curated)
+        # Process the sequence with the correct sequence ID
+        sequence_analysis = process_single_sequence(first_seq, evalue_threshold, curated, sequence_id)
         
         if not sequence_analysis:
             logger.warning("No sequence analysis returned from process_single_sequence")
@@ -1154,13 +1163,33 @@ def process_multiple_sequences(
             logger.warning("Failed to convert sequence analysis to legacy format")
             return _return_error_state(adapter, sequence_id, "Failed to convert sequence data")
 
+        # Create BlastData with the sequence result
         blast_data = BlastData(
             processed_sequences=[0],
             sequence_results={"0": sequence_result},
             total_sequences=len(seq_list)
         )
+        
+        # Update the centralized state with BLAST data using the submission ID
         pipeline_state.update_blast_data(sequence_id, blast_data)
+        
+        # Also store the sequence analysis directly in the centralized state
+        # This ensures the data is available for the workflow
+        if sequence_analysis.blast_result:
+            # Update the sequence state with the blast result
+            sequence_state = pipeline_state.get_sequence(sequence_id)
+            if sequence_state:
+                # Store the blast content and file in the blast data
+                blast_data.blast_content = sequence_analysis.blast_result.blast_content
+                blast_data.blast_file = sequence_analysis.blast_result.blast_file
+                blast_data.fasta_file = sequence_analysis.blast_result.fasta_file
+                blast_data.seq_type = sequence_analysis.sequence_type.value
+                blast_data.processed = sequence_analysis.is_complete()
+                
+                # Update the blast data again with the complete information
+                pipeline_state.update_blast_data(sequence_id, blast_data)
 
+        # Create workflow state using the submission ID
         workflow_state = WorkflowState(
             stages={
                 stage["id"]: {"progress": 0, "complete": False}
@@ -1169,6 +1198,9 @@ def process_multiple_sequences(
             workflow_started=False,
             task_id=sequence_id
         )
+        
+        # Ensure the sequence ID is properly set
+        logger.debug(f"Created workflow state with task_id: {workflow_state.task_id}")
         
         sequence_length = len(sequence_analysis.sequence or "")
         skip_classification = (
@@ -1417,7 +1449,7 @@ def process_additional_sequence(
                 meta_df = fetch_meta_data()
                 meta_dict = meta_df.to_dict("records") if meta_df is not None else None
                 
-                workflow_result = run_classification_workflow_task(
+                workflow_result = run_classification_workflow_sync(
                     workflow_state=workflow_state.to_dict(),
                     blast_data=blast_data.to_dict(),
                     classification_data=classification_data.to_dict(),
@@ -2046,6 +2078,8 @@ def update_single_sequence_classification(blast_results_dict, workflow_state_dic
     # Get classification data from centralized state - SINGLE SOURCE OF TRUTH
     classification_data = adapter.get_sequence_classification_for_ui(sequence_id)
     
+    logger.debug(f"update_single_sequence_classification: sequence_id={sequence_id}, classification_data={classification_data is not None}")
+    
     if classification_data:
         logger.info(f"Found classification data in centralized state: {classification_data}")
     else:
@@ -2114,10 +2148,20 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
         logger.debug("Running classification workflow via centralized state")
         
         # Get current state from centralized pipeline
+        resolved_sequence_id = pipeline_state.resolve_sequence_id(sequence_id)
+        if resolved_sequence_id:
+            sequence_id = resolved_sequence_id
+            logger.info(f"Resolved sequence ID: {sequence_id}")
+        
         sequence_state = pipeline_state.get_sequence(sequence_id)
+        active_sequence_id = pipeline_state._active_sequence_id
+        
         if not sequence_state:
             logger.error(f"No sequence state found for {sequence_id}")
-            raise PreventUpdate
+            # Create a new sequence state to prevent further errors
+            pipeline_state.add_sequence_without_activation(sequence_id)
+            sequence_state = pipeline_state.get_sequence(sequence_id)
+            logger.info(f"Created new sequence state for {sequence_id}")
         
         # Prepare data for workflow
         blast_data = sequence_state.blast_data
@@ -2130,7 +2174,7 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
         meta_dict = meta_df.to_dict("records") if meta_df is not None else None
         
         # Run workflow directly (no Celery)
-        result = run_classification_workflow_task(
+        result = run_classification_workflow_sync(
             workflow_state=workflow_state.to_dict(),
             blast_data=blast_data.to_dict(),
             classification_data=classification_data.to_dict(),

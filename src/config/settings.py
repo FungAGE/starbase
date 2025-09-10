@@ -18,7 +18,7 @@ DATA_DIR = next(
 # Create required directories
 REQUIRED_DIRS = [
     os.path.join(DATA_DIR),
-    os.path.join(DATA_DIR, "cache"),
+    os.path.join(PROJECT_ROOT, "src", "database", "cache"),
     os.path.join(DATA_DIR, "ships", "fna", "blastdb"),
     os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb"),
     os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),
@@ -115,4 +115,4 @@ GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
 CACHE_TIMEOUT = (
     None if os.getenv("CACHE_TIMEOUT") is None else int(os.getenv("CACHE_TIMEOUT"))
 )
-CACHE_DIR = os.path.join(DATA_DIR, "cache")
+CACHE_DIR = os.path.join(PROJECT_ROOT, "src", "database", "cache")

@@ -188,15 +188,6 @@ table_columns = [
         "presentation": "markdown",
     },
     {
-        "name": "Number of Genomes",
-        "id": "n_genomes",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-        "type": "numericColumn",
-        "valueFormatter": "value.toLocaleString()",
-    },
-    {
         "name": "Order",
         "id": "order",
         "deletable": False,
@@ -224,15 +215,6 @@ table_columns = [
         "selectable": False,
         "presentation": "markdown",
     },
-    {
-        "name": "Element Length (bp)",
-        "id": "elementLength",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-        "type": "numericColumn",
-        "valueFormatter": "value.toLocaleString()",
-    },
 ]
 
 
@@ -249,12 +231,22 @@ layout = dmc.Container(
         dmc.Paper(
             children=[
                 dmc.Title(
-                    "Starship Wiki",
+                    [
+                        html.Span(
+                            "starbase ",
+                            className="logo-text",
+                        ),
+                        " Wiki",
+                    ],
                     order=1,
                     mb="md",
                 ),
                 dmc.Text(
-                    "Search and explore the characteristics of different Starship families",
+                    [
+                        "Search and explore the characteristics of different ",
+                        html.Span("Starship", style={"font-style": "italic"}),
+                        " families"
+                    ],
                     c="dimmed",
                     size="lg",
                 ),
@@ -266,13 +258,11 @@ layout = dmc.Container(
                             span={"lg": 3, "md": 6, "sm": 12},
                             children=[
                                 dmc.Autocomplete(
-                                    id="multi-column-search",
+                                    id="taxa-search",
                                     label="Taxonomy",
                                     placeholder="Search across family, genus, etc.",
                                     data=[],  # Will be populated by callback
                                     limit=20,  # Limit dropdown items for performance
-                                    # nothingFoundMessage="No matches found",
-                                    # icon=html.I(className="bi bi-search"),
                                     style={"width": "100%"},
                                 )
                             ],
@@ -281,15 +271,13 @@ layout = dmc.Container(
                         dmc.GridCol(
                             span={"lg": 3, "md": 6, "sm": 12},
                             children=[
-                                dmc.MultiSelect(
+                                dmc.Autocomplete(
                                     id="family-search",
                                     label="Starship Family",
                                     placeholder="Search by family...",
-                                    searchable=True,
-                                    clearable=True,
-                                    nothingFoundMessage="No options found",
                                     data=[],  # Will be populated by callback
-                                    value=[],  # Initialize with empty list
+                                    limit=20,  # Limit dropdown items for performance
+                                    style={"width": "100%"},
                                 ),
                             ],
                         ),
@@ -303,11 +291,13 @@ layout = dmc.Container(
                         dmc.Group(
                             children=[
                                 curated_switch(
-                                    text="Only show curated Starships",
+                                    text=html.Div(["Only show curated ",
+                                    html.Span("Starships", style={"font-style": "italic"})]),
                                     size="md",
                                 ),
                                 dereplicated_switch(
-                                    text="Only show dereplicated Starships",
+                                    text=html.Div(["Only show dereplicated ",
+                                    html.Span("Starships", style={"font-style": "italic"})]),
                                     size="md",
                                 ),
                             ],
@@ -372,15 +362,16 @@ layout = dmc.Container(
                                     ),
                                 ),
                             ],
-                            withBorder=True,
-                            shadow="sm",
+                            p="xl",
                             radius="md",
-                            p="md",
+                            withBorder=True,
+                            mb="xl",
                         ),
                         dmc.Space(h="sm"),
                         dmc.Paper(
                             children=[
-                                dmc.Title("Starship Families", order=2, mb="md"),
+                                dmc.Title(html.Div([html.Span("Starship", style={"font-style": "italic"}),
+                                " Families"]), order=2, mb="md"),
                                 dcc.Loading(
                                     id="wiki-loading",
                                     type="circle",
@@ -390,9 +381,10 @@ layout = dmc.Container(
                                     ),
                                 ),
                             ],
-                            p="md",
+                            p="xl",
                             radius="md",
                             withBorder=True,
+                            mb="xl",
                             style={
                                 "minHeight": "200px",  # Minimum height when collapsed
                                 "maxHeight": "calc(100vh - 200px)",  # Maximum height
@@ -507,10 +499,14 @@ def create_accordion(cached_meta, cached_papers):
 
 @callback(
     Output("search-results", "children"),
-    Input("filtered-meta-data", "data"),
-    Input("meta-data", "data"),
-    Input("curated-input", "checked"),
-    Input("dereplicated-input", "checked"),
+    [
+        Input("filtered-meta-data", "data"),
+        Input("meta-data", "data"),
+    ],
+    [
+        State("curated-input", "checked"),
+        State("dereplicated-input", "checked"),
+    ],
 )
 @handle_callback_error
 def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
@@ -523,10 +519,17 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
     try:
         df = pd.DataFrame(data_to_use)
 
+        # Check if DataFrame is empty before applying filters
+        if df.empty:
+            return dmc.Alert(
+                "No results match your search criteria.", color="blue", variant="filled"
+            )
+
         # Apply curated/dereplicated filters if switches are enabled
-        if curated:
+        if curated and "curated_status" in df.columns:
             df = df[df["curated_status"] == "curated"]
 
+        # Check again after applying filters
         if df.empty:
             return dmc.Alert(
                 "No results match your search criteria.", color="blue", variant="filled"
@@ -545,17 +548,17 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             filtered_meta_df = df.drop_duplicates(subset=["accession_tag"]).merge(
                 genome_counts, on="accession_tag", how="left"
             )
+        else:
+            # If not dereplicating, use the original dataframe and add n_genomes column
+            filtered_meta_df = df.copy()
+            # Add n_genomes column with default value of 1 for each row
+            filtered_meta_df["n_genomes"] = 1
 
         if filtered_meta_df.empty:
             return dmc.Text("No results found", size="lg", c="dimmed")
 
-        # Convert numeric columns to appropriate type
-        filtered_meta_df["n_genomes"] = pd.to_numeric(
-            filtered_meta_df["n_genomes"], errors="coerce"
-        )
-        filtered_meta_df["elementLength"] = pd.to_numeric(
-            filtered_meta_df["elementLength"], errors="coerce"
-        )
+        # drop unnecessary columns
+        filtered_meta_df = filtered_meta_df.drop(columns=["n_genomes", "elementLength"])
 
         # Fill NA values
         filtered_meta_df = filtered_meta_df.fillna("")
@@ -566,17 +569,17 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             table_columns=table_columns,
         )
 
-        title = dmc.Title("Starship Table", order=2, mb="md")
-
         # Create the enhanced component similar to wiki_table_with_download
         enhanced_results = dmc.Paper(
             children=[
                 # Main Content
-                dmc.Title(title),
+                dmc.Title("Info Table and Downloads", order=2, mb="md"),
                 dmc.Stack(
                     [
                         dmc.Text(
-                            "Select individual Starships or download the complete dataset",
+                            html.Div(["Select individual ",
+                            html.Span("Starships", style={"font-style": "italic"}),
+                            " or download the complete dataset"]),
                             size="lg",
                             c="dimmed",
                         ),
@@ -586,7 +589,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                 gap="xl",
                                 children=[
                                     dmc.Button(
-                                        "Download All Starships",
+                                        html.Div(["Download All ",
+                                        html.Span("Starships", style={"font-style": "italic"})]),
                                         id="download-all-btn",
                                         variant="gradient",
                                         gradient={
@@ -603,7 +607,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                         },
                                     ),
                                     dmc.Button(
-                                        "Download Selected Starships",
+                                        html.Div(["Download Selected ",
+                                        html.Span("Starships", style={"font-style": "italic"})]),
                                         id="download-selected-btn",
                                         variant="gradient",
                                         gradient={"from": "teal", "to": "lime"},
@@ -638,7 +643,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                     c="dimmed",
                                 ),
                                 dmc.Text(
-                                    "Click rows to select Starships",
+                                    html.Div(["Click rows to select ",
+                                    html.Span("Starships", style={"font-style": "italic"})]),
                                     size="sm",
                                     c="dimmed",
                                     style={"fontStyle": "italic"},
@@ -688,21 +694,24 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
         )
 
 
-# Modified callback to create combined search data
+# Callback to populate autocomplete components with initial data
 @callback(
-    Output("multi-column-search", "data"),
+    [
+        Output("taxa-search", "data"),
+        Output("family-search", "data"),
+    ],
     Input("meta-data", "data"),
-    prevent_initial_call=True,
+    prevent_initial_call=False,  # Allow initial call to populate on page load
 )
 @handle_callback_error
-def update_combined_search_data(meta_data):
+def populate_search_components(meta_data):
     if not meta_data:
-        return []
+        return [], []
 
     try:
         df = pd.DataFrame(meta_data)
 
-        # Define the columns you want to search across
+        # Get taxonomy search data
         search_columns = [
             "name",
             "subkingdom",
@@ -714,46 +723,55 @@ def update_combined_search_data(meta_data):
             "suborder",
             "family",
             "genus",
-            "familyName",
         ]
 
         # Collect all unique values across specified columns
-        all_values = set()
+        all_taxa_values = set()
 
         for col in search_columns:
             if col in df.columns:
                 # Get non-null values and add to set
                 values = df[col].dropna().astype(str).unique()
-                all_values.update(values)
+                all_taxa_values.update(values)
 
         # Convert to sorted list and format for Autocomplete
-        search_data = [{"value": val, "label": val} for val in sorted(all_values)]
+        # sort by length instead of alphabetically
+        taxa_search_data = [{"value": val, "label": val} for val in sorted(all_taxa_values, key=lambda s: len(s))]
 
-        return search_data
+        # Get family search data
+        family_values = []
+        if "familyName" in df.columns:
+            family_values = df["familyName"].dropna().astype(str).unique()
+            family_search_data = [{"value": val, "label": val} for val in sorted(family_values, key=lambda s: len(s))]
+        else:
+            family_search_data = []
+
+        return taxa_search_data, family_search_data
 
     except Exception as e:
-        logger.error(f"Error in update_combined_search_data: {str(e)}")
-        return []
+        logger.error(f"Error in populate_search_components: {str(e)}")
+        return [], []
+
+
+
 
 
 @callback(
-    [
-        Output("filtered-meta-data", "data"),
-        Output("multi-column-search", "value"),
-    ],
+    Output("filtered-meta-data", "data"),
     [
         Input("apply-search", "n_clicks"),
         Input("reset-search", "n_clicks"),
     ],
     [
-        State("multi-column-search", "value"),
+        State("taxa-search", "value"),
+        State("family-search", "value"),
         State("meta-data", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
-def handle_multi_column_search(
-    search_clicks, reset_clicks, search_value, original_data
+def handle_taxa_and_family_search(
+    search_clicks, reset_clicks, taxa_search_value, family_search_value, original_data
 ):
     if not original_data:
         raise PreventUpdate
@@ -766,47 +784,61 @@ def handle_multi_column_search(
 
     # Reset functionality
     if triggered_id == "reset-search":
-        return None, ""
+        return None
 
-    # If no search clicked or no search value, prevent update
-    if not search_clicks or not search_value:
-        return None, search_value or ""
+    # If no search clicked, prevent update
+    if not search_clicks:
+        return None
 
     try:
         df = pd.DataFrame(original_data)
+        filtered_df = df.copy()
 
-        # Define columns to search across
-        search_columns = [
-            "name",
-            "subkingdom",
-            "phylum",
-            "subphylum",
-            "class",
-            "subclass",
-            "order",
-            "suborder",
-            "family",
-            "genus",
-            "familyName",
-        ]
+        # Apply taxonomy search if value is provided
+        if taxa_search_value and taxa_search_value.strip():
+            # Define columns to search across
+            taxa_search_columns = [
+                "name",
+                "subkingdom",
+                "phylum",
+                "subphylum",
+                "class",
+                "subclass",
+                "order",
+                "suborder",
+                "family",
+                "genus",
+            ]
 
-        # Create a mask for rows that contain the search value in any of the specified columns
-        mask = pd.Series([False] * len(df))
+            # Create a mask for rows that contain the search value in any of the specified columns
+            mask = pd.Series([False] * len(filtered_df))
 
-        for col in search_columns:
-            if col in df.columns:
-                # Case-insensitive partial matching
-                mask |= (
-                    df[col].astype(str).str.contains(search_value, case=False, na=False)
-                )
+            for col in taxa_search_columns:
+                if col in filtered_df.columns:
+                    # Case-insensitive partial matching
+                    mask |= (
+                        filtered_df[col].astype(str).str.contains(taxa_search_value, case=False, na=False)
+                    )
 
-        filtered_df = df[mask]
+            filtered_df = filtered_df[mask]
 
-        return filtered_df.to_dict("records"), search_value
+        # Apply family search if value is provided
+        if family_search_value and family_search_value.strip():
+            if "familyName" in filtered_df.columns:
+                # Case-insensitive exact matching for family
+                filtered_df = filtered_df[
+                    filtered_df["familyName"].astype(str).str.lower() == family_search_value.lower()
+                ]
+
+        # Return empty list if no results found, otherwise return the filtered data
+        if filtered_df.empty:
+            return []
+        else:
+            return filtered_df.to_dict("records")
 
     except Exception as e:
-        logger.error(f"Error in handle_multi_column_search: {str(e)}")
-        return None, search_value or ""
+        logger.error(f"Error in handle_taxa_and_family_search: {str(e)}")
+        return []
 
 
 @callback(
@@ -895,7 +927,6 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
                 "showAxisDragHandles": False,
                 "displaylogo": False,
                 "showLink": False,
-                "animate": False,
                 "editable": False,
                 "modeBarButtonsToRemove": ["select2d", "lasso2d"],
                 "toImageButtonOptions": {"height": None, "width": None},
@@ -1049,8 +1080,16 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
             children="No sequences found for download", color="red", title="Error"
         )
 
+    if num_sequences > 0:
+        if num_sequences == 1:
+            download_message = f"Downloading {num_sequences} sequence"
+        else:
+            download_message = f"Downloading {num_sequences} sequences"
+    else:
+        download_message = "No sequences found for download"
+
     return download_data, dmc.Alert(
-        children=f"Downloading {num_sequences} sequences",
+        children=download_message,
         color="green",
         title="Success",
     )
