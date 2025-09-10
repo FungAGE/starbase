@@ -3836,6 +3836,39 @@ def _ncbi_taxonomy_search(scientific_name: str, email: str = None, api_key: str 
         return {}
 
 
+def _find_or_create_taxonomy(name: str, taxid: str = None, session=None) -> int:
+    """
+    Find existing taxonomy entry or create new one without duplicating.
+    
+    Args:
+        name (str): Scientific name to search for
+        taxid (str): NCBI taxID if available
+        session: Database session
+        
+    Returns:
+        int: Taxonomy ID (existing or newly created)
+    """
+    if not session:
+        session = StarbaseSession()
+    
+    # First try to find by name (exact match)
+    existing = session.query(Taxonomy).filter(Taxonomy.name == name).first()
+    if existing:
+        return existing.id
+    
+    # If taxID provided, check by taxID
+    if taxid:
+        existing_by_taxid = session.query(Taxonomy).filter(Taxonomy.taxID == taxid).first()
+        if existing_by_taxid:
+            return existing_by_taxid.id
+    
+    # Create new entry
+    new_taxonomy = Taxonomy(name=name, taxID=taxid)
+    session.add(new_taxonomy)
+    session.flush()  # Get the ID without committing
+    return new_taxonomy.id
+
+
 def fix_missing_genome_taxonomy_via_ncbi(map_csv: str = None, email: str = None, api_key: str = None, dry_run: bool = True, delay_seconds: float = 0.34) -> Dict:
     """
     Resolve missing Genome.taxonomy_id by querying NCBI Taxonomy.
@@ -3913,11 +3946,14 @@ def fix_missing_genome_taxonomy_via_ncbi(map_csv: str = None, email: str = None,
 
             taxonomy_row = existing
             if not taxonomy_row and not dry_run:
-                taxonomy_row = Taxonomy(name=sci_name, taxID=taxid_str)
-                session.add(taxonomy_row)
-                session.flush()  # assign id
-                report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': sci_name, 'taxID': taxid_str})
-                created_taxa += 1
+                # Use helper to prevent duplicates
+                taxonomy_id = _find_or_create_taxonomy(sci_name, taxid_str, session)
+                taxonomy_row = session.query(Taxonomy).filter(Taxonomy.id == taxonomy_id).first()
+                
+                # Only count as created if it's new
+                if taxonomy_id not in [t['taxonomy_id'] for t in report['taxa_created']]:
+                    report['taxa_created'].append({'taxonomy_id': taxonomy_id, 'name': sci_name, 'taxID': taxid_str})
+                    created_taxa += 1
 
             if taxonomy_row:
                 if not dry_run:
@@ -4060,11 +4096,14 @@ def fix_missing_genome_taxonomy_via_taxdump(names_dmp_path: str, include_synonym
                     (Taxonomy.taxID == str(taxid)) | (Taxonomy.name == sci_name)
                 ).first()
                 if not taxonomy_row and not dry_run:
-                    taxonomy_row = Taxonomy(name=sci_name, taxID=str(taxid))
-                    session.add(taxonomy_row)
-                    session.flush()
-                    report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': sci_name, 'taxID': str(taxid)})
-                    created += 1
+                    # Use helper to prevent duplicates
+                    taxonomy_id = _find_or_create_taxonomy(sci_name, str(taxid), session)
+                    taxonomy_row = session.query(Taxonomy).filter(Taxonomy.id == taxonomy_id).first()
+                    
+                    # Only count as created if it's new
+                    if taxonomy_id not in [t['taxonomy_id'] for t in report['taxa_created']]:
+                        report['taxa_created'].append({'taxonomy_id': taxonomy_id, 'name': sci_name, 'taxID': str(taxid)})
+                        created += 1
 
             # 2) Fallback: Existing Taxonomy by normalized name
             if taxonomy_row is None:
@@ -4255,11 +4294,21 @@ def reconcile_genome_taxonomy_via_map(map_path: str, dry_run: bool = True) -> Di
                 assembly_accessions_updated += 1
 
             if taxonomy_row is None and not dry_run:
-                taxonomy_row = Taxonomy(name=mapped_name, genus=mapped_genus, species=mapped_species_epithet)
+                # Use helper to prevent duplicates
+                taxonomy_id = _find_or_create_taxonomy(mapped_name, None, session)
+                taxonomy_row = session.query(Taxonomy).filter(Taxonomy.id == taxonomy_id).first()
+                
+                # Update genus and species if available
+                if mapped_genus and not taxonomy_row.genus:
+                    taxonomy_row.genus = mapped_genus
+                if mapped_species_epithet and not taxonomy_row.species:
+                    taxonomy_row.species = mapped_species_epithet
                 session.add(taxonomy_row)
-                session.flush()
-                report['taxa_created'].append({'taxonomy_id': taxonomy_row.id, 'name': mapped_name})
-                created += 1
+                
+                # Only count as created if it's new
+                if taxonomy_id not in [t['taxonomy_id'] for t in report['taxa_created']]:
+                    report['taxa_created'].append({'taxonomy_id': taxonomy_id, 'name': mapped_name})
+                    created += 1
 
             if taxonomy_row:
                 if not dry_run:
@@ -4768,6 +4817,157 @@ def consolidate_taxonomy_duplicates(dry_run: bool = True) -> Dict:
         session.close()
     
     return consolidation
+
+
+def fix_missing_tax_id_via_ome_consistency(dry_run: bool = True) -> Dict:
+    """
+    Fix missing tax_id in joined_ships table by using ome code consistency.
+    
+    For entries with starshipID that have "ome" codes as prefix (e.g., 'altbur1_sequence1'),
+    extract the ome code and ensure all entries with the same ome code have consistent tax_id.
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of fixes applied
+    """
+    logger.info("Fixing missing tax_id in joined_ships using ome code consistency...")
+    session = StarbaseSession()
+    
+    fixes = {
+        'tax_ids_filled': [],
+        'ome_groups_analyzed': [],
+        'inconsistent_ome_groups': [],
+        'warnings': [],
+        'summary': {}
+    }
+    
+    try:
+        # Get all joined_ships entries with starshipIDs that look like ome codes
+        all_joined_ships = session.query(JoinedShips).all()
+        
+        # Group by ome code extracted from starshipID
+        ome_groups = {}
+        
+        for js in all_joined_ships:
+            if not js.starshipID:
+                continue
+                
+            # Extract ome code - look for pattern like 'abcdef1_' at start
+            import re
+            ome_match = re.match(r'^([a-z]{6}\d+)_', js.starshipID.lower())
+            if not ome_match:
+                continue
+                
+            ome_code = ome_match.group(1)
+            
+            if ome_code not in ome_groups:
+                ome_groups[ome_code] = []
+            ome_groups[ome_code].append(js)
+        
+        # Analyze each ome group for tax_id consistency
+        for ome_code, entries in ome_groups.items():
+            if len(entries) < 2:
+                continue  # Skip single entries
+            
+            # Collect tax_ids for this ome group
+            tax_ids = []
+            entries_with_tax_id = []
+            entries_without_tax_id = []
+            
+            for entry in entries:
+                if entry.tax_id:
+                    tax_ids.append(entry.tax_id)
+                    entries_with_tax_id.append(entry)
+                else:
+                    entries_without_tax_id.append(entry)
+            
+            # Check consistency
+            unique_tax_ids = list(set(tax_ids))
+            
+            if len(unique_tax_ids) == 0:
+                # No tax_id assignments for this ome group
+                fixes['ome_groups_analyzed'].append({
+                    'ome_code': ome_code,
+                    'total_entries': len(entries),
+                    'with_tax_id': 0,
+                    'without_tax_id': len(entries_without_tax_id),
+                    'status': 'no_tax_id_available'
+                })
+                continue
+                
+            elif len(unique_tax_ids) == 1:
+                # Consistent tax_id - fill in missing ones
+                consensus_tax_id = unique_tax_ids[0]
+                
+                for entry in entries_without_tax_id:
+                    if not dry_run:
+                        entry.tax_id = consensus_tax_id
+                        session.add(entry)
+                    
+                    fixes['tax_ids_filled'].append({
+                        'joined_ships_id': entry.id,
+                        'starshipID': entry.starshipID,
+                        'ome_code': ome_code,
+                        'assigned_tax_id': consensus_tax_id,
+                        'action': f'Assigned tax_id {consensus_tax_id} to {entry.starshipID} based on ome code {ome_code}'
+                    })
+                
+                fixes['ome_groups_analyzed'].append({
+                    'ome_code': ome_code,
+                    'total_entries': len(entries),
+                    'with_tax_id': len(entries_with_tax_id),
+                    'without_tax_id': len(entries_without_tax_id),
+                    'consensus_tax_id': consensus_tax_id,
+                    'filled': len(entries_without_tax_id),
+                    'status': 'consistent'
+                })
+                
+            else:
+                # Inconsistent tax_ids - needs manual review
+                fixes['inconsistent_ome_groups'].append({
+                    'ome_code': ome_code,
+                    'total_entries': len(entries),
+                    'tax_ids': unique_tax_ids,
+                    'entries_by_tax_id': {
+                        tax_id: [e.starshipID for e in entries_with_tax_id if e.tax_id == tax_id]
+                        for tax_id in unique_tax_ids
+                    },
+                    'entries_without_tax_id': [e.starshipID for e in entries_without_tax_id],
+                    'status': 'inconsistent'
+                })
+                
+                fixes['warnings'].append(f"OME code {ome_code} has inconsistent tax_ids: {unique_tax_ids}")
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Applied tax_id fixes for {len(fixes['tax_ids_filled'])} entries")
+        else:
+            logger.info(f"Would apply tax_id fixes for {len(fixes['tax_ids_filled'])} entries")
+        
+        fixes['summary'] = {
+            'ome_groups_found': len(ome_groups),
+            'ome_groups_analyzed': len(fixes['ome_groups_analyzed']),
+            'tax_ids_filled': len(fixes['tax_ids_filled']),
+            'inconsistent_groups': len(fixes['inconsistent_ome_groups']),
+            'warnings': len(fixes['warnings']),
+            'recommendation': 'Review inconsistent ome groups manually'
+        }
+        
+        logger.info(f"Analyzed {len(ome_groups)} ome groups")
+        logger.info(f"Filled {len(fixes['tax_ids_filled'])} missing tax_ids")
+        logger.info(f"Found {len(fixes['inconsistent_ome_groups'])} inconsistent ome groups")
+        
+    except Exception as e:
+        logger.error(f"Error fixing tax_id via ome consistency: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return fixes
 
 
 def lookup_assembly_accessions_from_contigs(email: str = None, api_key: str = None, limit: int = 0, dry_run: bool = True) -> Dict:

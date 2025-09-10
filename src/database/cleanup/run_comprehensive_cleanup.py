@@ -250,6 +250,8 @@ if __name__ == "__main__":
                        help="Identify duplicate taxonomy entries based on taxID and consistent information")
     parser.add_argument("--consolidate-taxonomy-duplicates", action="store_true",
                        help="Consolidate duplicate taxonomy entries, keeping lowest ID and updating references")
+    parser.add_argument("--fix-missing-tax-id-via-ome", action="store_true",
+                       help="Fix missing tax_id in joined_ships using ome code consistency")
 
     args = parser.parse_args()
     
@@ -937,6 +939,44 @@ if __name__ == "__main__":
                 print(f"  ID {deleted['taxonomy_id']}: {deleted['name']} (taxID: {deleted['taxID']})")
             if len(consolidation['entries_deleted']) > 10:
                 print(f"  ... and {len(consolidation['entries_deleted']) - 10} more")
+
+    elif args.fix_missing_tax_id_via_ome:
+        # Fix missing tax_id using ome code consistency
+        print("Fixing missing tax_id in joined_ships using ome code consistency...")
+        fix_report = fix_missing_tax_id_via_ome_consistency(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("OME TAX_ID CONSISTENCY FIX")
+        print("=" * 80)
+        
+        print(f"\nOME groups found: {fix_report['summary']['ome_groups_found']}")
+        print(f"OME groups analyzed: {fix_report['summary']['ome_groups_analyzed']}")
+        print(f"Tax_ids filled: {fix_report['summary']['tax_ids_filled']}")
+        print(f"Inconsistent groups: {fix_report['summary']['inconsistent_groups']}")
+        print(f"Warnings: {fix_report['summary']['warnings']}")
+        
+        if fix_report['tax_ids_filled']:
+            print(f"\nTAX_IDS FILLED (first 10):")
+            for fix in fix_report['tax_ids_filled'][:10]:
+                print(f"  {fix['starshipID']}: ome='{fix['ome_code']}' → tax_id={fix['assigned_tax_id']}")
+            if len(fix_report['tax_ids_filled']) > 10:
+                print(f"  ... and {len(fix_report['tax_ids_filled']) - 10} more")
+        
+        if fix_report['ome_groups_analyzed']:
+            print(f"\nOME GROUPS ANALYZED (first 10):")
+            for group in fix_report['ome_groups_analyzed'][:10]:
+                print(f"  {group['ome_code']}: {group['total_entries']} entries, {group['status']}")
+                if group['status'] == 'consistent':
+                    print(f"    → Filled {group['filled']} missing tax_ids with {group['consensus_tax_id']}")
+            if len(fix_report['ome_groups_analyzed']) > 10:
+                print(f"  ... and {len(fix_report['ome_groups_analyzed']) - 10} more")
+        
+        if fix_report['inconsistent_ome_groups']:
+            print(f"\nINCONSISTENT OME GROUPS (manual review needed):")
+            for group in fix_report['inconsistent_ome_groups'][:5]:
+                print(f"  {group['ome_code']}: {group['total_entries']} entries, tax_ids={group['tax_ids']}")
+            if len(fix_report['inconsistent_ome_groups']) > 5:
+                print(f"  ... and {len(fix_report['inconsistent_ome_groups']) - 5} more")
 
     else:
         # Run full cleanup process
