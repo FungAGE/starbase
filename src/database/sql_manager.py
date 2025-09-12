@@ -36,7 +36,28 @@ def db_retry_decorator(additional_retry_exceptions=()):
     )
 
 
-@cache.memoize()
+# Context manager for database sessions with timeout
+@contextmanager
+def db_session_manager():
+    """Context manager for database sessions with timeout"""
+    session = None
+    try:
+        session = StarbaseSession()
+        # SQLite doesn't support SET SESSION, so we'll skip the timeout setting
+        if session.bind.dialect.name != "sqlite":
+            session.execute(text("SET SESSION wait_timeout=30"))  # Only for MySQL
+        yield session
+    except Exception as e:
+        logger.error(f"Database error: {str(e)}")
+        if session:
+            session.rollback()
+        raise
+    finally:
+        if session:
+            session.close()
+
+
+@db_retry_decorator()
 def fetch_meta_data(curated=False, accession_tag=None):
     """
     Fetch metadata from the database with caching.
@@ -101,8 +122,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     finally:
         session.close()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = StarbaseSession()
@@ -124,8 +144,7 @@ def fetch_paper_data():
     finally:
         session.close()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
@@ -259,7 +278,8 @@ def fetch_ships(
             v.familyName,
             v.assembly_accession,
             s.sequence,
-            s.md5
+            s.md5,
+            s.rev_comp_md5
         FROM valid_ships v
         LEFT JOIN ships s ON s.accession_id = v.accession_id
         WHERE s.sequence IS NOT NULL"""
@@ -307,7 +327,6 @@ def fetch_ships(
         session.close()
 
 
-@cache.memoize()
 @db_retry_decorator()
 def fetch_ship_table(curated=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
@@ -343,27 +362,6 @@ def fetch_ship_table(curated=False):
     except Exception as e:
         logger.error(f"Error fetching ship table data: {str(e)}")
         raise
-
-
-@contextmanager
-def db_session_manager():
-    """Context manager for database sessions with timeout"""
-    session = None
-    try:
-        session = StarbaseSession()
-        # SQLite doesn't support SET SESSION, so we'll skip the timeout setting
-        if session.bind.dialect.name != "sqlite":
-            session.execute(text("SET SESSION wait_timeout=30"))  # Only for MySQL
-        yield session
-    except Exception as e:
-        logger.error(f"Database error: {str(e)}")
-        if session:
-            session.rollback()
-        raise
-    finally:
-        if session:
-            session.close()
-
 
 @db_retry_decorator()
 def fetch_accession_ship(accession_tag):
@@ -410,7 +408,7 @@ def fetch_accession_ship(accession_tag):
     finally:
         session.close()
 
-
+@db_retry_decorator()
 def fetch_captains(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -507,16 +505,14 @@ def fetch_captains(
     finally:
         session.close()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_captain_tree():
     fallback_tree_path = PHYLOGENY_PATHS["tree"]
 
     with open(fallback_tree_path, "r") as f:
         return f.read()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_sf_data():
     sf_data = pd.read_csv(PHYLOGENY_PATHS["clades"], sep="\t")
 
@@ -527,7 +523,6 @@ def fetch_sf_data():
     return sf_data
 
 
-@cache.memoize()
 @db_retry_decorator()
 def get_database_stats():
     """Get statistics about the Starship database."""
