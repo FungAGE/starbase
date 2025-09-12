@@ -185,12 +185,11 @@ def get_version_sort_key(version_tag):
 
 # sequence can be a string, Seq object, or SeqRecord object
 def generate_md5_hash(sequence):
-    """Generate an MD5 hash of a sequence."""
     if sequence is None:
-        return None
-    elif type(sequence) == SeqIO.SeqRecord:
+        raise ValueError("Sequence is None, can't generate MD5 hash")
+    if type(sequence) == SeqIO.SeqRecord:
         sequence = str(sequence.seq)
-    elif type(sequence) == Seq:  # Handle Seq objects
+    if type(sequence) == Seq:  # Handle Seq objects
         sequence = str(sequence)
     return hashlib.md5(sequence.encode()).hexdigest()
 
@@ -234,26 +233,46 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
             )
             continue
         query_md5[seq] = md5_hash
+        # Also store reverse complement hash for checking
+        query_md5[f"{seq}_revcomp"] = md5_hash_revcomp
 
     # collect existing md5 in dict
     # Create reverse mapping: md5 -> accession_display (includes version)
     existing_hashes = {}
     sequences_without_md5 = []
 
+    stored_md5_count = 0
+    stored_rev_comp_count = 0
+    calculated_md5_count = 0
+    
     for _, row in existing_ships.iterrows():
         # Use accession_display if available, otherwise fall back to accession_tag
         accession_display = row.get("accession_display", row.get("accession_tag"))
 
         if row.get("md5") is not None and accession_display is not None:
             existing_hashes[row["md5"]] = accession_display
-        elif row.get("sequence") is not None and accession_display is not None:
+            stored_md5_count += 1
+        # Also check reverse complement MD5 if available in database
+        if row.get("rev_comp_md5") is not None and accession_display is not None:
+            existing_hashes[row["rev_comp_md5"]] = accession_display
+            stored_rev_comp_count += 1
+        # Calculate MD5 on the fly for sequences without stored MD5 (both md5 and rev_comp_md5 are None)
+        if (row.get("md5") is None and row.get("rev_comp_md5") is None and 
+            row.get("sequence") is not None and accession_display is not None):
             # Calculate MD5 on the fly for sequences without stored MD5
             clean_seq = clean_sequence(row["sequence"])
             if clean_seq:
                 calculated_md5 = generate_md5_hash(clean_seq)
+                calculated_md5_revcomp = generate_md5_hash(revcomp(clean_seq))
                 if calculated_md5:
                     existing_hashes[calculated_md5] = accession_display
                     sequences_without_md5.append(accession_display)
+                    calculated_md5_count += 1
+                if calculated_md5_revcomp:
+                    existing_hashes[calculated_md5_revcomp] = accession_display
+                    calculated_md5_count += 1
+    
+    logger.debug(f"MD5 hash sources: stored={stored_md5_count}, stored_rev_comp={stored_rev_comp_count}, calculated={calculated_md5_count}")
 
     logger.debug(f"Found {len(existing_hashes)} existing MD5 hashes in database")
     if sequences_without_md5:
@@ -264,10 +283,9 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
 
     # Check if query hash exists in database
     for seq, md5 in query_md5.items():
-        logger.debug(f"Checking query MD5: {md5}")
         match = existing_hashes.get(md5)
         if match:
-            logger.debug(f"Found exact hash match: {match}")
+            logger.info(f"Found exact hash match: {match}")
             return match
 
     logger.debug("No exact match found")
