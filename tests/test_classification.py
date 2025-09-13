@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 from src.utils.classification_utils import (
     assign_accession,
+    check_exact_match,
     check_contained_match,
     check_similar_match,
     generate_new_accession,
@@ -51,6 +52,10 @@ def mock_similarities():
         }
     }
 
+def test_check_exact_match(mock_ships_df, mock_sequence):
+    """Test exact sequence matching using md5sums"""
+    result = check_exact_match(mock_sequence, mock_ships_df)
+    assert result == "SBS000001"
 
 def test_check_contained_match(mock_ships_df, mock_contained_sequence):
     """Test contained sequence matching."""
