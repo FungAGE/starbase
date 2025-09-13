@@ -63,7 +63,7 @@ def test_check_contained_match(mock_ships_df, mock_contained_sequence):
     assert result is None
 
 
-@patch("src.utils.classification.calculate_similarities")
+@patch("src.utils.classification_utils.calculate_similarities")
 def test_check_similar_match(
     mock_calc_sim, mock_ships_df, mock_similar_sequence, mock_similarities
 ):
@@ -108,7 +108,7 @@ def test_assign_accession_contained_match(mock_ships_df, mock_contained_sequence
     assert needs_review is True
 
 
-@patch("src.utils.classification.calculate_similarities")
+@patch("src.utils.classification_utils.calculate_similarities")
 def test_assign_accession_similar_match(
     mock_calc_sim, mock_ships_df, mock_similar_sequence
 ):
@@ -122,7 +122,7 @@ def test_assign_accession_similar_match(
     assert needs_review is True
 
 
-@patch("src.utils.classification.calculate_similarities")
+@patch("src.utils.classification_utils.calculate_similarities")
 def test_assign_accession_new(mock_calc_sim, mock_ships_df):
     """Test full workflow with new sequence."""
     mock_calc_sim.return_value = {
@@ -134,7 +134,7 @@ def test_assign_accession_new(mock_calc_sim, mock_ships_df):
     assert needs_review is False
 
 
-@patch("src.utils.classification.calculate_similarities")
+@patch("src.utils.classification_utils.calculate_similarities")
 def test_assign_accession_empty_db(mock_calc_sim):
     """Test workflow with empty database."""
     empty_df = pd.DataFrame(columns=["accession_tag", "sequence"])

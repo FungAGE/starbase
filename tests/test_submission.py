@@ -1,5 +1,5 @@
 from datetime import datetime
-from src.database.models import Submission
+from src.database.models.schema import Submission
 from src.config.database import SubmissionsSession
 import os
 from src.utils.classification_utils import assign_accession
