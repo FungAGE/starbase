@@ -52,12 +52,12 @@ def mock_similarities():
         }
     }
 
-def test_check_exact_match(mock_ships_df, mock_sequence):
+def test_exact_match(mock_ships_df, mock_sequence):
     """Test exact sequence matching using md5sums"""
     result = check_exact_match(mock_sequence, mock_ships_df)
     assert result == "SBS000001"
 
-def test_check_contained_match(mock_ships_df, mock_contained_sequence):
+def test_contained_match(mock_ships_df, mock_contained_sequence):
     """Test contained sequence matching."""
     # Test contained match - should return SBS000002 as it's longer
     result = check_contained_match(mock_contained_sequence, mock_ships_df)
@@ -69,7 +69,7 @@ def test_check_contained_match(mock_ships_df, mock_contained_sequence):
 
 
 @patch("src.utils.classification_utils.calculate_similarities")
-def test_check_similar_match(
+def test_similar_match(
     mock_calc_sim, mock_ships_df, mock_similar_sequence, mock_similarities
 ):
     """Test similar sequence matching using k-mer comparison."""
