@@ -32,6 +32,9 @@ def mock_ships_df():
 def mock_sequence():
     return "ATGCATGCATGC"  # Same as SBS000001
 
+@pytest.fixture
+def mock_sequence_revcomp():
+    return "GCATGCATGCAT"
 
 @pytest.fixture
 def mock_contained_sequence():
@@ -53,8 +56,13 @@ def mock_similarities():
     }
 
 def test_exact_match(mock_ships_df, mock_sequence):
-    """Test exact sequence matching using md5sums"""
+    """Test matching of exact sequences using md5sums"""
     result = check_exact_match(mock_sequence, mock_ships_df)
+    assert result == "SBS000001"
+
+def test_exact_match_revcomp(mock_ships_df, mock_sequence_revcomp):
+    """Test matching of exact sequences (revcomp) using md5sums"""
+    result = check_exact_match(mock_sequence_revcomp, mock_ships_df)
     assert result == "SBS000001"
 
 def test_contained_match(mock_ships_df, mock_contained_sequence):
