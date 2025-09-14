@@ -14,7 +14,7 @@ def test_get_accession_details(test_client):
         assert response.status_code == 200
         assert response.json == {
             "content": "bla",
-            "title": "test",
+            "title": "Ship Accession: ABC123",
         }
 
         mock_create_accession_modal.assert_called_once_with(accession_id)
