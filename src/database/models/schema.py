@@ -6,6 +6,8 @@ from sqlalchemy import (
     String,
     Table,
     DateTime,
+    Boolean,
+    VARCHAR,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -242,3 +244,24 @@ class JoinedShips(Base):
     captain = relationship("Captains")
     navis = relationship("Navis")
     haplotype = relationship("Haplotype")
+
+class Submission(Base):
+    __tablename__ = "submissions"
+    seq_contents = Column(String)
+    seq_filename = Column(String)
+    seq_date = Column(DateTime)
+    anno_contents = Column(String)
+    anno_filename = Column(String)
+    anno_date = Column(DateTime)
+    uploader = Column(String)
+    evidence = Column(String)
+    genus = Column(String)
+    species = Column(String)
+    hostchr = Column(String)
+    shipstart = Column(Integer)
+    shipend = Column(Integer)
+    shipstrand = Column(String)
+    comment = Column(String)
+    id = Column(Integer, primary_key=True)
+    accession_tag = Column(VARCHAR(255))
+    needs_review = Column(Boolean)
