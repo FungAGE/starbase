@@ -134,7 +134,7 @@ def assign_accession(
         return container_match, True  # Flag for review since it's truncated
 
     logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
-    similar_match = check_similar_match(sequence, existing_ships, threshold)
+    similar_match, similarities = check_similar_match(sequence, existing_ships, threshold)
     if similar_match:
         logger.debug(f"Found similar match: {similar_match}")
         return similar_match, True  # Flag for review due to high similarity
