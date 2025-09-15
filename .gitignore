@@ -182,3 +182,11 @@ tests/*.png
 
 src/database/complete_cleanup_report.txt
 src/utils/mysql_config.json
+# Large test data files - these should be pulled from database instead
+tests/test_data/*.fasta
+tests/test_data/large_*
+tests/test_data/real_*
+
+# Keep small test files tracked
+!tests/test_data/small_*
+!tests/test_data/mock_*
