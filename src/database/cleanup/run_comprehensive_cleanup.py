@@ -20,6 +20,7 @@ if _PROJECT_ROOT not in sys.path:
 try:
     from ...config.logging import get_logger
     from .utils.cleanup_accessions import main as run_accession_cleanup
+    from .taxonomy_consolidator import TaxonomyConsolidator
 
     from .utils.database_cleanup import *
 
@@ -31,6 +32,7 @@ except ImportError:
     
     from src.config.logging import get_logger
     from src.database.cleanup.utils.cleanup_accessions import main as run_accession_cleanup
+    from src.database.cleanup.taxonomy_consolidator import TaxonomyConsolidator
 
     from src.database.cleanup.utils.database_cleanup import *
 
@@ -248,10 +250,22 @@ if __name__ == "__main__":
                        help="Show summary of issues in cleanup_issues table")
     parser.add_argument("--identify-taxonomy-duplicates", action="store_true",
                        help="Identify duplicate taxonomy entries based on taxID and consistent information")
-    parser.add_argument("--consolidate-taxonomy-duplicates", action="store_true",
-                       help="Consolidate duplicate taxonomy entries, keeping lowest ID and updating references")
     parser.add_argument("--fix-missing-tax-id-via-ome", action="store_true",
                        help="Fix missing tax_id in joined_ships using ome code consistency")
+
+    # Consolidated taxonomy options
+    parser.add_argument("--consolidate-taxonomy", action="store_true",
+                       help="Run complete taxonomy consolidation pipeline")
+    parser.add_argument("--clean-taxonomy-data", action="store_true", 
+                       help="Clean taxonomy data (whitespace, duplicates, etc.)")
+    parser.add_argument("--resolve-taxonomy-ids", action="store_true",
+                       help="Resolve missing taxonomy IDs from multiple sources")
+    parser.add_argument("--backfill-taxonomy-hierarchy", action="store_true",
+                       help="Backfill missing taxonomy hierarchy fields")
+    parser.add_argument("--validate-taxonomy-consistency", action="store_true",
+                       help="Validate taxonomy consistency and flag issues")
+    parser.add_argument("--consolidate-taxonomy-duplicates", action="store_true",
+                       help="Consolidate duplicate taxonomy entries and update foreign keys")
 
     args = parser.parse_args()
     
@@ -902,44 +916,6 @@ if __name__ == "__main__":
             if len(duplicates['consistent_duplicates']) > 5:
                 print(f"  ... and {len(duplicates['consistent_duplicates']) - 5} more groups")
 
-    elif args.consolidate_taxonomy_duplicates:
-        # Consolidate taxonomy duplicates
-        print("Consolidating taxonomy duplicates...")
-        consolidation = consolidate_taxonomy_duplicates(dry_run=not args.apply)
-        
-        print("\n" + "=" * 80)
-        print("TAXONOMY DUPLICATES CONSOLIDATION")
-        print("=" * 80)
-        
-        print(f"\nGroups consolidated: {consolidation['summary']['groups_consolidated']}")
-        print(f"References updated: {consolidation['summary']['total_references_updated']}")
-        print(f"Entries deleted: {consolidation['summary']['total_entries_deleted']}")
-        
-        if consolidation['entries_consolidated']:
-            print("\nCONSOLIDATED GROUPS:")
-            for group in consolidation['entries_consolidated'][:10]:  # Show first 10
-                if 'taxID' in group:
-                    print(f"  TaxID {group['taxID']}: consolidated {group['duplicates_removed']} duplicates into ID {group['primary_id']}")
-                else:
-                    print(f"  Semantic group: consolidated {group['duplicates_removed']} duplicates into ID {group['primary_id']}")
-                print(f"    References updated: {group['references_updated']}")
-            if len(consolidation['entries_consolidated']) > 10:
-                print(f"  ... and {len(consolidation['entries_consolidated']) - 10} more groups")
-        
-        if consolidation['references_updated']:
-            print(f"\nREFERENCES UPDATED (first 10):")
-            for ref in consolidation['references_updated'][:10]:
-                print(f"  {ref['table']}.{ref['record_id']}: {ref['old_taxonomy_id']} → {ref['new_taxonomy_id']}")
-            if len(consolidation['references_updated']) > 10:
-                print(f"  ... and {len(consolidation['references_updated']) - 10} more")
-        
-        if consolidation['entries_deleted']:
-            print(f"\nENTRIES DELETED (first 10):")
-            for deleted in consolidation['entries_deleted'][:10]:
-                print(f"  ID {deleted['taxonomy_id']}: {deleted['name']} (taxID: {deleted['taxID']})")
-            if len(consolidation['entries_deleted']) > 10:
-                print(f"  ... and {len(consolidation['entries_deleted']) - 10} more")
-
     elif args.fix_missing_tax_id_via_ome:
         # Fix missing tax_id using ome code consistency
         print("Fixing missing tax_id in joined_ships using ome code consistency...")
@@ -991,6 +967,231 @@ if __name__ == "__main__":
                 print(f"  {group['ome_code']}: {group['total_entries']} entries, tax_ids={group['tax_ids']}")
             if len(fix_report['inconsistent_ome_groups']) > 5:
                 print(f"  ... and {len(fix_report['inconsistent_ome_groups']) - 5} more")
+
+    elif args.consolidate_taxonomy:
+        # Run complete taxonomy consolidation pipeline
+        print("Running comprehensive taxonomy consolidation...")
+        with TaxonomyConsolidator() as consolidator:
+            report = consolidator.run_full_consolidation(
+                clean_data=True,
+                resolve_ids=True,
+                backfill_hierarchy=True,
+                validate_consistency=True,
+                dry_run=not args.apply,
+                names_dmp_path=args.names_dmp,
+                ncbi_email=args.ncbi_email,
+                ncbi_api_key=args.ncbi_api_key,
+                include_synonyms=args.include_synonyms
+            )
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY CONSOLIDATION SUMMARY")
+        print("=" * 80)
+        
+        summary = report['summary']
+        print(f"\nTotal operations: {summary['total_operations']}")
+        print(f"Successful operations: {summary['successful_operations']}")
+        print(f"Issues found: {summary['issues_found']}")
+        
+        if summary['recommendations']:
+            print("\nRECOMMENDATIONS:")
+            for rec in summary['recommendations']:
+                print(f"  • {rec}")
+        
+        # Show detailed results for each phase
+        if report['cleaning']:
+            cleaning = report['cleaning']['summary']
+            print(f"\nCLEANING PHASE:")
+            print(f"  Whitespace fixes: {cleaning['whitespace_fixes']}")
+            print(f"  Species cleanups: {cleaning['species_cleanup']}")
+            print(f"  Strain cleanups: {cleaning['strain_cleanup']}")
+            print(f"  Name cleanups: {cleaning['name_cleanup']}")
+            print(f"  Hierarchy issues: {cleaning['hierarchy_issues']}")
+        
+        if report['id_resolution']:
+            id_res = report['id_resolution']['summary']
+            print(f"\nID RESOLUTION PHASE:")
+            print(f"  Total missing taxIDs: {id_res['total_missing_taxid']}")
+            print(f"  Resolved: {id_res['resolved']}")
+            print(f"  Unresolved: {id_res['unresolved']}")
+            print(f"  From existing: {id_res['resolved_from_existing']}")
+            print(f"  From taxdump: {id_res['resolved_from_taxdump']}")
+            print(f"  From NCBI: {id_res['resolved_from_ncbi']}")
+        
+        if report['hierarchy_backfill']:
+            backfill = report['hierarchy_backfill']['summary']
+            print(f"\nHIERARCHY BACKFILL PHASE:")
+            print(f"  Fields backfilled: {backfill['fields_backfilled']}")
+            print(f"  Consistency issues: {backfill['consistency_issues']}")
+        
+        if report['consistency_validation']:
+            validation = report['consistency_validation']['summary']
+            print(f"\nCONSISTENCY VALIDATION PHASE:")
+            print(f"  Family inconsistencies: {validation['family_inconsistencies']}")
+            print(f"  Hierarchy violations: {validation['hierarchy_violations']}")
+            print(f"  Orphaned entries: {validation['orphaned_entries']}")
+            print(f"  Duplicate entries: {validation['duplicate_entries']}")
+            print(f"  Data quality issues: {validation['data_quality_issues']}")
+
+    elif args.clean_taxonomy_data:
+        # Clean taxonomy data only
+        print("Cleaning taxonomy data...")
+        with TaxonomyConsolidator() as consolidator:
+            report = consolidator.clean_taxonomy_data(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY DATA CLEANING")
+        print("=" * 80)
+        
+        summary = report['summary']
+        print(f"\nTotal processed: {summary['total_processed']}")
+        print(f"Whitespace fixes: {summary['whitespace_fixes']}")
+        print(f"Species cleanups: {summary['species_cleanup']}")
+        print(f"Strain cleanups: {summary['strain_cleanup']}")
+        print(f"Name cleanups: {summary['name_cleanup']}")
+        print(f"Hierarchy issues: {summary['hierarchy_issues']}")
+        
+        if report['whitespace_fixes']:
+            print(f"\nWHITESPACE FIXES (first 10):")
+            for fix in report['whitespace_fixes'][:10]:
+                print(f"  ID {fix['taxonomy_id']} {fix['field']}: '{fix['old_value']}' → '{fix['new_value']}'")
+            if len(report['whitespace_fixes']) > 10:
+                print(f"  ... and {len(report['whitespace_fixes']) - 10} more")
+        
+        if report['species_cleanup']:
+            print(f"\nSPECIES CLEANUP (first 10):")
+            for cleanup in report['species_cleanup'][:10]:
+                print(f"  ID {cleanup['taxonomy_id']}: '{cleanup['old_species']}' → '{cleanup['new_species']}' (genus: {cleanup['genus']})")
+            if len(report['species_cleanup']) > 10:
+                print(f"  ... and {len(report['species_cleanup']) - 10} more")
+
+    elif args.resolve_taxonomy_ids:
+        # Resolve taxonomy IDs only
+        print("Resolving taxonomy IDs...")
+        with TaxonomyConsolidator() as consolidator:
+            report = consolidator.resolve_taxonomy_ids(
+                dry_run=not args.apply,
+                names_dmp_path=args.names_dmp,
+                ncbi_email=args.ncbi_email,
+                ncbi_api_key=args.ncbi_api_key,
+                include_synonyms=args.include_synonyms
+            )
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY ID RESOLUTION")
+        print("=" * 80)
+        
+        summary = report['summary']
+        print(f"\nTotal missing taxIDs: {summary['total_missing_taxid']}")
+        print(f"Resolved: {summary['resolved']}")
+        print(f"Unresolved: {summary['unresolved']}")
+        print(f"From existing: {summary['resolved_from_existing']}")
+        print(f"From taxdump: {summary['resolved_from_taxdump']}")
+        print(f"From NCBI: {summary['resolved_from_ncbi']}")
+        
+        if report['resolved_from_existing']:
+            print(f"\nRESOLVED FROM EXISTING (first 10):")
+            for resolved in report['resolved_from_existing'][:10]:
+                print(f"  ID {resolved['taxonomy_id']}: {resolved['name']} → taxID {resolved['taxID']}")
+            if len(report['resolved_from_existing']) > 10:
+                print(f"  ... and {len(report['resolved_from_existing']) - 10} more")
+        
+        if report['unresolved']:
+            print(f"\nUNRESOLVED (first 10):")
+            for unresolved in report['unresolved'][:10]:
+                print(f"  ID {unresolved['taxonomy_id']}: {unresolved['name']} ({unresolved['reason']})")
+            if len(report['unresolved']) > 10:
+                print(f"  ... and {len(report['unresolved']) - 10} more")
+
+    elif args.backfill_taxonomy_hierarchy:
+        # Backfill taxonomy hierarchy only
+        print("Backfilling taxonomy hierarchy...")
+        with TaxonomyConsolidator() as consolidator:
+            report = consolidator.backfill_taxonomy_hierarchy(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY HIERARCHY BACKFILL")
+        print("=" * 80)
+        
+        summary = report['summary']
+        print(f"\nTotal processed: {summary['total_processed']}")
+        print(f"Fields backfilled: {summary['fields_backfilled']}")
+        print(f"Consistency issues: {summary['consistency_issues']}")
+        
+        if report['fields_backfilled']:
+            print(f"\nFIELDS BACKFILLED (first 10):")
+            for backfill in report['fields_backfilled'][:10]:
+                print(f"  ID {backfill['taxonomy_id']} {backfill['field']}: '{backfill['inferred_value']}'")
+            if len(report['fields_backfilled']) > 10:
+                print(f"  ... and {len(report['fields_backfilled']) - 10} more")
+
+    elif args.validate_taxonomy_consistency:
+        # Validate taxonomy consistency only
+        print("Validating taxonomy consistency...")
+        with TaxonomyConsolidator() as consolidator:
+            report = consolidator.validate_taxonomy_consistency()
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY CONSISTENCY VALIDATION")
+        print("=" * 80)
+        
+        summary = report['summary']
+        print(f"\nFamily inconsistencies: {summary['family_inconsistencies']}")
+        print(f"Hierarchy violations: {summary['hierarchy_violations']}")
+        print(f"Orphaned entries: {summary['orphaned_entries']}")
+        print(f"Duplicate entries: {summary['duplicate_entries']}")
+        print(f"Data quality issues: {summary['data_quality_issues']}")
+        
+        if report['family_inconsistencies']:
+            print(f"\nFAMILY INCONSISTENCIES (first 10):")
+            for issue in report['family_inconsistencies'][:10]:
+                print(f"  Family '{issue['family']}' {issue['field']}: {issue['values']} ({issue['count']} entries)")
+            if len(report['family_inconsistencies']) > 10:
+                print(f"  ... and {len(report['family_inconsistencies']) - 10} more")
+        
+        if report['duplicate_entries']:
+            print(f"\nDUPLICATE ENTRIES (first 10):")
+            for dup in report['duplicate_entries'][:10]:
+                print(f"  {dup['genus']} {dup['species']} {dup['strain']} (name: {dup['name']}): {dup['count']} entries")
+                for entry in dup['entries'][:3]:
+                    print(f"    ID {entry['id']}: {entry['name']} (taxID: {entry['taxID']})")
+                if len(dup['entries']) > 3:
+                    print(f"    ... and {len(dup['entries']) - 3} more")
+            if len(report['duplicate_entries']) > 10:
+                print(f"  ... and {len(report['duplicate_entries']) - 10} more")
+
+    elif args.consolidate_taxonomy_duplicates:
+        # Consolidate duplicate taxonomy entries
+        print("Consolidating duplicate taxonomy entries...")
+        with TaxonomyConsolidator() as consolidator:
+            report = consolidator.consolidate_duplicate_entries(dry_run=not args.apply)
+        
+        print("\n" + "=" * 80)
+        print("TAXONOMY DUPLICATE CONSOLIDATION")
+        print("=" * 80)
+        
+        summary = report['summary']
+        print(f"\nDuplicates found: {summary['duplicates_found']}")
+        print(f"Consolidations performed: {summary['consolidations_performed']}")
+        print(f"Foreign key updates: {summary['foreign_key_updates']}")
+        
+        if report['consolidations_performed']:
+            print(f"\nCONSOLIDATIONS PERFORMED (first 10):")
+            for consolidation in report['consolidations_performed'][:10]:
+                print(f"  {consolidation['genus']} {consolidation['species']} {consolidation['strain']}")
+                print(f"    Keep: ID {consolidation['keep_entry']['id']} - {consolidation['keep_entry']['name']} (taxID: {consolidation['keep_entry']['taxID']})")
+                for remove_entry in consolidation['remove_entries']:
+                    print(f"    Remove: ID {remove_entry['id']} - {remove_entry['name']} (taxID: {remove_entry['taxID']})")
+            if len(report['consolidations_performed']) > 10:
+                print(f"  ... and {len(report['consolidations_performed']) - 10} more")
+        
+        if report['foreign_key_updates']:
+            print(f"\nFOREIGN KEY UPDATES (first 10):")
+            for fk_update in report['foreign_key_updates'][:10]:
+                print(f"  {fk_update['table']}: {fk_update['records_updated']} records updated")
+                print(f"    {fk_update['old_taxonomy_id']} → {fk_update['new_taxonomy_id']}")
+            if len(report['foreign_key_updates']) > 10:
+                print(f"  ... and {len(report['foreign_key_updates']) - 10} more")
 
     else:
         # Run full cleanup process
