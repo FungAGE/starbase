@@ -867,3 +867,13 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
         write_fasta({seq_id: seq}, tmp_fasta)
     logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
     return tmp_fasta_dir
+
+def generate_random_sequence(length: int = 1000, seq_type: str = "nucl") -> str:
+    """Generate a random sequence of the given length."""
+    import random
+    if seq_type == "nucl":
+        return "".join(random.choices("ATGC", k=length))
+    elif seq_type == "prot":
+        return "".join(random.choices("ARNDBCEQZGHILKMFPSTWYV", k=length))
+    else:
+        raise ValueError(f"Invalid sequence type: {seq_type}")
