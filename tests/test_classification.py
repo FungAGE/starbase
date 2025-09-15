@@ -16,6 +16,7 @@ from unittest.mock import patch
 # Mock data for testing
 @pytest.fixture
 def mock_ships_df():
+    import hashlib
     return pd.DataFrame(
         {
             "accession_tag": ["SBS000001", "SBS000002", "SBS000003"],
@@ -24,6 +25,16 @@ def mock_ships_df():
                 "ATGCATGCATGCATGC",  # Longer sequence for contained match
                 "ATGCATGCATTT",  # Similar sequence for similarity match
             ],
+            "md5": [
+                hashlib.md5("ATGCATGCATGC".encode()).hexdigest(),
+                hashlib.md5("ATGCATGCATGCATGC".encode()).hexdigest(), 
+                hashlib.md5("ATGCATGCATTT".encode()).hexdigest(),
+            ],
+            "rev_comp_md5": [
+                hashlib.md5("GCATGCATGCAT".encode()).hexdigest(),
+                hashlib.md5("GCATGCATGCATGCAT".encode()).hexdigest(),
+                hashlib.md5("AAATGCATGCAT".encode()).hexdigest(),
+            ]
         }
     )
 
@@ -85,7 +96,7 @@ def test_similar_match(
     mock_calc_sim.return_value = mock_similarities
 
     # Test similar match
-    result = check_similar_match(mock_similar_sequence, mock_ships_df, threshold=0.8)
+    result, similarities = check_similar_match(mock_similar_sequence, mock_ships_df, threshold=0.8)
     assert result == "SBS000003"
 
     # Verify mock was called correctly
