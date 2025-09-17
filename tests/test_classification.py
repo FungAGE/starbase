@@ -1,5 +1,6 @@
 import pytest
 import pandas as pd
+from src.database.sql_manager import fetch_accession_ship
 from src.utils.classification_utils import (
     assign_accession,
     check_exact_match,
@@ -65,6 +66,29 @@ def mock_similarities():
             "SBS000003": 0.85  # Similar to SBS000003
         }
     }
+
+@pytest.fixture
+def real_sequence(accession=None):
+    # looking for a real sequence from the database
+    sequence = fetch_accession_ship(accession=accession)
+    return sequence
+
+@pytest.fixture
+def real_revcomp_sequence(sequence):
+    # return the reverse complement of the real sequence
+    complement = str.maketrans("ATGC", "TACG")
+    revcomp = sequence.translate(complement)[::-1]
+    return revcomp
+
+@pytest.fixture
+def real_contained_sequence(sequence):
+    # return a contained subsequence of the real sequence
+    return sequence[5:15]  # Arbitrary slice for testing
+
+@pytest.fixture
+def real_similar_sequence(sequence):
+    # introduce a small mutation to create a similar sequence
+    return sequence[:10] + "A" + sequence[11:]  # Change one base
 
 def test_exact_match(mock_ships_df, mock_sequence):
     """Test matching of exact sequences using md5sums"""
