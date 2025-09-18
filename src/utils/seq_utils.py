@@ -765,8 +765,21 @@ def create_ncbi_style_header(row):
 
 
 def write_temp_fasta(header, sequence):
+    """Write a temporary FASTA file."""
+    if header is None or sequence is None:
+        logger.error("Header or sequence is None")
+        return None
+    logger.debug(f"input is type: {type(sequence)}")
+    if isinstance(sequence, str):
+        seq_obj = Seq(sequence)
+    elif isinstance(sequence, Seq):
+        seq_obj = sequence
+    else:
+        logger.error("Sequence is not a string or Seq object")
+        return None
+    
     try:
-        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+        cleaned_query_seq = SeqRecord(seq_obj, id=header, description="")
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
         SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
         logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
@@ -825,13 +838,17 @@ def write_combined_fasta(
         str: Path to temporary FASTA file
     """
     try:
-        records = []
-
-        records.append(
-            SeqRecord(Seq(new_sequence), id="query_sequence", description="")
-        )
-
-        write_multi_fasta(existing_sequences, fasta_path, sequence_col, id_col)
+        # Create a new DataFrame that includes the new sequence
+        new_row = pd.DataFrame({
+            sequence_col: [new_sequence],
+            id_col if id_col else 'index': ['query_sequence']
+        })
+        
+        # Combine the new sequence with existing sequences
+        combined_sequences = pd.concat([new_row, existing_sequences], ignore_index=True)
+        
+        # Use write_multi_fasta to write the combined sequences
+        write_multi_fasta(combined_sequences, fasta_path, sequence_col, id_col)
 
     except Exception as e:
         logger.error(f"Error writing combined FASTA: {e}")
