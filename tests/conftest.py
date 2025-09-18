@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-from src.database.models.schema import Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from flask import jsonify
@@ -18,6 +17,10 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium import webdriver
 
+from src.database.models.schema import Base
+from src.database.sql_manager import fetch_ships, fetch_meta_data
+from src.utils.seq_utils import clean_sequence
+from src.utils.classification_utils import generate_md5_hash
 
 @pytest.fixture(scope="session")
 def test_client():
@@ -87,9 +90,17 @@ def driver(chrome_options):
     driver.quit()
 
 
-@pytest.fixture(scope="function")
-def mock_accession_data():
-    """Fixture to provide mock accession data as a DataFrame."""
+
+@pytest.fixture
+def test_meta_data():
+    try:
+        meta_df = fetch_meta_data(accession_tags=["SBS000001", "SBS000002"])
+        if not meta_df.empty:
+            return meta_df
+    except Exception:
+        pass
+    
+    # Fallback to mock data if real data isn't available
     return pd.DataFrame(
         {
             "accession_tag": ["ABC123", "DEF456"],
@@ -113,6 +124,86 @@ def mock_accession_data():
     )
 
 
-@pytest.fixture(scope="function")
-def simple_accession_data():
-    yield jsonify({"content": "content", "title": "title"})
+
+
+@pytest.fixture
+def test_ships_df():
+    try:
+        ships_df = fetch_ships(accession_tags=["SBS000001", "SBS000002"], with_sequence=True)
+        if not ships_df.empty:
+            return ships_df
+    except Exception:
+        pass
+    
+    # Fallback to mock data if real data isn't available
+    return pd.DataFrame(
+        {
+            "accession_tag": ["SBS000001", "SBS000002"],
+            "sequence": [
+                "ATGCATGCATGC",  # Simple sequence for exact match
+                "ATGCATGCATGCATGC",  # Longer sequence for contained match
+                "ATGCATGCATTT",  # Similar sequence for similarity match
+            ],
+            "md5": [
+                
+                generate_md5_hash(clean_sequence("ATGCATGCATGC")),
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGC")), 
+                generate_md5_hash(clean_sequence("ATGCATGCATTT")),
+            ],
+            "rev_comp_md5": [
+                generate_md5_hash(clean_sequence("GCATGCATGCAT")),
+                generate_md5_hash(clean_sequence("GCATGCATGCATGCAT")),
+                generate_md5_hash(clean_sequence("AAATGCATGCAT")),
+            ]
+        }
+    )
+
+
+@pytest.fixture
+def test_sequence():
+    # looking for a real sequence from the database
+    try:
+        ship_df = fetch_ships(accession_tags=["SBS000002"], with_sequence=True)
+        if not ship_df.empty:
+            sequence = ship_df.iloc[0]["sequence"]
+            return sequence.upper()  # Convert to uppercase to match stored MD5
+    except Exception:
+        pass
+    
+    # Fallback to mock data if real data isn't available
+    return "ATGCATGCATGC"  # Mock sequence
+
+@pytest.fixture
+def test_sequence_revcomp(test_sequence):
+    try:
+        # return the reverse complement of the real sequence
+        complement = str.maketrans("ATGC", "TACG")
+        revcomp = test_sequence.translate(complement)[::-1]
+        return revcomp
+    except Exception:
+        pass
+    
+    # Fallback to mock data if real data isn't available
+    return "GCATGCATGCAT"  # Mock sequence
+
+@pytest.fixture
+def test_contained_sequence(test_sequence):
+    try:
+        # return a contained subsequence of the real sequence
+        return test_sequence[50:-50]  # Take from position 50 to 50 positions from the end
+    except Exception:
+        pass
+    
+    # Fallback to mock data if real data isn't available
+    return "ATGCATGC"  # Mock sequence
+
+@pytest.fixture
+def test_similar_sequence(test_sequence):
+    # introduce a small mutation to create a similar sequence
+    try:
+        return test_sequence[:10] + "A" + test_sequence[11:]  # Change one base
+    except Exception:
+        pass
+    
+    # Fallback to mock data if real data isn't available
+    return "ATGCATGCAA"  # Mock sequence
