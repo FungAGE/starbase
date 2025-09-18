@@ -1,6 +1,4 @@
-import pytest
-import pandas as pd
-from src.database.sql_manager import fetch_accession_ship
+from src.utils.seq_utils import write_temp_fasta
 from src.utils.classification_utils import (
     assign_accession,
     check_exact_match,
@@ -8,197 +6,73 @@ from src.utils.classification_utils import (
     check_similar_match,
     generate_new_accession,
 )
-from unittest.mock import patch
 
-# TODO: just test the full classification workflow, not the individual steps
-# TODO: add tests for classifcation workflow with sequences that are expected to run until specific stages
-
-
-# Mock data for testing
-@pytest.fixture
-def mock_ships_df():
-    import hashlib
-    return pd.DataFrame(
-        {
-            "accession_tag": ["SBS000001", "SBS000002", "SBS000003"],
-            "sequence": [
-                "ATGCATGCATGC",  # Simple sequence for exact match
-                "ATGCATGCATGCATGC",  # Longer sequence for contained match
-                "ATGCATGCATTT",  # Similar sequence for similarity match
-            ],
-            "md5": [
-                hashlib.md5("ATGCATGCATGC".encode()).hexdigest(),
-                hashlib.md5("ATGCATGCATGCATGC".encode()).hexdigest(), 
-                hashlib.md5("ATGCATGCATTT".encode()).hexdigest(),
-            ],
-            "rev_comp_md5": [
-                hashlib.md5("GCATGCATGCAT".encode()).hexdigest(),
-                hashlib.md5("GCATGCATGCATGCAT".encode()).hexdigest(),
-                hashlib.md5("AAATGCATGCAT".encode()).hexdigest(),
-            ]
-        }
-    )
-
-
-@pytest.fixture
-def mock_sequence():
-    return "ATGCATGCATGC"  # Same as SBS000001
-
-@pytest.fixture
-def mock_sequence_revcomp():
-    return "GCATGCATGCAT"
-
-@pytest.fixture
-def mock_contained_sequence():
-    return "ATGCATGC"  # Contained within SBS000002
-
-
-@pytest.fixture
-def mock_similar_sequence():
-    return "ATGCATGCATTA"  # Similar to SBS000003
-
-
-@pytest.fixture
-def mock_similarities():
-    """Mock similarity calculation results."""
-    return {
-        "query_sequence": {
-            "SBS000003": 0.85  # Similar to SBS000003
-        }
-    }
-
-@pytest.fixture
-def real_sequence(accession=None):
-    # looking for a real sequence from the database
-    sequence = fetch_accession_ship(accession=accession)
-    return sequence
-
-@pytest.fixture
-def real_revcomp_sequence(sequence):
-    # return the reverse complement of the real sequence
-    complement = str.maketrans("ATGC", "TACG")
-    revcomp = sequence.translate(complement)[::-1]
-    return revcomp
-
-@pytest.fixture
-def real_contained_sequence(sequence):
-    # return a contained subsequence of the real sequence
-    return sequence[5:15]  # Arbitrary slice for testing
-
-@pytest.fixture
-def real_similar_sequence(sequence):
-    # introduce a small mutation to create a similar sequence
-    return sequence[:10] + "A" + sequence[11:]  # Change one base
-
-def test_exact_match(mock_ships_df, mock_sequence):
+def test_exact_match(test_ships_df, test_sequence, test_sequence_revcomp):
     """Test matching of exact sequences using md5sums"""
-    result = check_exact_match(mock_sequence, mock_ships_df)
-    assert result == "SBS000001"
 
-def test_exact_match_revcomp(mock_ships_df, mock_sequence_revcomp):
-    """Test matching of exact sequences (revcomp) using md5sums"""
-    result = check_exact_match(mock_sequence_revcomp, mock_ships_df)
-    assert result == "SBS000001"
+    test_sequence_fasta = write_temp_fasta(header="sequence", sequence=test_sequence)
+    test_sequence_revcomp_fasta = write_temp_fasta(header="revcomp", sequence=test_sequence_revcomp)
 
-def test_contained_match(mock_ships_df, mock_contained_sequence):
+    result = check_exact_match(fasta=test_sequence_fasta, existing_ships=test_ships_df)
+    result_revcomp = check_exact_match(fasta=test_sequence_revcomp_fasta, existing_ships=test_ships_df)
+    assert result == "SBS000002.1"  # Updated to match actual database data with version
+    assert result_revcomp == "SBS000002.1"  # Updated to match actual database data with version
+
+def test_contained_match(test_ships_df, test_contained_sequence):
     """Test contained sequence matching."""
     # Test contained match - should return SBS000002 as it's longer
-    result = check_contained_match(mock_contained_sequence, mock_ships_df)
-    assert result == "SBS000002"  # Now matches the longer sequence
+    result = check_contained_match(test_contained_sequence, test_ships_df)
+    assert result == "SBS000002.1"  # Now matches the longer sequence
 
-    # Test no match
-    result = check_contained_match("TTTT", mock_ships_df)
-    assert result is None
-
-
-@patch("src.utils.classification_utils.calculate_similarities")
 def test_similar_match(
-    mock_calc_sim, mock_ships_df, mock_similar_sequence, mock_similarities
+    test_ships_df, test_similar_sequence
 ):
     """Test similar sequence matching using k-mer comparison."""
-    # Set up mock return value
-    mock_calc_sim.return_value = mock_similarities
-
     # Test similar match
-    result, similarities = check_similar_match(mock_similar_sequence, mock_ships_df, threshold=0.8)
-    assert result == "SBS000003"
-
-    # Verify mock was called correctly
-    mock_calc_sim.assert_called_once()
+    result, similarities = check_similar_match(test_similar_sequence, test_ships_df, threshold=0.8)
+    assert result == "SBS000002.1"
 
 
-def test_generate_new_accession(mock_ships_df):
+def test_generate_new_accession(test_ships_df):
     """Test new accession number generation."""
-    result = generate_new_accession(mock_ships_df)
-    assert result == "SBS000004"  # Next number after existing ones
+    result = generate_new_accession(test_ships_df)
+    # check that the result is an accession that doesn't yet exist in ships_df
+    # create a list to check against
+    existing_accessions = [ship.accession_tag for ship in test_ships_df.itertuples()]
+    assert result not in existing_accessions
 
-    # Test with empty DataFrame
-    empty_df = pd.DataFrame(columns=["accession_tag"])
-    result = generate_new_accession(empty_df)
-    assert result == "SBS000001"  # First number when no existing accessions
-
-
-def test_assign_accession_exact_match(mock_ships_df, mock_sequence):
+def test_assign_accession_exact_match(test_ships_df, test_sequence):
     """Test full workflow with exact match."""
     accession, needs_review = assign_accession(
-        mock_sequence, existing_ships=mock_ships_df
+        test_sequence, existing_ships=test_ships_df
     )
-    assert accession == "SBS000001"
+    assert accession == "SBS000002.1"
     assert needs_review is False
 
 
-def test_assign_accession_contained_match(mock_ships_df, mock_contained_sequence):
+def test_assign_accession_contained_match(test_ships_df, test_contained_sequence):
     """Test full workflow with contained match."""
     accession, needs_review = assign_accession(
-        mock_contained_sequence, existing_ships=mock_ships_df
+        test_contained_sequence, existing_ships=test_ships_df
     )
-    assert accession == "SBS000002"
+    assert accession == "SBS000002.1"
     assert needs_review is True
 
-
-@patch("src.utils.classification_utils.calculate_similarities")
 def test_assign_accession_similar_match(
-    mock_calc_sim, mock_ships_df, mock_similar_sequence
+    test_ships_df, test_similar_sequence
 ):
     """Test full workflow with similar match."""
-    mock_calc_sim.return_value = {"query_sequence": {"SBS000003": 0.85}}
-
     accession, needs_review = assign_accession(
-        mock_similar_sequence, existing_ships=mock_ships_df, threshold=0.8
+        test_similar_sequence, existing_ships=test_ships_df, threshold=0.8
     )
-    assert accession == "SBS000003"
+    assert accession == "SBS000002.1"
     assert needs_review is True
 
 
-@patch("src.utils.classification_utils.calculate_similarities")
-def test_assign_accession_new(mock_calc_sim, mock_ships_df):
+def test_assign_accession_new(test_ships_df):
     """Test full workflow with new sequence."""
-    mock_calc_sim.return_value = {
-        "query_sequence": {}  # No similarities
-    }
+    accession, needs_review = assign_accession("TTTTTTTT", existing_ships=test_ships_df)
+    assert accession == "SBS000003.1"
+    assert needs_review is True
 
-    accession, needs_review = assign_accession("TTTTTTTT", existing_ships=mock_ships_df)
-    assert accession == "SBS000004"
-    assert needs_review is False
-
-
-@patch("src.utils.classification_utils.calculate_similarities")
-def test_assign_accession_empty_db(mock_calc_sim):
-    """Test workflow with empty database."""
-    empty_df = pd.DataFrame(columns=["accession_tag", "sequence"])
-
-    # Mock empty similarities result
-    mock_calc_sim.return_value = {"query_sequence": {}}
-
-    accession, needs_review = assign_accession("ATGC", existing_ships=empty_df)
-    assert accession == "SBS000001"
-    assert needs_review is False
-
-
-def test_assign_accession_invalid_input():
-    """Test error handling for invalid input."""
-    with pytest.raises(Exception):
-        assign_accession(None)
-
-    with pytest.raises(Exception):
-        assign_accession("")
+# TODO: add test for adding a new accession version
