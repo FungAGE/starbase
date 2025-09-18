@@ -58,13 +58,13 @@ def db_session_manager():
 
 
 @db_retry_decorator()
-def fetch_meta_data(curated=False, accession_tag=None):
+def fetch_meta_data(curated=False, accession_tags=None):
     """
     Fetch metadata from the database with caching.
 
     Args:
         curated (bool): If True, only return curated entries
-        accession_tag (str or list): Single accession tag or list of accession tags
+        accession_tags (str or list): Single accession tag or list of accession tags
 
     Returns:
         pd.DataFrame: Metadata for the specified accession tags
@@ -97,17 +97,17 @@ def fetch_meta_data(curated=False, accession_tag=None):
     if curated:
         meta_query += " WHERE j.curated_status = 'curated'"
 
-    if accession_tag:
+    if accession_tags:
         where_clause = " WHERE " if not curated else " AND "
-        if isinstance(accession_tag, list):
+        if isinstance(accession_tags, list):
             # Use ? for SQLite placeholders
-            placeholders = ",".join(["?"] * len(accession_tag))
+            placeholders = ",".join(["?"] * len(accession_tags))
             meta_query += f"{where_clause}a.accession_tag IN ({placeholders})"
-            params = tuple(accession_tag)
+            params = tuple(accession_tags)
         else:
             # Use ? for SQLite placeholder
             meta_query += f"{where_clause}a.accession_tag = ?"
-            params = (accession_tag,)
+            params = (accession_tags,)
 
     try:
         if params:
