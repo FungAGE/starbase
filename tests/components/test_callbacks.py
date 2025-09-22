@@ -2,15 +2,12 @@ from unittest.mock import patch
 from src.components.callbacks import create_accession_modal
 
 
-def test_create_accession_modal(mock_accession_data):
-    """Test the /api/accession/<accession_id> route."""
-    accession_id = "ABC123"
+def test_create_accession_modal(test_meta_data):
+    """Test the create_accession_modal function."""
+    accession_id = test_meta_data["accession_tag"][0]
+    family_name = test_meta_data["familyName"][0]
+    modal_content, modal_title = create_accession_modal(accession_id)
 
-    with patch("src.components.callbacks.fetch_meta_data") as mock_fetch_meta_data:
-        mock_fetch_meta_data.return_value = mock_accession_data
-
-        modal_content, modal_title = create_accession_modal(accession_id)
-
-        assert "Ship Accession: ABC123" in str(modal_title)
-        assert "Starship Family" in str(modal_content)
-        assert "Family1" in str(modal_content)
+    assert f"Ship Accession: {accession_id}" in str(modal_title)
+    assert "Starship Family" in str(modal_content)
+    assert family_name in str(modal_content)
