@@ -591,10 +591,8 @@ def classify_navis(
     - All existing classified captain sequences
     """
 
-    protein = list(load_fasta_to_dict(fasta).values())[0]
-
     logger.debug("Starting navis classification")
-    tmp_fasta_dir = create_tmp_fasta_dir(protein, existing_captains)
+    tmp_fasta_dir = create_tmp_fasta_dir(fasta, existing_captains)
     logger.debug(f"Created temporary FASTA directory: {tmp_fasta_dir}")
 
     # Run mmseqs clustering
@@ -624,7 +622,7 @@ def classify_navis(
         return None
     else:
         # Look up the navis name from the cluster representative
-        # Try both captainID and accession_display if available
+        # Try captainID first, then accession_display, then accession_tag
         matching_captains = existing_captains[
             existing_captains["captainID"] == cluster_rep
         ]
@@ -633,6 +631,12 @@ def classify_navis(
         if matching_captains.empty and "accession_display" in existing_captains.columns:
             matching_captains = existing_captains[
                 existing_captains["accession_display"] == cluster_rep
+            ]
+
+        # If still not found and accession_tag column exists, try that too
+        if matching_captains.empty and "accession_tag" in existing_captains.columns:
+            matching_captains = existing_captains[
+                existing_captains["accession_tag"] == cluster_rep
             ]
 
         if matching_captains.empty:
@@ -664,12 +668,6 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
         if isinstance(existing_ships, list):
             logger.debug("Converting existing_ships from list to DataFrame")
             existing_ships = pd.DataFrame(existing_ships)
-
-        logger.debug(
-            f"existing_ships shape: {existing_ships.shape if not existing_ships.empty else 'empty'}"
-        )
-        if not existing_ships.empty:
-            logger.debug(f"existing_ships columns: {existing_ships.columns.tolist()}")
 
         # Print the type and value of navis for debugging
         logger.debug(f"navis type: {type(navis)}, value: {navis}")
@@ -734,86 +732,109 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
         ]
         if missing_columns:
             logger.warning(f"Missing columns in ships DataFrame: {missing_columns}")
-
-            # Cluster sequences
-            try:
-                groups = cluster_sequences(similarities, threshold=0.95)
-                logger.debug(f"Clustered sequences into {len(groups)} groups")
-            except Exception as e:
-                logger.error(f"Error clustering sequences: {e}")
-                return {
-                    "haplotype_name": "Error",
-                    "confidence": 0,
-                    "note": f"Clustering error: {str(e)}",
-                }
-
-            # Find the group containing the query sequence
-            query_group = None
-            query_seq = SeqIO.read(fasta, "fasta")
-            for group in groups:
-                if query_seq.id in group:
-                    query_group = group
-                    break
-
-            if query_group is None:
-                logger.warning("Query sequence not found in any cluster")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "Query did not cluster with any existing sequence",
-                }
-
-            # Get ship IDs in the same group
-            ship_ids = [seq_id for seq_id in query_group if seq_id != query_seq.id]
-            logger.debug(f"Found {len(ship_ids)} ships in the same cluster as query")
-
-            if not ship_ids:
-                logger.warning("No ships in the same cluster as query")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "Query formed its own cluster",
-                }
-
-            # Get haplotypes for these ships
-            ship_haplotypes = filtered_ships[
-                filtered_ships["captainID"].isin(ship_ids)
-            ]["haplotype_name"].dropna()
-
-            if ship_haplotypes.empty:
-                logger.warning("No haplotype information for clustered ships")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "No haplotype information available",
-                }
-
-            # Count haplotype occurrences
-            haplotype_counts = ship_haplotypes.value_counts()
-            logger.debug(f"Haplotype counts: {haplotype_counts.to_dict()}")
-
-            if haplotype_counts.empty:
-                logger.warning("No haplotype counts found")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "No haplotype information available",
-                }
-
-            # Get the most common haplotype
-            most_common_haplotype = haplotype_counts.index[0]
-            confidence = haplotype_counts.iloc[0] / haplotype_counts.sum()
-
-            logger.debug(
-                f"Most common haplotype: {most_common_haplotype} with confidence {confidence:.2f}"
-            )
-
             return {
-                "haplotype_name": most_common_haplotype,
-                "confidence": float(confidence),
-                "counts": haplotype_counts.to_dict(),
-                "cluster_size": len(query_group) - 1,  # Excluding the query itself
+                "haplotype_name": "Unknown",
+                "confidence": 0,
+                "note": f"Missing required columns: {missing_columns}",
             }
+
+        # Cluster sequences
+        if similarities is None:
+            logger.warning("No similarities provided, cannot perform clustering")
+            return {
+                "haplotype_name": "Unknown",
+                "confidence": 0,
+                "note": "No similarity data available for clustering",
+            }
+        
+        try:
+            groups = cluster_sequences(similarities, threshold=0.95)
+            logger.debug(f"Clustered sequences into {len(groups)} groups")
+        except Exception as e:
+            logger.error(f"Error clustering sequences: {e}")
+            return {
+                "haplotype_name": "Error",
+                "confidence": 0,
+                "note": f"Clustering error: {str(e)}",
+            }
+
+        # Find the group containing the query sequence
+        query_group = None
+        query_seq = SeqIO.read(fasta, "fasta")
+        for group in groups:
+            if query_seq.id in group:
+                query_group = group
+                break
+
+        if query_group is None:
+            logger.warning("Query sequence not found in any cluster")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "Query did not cluster with any existing sequence",
+            }
+
+        # Get ship IDs in the same group
+        ship_ids = [seq_id for seq_id in query_group if seq_id != query_seq.id]
+        logger.debug(f"Found {len(ship_ids)} ships in the same cluster as query")
+
+        if not ship_ids:
+            logger.warning("No ships in the same cluster as query")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "Query formed its own cluster",
+            }
+
+        # Get haplotypes for these ships
+        # Match by accession_display since ship_ids are sequence IDs
+        if "accession_display" in filtered_ships.columns:
+            matching_ships = filtered_ships[
+                filtered_ships["accession_display"].isin(ship_ids)
+            ]
+            ship_haplotypes = matching_ships["haplotype_name"]
+        else:
+            # Fallback to accession_tag if accession_display not available
+            matching_ships = filtered_ships[
+                filtered_ships["accession_tag"].isin(ship_ids)
+            ]
+            ship_haplotypes = matching_ships["haplotype_name"]
+        
+
+        if ship_haplotypes.empty:
+            logger.warning("No haplotype information for clustered ships")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "No haplotype information available",
+            }
+
+        # Count haplotype occurrences
+        haplotype_counts = ship_haplotypes.value_counts()
+        logger.debug(f"Haplotype counts: {haplotype_counts.to_dict()}")
+
+        if haplotype_counts.empty:
+            logger.warning("No haplotype counts found")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "No haplotype information available",
+            }
+
+        # Get the most common haplotype
+        most_common_haplotype = haplotype_counts.index[0]
+        confidence = haplotype_counts.iloc[0] / haplotype_counts.sum()
+
+        logger.debug(
+            f"Most common haplotype: {most_common_haplotype} with confidence {confidence:.2f}"
+        )
+
+        return {
+            "haplotype_name": most_common_haplotype,
+            "confidence": float(confidence),
+            "counts": haplotype_counts.to_dict(),
+            "cluster_size": len(query_group) - 1,  # Excluding the query itself
+        }
     except Exception as e:
         logger.error(f"Unexpected error in classify_haplotype: {e}")
         logger.exception("Full traceback:")
