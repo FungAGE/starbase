@@ -220,7 +220,7 @@ def fetch_ships(
             sf.elementBegin, sf.elementEnd, sf.contigID,
             t.name, t.family, t.`order`,
             f.familyName, n.navis_name, h.haplotype_name,
-            g.assembly_accession"""
+            g.assembly_accession, c.captainID"""
 
     if dereplicate:
         base_query += """,
@@ -241,6 +241,7 @@ def fetch_ships(
         LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
+        LEFT JOIN captains c ON j.captain_id = c.id
         WHERE 1=1
     """
 
@@ -276,10 +277,13 @@ def fetch_ships(
             v.family,
             v.`order`,
             v.familyName,
+            v.navis_name,
+            v.haplotype_name,
             v.assembly_accession,
             s.sequence,
             s.md5,
-            s.rev_comp_md5
+            s.rev_comp_md5,
+            v.captainID
         FROM valid_ships v
         LEFT JOIN ships s ON s.accession_id = v.accession_id
         WHERE s.sequence IS NOT NULL"""
@@ -305,7 +309,10 @@ def fetch_ships(
             v.family,
             v.`order`,
             v.familyName,
-            v.assembly_accession
+            v.navis_name,
+            v.haplotype_name,
+            v.assembly_accession,
+            v.captainID
         FROM valid_ships v"""
 
         if dereplicate:
@@ -440,7 +447,9 @@ def fetch_captains(
             j.starshipID,
             sf.captainID,
             c."sequence",
-            n.navis_name
+            n.navis_name,
+            h.haplotype_name,
+            c.captainID
         FROM joined_ships j
         INNER JOIN accessions a ON j.ship_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -471,7 +480,9 @@ def fetch_captains(
             v.starshipID,
             v.captainID,
             v.sequence,
-            v.navis_name
+            v.navis_name,
+            v.haplotype_name,
+            v.captainID
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
         """
@@ -486,7 +497,9 @@ def fetch_captains(
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.navis_name
+            v.navis_name,
+            v.haplotype_name,
+            v.captainID
         FROM valid_captains v
         """
 
