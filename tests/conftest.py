@@ -18,7 +18,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium import webdriver
 
 from src.database.models.schema import Base
-from src.database.sql_manager import fetch_ships, fetch_meta_data
+from src.database.sql_manager import fetch_ships, fetch_meta_data, fetch_captains
 from src.utils.seq_utils import clean_sequence
 from src.utils.classification_utils import generate_md5_hash
 
@@ -94,13 +94,13 @@ def driver(chrome_options):
 @pytest.fixture
 def test_meta_data():
     try:
-        meta_df = fetch_meta_data(accession_tags=["SBS000001", "SBS000002"])
+        meta_df = fetch_meta_data(accession_tags=["SBS000001", "SBS000130"])
         if not meta_df.empty:
             return meta_df
     except Exception:
         pass
     
-    # Fallback to mock data if real data isn't available
+    
     return pd.DataFrame(
         {
             "accession_tag": ["ABC123", "DEF456"],
@@ -129,16 +129,16 @@ def test_meta_data():
 @pytest.fixture
 def test_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SBS000001", "SBS000002"], with_sequence=True)
+        ships_df = fetch_ships(accession_tags=["SBS000001", "SBS000130", "SBS000288"], with_sequence=True)
         if not ships_df.empty:
             return ships_df
     except Exception:
         pass
     
-    # Fallback to mock data if real data isn't available
+    
     return pd.DataFrame(
         {
-            "accession_tag": ["SBS000001", "SBS000002"],
+            "accession_tag": ["SBS000001", "SBS000130", "SBS000288"],
             "sequence": [
                 "ATGCATGCATGC",  # Simple sequence for exact match
                 "ATGCATGCATGCATGC",  # Longer sequence for contained match
@@ -159,18 +159,42 @@ def test_ships_df():
     )
 
 
-@pytest.fixture
-def test_sequence():
-    # looking for a real sequence from the database
+@pytest.fixture()
+def test_captains_df():
     try:
-        ship_df = fetch_ships(accession_tags=["SBS000002"], with_sequence=True)
-        if not ship_df.empty:
-            sequence = ship_df.iloc[0]["sequence"]
-            return sequence.upper()  # Convert to uppercase to match stored MD5
+        # Try a few different accession tags that are more likely to work
+        for accession in ["SBS000288", "SBS000567", "SBS000342"]:
+            captains_df = fetch_captains(accession_tags=[accession], with_sequence=True)
+            if not captains_df.empty:
+                return captains_df
     except Exception:
         pass
     
     # Fallback to mock data if real data isn't available
+    return pd.DataFrame(
+        {
+            "captainID": ["Phoenix", "Enterprise", "Voyager"],
+            "sequence": [
+                "MALWMRLLPLLALLALWGPDPAAA",  # Phoenix sequence
+                "MALWMRLLPLLALLALWGPDPAAA",  # Same sequence for clustering
+                "MALWMRLLPLLALLALWGPDPBBB",  # Different sequence
+            ],
+            "navis_name": ["Phoenix", "Phoenix", "Galactica"],
+            "accession_tag": ["SBS000288", "SBS000567", "SBS000342"],  # Multiple accession tags
+        }
+    )
+
+
+@pytest.fixture
+def test_sequence():
+    # looking for a real sequence from the database
+    try:
+        ship_df = fetch_ships(accession_tags=["SBS000130"], with_sequence=True)
+        if not ship_df.empty:
+            sequence = ship_df.iloc[0]["sequence"]
+            return sequence
+    except Exception:
+        pass
     return "ATGCATGCATGC"  # Mock sequence
 
 @pytest.fixture
@@ -182,8 +206,6 @@ def test_sequence_revcomp(test_sequence):
         return revcomp
     except Exception:
         pass
-    
-    # Fallback to mock data if real data isn't available
     return "GCATGCATGCAT"  # Mock sequence
 
 @pytest.fixture
@@ -193,8 +215,6 @@ def test_contained_sequence(test_sequence):
         return test_sequence[50:-50]  # Take from position 50 to 50 positions from the end
     except Exception:
         pass
-    
-    # Fallback to mock data if real data isn't available
     return "ATGCATGC"  # Mock sequence
 
 @pytest.fixture
@@ -204,6 +224,108 @@ def test_similar_sequence(test_sequence):
         return test_sequence[:10] + "A" + test_sequence[11:]  # Change one base
     except Exception:
         pass
-    
-    # Fallback to mock data if real data isn't available
     return "ATGCATGCAA"  # Mock sequence
+
+# separate test fixtures for haplotype matching
+@pytest.fixture
+def test_haplotype_ships_df():
+    try:
+        ships_df = fetch_ships(accession_tags=["SBS000130", "SBS001285", "SBS001247"], with_sequence=True)
+        if not ships_df.empty:
+            return ships_df
+    except Exception:
+        pass
+    
+    
+    return pd.DataFrame(
+        {
+            "accession_tag": ["SBS000130", "SBS001285", "SBS001247"],
+            "accession_display": ["SBS000130.1", "SBS001285.1", "SBS001247.1"],
+            "sequence": [
+                "ATGCATGCATGCATGCATGC",  # Base sequence
+                "ATGCATGCATGCATGCATGC",  # Identical sequence (should have 1.0 similarity)
+                "ATGCATGCATGCATGCATGT",  # One base different (should have high similarity)
+            ],
+            "haplotype_name": ["2", "1", "3"],  # Add haplotype information
+            "captainID": ["captain_130", "captain_1285", "captain_1247"],  # Add captain IDs
+            "md5": [
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")),
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")), 
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGT")),
+            ],
+            "rev_comp_md5": [
+                generate_md5_hash(clean_sequence("GCATGCATGCATGCATGCAT")),
+                generate_md5_hash(clean_sequence("GCATGCATGCATGCATGCAT")),
+                generate_md5_hash(clean_sequence("ACATGCATGCATGCATGCAT")),
+            ]
+        }
+    )
+
+@pytest.fixture
+def test_haplotype_sequence(test_haplotype_ships_df):
+    # return the sequence with the haplotype
+    try:
+        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SBS000130
+        if sequence is not None:
+            return sequence
+    except Exception:
+        pass
+    return "ATGCATGCATGC"  # Mock sequence
+
+@pytest.fixture
+def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
+    """Generate similarities data using check_similar_match."""
+    try:
+        import tempfile
+        from src.utils.classification_utils import calculate_similarities
+        from src.utils.seq_utils import write_multi_fasta, write_temp_fasta
+        import pandas as pd
+        
+        # Create a combined DataFrame that includes both the query sequence and existing ships
+        # Add the query sequence as a new row
+        query_row = pd.DataFrame({
+            "accession_display": ["query_sequence"],
+            "sequence": [test_haplotype_sequence]
+        })
+        
+        # Combine with existing ships
+        if "accession_display" in test_haplotype_ships_df.columns:
+            combined_df = pd.concat([query_row, test_haplotype_ships_df], ignore_index=True)
+        else:
+            # If no accession_display, create it from accession_tag
+            ships_with_display = test_haplotype_ships_df.copy()
+            ships_with_display["accession_display"] = ships_with_display["accession_tag"]
+            combined_df = pd.concat([query_row, ships_with_display], ignore_index=True)
+        
+        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        write_multi_fasta(
+            combined_df,
+            tmp_fasta,
+            sequence_col="sequence",
+            id_col="accession_display",
+        )
+
+        # calculate_similarities returns a nested dictionary, but cluster_sequences expects a list of tuples
+        similarities_dict = calculate_similarities(
+            fasta_file=tmp_fasta,
+            seq_type="nucl",
+        )
+        
+        # Convert nested dictionary to list of tuples format
+        similarities_list = []
+        for seq_id1, inner_dict in similarities_dict.items():
+            for seq_id2, similarity in inner_dict.items():
+                if seq_id1 != seq_id2:  # Skip self-comparisons
+                    similarities_list.append((seq_id1, seq_id2, similarity))
+        
+        return similarities_list
+    except Exception:
+        pass
+    
+    # Fallback to mock similarities data, containing 3 sequences
+    return [
+        ("query_sequence", "SBS000130.1", 0.99),
+        ("query_sequence", "SBS001285.1", 0.85),
+        ("query_sequence", "SBS000342.1", 0.85),
+        ("SBS000130.1", "SBS000567.1", 0.98),
+    ]
