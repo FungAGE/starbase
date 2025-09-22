@@ -182,3 +182,5 @@ tests/*.png
 
 src/database/complete_cleanup_report.txt
 src/utils/mysql_config.json
+
+tests/classification/test_results*
