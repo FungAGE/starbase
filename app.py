@@ -63,9 +63,12 @@ external_stylesheets = [
 
 external_scripts = [
     "https://code.jquery.com/jquery-2.2.4.min.js",
-    "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js",
+    "https://cdn.jsdelivr.net/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
+    "https://d3js.org/d3.v6.min.js",
+    "/assets/js/clustermap.min.js",
+    "/assets/js/synteny.js"
 ]
 
 app = Dash(

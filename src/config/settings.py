@@ -24,6 +24,7 @@ REQUIRED_DIRS = [
     os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),
     os.path.join(DATA_DIR, "captain", "tyr", "fna", "hmm"),
     os.path.join(DATA_DIR, "captain", "tyr", "faa", "hmm"),
+    os.path.join(DATA_DIR, "ships", "gbks"),
 ]
 
 for directory in REQUIRED_DIRS:
@@ -68,6 +69,9 @@ BLAST_DB_PATHS = {
     },
 }
 
+# GBK paths
+GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
+
 # Phylogeny paths
 PHYLOGENY_PATHS = {
     "tree": os.path.join(
@@ -96,13 +100,16 @@ HOME_URL = os.getenv("HOME_URL", "/")
 WIKI_URL = os.getenv("WIKI_URL", "/wiki")
 BLAST_URL = os.getenv("BLAST_URL", "/blast")
 ABOUT_URL = os.getenv("ABOUT_URL", "/about")
-PGV_URL = os.getenv("PGV_URL", "/pgv")
+SYNTENY_URL = os.getenv("SYNTENY_URL", "/synteny")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
 MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")
+
+# GenBank files path
+GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
 
 # Cache settings
 CACHE_TIMEOUT = (

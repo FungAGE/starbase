@@ -7,6 +7,7 @@ dependencies:
   - _openmp_mutex=4.5=2_gnu
   - aria2=1.37.0=hbc8128a_2
   - bam2fasta=1.0.8=pyh3252c3a_0
+  - bcbio-gff=0.7.1
   - blast=2.16.0=h66d330f_5
   - brotli-bin=1.1.0=hb9d3cd8_2
   - bz2file=0.98=py_0
@@ -16,6 +17,7 @@ dependencies:
   - cachetools=5.5.2=pyhd8ed1ab_0
   - certifi=2025.4.26=pyhd8ed1ab_0
   - cffi=1.17.1=py39h15c3d72_0
+  - clinker-py=0.0.31
   - clustalw=2.1=h9948957_12
   - colorama=0.4.6=pyhd8ed1ab_1
   - curl=8.13.0=h332b0f4_0
