@@ -4,6 +4,9 @@ from src.utils.classification_utils import (
     check_exact_match,
     check_contained_match,
     check_similar_match,
+    classify_family,
+    classify_navis,
+    classify_haplotype,
     generate_new_accession,
 )
 
@@ -15,14 +18,14 @@ def test_exact_match(test_ships_df, test_sequence, test_sequence_revcomp):
 
     result = check_exact_match(fasta=test_sequence_fasta, existing_ships=test_ships_df)
     result_revcomp = check_exact_match(fasta=test_sequence_revcomp_fasta, existing_ships=test_ships_df)
-    assert result == "SBS000002.1"  # Updated to match actual database data with version
-    assert result_revcomp == "SBS000002.1"  # Updated to match actual database data with version
+    assert result == "SBS000130.1"  # Updated to match actual database data with version
+    assert result_revcomp == "SBS000130.1"  # Updated to match actual database data with version
 
 def test_contained_match(test_ships_df, test_contained_sequence):
     """Test contained sequence matching."""
-    # Test contained match - should return SBS000002 as it's longer
+    # Test contained match - should return SBS000130 as it's longer
     result = check_contained_match(test_contained_sequence, test_ships_df)
-    assert result == "SBS000002.1"  # Now matches the longer sequence
+    assert result == "SBS000130.1"  # Now matches the longer sequence
 
 def test_similar_match(
     test_ships_df, test_similar_sequence
@@ -30,8 +33,28 @@ def test_similar_match(
     """Test similar sequence matching using k-mer comparison."""
     # Test similar match
     result, similarities = check_similar_match(test_similar_sequence, test_ships_df, threshold=0.8)
-    assert result == "SBS000002.1"
+    assert result == "SBS000130.1"
 
+
+def test_family_match(test_ships_df, test_sequence):
+    """Test family matching using hmmer."""
+    family_result, protein_file = classify_family(fasta=test_sequence, existing_ships=test_ships_df)
+    assert family_result == "Prometheus"
+
+def test_navis_match(test_captains_df):
+    """Test navis matching using hmmer."""
+    sequence = test_captains_df.iloc[0]["sequence"] # SBS000288
+    # write to temp fasta with the correct header that classify_navis expects
+    tmp_fasta = write_temp_fasta(header="query_sequence", sequence=sequence)
+    navis_result = classify_navis(fasta=tmp_fasta, existing_captains=test_captains_df)
+    assert navis_result == "Phoenix"
+
+def test_haplotype_match(test_haplotype_ships_df, test_haplotype_sequence, test_similarities):
+    """Test haplotype matching using hmmer."""
+    # write to temp fasta with the correct header that classify_haplotype expects
+    tmp_fasta = write_temp_fasta(header="query_sequence", sequence=test_haplotype_sequence)
+    haplotype_result = classify_haplotype(fasta=tmp_fasta, existing_ships=test_haplotype_ships_df, similarities=test_similarities)
+    assert haplotype_result["haplotype_name"] == "2"
 
 def test_generate_new_accession(test_ships_df):
     """Test new accession number generation."""
@@ -46,7 +69,7 @@ def test_assign_accession_exact_match(test_ships_df, test_sequence):
     accession, needs_review = assign_accession(
         test_sequence, existing_ships=test_ships_df
     )
-    assert accession == "SBS000002.1"
+    assert accession == "SBS000130.1"
     assert needs_review is False
 
 
@@ -55,7 +78,7 @@ def test_assign_accession_contained_match(test_ships_df, test_contained_sequence
     accession, needs_review = assign_accession(
         test_contained_sequence, existing_ships=test_ships_df
     )
-    assert accession == "SBS000002.1"
+    assert accession == "SBS000130.1"
     assert needs_review is True
 
 def test_assign_accession_similar_match(
@@ -65,7 +88,7 @@ def test_assign_accession_similar_match(
     accession, needs_review = assign_accession(
         test_similar_sequence, existing_ships=test_ships_df, threshold=0.8
     )
-    assert accession == "SBS000002.1"
+    assert accession == "SBS000130.1"
     assert needs_review is True
 
 
