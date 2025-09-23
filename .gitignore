@@ -173,11 +173,23 @@ celerybeat*
 # db
 src/database/db/**
 src/database/db.tar.gz
-src/database/cache/**
 
-# cleanup reports
-*report.txt
+# Local development data
+src/database/cache/
+src/database/logs/
 
-# Alembic cache files
-alembic/__pycache__/
-alembic/versions/__pycache__/
+# database conversion/cleanup
+src/database/complete_cleanup_report.txt
+src/utils/mysql_config.json
+
+# testing
+tests/*.png
+tests/classification/test_results*
+# Large test data files - these should be pulled from database instead
+tests/test_data/*.fasta
+tests/test_data/large_*
+tests/test_data/real_*
+
+# Keep small test files tracked
+!tests/test_data/small_*
+!tests/test_data/mock_*
