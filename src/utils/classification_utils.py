@@ -5,6 +5,7 @@ import hashlib
 import os
 import glob
 import signal
+import shutil
 import screed
 from sourmash import (
     SourmashSignature,
@@ -1288,29 +1289,64 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
         for (node1, node2), weight in sorted(edge_data.items()):
             f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
 
+def metaeuk_createdb(query_fasta):
+    """Run MetaEuk createdb for reference database."""
+    
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        cmd = [
+            "metaeuk",
+            "createdb",
+            os.path.abspath(query_fasta),
+            os.path.join(tmp_dir, "db"),
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return os.path.join(tmp_dir, "db"), tmp_dir
+    except Exception:
+        # Clean up on failure
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
 
-# TODO: make sure `ref_db` is a fasta file (do we need to `createdb` for this fasta file?)
-# TODO: make sure that `output_prefix` is a temp directory
-def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
+def metaeuk_easy_predict(query_fasta, threads=20):
     """Run MetaEuk easy-predict for de novo annotation.
 
     Args:
         query_fasta: Path to input FASTA file
-        ref_db: Path to reference database
-        output_prefix: Prefix for output files
         threads: Number of threads to use
+    
+    Returns:
+        Tuple of (codon_fasta_path, fasta_path, gff_path) or (None, None, None) on error
     """
 
+    if not os.path.exists(query_fasta):
+        logger.warning("Query FASTA file does not exist")
+        return None, None, None
+
+    if not isinstance(query_fasta, str) or query_fasta == "" or query_fasta is None:
+        logger.warning("query_fasta should be a path to a fasta file")
+        return None, None, None  
+
+    ref_db = None
+    ref_db_tmp_dir = None
+    
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        ref_db, ref_db_tmp_dir = metaeuk_createdb(query_fasta)
+    except Exception as e:
+        logger.error(f"Error in metaeuk_createdb: {e}")
+        return None, None, None
+
+    try:
+        with tempfile.TemporaryDirectory() as output_dir:
+            # Output prefix for MetaEuk files
+            output_prefix = os.path.join(output_dir, "prediction")
+            
             # Run MetaEuk with explicit paths
             cmd = [
                 "metaeuk",
                 "easy-predict",
                 os.path.abspath(query_fasta),
                 os.path.abspath(ref_db),
-                os.path.abspath(output_prefix),
-                tmp_dir,
+                output_prefix,
                 "--metaeuk-eval",
                 "0.0001",
                 "-e",
@@ -1326,20 +1362,37 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
             ]
 
             # Run command and capture output
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            logger.debug(f"MetaEuk command completed successfully")
 
-            # Check if output files were created
+            # Check if output files were created with correct paths
             codon_fasta = f"{output_prefix}.codon.fas"
             fasta = f"{output_prefix}.fas"
             gff = f"{output_prefix}.gff"
 
+            missing_files = []
             for file_path in [codon_fasta, fasta, gff]:
                 if not os.path.exists(file_path):
-                    raise FileNotFoundError(
-                        f"Expected output file not created: {file_path}"
-                    )
+                    missing_files.append(file_path)
 
-            return codon_fasta, fasta, gff
+            if missing_files:
+                logger.error(f"Expected output files not created: {missing_files}")
+                logger.error(f"MetaEuk stdout: {result.stdout}")
+                logger.error(f"MetaEuk stderr: {result.stderr}")
+                raise FileNotFoundError(f"Expected output files not created: {missing_files}")
+
+            # Copy files to a permanent location outside the temp directory
+            permanent_dir = tempfile.mkdtemp(prefix="metaeuk_output_")
+            
+            permanent_codon = os.path.join(permanent_dir, "prediction.codon.fas")
+            permanent_fasta = os.path.join(permanent_dir, "prediction.fas") 
+            permanent_gff = os.path.join(permanent_dir, "prediction.gff")
+            
+            shutil.copy2(codon_fasta, permanent_codon)
+            shutil.copy2(fasta, permanent_fasta)
+            shutil.copy2(gff, permanent_gff)
+
+            return permanent_codon, permanent_fasta, permanent_gff
 
     except subprocess.CalledProcessError as e:
         logger.error(f"MetaEuk easy-predict failed with return code {e.returncode}")
@@ -1350,6 +1403,10 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
         logger.error(f"Error during MetaEuk easy-predict: {str(e)}")
         logger.exception("Full traceback:")
         raise
+    finally:
+        # Clean up reference database temporary directory
+        if ref_db_tmp_dir and os.path.exists(ref_db_tmp_dir):
+            shutil.rmtree(ref_db_tmp_dir, ignore_errors=True)
 
 
 def run_classification_workflow(workflow_state, blast_data, classification_data, meta_dict=None):
