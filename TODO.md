@@ -1,0 +1,15 @@
+# TODOs
+- curated status
+  - manual or auto
+- tags
+  - information about what data is missing
+- fill in family ids
+  - inhert from existing classifications
+  - fill in based on shared navis haplotypes
+  - classify using captain sequences
+- fill in taxonomy ids
+  - import from mycotools tables
+- gff table
+- captain table
+  - make sure connection to joined_ships is sound
+  - add in captain protein sequences identified using hmmer/blast? (with "blast" in the "evidence" column)

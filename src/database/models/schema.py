@@ -33,6 +33,7 @@ class Accessions(Base):
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")
     gff_entries = relationship("Gff", back_populates="accession_obj")
+    joined_ship = relationship("JoinedShips", back_populates="accession", uselist=False)
 
 
 class Ships(Base):
@@ -221,13 +222,17 @@ class Gff(Base):
 class JoinedShips(Base):
     __tablename__ = "joined_ships"
     id = Column(Integer, primary_key=True)
-    starshipID = Column(String)
+    starshipID = Column(String, nullable=False)  # Every ship needs an ID (duplicates allowed)
     evidence = Column(String)
     source = Column(String)
     curated_status = Column(String)
+    
+    # Direct link to accession (when sequence data is available)
+    accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=True)
+    
+    # Links to classification and annotation data
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
     tax_id = Column(Integer, ForeignKey("taxonomy.id"))
-    ship_id = Column(Integer, ForeignKey("ships.id"))
     genome_id = Column(Integer, ForeignKey("genomes.id"))
     captain_id = Column(Integer, ForeignKey("captains.id"))
     ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
@@ -236,9 +241,9 @@ class JoinedShips(Base):
     updated_at = Column(DateTime)
 
     # Relationships
+    accession = relationship("Accessions", back_populates="joined_ship")
     family = relationship("FamilyNames")
     taxonomy = relationship("Taxonomy")
-    ship = relationship("Ships")
     genome = relationship("Genome")
     captain = relationship("Captains")
     navis = relationship("Navis")
