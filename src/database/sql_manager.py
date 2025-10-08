@@ -51,7 +51,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     session = StarbaseSession()
 
     meta_query = """
-    SELECT j.curated_status, j.starshipID, j.ship_id,
+    SELECT j.curated_status, j.starshipID,
            a.accession_tag, a.version_tag,
            CASE 
                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
@@ -63,7 +63,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
            f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
     FROM joined_ships j
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
     LEFT JOIN starship_features sf ON a.id = sf.accession_id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -140,7 +140,7 @@ def fetch_download_data(curated=True, dereplicate=False):
            f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
     LEFT JOIN taxonomy t ON j.tax_id = t.id
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
@@ -215,7 +215,7 @@ def fetch_ships(
 
     base_query += """
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
@@ -324,7 +324,7 @@ def fetch_ship_table(curated=False):
         f.familyName,
         t.name
     FROM joined_ships js
-    LEFT JOIN accessions a ON js.ship_id = a.id
+    LEFT JOIN accessions a ON js.accession_id = a.id
     LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
@@ -373,7 +373,7 @@ def fetch_accession_ship(accession_tag):
     sequence_query = """
     SELECT s.sequence
     FROM ships s
-    LEFT JOIN accessions a ON s.accession_id = a.id
+    LEFT JOIN accessions a ON s.accession_id = a.id AND a.id = :accession_tag
     WHERE a.accession_tag = :accession_tag
     """
 
@@ -444,7 +444,7 @@ def fetch_captains(
             c."sequence",
             n.navis_name
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id

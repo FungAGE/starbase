@@ -22,7 +22,7 @@ def create_database_indexes():
     indexes = [
         # joined_ships indexes
         ("idx_joined_ships_curated", "CREATE INDEX IF NOT EXISTS idx_joined_ships_curated ON joined_ships(curated_status)"),
-        ("idx_joined_ships_ship_id", "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_id ON joined_ships(ship_id)"),
+        ("idx_joined_ships_accession_id", "CREATE INDEX IF NOT EXISTS idx_joined_ships_accession_id ON joined_ships(accession_id)"),
         ("idx_joined_ships_tax_id", "CREATE INDEX IF NOT EXISTS idx_joined_ships_tax_id ON joined_ships(tax_id)"),
         ("idx_joined_ships_ship_family_id", "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_family_id ON joined_ships(ship_family_id)"),
         ("idx_joined_ships_ship_navis_id", "CREATE INDEX IF NOT EXISTS idx_joined_ships_ship_navis_id ON joined_ships(ship_navis_id)"),

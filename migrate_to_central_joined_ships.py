@@ -59,9 +59,10 @@ def migrate_to_central_joined_ships(db_path: str, dry_run: bool = True, remove_s
         # Step 1: Add accession_id column to joined_ships if it doesn't exist
         logger.info("Step 1: Adding accession_id column to joined_ships...")
         
-        # Check if accession_id column already exists
+        # Check if accession_id column already exists, and whether legacy ship_id exists
         cursor.execute("PRAGMA table_info(joined_ships)")
         columns = [col[1] for col in cursor.fetchall()]
+        has_ship_id = 'ship_id' in columns
         
         if 'accession_id' not in columns:
             if not dry_run:
@@ -84,95 +85,147 @@ def migrate_to_central_joined_ships(db_path: str, dry_run: bool = True, remove_s
                 else:
                     logger.info("Would add missing foreign key constraint for accession_id")
         
-        # Step 2: Map existing ship_id references to accession_id
-        logger.info("Step 2: Mapping ship_id to accession_id...")
+        # Step 2: Map legacy ship_id references to accession_id (if ship_id column exists)
+        logger.info("Step 2: Mapping legacy ship_id to accession_id (if present)...")
+        if has_ship_id:
+            # Get all joined_ships entries that have ship_id
+            cursor.execute("""
+                SELECT js.id, js.starshipID, js.ship_id, s.accession_id
+                FROM joined_ships js
+                LEFT JOIN ships s ON js.ship_id = s.id
+                WHERE js.ship_id IS NOT NULL AND js.accession_id IS NULL
+            """)
+            joined_ships_with_ship_id = cursor.fetchall()
+            migration_stats['joined_ships_with_ship_id'] = len(joined_ships_with_ship_id)
+            logger.info(f"Found {len(joined_ships_with_ship_id)} joined_ships entries with ship_id")
+
+            for js_id, starship_id, ship_id, accession_id in joined_ships_with_ship_id:
+                if accession_id:
+                    if not dry_run:
+                        cursor.execute(
+                            "UPDATE joined_ships SET accession_id = ? WHERE id = ?",
+                            (accession_id, js_id)
+                        )
+                    migration_stats['successful_mappings'] += 1
+                    logger.debug(
+                        f"Mapped joined_ships {js_id} ({starship_id}) from ship_id {ship_id} to accession_id {accession_id}"
+                    )
+                else:
+                    migration_stats['failed_mappings'] += 1
+                    migration_stats['errors'].append({
+                        'type': 'ship_without_accession',
+                        'joined_ships_id': js_id,
+                        'starship_id': starship_id,
+                        'ship_id': ship_id,
+                        'message': f'Ship {ship_id} has no accession_id - sequence data not available'
+                    })
+                    logger.warning(
+                        f"Ship {ship_id} (starship {starship_id}) has no accession - leaving accession_id as NULL"
+                    )
+        else:
+            logger.info("No ship_id column present in joined_ships - skipping legacy mapping step")
         
-        # Get all joined_ships entries that have ship_id
-        cursor.execute("""
-            SELECT js.id, js.starshipID, js.ship_id, s.accession_id
-            FROM joined_ships js
-            LEFT JOIN ships s ON js.ship_id = s.id
-            WHERE js.ship_id IS NOT NULL AND js.accession_id IS NULL
-        """)
-        joined_ships_with_ship_id = cursor.fetchall()
-        migration_stats['joined_ships_with_ship_id'] = len(joined_ships_with_ship_id)
-        
-        logger.info(f"Found {len(joined_ships_with_ship_id)} joined_ships entries with ship_id")
-        
-        for js_id, starship_id, ship_id, accession_id in joined_ships_with_ship_id:
-            if accession_id:
-                # We can map this to an accession
+        # Step 3: Create missing joined_ships entries
+        logger.info("Step 3: Creating joined_ships entries for items without them...")
+        if has_ship_id:
+            # Legacy path based on ships table presence in joined_ships
+            cursor.execute("""
+                SELECT s.id, s.accession_id, a.ship_name, a.accession_tag
+                FROM ships s
+                LEFT JOIN accessions a ON s.accession_id = a.id
+                WHERE s.id NOT IN (SELECT ship_id FROM joined_ships WHERE ship_id IS NOT NULL)
+            """)
+            ships_without_joined_ships = cursor.fetchall()
+            migration_stats['ships_without_joined_ships'] = len(ships_without_joined_ships)
+            logger.info(f"Found {len(ships_without_joined_ships)} ships without joined_ships entries")
+
+            for ship_id, accession_id, ship_name, accession_tag in ships_without_joined_ships:
+                if ship_name:
+                    starship_id = ship_name
+                elif accession_tag:
+                    starship_id = accession_tag
+                else:
+                    starship_id = f"SHIP_{ship_id}"
+
+                cursor.execute("SELECT id FROM joined_ships WHERE starshipID = ?", (starship_id,))
+                if cursor.fetchone():
+                    starship_id = f"{starship_id}_SHIP_{ship_id}"
+
                 if not dry_run:
-                    cursor.execute("""
-                        UPDATE joined_ships 
-                        SET accession_id = ? 
-                        WHERE id = ?
-                    """, (accession_id, js_id))
-                
-                migration_stats['successful_mappings'] += 1
-                logger.debug(f"Mapped joined_ships {js_id} ({starship_id}) from ship_id {ship_id} to accession_id {accession_id}")
-            else:
-                # Ship exists but has no accession - this means sequence data isn't available yet
-                migration_stats['failed_mappings'] += 1
-                migration_stats['errors'].append({
-                    'type': 'ship_without_accession',
-                    'joined_ships_id': js_id,
-                    'starship_id': starship_id,
-                    'ship_id': ship_id,
-                    'message': f'Ship {ship_id} has no accession_id - sequence data not available'
-                })
-                logger.warning(f"Ship {ship_id} (starship {starship_id}) has no accession - leaving accession_id as NULL")
-        
-        # Step 3: Find ships that don't have joined_ships entries and create them
-        logger.info("Step 3: Creating joined_ships entries for ships without them...")
-        
-        cursor.execute("""
-            SELECT s.id, s.accession_id, a.ship_name, a.accession_tag
-            FROM ships s
-            LEFT JOIN accessions a ON s.accession_id = a.id
-            WHERE s.id NOT IN (SELECT ship_id FROM joined_ships WHERE ship_id IS NOT NULL)
-        """)
-        ships_without_joined_ships = cursor.fetchall()
-        migration_stats['ships_without_joined_ships'] = len(ships_without_joined_ships)
-        
-        logger.info(f"Found {len(ships_without_joined_ships)} ships without joined_ships entries")
-        
-        for ship_id, accession_id, ship_name, accession_tag in ships_without_joined_ships:
-            # Create a starshipID - prefer ship_name, fall back to accession_tag, finally use SHIP_<id>
-            if ship_name:
-                starship_id = ship_name
-            elif accession_tag:
-                starship_id = accession_tag
-            else:
-                starship_id = f"SHIP_{ship_id}"
-            
-            # Check if this starshipID already exists
-            cursor.execute("SELECT id FROM joined_ships WHERE starshipID = ?", (starship_id,))
-            if cursor.fetchone():
-                # StarshipID collision - make it unique
-                starship_id = f"{starship_id}_SHIP_{ship_id}"
-            
-            if not dry_run:
-                cursor.execute("""
-                    INSERT INTO joined_ships (
-                        starshipID, evidence, source, curated_status, 
-                        accession_id, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    starship_id, 
-                    "AUTO_MIGRATED", 
-                    "database_migration", 
-                    "auto_created",
-                    accession_id,
-                    datetime.now(),
-                    datetime.now()
-                ))
-                
+                    cursor.execute(
+                        """
+                        INSERT INTO joined_ships (
+                            starshipID, evidence, source, curated_status, 
+                            accession_id, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            starship_id,
+                            "AUTO_MIGRATED",
+                            "database_migration",
+                            "auto_created",
+                            accession_id,
+                            datetime.now(),
+                            datetime.now(),
+                        ),
+                    )
                 migration_stats['new_joined_ships_created'] += 1
-                logger.debug(f"Created joined_ships entry for ship {ship_id} with starshipID '{starship_id}'")
-            else:
+                logger.debug(
+                    f"Created joined_ships entry for ship {ship_id} with starshipID '{starship_id}'"
+                    if not dry_run else
+                    f"Would create joined_ships entry for ship {ship_id} with starshipID '{starship_id}'"
+                )
+        else:
+            # New path: ensure each accession has at least one joined_ships entry
+            cursor.execute(
+                """
+                SELECT a.id, a.ship_name, a.accession_tag
+                FROM accessions a
+                LEFT JOIN joined_ships js ON js.accession_id = a.id
+                WHERE js.id IS NULL
+                """
+            )
+            accessions_without_joined = cursor.fetchall()
+            migration_stats['ships_without_joined_ships'] = len(accessions_without_joined)
+            logger.info(f"Found {len(accessions_without_joined)} accessions without joined_ships entries")
+
+            for accession_id, ship_name, accession_tag in accessions_without_joined:
+                if ship_name:
+                    starship_id = ship_name
+                elif accession_tag:
+                    starship_id = accession_tag
+                else:
+                    starship_id = f"ACC_{accession_id}"
+
+                cursor.execute("SELECT id FROM joined_ships WHERE starshipID = ?", (starship_id,))
+                exists = cursor.fetchone()
+                if exists:
+                    starship_id = f"{starship_id}_ACC_{accession_id}"
+
+                if not dry_run:
+                    cursor.execute(
+                        """
+                        INSERT INTO joined_ships (
+                            starshipID, evidence, source, curated_status,
+                            accession_id, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            starship_id,
+                            "AUTO_MIGRATED",
+                            "database_migration",
+                            "auto_created",
+                            accession_id,
+                            datetime.now(),
+                            datetime.now(),
+                        ),
+                    )
                 migration_stats['new_joined_ships_created'] += 1
-                logger.debug(f"Would create joined_ships entry for ship {ship_id} with starshipID '{starship_id}'")
+                logger.debug(
+                    f"Created joined_ships entry for accession {accession_id} with starshipID '{starship_id}'"
+                    if not dry_run else
+                    f"Would create joined_ships entry for accession {accession_id} with starshipID '{starship_id}'"
+                )
         
         # Step 4: Optionally remove ship_id column
         if remove_ship_id:
