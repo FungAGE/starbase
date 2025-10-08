@@ -5204,3 +5204,194 @@ def lookup_assembly_accessions_from_contigs(email: str = None, api_key: str = No
         raise
     finally:
         session.close()
+
+
+def remove_suffixed_joined_ships_duplicates(dry_run: bool = True) -> Dict:
+    r"""
+    Remove duplicate joined_ships entries that have _ACC_XXXX or _SHIP_XXXX suffixes in their starshipID.
+    
+    Strategy:
+    1. Identify duplicates by finding starshipIDs with _ACC_\d+ or _SHIP_\d+ suffixes
+    2. Group duplicates with their base starshipID (without suffix)
+    3. For each group:
+       - Keep the entry with the lowest ID (the original)
+       - Coalesce NULL values in original with non-NULL values from duplicates for:
+         accession_id, ship_id, ship_family_id, tax_id, genome_id, captain_id, 
+         ship_navis_id, ship_haplotype_id
+       - Delete the duplicate entries
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be done
+        
+    Returns:
+        Dict: Report of duplicates removed and values coalesced
+    """
+    logger.info("Removing suffixed duplicate joined_ships entries...")
+    session = StarbaseSession()
+    
+    report = {
+        'duplicates_found': [],
+        'entries_updated': [],
+        'entries_deleted': [],
+        'summary': {}
+    }
+    
+    try:
+        # Get all joined_ships entries
+        all_entries = session.query(JoinedShips).all()
+        
+        # Group entries by base starshipID
+        groups = {}
+        suffix_pattern = re.compile(r'^(.+?)_(ACC|SHIP)_(\d+)$')
+        
+        for entry in all_entries:
+            if not entry.starshipID:
+                continue
+            
+            # Check if this starshipID has a suffix
+            match = suffix_pattern.match(entry.starshipID)
+            
+            if match:
+                # This is a duplicate with suffix
+                base_starship_id = match.group(1)
+                suffix_type = match.group(2)
+                suffix_num = match.group(3)
+                
+                if base_starship_id not in groups:
+                    groups[base_starship_id] = {
+                        'base': None,
+                        'duplicates': []
+                    }
+                
+                groups[base_starship_id]['duplicates'].append({
+                    'entry': entry,
+                    'suffix_type': suffix_type,
+                    'suffix_num': suffix_num
+                })
+            else:
+                # This might be an original entry
+                if entry.starshipID not in groups:
+                    groups[entry.starshipID] = {
+                        'base': None,
+                        'duplicates': []
+                    }
+                
+                # Store as base if we don't have one yet, or if this has a lower ID
+                if (groups[entry.starshipID]['base'] is None or 
+                    entry.id < groups[entry.starshipID]['base'].id):
+                    groups[entry.starshipID]['base'] = entry
+        
+        # Process each group
+        total_updated = 0
+        total_deleted = 0
+        
+        for base_starship_id, group_data in groups.items():
+            if not group_data['duplicates']:
+                continue  # No duplicates for this starshipID
+            
+            base_entry = group_data['base']
+            duplicates = group_data['duplicates']
+            
+            # If no base entry found, use the duplicate with lowest ID as base
+            if base_entry is None:
+                all_in_group = [d['entry'] for d in duplicates]
+                all_in_group.sort(key=lambda x: x.id)
+                base_entry = all_in_group[0]
+                duplicates = [{'entry': e, 'suffix_type': 'UNKNOWN', 'suffix_num': ''} 
+                             for e in all_in_group[1:]]
+            
+            # Fields to coalesce
+            fields_to_coalesce = [
+                'accession_id', 'ship_id', 'ship_family_id', 'tax_id', 
+                'genome_id', 'captain_id', 'ship_navis_id', 'ship_haplotype_id'
+            ]
+            
+            # Track what we're updating
+            fields_updated = {}
+            
+            # Coalesce NULL values from base with non-NULL values from duplicates
+            for field in fields_to_coalesce:
+                base_value = getattr(base_entry, field)
+                
+                if base_value is None:
+                    # Look for a non-NULL value in duplicates
+                    for dup_data in duplicates:
+                        dup_entry = dup_data['entry']
+                        dup_value = getattr(dup_entry, field)
+                        
+                        if dup_value is not None:
+                            if not dry_run:
+                                setattr(base_entry, field, dup_value)
+                                session.add(base_entry)
+                            
+                            fields_updated[field] = {
+                                'old_value': base_value,
+                                'new_value': dup_value,
+                                'source_id': dup_entry.id,
+                                'source_starship_id': dup_entry.starshipID
+                            }
+                            break  # Use the first non-NULL value found
+            
+            # Record the update if any fields were coalesced
+            if fields_updated:
+                report['entries_updated'].append({
+                    'joined_ships_id': base_entry.id,
+                    'starshipID': base_entry.starshipID,
+                    'fields_updated': fields_updated,
+                    'action': f'Coalesced {len(fields_updated)} NULL fields from duplicates'
+                })
+                total_updated += 1
+            
+            # Delete the duplicate entries
+            for dup_data in duplicates:
+                dup_entry = dup_data['entry']
+                
+                if not dry_run:
+                    session.delete(dup_entry)
+                
+                report['entries_deleted'].append({
+                    'joined_ships_id': dup_entry.id,
+                    'starshipID': dup_entry.starshipID,
+                    'suffix_type': dup_data['suffix_type'],
+                    'suffix_num': dup_data['suffix_num'],
+                    'base_id': base_entry.id,
+                    'base_starshipID': base_entry.starshipID,
+                    'action': f'Deleted duplicate entry (merged into {base_entry.id})'
+                })
+                total_deleted += 1
+            
+            # Record the duplicate group
+            report['duplicates_found'].append({
+                'base_starship_id': base_starship_id,
+                'base_id': base_entry.id,
+                'duplicate_count': len(duplicates),
+                'duplicate_ids': [d['entry'].id for d in duplicates],
+                'fields_coalesced': list(fields_updated.keys()) if fields_updated else []
+            })
+        
+        if not dry_run:
+            session.commit()
+            logger.info(f"Removed {total_deleted} duplicate entries, updated {total_updated} base entries")
+        else:
+            logger.info(f"Would remove {total_deleted} duplicate entries, would update {total_updated} base entries")
+        
+        report['summary'] = {
+            'duplicate_groups_found': len(report['duplicates_found']),
+            'entries_updated': total_updated,
+            'entries_deleted': total_deleted,
+            'total_fields_coalesced': sum(len(e['fields_updated']) for e in report['entries_updated'])
+        }
+        
+        logger.info(f"Found {len(report['duplicates_found'])} duplicate groups")
+        logger.info(f"Updated {total_updated} base entries with coalesced values")
+        logger.info(f"Deleted {total_deleted} duplicate entries")
+        
+    except Exception as e:
+        logger.error(f"Error removing suffixed duplicates: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return report
