@@ -250,3 +250,22 @@ class JoinedShips(Base):
     captain = relationship("Captains")
     navis = relationship("Navis")
     haplotype = relationship("Haplotype")
+    quality_tags = relationship("ShipQualityTags", back_populates="joined_ship", cascade="all, delete-orphan")
+
+
+class ShipQualityTags(Base):
+    __tablename__ = "ship_quality_tags"
+    id = Column(Integer, primary_key=True)
+    joined_ship_id = Column(Integer, ForeignKey("joined_ships.id"), nullable=False)
+    tag_type = Column(String(50), nullable=False)
+    tag_value = Column(String(100), nullable=True)  # Optional: for tags that need values
+    created_at = Column(DateTime, nullable=False, server_default="CURRENT_TIMESTAMP")
+    created_by = Column(String(50), nullable=True, default="auto")
+    
+    # Relationships
+    joined_ship = relationship("JoinedShips", back_populates="quality_tags")
+    
+    # Unique constraint to prevent duplicate tags per ship
+    __table_args__ = (
+        {"sqlite_autoincrement": True},
+    )
