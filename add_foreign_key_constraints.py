@@ -42,20 +42,26 @@ def add_foreign_key_constraints(db_path: str, dry_run: bool = True):
         # Disable foreign keys during migration
         cursor.execute("PRAGMA foreign_keys = OFF")
         
-        # Check current foreign key constraints
-        logger.info("Checking current foreign key constraints...")
+        # Check current foreign key constraints and columns
+        logger.info("Checking current foreign key constraints and columns...")
         cursor.execute("PRAGMA foreign_key_list(joined_ships)")
         current_fks = cursor.fetchall()
-        
         accession_fk_exists = any(fk[2] == 'accessions' and fk[3] == 'accession_id' for fk in current_fks)
-        
-        if accession_fk_exists:
-            logger.info("Foreign key constraint for accession_id already exists")
+
+        cursor.execute("PRAGMA table_info(joined_ships)")
+        cols = [c[1] for c in cursor.fetchall()]
+        ship_id_exists = 'ship_id' in cols
+
+        if accession_fk_exists and ship_id_exists:
+            logger.info("Foreign key for accession_id exists and ship_id column is present")
             if dry_run:
                 logger.info("No changes needed")
-            return {"status": "no_changes_needed", "message": "Foreign key already exists"}
-        
-        logger.info("accession_id foreign key constraint missing - will recreate table")
+            return {"status": "no_changes_needed", "message": "FK present and ship_id exists"}
+
+        if not accession_fk_exists:
+            logger.info("accession_id foreign key constraint missing - will recreate table")
+        if not ship_id_exists:
+            logger.info("ship_id column missing - will recreate table to add ship_id with FK")
         
         if not dry_run:
             # Step 1: Create new table with proper foreign key constraints
@@ -63,6 +69,20 @@ def add_foreign_key_constraints(db_path: str, dry_run: bool = True):
             
             # Drop the new table if it exists from a previous failed attempt
             cursor.execute("DROP TABLE IF EXISTS joined_ships_new")
+
+            # Ensure referenced target column is eligible (PRIMARY KEY or UNIQUE)
+            try:
+                cursor.execute("PRAGMA table_info(ships)")
+                ship_cols = cursor.fetchall()
+                id_is_pk = any(col[1] == 'id' and col[5] == 1 for col in ship_cols)
+                if not id_is_pk:
+                    # Create a unique index on ships.id if not present
+                    cursor.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_ships_id ON ships(id)"
+                    )
+                    logger.info("Ensured UNIQUE index on ships.id for FK target")
+            except Exception as e:
+                logger.warning(f"Could not verify/ensure ships.id uniqueness: {e}")
             
             create_new_table_sql = """
             CREATE TABLE joined_ships_new (
@@ -77,6 +97,7 @@ def add_foreign_key_constraints(db_path: str, dry_run: bool = True):
                 accession_id INTEGER,
                 
                 -- Links to classification and annotation data
+                ship_id INTEGER,
                 ship_family_id INTEGER,
                 tax_id INTEGER,
                 genome_id INTEGER,
@@ -88,19 +109,29 @@ def add_foreign_key_constraints(db_path: str, dry_run: bool = True):
                 
                 -- Foreign key constraints
                 CONSTRAINT fk_joined_ships_accession 
-                    FOREIGN KEY (accession_id) REFERENCES accessions(id),
+                    FOREIGN KEY (accession_id) REFERENCES accessions(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
+                CONSTRAINT fk_joined_ships_ship 
+                    FOREIGN KEY (ship_id) REFERENCES ships(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
                 CONSTRAINT fk_joined_ships_family 
-                    FOREIGN KEY (ship_family_id) REFERENCES family_names(id),
+                    FOREIGN KEY (ship_family_id) REFERENCES family_names(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
                 CONSTRAINT fk_joined_ships_taxonomy 
-                    FOREIGN KEY (tax_id) REFERENCES taxonomy(id),
+                    FOREIGN KEY (tax_id) REFERENCES taxonomy(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
                 CONSTRAINT fk_joined_ships_genome 
-                    FOREIGN KEY (genome_id) REFERENCES genomes(id),
+                    FOREIGN KEY (genome_id) REFERENCES genomes(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
                 CONSTRAINT fk_joined_ships_captain 
-                    FOREIGN KEY (captain_id) REFERENCES captains(id),
+                    FOREIGN KEY (captain_id) REFERENCES captains(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
                 CONSTRAINT fk_joined_ships_navis 
-                    FOREIGN KEY (ship_navis_id) REFERENCES navis_names(id),
+                    FOREIGN KEY (ship_navis_id) REFERENCES navis_names(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
                 CONSTRAINT fk_joined_ships_haplotype 
                     FOREIGN KEY (ship_haplotype_id) REFERENCES haplotype_names(id)
+                    ON DELETE SET NULL ON UPDATE CASCADE
             )
             """
             
@@ -110,18 +141,41 @@ def add_foreign_key_constraints(db_path: str, dry_run: bool = True):
             # Step 2: Copy data from old table to new table
             logger.info("Copying data from old table to new table...")
             
-            copy_data_sql = """
-            INSERT INTO joined_ships_new (
-                id, starshipID, evidence, source, curated_status,
-                accession_id, ship_family_id, tax_id, genome_id, captain_id,
-                ship_navis_id, ship_haplotype_id, created_at, updated_at
-            )
-            SELECT 
-                id, starshipID, evidence, source, curated_status,
-                accession_id, ship_family_id, tax_id, genome_id, captain_id,
-                ship_navis_id, ship_haplotype_id, created_at, updated_at
-            FROM joined_ships
-            """
+            # Handle cases where old table may or may not have ship_id column
+            cursor.execute("PRAGMA table_info(joined_ships)")
+            old_cols = [c[1] for c in cursor.fetchall()]
+            has_old_ship_id = 'ship_id' in old_cols
+
+            if has_old_ship_id:
+                # Cleanse invalid ship_id values during copy to avoid FK violations
+                copy_data_sql = """
+                INSERT INTO joined_ships_new (
+                    id, starshipID, evidence, source, curated_status,
+                    accession_id, ship_id, ship_family_id, tax_id, genome_id, captain_id,
+                    ship_navis_id, ship_haplotype_id, created_at, updated_at
+                )
+                SELECT 
+                    js.id, js.starshipID, js.evidence, js.source, js.curated_status,
+                    js.accession_id,
+                    CASE WHEN s.id IS NULL THEN NULL ELSE js.ship_id END as ship_id,
+                    js.ship_family_id, js.tax_id, js.genome_id, js.captain_id,
+                    js.ship_navis_id, js.ship_haplotype_id, js.created_at, js.updated_at
+                FROM joined_ships js
+                LEFT JOIN ships s ON js.ship_id = s.id
+                """
+            else:
+                copy_data_sql = """
+                INSERT INTO joined_ships_new (
+                    id, starshipID, evidence, source, curated_status,
+                    accession_id, ship_id, ship_family_id, tax_id, genome_id, captain_id,
+                    ship_navis_id, ship_haplotype_id, created_at, updated_at
+                )
+                SELECT 
+                    id, starshipID, evidence, source, curated_status,
+                    accession_id, NULL as ship_id, ship_family_id, tax_id, genome_id, captain_id,
+                    ship_navis_id, ship_haplotype_id, created_at, updated_at
+                FROM joined_ships
+                """
             
             cursor.execute(copy_data_sql)
             rows_copied = cursor.rowcount
