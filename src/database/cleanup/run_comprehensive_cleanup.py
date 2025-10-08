@@ -133,6 +133,9 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
         # Apply joined_ships.ship_id foreign key fix
         joined_ships_fixes = fix_joined_ships_ship_id_foreign_key(dry_run=False)
 
+        # Fill missing family IDs
+        family_id_fixes = fill_missing_family_ids(dry_run=False)
+
         logger.info("Fixes applied successfully")
 
         # Record fix results into cleanup_issues table
@@ -143,7 +146,8 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
             all_fixes = {
                 'ships_accessions_joined_ships': fixes_report,
                 'ship_id_relationships': ship_id_fixes,
-                'joined_ships_ship_id': joined_ships_fixes
+                'joined_ships_ship_id': joined_ships_fixes,
+                'family_ids': family_id_fixes
             }
 
             fixes_record_summary = record_cleanup_fixes(all_fixes, source='pipeline', dry_run=False)
@@ -172,6 +176,15 @@ def main(dry_run: bool = True, output_report: str = None, apply_fixes: bool = Fa
                 f.write(f"Ship IDs fixed: {joined_ships_fixes['summary']['ship_ids_fixed']}\n")
                 f.write(f"Invalid references found: {joined_ships_fixes['summary']['invalid_references']}\n")
                 f.write(f"Accessions without ships: {joined_ships_fixes['summary']['no_ship_for_accession']}\n")
+                f.write("\nFAMILY ID FIXES:\n")
+                f.write(f"Total missing family IDs: {family_id_fixes['summary']['total_missing']}\n")
+                f.write(f"Inherited from existing: {family_id_fixes['summary']['inherited_from_existing']}\n")
+                f.write(f"Filled from navis consensus: {family_id_fixes['summary']['filled_from_navis']}\n")
+                f.write(f"Filled from haplotype consensus: {family_id_fixes['summary']['filled_from_haplotype']}\n")
+                f.write(f"Filled from captain classification: {family_id_fixes['summary']['filled_from_captain']}\n")
+                f.write(f"No classification found: {family_id_fixes['summary']['no_classification_found']}\n")
+                f.write(f"Errors: {family_id_fixes['summary']['errors']}\n")
+                f.write(f"Total filled: {family_id_fixes['summary']['total_filled']}\n")
     
     logger.info("Comprehensive database cleanup process completed")
 
