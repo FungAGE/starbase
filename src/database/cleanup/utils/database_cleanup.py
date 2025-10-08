@@ -8,12 +8,13 @@ import time
 import urllib.parse
 import urllib.request
 import re
+import os
 try:
     from ...config.database import StarbaseSession
     from ...config.logging import get_logger
     from ...database.models.schema import (
         Accessions, Ships, JoinedShips, Genome, Taxonomy, 
-        StarshipFeatures, Captains
+        StarshipFeatures, Captains, FamilyNames, Navis, Haplotype
     )
     from .cleanup_accessions import main as run_accession_cleanup
 except ImportError:
@@ -28,7 +29,7 @@ except ImportError:
     from src.config.logging import get_logger
     from src.database.models.schema import (
         Accessions, Ships, JoinedShips, Genome, Taxonomy, 
-        StarshipFeatures, Captains
+        StarshipFeatures, Captains, FamilyNames, Navis, Haplotype
     )
     from src.database.cleanup.utils.cleanup_accessions import main as run_accession_cleanup
 
@@ -5388,6 +5389,811 @@ def remove_suffixed_joined_ships_duplicates(dry_run: bool = True) -> Dict:
         
     except Exception as e:
         logger.error(f"Error removing suffixed duplicates: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return report
+
+
+def fix_ships_primary_key_issues(dry_run: bool = True) -> Dict:
+    """
+    Fix ships table primary key issues including NULL ids and missing entries.
+    
+    This function:
+    1. Assigns proper sequential IDs to ships with NULL id
+    2. Ensures all joined_ships entries have corresponding ships entries
+    3. Creates missing ships entries if needed (with empty sequence - can be filled later)
+    
+    Args:
+        dry_run (bool): If True, only analyze and report what would be fixed
+        
+    Returns:
+        Dict: Report of fixes applied
+    """
+    logger.info("Fixing ships table primary key issues...")
+    session = StarbaseSession()
+    
+    report = {
+        'null_ids_fixed': [],
+        'ships_created': [],
+        'joined_ships_linked': [],
+        'warnings': [],
+        'summary': {}
+    }
+    
+    try:
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+        
+        # Step 1: Find the current max ID
+        cursor.execute("SELECT MAX(id) FROM ships WHERE id IS NOT NULL")
+        max_id_result = cursor.fetchone()
+        next_id = (max_id_result[0] or 0) + 1 if max_id_result else 1
+        
+        logger.info(f"Current max ship id: {max_id_result[0] if max_id_result else 0}, starting new IDs from {next_id}")
+        
+        # Step 2: Fix ships with NULL id
+        cursor.execute("SELECT rowid, accession_id, sequence, md5 FROM ships WHERE id IS NULL")
+        null_id_ships = cursor.fetchall()
+        
+        logger.info(f"Found {len(null_id_ships)} ships with NULL id")
+        
+        for rowid, accession_id, sequence, md5 in null_id_ships:
+            if not dry_run:
+                # Assign a new ID to this ship
+                cursor.execute("UPDATE ships SET id = ? WHERE rowid = ?", (next_id, rowid))
+                
+                report['null_ids_fixed'].append({
+                    'rowid': rowid,
+                    'new_id': next_id,
+                    'accession_id': accession_id,
+                    'has_sequence': sequence is not None and sequence != '',
+                    'has_md5': md5 is not None and md5 != '',
+                    'action': f'Assigned id {next_id} to ship with rowid {rowid}'
+                })
+            else:
+                report['null_ids_fixed'].append({
+                    'rowid': rowid,
+                    'new_id': next_id,
+                    'accession_id': accession_id,
+                    'has_sequence': sequence is not None and sequence != '',
+                    'has_md5': md5 is not None and md5 != '',
+                    'action': f'Would assign id {next_id} to ship with rowid {rowid}'
+                })
+            
+            next_id += 1
+        
+        # Step 3: Check for joined_ships without corresponding ships entries
+        # Get all unique ship_id values from joined_ships that should exist in ships
+        cursor.execute("""
+            SELECT DISTINCT js.ship_id 
+            FROM joined_ships js
+            WHERE js.ship_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM ships s WHERE s.id = js.ship_id)
+        """)
+        missing_ship_ids = [row[0] for row in cursor.fetchall()]
+        
+        logger.info(f"Found {len(missing_ship_ids)} joined_ships entries pointing to non-existent ships")
+        
+        for ship_id in missing_ship_ids:
+            # Get info from joined_ships to help create the ship
+            cursor.execute("""
+                SELECT accession_id, starshipID
+                FROM joined_ships
+                WHERE ship_id = ?
+                LIMIT 1
+            """, (ship_id,))
+            js_info = cursor.fetchone()
+            
+            if js_info:
+                accession_id, starshipID = js_info
+                
+                if not dry_run:
+                    # Create a new ship entry
+                    cursor.execute("""
+                        INSERT INTO ships (id, accession_id, sequence, md5)
+                        VALUES (?, ?, '', NULL)
+                    """, (ship_id, accession_id))
+                    
+                    report['ships_created'].append({
+                        'ship_id': ship_id,
+                        'accession_id': accession_id,
+                        'starshipID': starshipID,
+                        'action': f'Created ship {ship_id} (empty sequence, can be filled later)'
+                    })
+                else:
+                    report['ships_created'].append({
+                        'ship_id': ship_id,
+                        'accession_id': accession_id,
+                        'starshipID': starshipID,
+                        'action': f'Would create ship {ship_id} (empty sequence)'
+                    })
+        
+        # Step 4: Find joined_ships without ship_id that need a ship created
+        # NOTE: ships.accession_id is deprecated - joined_ships.accession_id is the primary link
+        # We only use ships.accession_id temporarily to find existing ships, but new ships 
+        # won't have accession_id set (it's redundant)
+        cursor.execute("""
+            SELECT js.id, js.starshipID, js.accession_id
+            FROM joined_ships js
+            WHERE js.ship_id IS NULL
+            AND js.accession_id IS NOT NULL
+        """)
+        unlinked_joined_ships = cursor.fetchall()
+        
+        logger.info(f"Found {len(unlinked_joined_ships)} joined_ships entries without ship_id but with accession_id")
+        
+        for js_id, starshipID, accession_id in unlinked_joined_ships:
+            # Try to find a ship with this accession_id (for backward compatibility with old data)
+            # Note: This is temporary - ships.accession_id should be deprecated
+            cursor.execute("SELECT id FROM ships WHERE accession_id = ? LIMIT 1", (accession_id,))
+            ship_result = cursor.fetchone()
+            
+            if ship_result:
+                ship_id = ship_result[0]
+                
+                if not dry_run:
+                    cursor.execute("UPDATE joined_ships SET ship_id = ? WHERE id = ?", (ship_id, js_id))
+                    
+                    report['joined_ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': ship_id,
+                        'accession_id': accession_id,
+                        'action': f'Linked joined_ships {js_id} to existing ship {ship_id} (via ships.accession_id)'
+                    })
+                else:
+                    report['joined_ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': ship_id,
+                        'accession_id': accession_id,
+                        'action': f'Would link joined_ships {js_id} to existing ship {ship_id} (via ships.accession_id)'
+                    })
+            else:
+                # No ship exists, create one WITHOUT accession_id (following new architecture)
+                # The accession link is in joined_ships.accession_id, not ships.accession_id
+                if not dry_run:
+                    # Use the next available ID
+                    cursor.execute("""
+                        INSERT INTO ships (id, sequence, md5)
+                        VALUES (?, '', NULL)
+                    """, (next_id,))
+                    
+                    cursor.execute("UPDATE joined_ships SET ship_id = ? WHERE id = ?", (next_id, js_id))
+                    
+                    report['ships_created'].append({
+                        'ship_id': next_id,
+                        'accession_id': None,  # Not storing in ships anymore
+                        'starshipID': starshipID,
+                        'action': f'Created ship {next_id} for joined_ships {js_id} (accession in joined_ships only)'
+                    })
+                    
+                    report['joined_ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': next_id,
+                        'accession_id': accession_id,
+                        'action': f'Linked joined_ships {js_id} to newly created ship {next_id}'
+                    })
+                    
+                    next_id += 1
+                else:
+                    report['ships_created'].append({
+                        'ship_id': next_id,
+                        'accession_id': None,  # Not storing in ships anymore
+                        'starshipID': starshipID,
+                        'action': f'Would create ship {next_id} for joined_ships {js_id} (accession in joined_ships only)'
+                    })
+                    
+                    report['joined_ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': next_id,
+                        'accession_id': accession_id,
+                        'action': f'Would link joined_ships {js_id} to newly created ship {next_id}'
+                    })
+                    
+                    next_id += 1
+        
+        cursor.close()
+        
+        if not dry_run:
+            session.commit()
+            logger.info("Applied primary key fixes to database")
+        else:
+            logger.info("Dry run - no changes applied")
+        
+        report['summary'] = {
+            'null_ids_fixed': len(report['null_ids_fixed']),
+            'ships_created': len(report['ships_created']),
+            'joined_ships_linked': len(report['joined_ships_linked']),
+            'next_available_id': next_id,
+            'recommendation': 'After fixing, update ship sequences from FASTA file'
+        }
+        
+        logger.info(f"Fixed {len(report['null_ids_fixed'])} NULL ids")
+        logger.info(f"Created {len(report['ships_created'])} new ship entries")
+        logger.info(f"Linked {len(report['joined_ships_linked'])} joined_ships entries")
+        
+    except Exception as e:
+        logger.error(f"Error fixing ships primary key issues: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return report
+
+
+def link_joined_ships_via_fasta(fasta_path: str, dry_run: bool = True) -> Dict:
+    """
+    Link joined_ships to ships by matching starshipID to FASTA headers and comparing sequences.
+    
+    This is the proper way to link joined_ships.ship_id:
+    1. For each joined_ships without ship_id, search for starshipID in FASTA headers
+    2. Extract sequence from matching FASTA entry
+    3. Calculate MD5 hash and find ship with matching sequence
+    4. Link joined_ships.ship_id to the matching ship.id
+    5. If no ship found with that sequence, create a new one
+    
+    Args:
+        fasta_path (str): Path to FASTA file with starship sequences
+        dry_run (bool): If True, only analyze and report what would be done
+        
+    Returns:
+        Dict: Report of links created
+    """
+    logger.info(f"Linking joined_ships to ships via FASTA file: {fasta_path}")
+    session = StarbaseSession()
+    
+    report = {
+        'ships_linked': [],
+        'ships_created': [],
+        'fasta_entries_parsed': 0,
+        'fallback_fna_matches': [],
+        'no_fasta_match': [],
+        'warnings': [],
+        'summary': {}
+    }
+    
+    try:
+        # Import sequence utilities
+        try:
+            from ...utils.seq_utils import clean_sequence, revcomp
+            from ...utils.classification_utils import generate_md5_hash
+        except ImportError:
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+            from src.utils.seq_utils import clean_sequence, revcomp
+            from src.utils.classification_utils import generate_md5_hash
+        
+        # Parse FASTA file into a dict: header -> sequence
+        logger.info("Parsing FASTA file...")
+        fasta_sequences = {}
+        
+        with open(fasta_path, 'r') as f:
+            current_header = None
+            current_seq = []
+            
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                if line.startswith('>'):
+                    # Save previous entry
+                    if current_header and current_seq:
+                        fasta_sequences[current_header] = ''.join(current_seq)
+                    
+                    # Start new entry
+                    current_header = line[1:]  # Remove '>'
+                    current_seq = []
+                else:
+                    current_seq.append(line)
+            
+            # Save last entry
+            if current_header and current_seq:
+                fasta_sequences[current_header] = ''.join(current_seq)
+        
+        report['fasta_entries_parsed'] = len(fasta_sequences)
+        logger.info(f"Parsed {len(fasta_sequences)} sequences from FASTA file")
+        
+        # Get joined_ships entries without ship_id
+        raw_conn = session.connection().connection
+        cursor = raw_conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, starshipID, accession_id
+            FROM joined_ships
+            WHERE ship_id IS NULL
+        """)
+        unlinked_joined_ships = cursor.fetchall()
+        
+        logger.info(f"Found {len(unlinked_joined_ships)} joined_ships entries without ship_id")
+        
+        # Get current max ship ID for creating new entries
+        cursor.execute("SELECT MAX(id) FROM ships WHERE id IS NOT NULL")
+        max_id_result = cursor.fetchone()
+        next_id = (max_id_result[0] or 0) + 1 if max_id_result else 1
+        
+        for js_id, starshipID, accession_id in unlinked_joined_ships:
+            # Find matching FASTA header (partial match)
+            matching_header = None
+            matching_seq = None
+            
+            for header, seq in fasta_sequences.items():
+                # Check if starshipID appears in the header
+                if starshipID in header:
+                    matching_header = header
+                    matching_seq = seq
+                    break
+            
+            if not matching_seq:
+                # Fallback: Check for individual FASTA file in ships/fna directory
+                # Note: Check both fna/ and fna/fna/ subdirectories
+                base_fna_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'db', 'ships', 'fna')
+                fna_dirs = [
+                    base_fna_dir,
+                    os.path.join(base_fna_dir, 'fna')  # Additional nested fna directory
+                ]
+                
+                for fna_dir in fna_dirs:
+                    if matching_seq:
+                        break  # Already found a match
+                    
+                    if os.path.exists(fna_dir):
+                        # Try to find a file matching the starshipID
+                        for filename in os.listdir(fna_dir):
+                            if starshipID in filename and (filename.endswith('.fna') or filename.endswith('.fasta') or filename.endswith('.fa')):
+                                fna_path = os.path.join(fna_dir, filename)
+                                try:
+                                    # Read the sequence from the individual file
+                                    with open(fna_path, 'r') as fna_file:
+                                        fna_header = None
+                                        fna_seq = []
+                                        for line in fna_file:
+                                            line = line.strip()
+                                            if not line:
+                                                continue
+                                            if line.startswith('>'):
+                                                if fna_header:  # Already have a header, stop
+                                                    break
+                                                fna_header = line[1:]
+                                            else:
+                                                fna_seq.append(line)
+                                        
+                                        if fna_seq:
+                                            matching_header = f"{filename} (from {os.path.relpath(fna_dir, os.path.dirname(__file__))})"
+                                            matching_seq = ''.join(fna_seq)
+                                            logger.info(f"Found fallback sequence for {starshipID} in {fna_path}")
+                                            report['fallback_fna_matches'].append({
+                                                'joined_ships_id': js_id,
+                                                'starshipID': starshipID,
+                                                'filename': filename,
+                                                'directory': os.path.relpath(fna_dir, os.path.dirname(__file__))
+                                            })
+                                            break
+                                except Exception as e:
+                                    logger.warning(f"Error reading {filename}: {str(e)}")
+                
+                if not matching_seq:
+                    report['no_fasta_match'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'issue': 'No matching FASTA header found (checked main FASTA and fna directory)'
+                    })
+                    continue
+            
+            # Clean sequence and calculate MD5
+            clean_seq = clean_sequence(matching_seq)
+            if not clean_seq:
+                report['warnings'].append({
+                    'joined_ships_id': js_id,
+                    'starshipID': starshipID,
+                    'issue': 'Could not clean sequence from FASTA'
+                })
+                continue
+            
+            md5_hash = generate_md5_hash(clean_seq)
+            md5_hash_revcomp = generate_md5_hash(revcomp(clean_seq))
+            
+            if not md5_hash:
+                report['warnings'].append({
+                    'joined_ships_id': js_id,
+                    'starshipID': starshipID,
+                    'issue': 'Could not generate MD5 hash'
+                })
+                continue
+            
+            # Find ship with matching MD5 (or reverse complement)
+            cursor.execute("""
+                SELECT id FROM ships 
+                WHERE md5 = ? OR rev_comp_md5 = ? OR md5 = ? OR rev_comp_md5 = ?
+                LIMIT 1
+            """, (md5_hash, md5_hash, md5_hash_revcomp, md5_hash_revcomp))
+            ship_result = cursor.fetchone()
+            
+            if ship_result:
+                # Found existing ship with matching sequence
+                ship_id = ship_result[0]
+                
+                if not dry_run:
+                    cursor.execute("""
+                        UPDATE joined_ships SET ship_id = ? WHERE id = ?
+                    """, (ship_id, js_id))
+                    
+                    report['ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': ship_id,
+                        'md5': md5_hash,
+                        'fasta_header': matching_header,
+                        'action': f'Linked to existing ship {ship_id} (matched by MD5)'
+                    })
+                else:
+                    report['ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': ship_id,
+                        'md5': md5_hash,
+                        'fasta_header': matching_header,
+                        'action': f'Would link to existing ship {ship_id} (matched by MD5)'
+                    })
+            else:
+                # No ship with this sequence exists - create new one
+                if not dry_run:
+                    cursor.execute("""
+                        INSERT INTO ships (id, sequence, md5, rev_comp_md5)
+                        VALUES (?, ?, ?, ?)
+                    """, (next_id, clean_seq, md5_hash, md5_hash_revcomp))
+                    
+                    cursor.execute("""
+                        UPDATE joined_ships SET ship_id = ? WHERE id = ?
+                    """, (next_id, js_id))
+                    
+                    report['ships_created'].append({
+                        'ship_id': next_id,
+                        'starshipID': starshipID,
+                        'md5': md5_hash,
+                        'fasta_header': matching_header,
+                        'sequence_length': len(clean_seq),
+                        'action': f'Created new ship {next_id} with sequence from FASTA'
+                    })
+                    
+                    report['ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': next_id,
+                        'md5': md5_hash,
+                        'fasta_header': matching_header,
+                        'action': f'Linked to newly created ship {next_id}'
+                    })
+                    
+                    next_id += 1
+                else:
+                    report['ships_created'].append({
+                        'ship_id': next_id,
+                        'starshipID': starshipID,
+                        'md5': md5_hash,
+                        'fasta_header': matching_header,
+                        'sequence_length': len(clean_seq),
+                        'action': f'Would create new ship {next_id} with sequence from FASTA'
+                    })
+                    
+                    report['ships_linked'].append({
+                        'joined_ships_id': js_id,
+                        'starshipID': starshipID,
+                        'ship_id': next_id,
+                        'md5': md5_hash,
+                        'fasta_header': matching_header,
+                        'action': f'Would link to newly created ship {next_id}'
+                    })
+                    
+                    next_id += 1
+        
+        cursor.close()
+        
+        if not dry_run:
+            session.commit()
+            logger.info("Applied FASTA-based links to database")
+        else:
+            logger.info("Dry run - no changes applied")
+        
+        report['summary'] = {
+            'fasta_entries': report['fasta_entries_parsed'],
+            'joined_ships_processed': len(unlinked_joined_ships),
+            'ships_linked': len(report['ships_linked']),
+            'ships_created': len(report['ships_created']),
+            'fallback_fna_matches': len(report['fallback_fna_matches']),
+            'no_fasta_match': len(report['no_fasta_match']),
+            'warnings': len(report['warnings']),
+            'recommendation': 'Verify sequence matches and MD5 hashes are correct'
+        }
+        
+        logger.info(f"Linked {len(report['ships_linked'])} joined_ships entries")
+        logger.info(f"Created {len(report['ships_created'])} new ship entries")
+        logger.info(f"No FASTA match for {len(report['no_fasta_match'])} entries")
+        
+    except Exception as e:
+        logger.error(f"Error linking joined_ships via FASTA: {str(e)}")
+        if not dry_run:
+            session.rollback()
+        raise
+    finally:
+        session.close()
+    
+    return report
+
+
+def fill_missing_family_ids(dry_run: bool = True) -> Dict:
+    """
+    Fill in missing ship_family_id values in joined_ships table.
+    
+    This function uses a multi-step approach to assign family IDs:
+    1. Inherit from existing classifications (if starshipID already has family elsewhere)
+    2. Fill based on shared navis haplotypes (if navis/haplotype has consensus family)
+    3. Classify using captain sequences (using HMMER/BLAST on captain sequences)
+    
+    Args:
+        dry_run (bool): If True, only report what would be changed without making changes
+        
+    Returns:
+        Dict: Report of all fixes applied or that would be applied
+    """
+    logger.info("Filling missing ship_family_id in joined_ships table...")
+    session = StarbaseSession()
+    
+    report = {
+        'inherited_from_existing': [],
+        'filled_from_navis': [],
+        'filled_from_haplotype': [],
+        'filled_from_captain': [],
+        'no_classification_found': [],
+        'errors': [],
+        'summary': {}
+    }
+    
+    try:
+        # Get all joined_ships entries without family_id
+        missing_family = session.query(JoinedShips).filter(
+            JoinedShips.ship_family_id.is_(None)
+        ).all()
+        
+        logger.info(f"Found {len(missing_family)} joined_ships entries without family_id")
+        
+        for entry in missing_family:
+            try:
+                family_id = None
+                source = None
+                details = {}
+                
+                # Strategy 1: Inherit from existing classifications
+                # Look for other entries with the same starshipID that have a family_id
+                if entry.starshipID:
+                    existing_with_family = session.query(JoinedShips).filter(
+                        JoinedShips.starshipID == entry.starshipID,
+                        JoinedShips.ship_family_id.isnot(None),
+                        JoinedShips.id != entry.id
+                    ).first()
+                    
+                    if existing_with_family:
+                        family_id = existing_with_family.ship_family_id
+                        source = 'inherited_from_existing'
+                        details = {
+                            'joined_ships_id': entry.id,
+                            'starshipID': entry.starshipID,
+                            'assigned_family_id': family_id,
+                            'source_entry_id': existing_with_family.id,
+                            'method': 'Inherited from another entry with same starshipID'
+                        }
+                        report['inherited_from_existing'].append(details)
+                
+                # Strategy 2: Fill based on shared navis (if they have consensus family)
+                if not family_id and entry.ship_navis_id:
+                    # Get all entries with the same navis
+                    navis_entries = session.query(JoinedShips).filter(
+                        JoinedShips.ship_navis_id == entry.ship_navis_id,
+                        JoinedShips.ship_family_id.isnot(None)
+                    ).all()
+                    
+                    if navis_entries:
+                        # Count family occurrences
+                        family_counts = {}
+                        for nav_entry in navis_entries:
+                            fam_id = nav_entry.ship_family_id
+                            family_counts[fam_id] = family_counts.get(fam_id, 0) + 1
+                        
+                        # Get consensus family (most common)
+                        consensus_family = max(family_counts, key=family_counts.get)
+                        total_count = sum(family_counts.values())
+                        consensus_ratio = family_counts[consensus_family] / total_count
+                        
+                        # Use consensus if >70% agreement
+                        if consensus_ratio > 0.7:
+                            family_id = consensus_family
+                            source = 'filled_from_navis'
+                            
+                            # Get navis name for reporting
+                            navis = session.query(Navis).filter(Navis.id == entry.ship_navis_id).first()
+                            navis_name = navis.navis_name if navis else f"ID:{entry.ship_navis_id}"
+                            
+                            details = {
+                                'joined_ships_id': entry.id,
+                                'starshipID': entry.starshipID,
+                                'assigned_family_id': family_id,
+                                'navis_id': entry.ship_navis_id,
+                                'navis_name': navis_name,
+                                'consensus_ratio': consensus_ratio,
+                                'method': f'Filled from navis consensus ({consensus_ratio:.1%} agreement)'
+                            }
+                            report['filled_from_navis'].append(details)
+                
+                # Strategy 3: Fill based on shared haplotype (if they have consensus family)
+                if not family_id and entry.ship_haplotype_id:
+                    # Get all entries with the same haplotype
+                    haplotype_entries = session.query(JoinedShips).filter(
+                        JoinedShips.ship_haplotype_id == entry.ship_haplotype_id,
+                        JoinedShips.ship_family_id.isnot(None)
+                    ).all()
+                    
+                    if haplotype_entries:
+                        # Count family occurrences
+                        family_counts = {}
+                        for hap_entry in haplotype_entries:
+                            fam_id = hap_entry.ship_family_id
+                            family_counts[fam_id] = family_counts.get(fam_id, 0) + 1
+                        
+                        # Get consensus family (most common)
+                        consensus_family = max(family_counts, key=family_counts.get)
+                        total_count = sum(family_counts.values())
+                        consensus_ratio = family_counts[consensus_family] / total_count
+                        
+                        # Use consensus if >80% agreement (higher threshold for haplotype)
+                        if consensus_ratio > 0.8:
+                            family_id = consensus_family
+                            source = 'filled_from_haplotype'
+                            
+                            # Get haplotype name for reporting
+                            haplotype = session.query(Haplotype).filter(
+                                Haplotype.id == entry.ship_haplotype_id
+                            ).first()
+                            haplotype_name = haplotype.haplotype_name if haplotype else f"ID:{entry.ship_haplotype_id}"
+                            
+                            details = {
+                                'joined_ships_id': entry.id,
+                                'starshipID': entry.starshipID,
+                                'assigned_family_id': family_id,
+                                'haplotype_id': entry.ship_haplotype_id,
+                                'haplotype_name': haplotype_name,
+                                'consensus_ratio': consensus_ratio,
+                                'method': f'Filled from haplotype consensus ({consensus_ratio:.1%} agreement)'
+                            }
+                            report['filled_from_haplotype'].append(details)
+                
+                # Strategy 4: Classify using captain sequences (if captain_id exists)
+                if not family_id and entry.captain_id:
+                    # Get the captain sequence
+                    captain = session.query(Captains).filter(
+                        Captains.id == entry.captain_id
+                    ).first()
+                    
+                    if captain and captain.sequence:
+                        try:
+                            # Use HMMER-based family classification
+                            from src.utils.classification_utils import classify_family
+                            import tempfile
+                            
+                            # Create temporary FASTA file with captain sequence
+                            with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta', delete=False) as f:
+                                f.write(f">{entry.starshipID}\n{captain.sequence}\n")
+                                temp_fasta = f.name
+                            
+                            try:
+                                # Run family classification
+                                family_result, _ = classify_family(
+                                    fasta=temp_fasta,
+                                    seq_type='prot',  # Captain sequences are protein
+                                    pident_thresh=90,
+                                    input_eval=0.001,
+                                    threads=1
+                                )
+                                
+                                if family_result and 'family' in family_result:
+                                    family_name = family_result['family']
+                                    
+                                    # Look up family_id from family name
+                                    family_obj = session.query(FamilyNames).filter(
+                                        FamilyNames.familyName == family_name
+                                    ).first()
+                                    
+                                    if family_obj:
+                                        family_id = family_obj.id
+                                        source = 'filled_from_captain'
+                                        details = {
+                                            'joined_ships_id': entry.id,
+                                            'starshipID': entry.starshipID,
+                                            'assigned_family_id': family_id,
+                                            'family_name': family_name,
+                                            'captain_id': entry.captain_id,
+                                            'evalue': family_result.get('evalue'),
+                                            'method': 'Classified using captain sequence with HMMER'
+                                        }
+                                        report['filled_from_captain'].append(details)
+                                
+                            finally:
+                                # Clean up temp file
+                                import os
+                                if os.path.exists(temp_fasta):
+                                    os.remove(temp_fasta)
+                                    
+                        except Exception as classify_error:
+                            logger.warning(
+                                f"Failed to classify captain sequence for {entry.starshipID}: {str(classify_error)}"
+                            )
+                            report['errors'].append({
+                                'joined_ships_id': entry.id,
+                                'starshipID': entry.starshipID,
+                                'error': f'Captain classification failed: {str(classify_error)}'
+                            })
+                
+                # Apply the family_id if found
+                if family_id and not dry_run:
+                    entry.ship_family_id = family_id
+                    session.add(entry)
+                    logger.debug(f"Set family_id={family_id} for joined_ships.id={entry.id} via {source}")
+                elif not family_id:
+                    # No classification method worked
+                    report['no_classification_found'].append({
+                        'joined_ships_id': entry.id,
+                        'starshipID': entry.starshipID,
+                        'has_navis': entry.ship_navis_id is not None,
+                        'has_haplotype': entry.ship_haplotype_id is not None,
+                        'has_captain': entry.captain_id is not None,
+                        'reason': 'No classification method succeeded'
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Error processing joined_ships.id={entry.id}: {str(e)}")
+                report['errors'].append({
+                    'joined_ships_id': entry.id,
+                    'starshipID': entry.starshipID if entry.starshipID else 'Unknown',
+                    'error': str(e)
+                })
+        
+        # Commit changes if not dry run
+        if not dry_run:
+            session.commit()
+            logger.info("Applied family_id assignments to database")
+        else:
+            logger.info("Dry run - no changes applied")
+        
+        # Generate summary
+        report['summary'] = {
+            'total_missing': len(missing_family),
+            'inherited_from_existing': len(report['inherited_from_existing']),
+            'filled_from_navis': len(report['filled_from_navis']),
+            'filled_from_haplotype': len(report['filled_from_haplotype']),
+            'filled_from_captain': len(report['filled_from_captain']),
+            'no_classification_found': len(report['no_classification_found']),
+            'errors': len(report['errors']),
+            'total_filled': (
+                len(report['inherited_from_existing']) + 
+                len(report['filled_from_navis']) + 
+                len(report['filled_from_haplotype']) + 
+                len(report['filled_from_captain'])
+            )
+        }
+        
+        logger.info(f"Summary: {report['summary']}")
+        
+    except Exception as e:
+        logger.error(f"Error filling missing family IDs: {str(e)}")
         if not dry_run:
             session.rollback()
         raise
