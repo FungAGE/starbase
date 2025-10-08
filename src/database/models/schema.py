@@ -231,6 +231,7 @@ class JoinedShips(Base):
     accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=True)
     
     # Links to classification and annotation data
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
     tax_id = Column(Integer, ForeignKey("taxonomy.id"))
     genome_id = Column(Integer, ForeignKey("genomes.id"))
@@ -242,6 +243,7 @@ class JoinedShips(Base):
 
     # Relationships
     accession = relationship("Accessions", back_populates="joined_ship")
+    ship = relationship("Ships")
     family = relationship("FamilyNames")
     taxonomy = relationship("Taxonomy")
     genome = relationship("Genome")
