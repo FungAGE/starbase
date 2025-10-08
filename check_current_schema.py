@@ -31,12 +31,12 @@ def check_schema(db_path):
             print(f"  {idx[0]}: {idx[1]}")
         
         print("\n=== SAMPLE DATA ===")
-        cursor.execute("SELECT id, starshipID, accession_id FROM joined_ships LIMIT 5")
+        cursor.execute("SELECT id, starshipID, ship_id, accession_id FROM joined_ships LIMIT 5")
         rows = cursor.fetchall()
-        print("id | starshipID | accession_id")
-        print("-" * 30)
+        print("id | starshipID | ship_id | accession_id")
+        print("-" * 45)
         for row in rows:
-            print(f"{row[0]} | {row[1]} | {row[2] if row[2] is not None else 'NULL'}")
+            print(f"{row[0]} | {row[1]} | {row[2] if row[2] is not None else 'NULL'} | {row[3] if row[3] is not None else 'NULL'}")
         
         print(f"\n=== COUNTS ===")
         cursor.execute("SELECT COUNT(*) FROM joined_ships")
@@ -46,6 +46,10 @@ def check_schema(db_path):
         cursor.execute("SELECT COUNT(*) FROM joined_ships WHERE accession_id IS NOT NULL")
         with_accession_id = cursor.fetchone()[0]
         print(f"With accession_id: {with_accession_id}")
+        
+        cursor.execute("SELECT COUNT(*) FROM joined_ships WHERE ship_id IS NOT NULL")
+        with_ship_id = cursor.fetchone()[0]
+        print(f"With ship_id: {with_ship_id}")
         
         cursor.execute("SELECT COUNT(*) FROM joined_ships WHERE accession_id IS NULL")
         without_accession_id = cursor.fetchone()[0]
