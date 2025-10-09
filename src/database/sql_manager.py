@@ -72,7 +72,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
     session = StarbaseSession()
 
     meta_query = """
-    SELECT j.curated_status, j.starshipID, j.ship_id,
+    SELECT j.curated_status, j.starshipID,
            a.accession_tag, a.version_tag,
            CASE 
                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
@@ -84,7 +84,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
            f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
     FROM joined_ships j
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
     LEFT JOIN starship_features sf ON a.id = sf.accession_id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -159,7 +159,7 @@ def fetch_download_data(curated=True, dereplicate=False):
            f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
     LEFT JOIN taxonomy t ON j.tax_id = t.id
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
@@ -234,7 +234,7 @@ def fetch_ships(
 
     base_query += """
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
@@ -350,13 +350,13 @@ def fetch_ship_table(curated=False):
         f.familyName,
         t.name
     FROM joined_ships js
-    INNER JOIN accessions a ON js.ship_id = a.id
+    INNER JOIN accessions a ON js.accession_id = a.id
     LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
     -- Filter for ships that have sequence data
-    INNER JOIN ships s ON s.accession_id = a.id AND s.sequence IS NOT NULL
+    INNER JOIN ships s ON js.ship_id = s.id AND s.sequence IS NOT NULL
     -- Filter for ships that have GFF annotation data
-    INNER JOIN gff g ON g.ship_id = a.id
+    INNER JOIN gff g ON g.ship_id = s.id
     """
 
     if curated:
@@ -379,14 +379,14 @@ def fetch_accession_ship(accession_tag):
     sequence_query = """
     SELECT s.sequence
     FROM ships s
-    LEFT JOIN accessions a ON s.accession_id = a.id
+    LEFT JOIN accessions a ON s.accession_id = a.id AND a.id = :accession_tag
     WHERE a.accession_tag = :accession_tag
     """
 
     gff_query = """
     SELECT g.*
     FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
+    LEFT JOIN accessions a ON g.accession_id = a.id
     WHERE a.accession_tag = :accession_tag
     """
 
@@ -452,7 +452,7 @@ def fetch_captains(
             h.haplotype_name,
             c.captainID
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
@@ -544,11 +544,12 @@ def get_database_stats():
     try:
         # use metadata from previous query
         meta_df = fetch_meta_data(curated=False)
-        total_count = len(meta_df)
-        curated_count = len(meta_df[meta_df["curated_status"] == "curated"])
+        filtered_df = meta_df[meta_df["accession_tag"].notna()]
+        total_count = len(filtered_df["accession_tag"].unique())
+        curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"]["accession_tag"].unique())
         uncurated_count = total_count - curated_count
-        species_count = len(meta_df["name"].dropna().unique())
-        family_count = len(meta_df["familyName"].dropna().unique())
+        species_count = len(filtered_df["name"].unique())
+        family_count = len(filtered_df["familyName"].unique())
 
         stats = {
             "total_starships": total_count,

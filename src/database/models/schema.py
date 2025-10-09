@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Boolean,
     VARCHAR,
+    DateTime,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -34,6 +35,7 @@ class Accessions(Base):
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")
     gff_entries = relationship("Gff", back_populates="accession_obj")
+    joined_ship = relationship("JoinedShips", back_populates="accession", uselist=False)
 
 
 class Ships(Base):
@@ -163,16 +165,16 @@ class Taxonomy(Base):
     class_ = Column(
         String, name="class"
     )  # Using class_ as class is a reserved keyword
-    subclass = Column(String)
-    order = Column(String)
-    suborder = Column(String)
-    family = Column(String)
-    genus = Column(String)
-    species = Column(String)
-    section = Column(String)
-    species_group = Column(String)
-    subgenus = Column(String)
-    strain = Column(String)
+    subclass = Column(VARCHAR)
+    order = Column(VARCHAR)
+    suborder = Column(VARCHAR)
+    family = Column(VARCHAR)
+    genus = Column(VARCHAR)
+    species = Column(VARCHAR)
+    section = Column(VARCHAR)
+    species_group = Column(VARCHAR)
+    subgenus = Column(VARCHAR)
+    strain = Column(VARCHAR)
 
     # Relationships
     genomes = relationship("Genome", back_populates="taxonomy")
@@ -222,13 +224,18 @@ class Gff(Base):
 class JoinedShips(Base):
     __tablename__ = "joined_ships"
     id = Column(Integer, primary_key=True)
-    starshipID = Column(String)
+    starshipID = Column(String, nullable=False)  # Every ship needs an ID (duplicates allowed)
     evidence = Column(String)
     source = Column(String)
     curated_status = Column(String)
+    
+    # Direct link to accession (when sequence data is available)
+    accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=True)
+    
+    # Links to classification and annotation data
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
     tax_id = Column(Integer, ForeignKey("taxonomy.id"))
-    ship_id = Column(Integer, ForeignKey("ships.id"))
     genome_id = Column(Integer, ForeignKey("genomes.id"))
     captain_id = Column(Integer, ForeignKey("captains.id"))
     ship_navis_id = Column(Integer, ForeignKey("navis_names.id"))
@@ -237,31 +244,30 @@ class JoinedShips(Base):
     updated_at = Column(DateTime)
 
     # Relationships
+    accession = relationship("Accessions", back_populates="joined_ship")
+    ship = relationship("Ships")
     family = relationship("FamilyNames")
     taxonomy = relationship("Taxonomy")
-    ship = relationship("Ships")
     genome = relationship("Genome")
     captain = relationship("Captains")
     navis = relationship("Navis")
     haplotype = relationship("Haplotype")
+    quality_tags = relationship("ShipQualityTags", back_populates="joined_ship", cascade="all, delete-orphan")
 
-class Submission(Base):
-    __tablename__ = "submissions"
-    seq_contents = Column(String)
-    seq_filename = Column(String)
-    seq_date = Column(DateTime)
-    anno_contents = Column(String)
-    anno_filename = Column(String)
-    anno_date = Column(DateTime)
-    uploader = Column(String)
-    evidence = Column(String)
-    genus = Column(String)
-    species = Column(String)
-    hostchr = Column(String)
-    shipstart = Column(Integer)
-    shipend = Column(Integer)
-    shipstrand = Column(String)
-    comment = Column(String)
+
+class ShipQualityTags(Base):
+    __tablename__ = "ship_quality_tags"
     id = Column(Integer, primary_key=True)
-    accession_tag = Column(VARCHAR(255))
-    needs_review = Column(Boolean)
+    joined_ship_id = Column(Integer, ForeignKey("joined_ships.id"), nullable=False)
+    tag_type = Column(String(50), nullable=False)
+    tag_value = Column(String(100), nullable=True)  # Optional: for tags that need values
+    created_at = Column(DateTime, nullable=False, server_default="CURRENT_TIMESTAMP")
+    created_by = Column(String(50), nullable=True, default="auto")
+    
+    # Relationships
+    joined_ship = relationship("JoinedShips", back_populates="quality_tags")
+    
+    # Unique constraint to prevent duplicate tags per ship
+    __table_args__ = (
+        {"sqlite_autoincrement": True},
+    )
