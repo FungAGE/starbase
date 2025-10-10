@@ -2,6 +2,7 @@ import subprocess
 import os
 import glob
 import fcntl
+import pandas as pd
 
 from src.config.cache import cache
 from src.config.settings import BLAST_DB_PATHS
@@ -172,24 +173,31 @@ def create_dbs():
                 continue
 
             ship_metadata = fetch_meta_data(
-                accession_tag=ship_sequences["accession_tag"].tolist()
+                accession_tags=ship_sequences["accession_tag"].tolist()
             )
 
             ship_sequences_dict = {}
 
             for _, row in ship_sequences.iterrows():
-                accession_tag = row["accession_tag"]
-                sequence = row["sequence"]
+                # Convert Series to scalar values to avoid unhashable type errors
+                accession_tag = str(row["accession_tag"]) if pd.notna(row["accession_tag"]) else None
+                sequence = str(row["sequence"]) if pd.notna(row["sequence"]) else None
+
+                if not accession_tag or not sequence:
+                    continue
 
                 metadata_rows = ship_metadata[
                     ship_metadata["accession_tag"] == accession_tag
                 ]
                 if not metadata_rows.empty:
-                    metadata = metadata_rows.iloc[0]
+                    metadata = metadata_rows.iloc[0].to_dict()
 
                     header = create_ncbi_style_header(metadata)
                     if header and sequence:
-                        ship_sequences_dict[header] = sequence
+                        # Ensure header is a string to avoid unhashable type errors
+                        header = str(header) if header else None
+                        if header:
+                            ship_sequences_dict[header] = sequence
 
             # If DB already exists, skip rebuild
             if blast_db_exists(ship_fasta_path):
@@ -214,9 +222,12 @@ def create_dbs():
 
     captain_sequences_dict = {}
     for index, row in captain_sequences.iterrows():
-        accession = row["captainID"]
-        sequence = row["sequence"]
-        captain_sequences_dict[accession] = sequence
+        # Convert Series to scalar values to avoid unhashable type errors
+        accession = str(row["captainID"]) if pd.notna(row["captainID"]) else None
+        sequence = str(row["sequence"]) if pd.notna(row["sequence"]) else None
+        
+        if accession and sequence:
+            captain_sequences_dict[accession] = sequence
 
     # Captain DBs: skip if already exist
     if blast_db_exists(captain_fasta_path):
