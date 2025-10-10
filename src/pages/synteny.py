@@ -231,7 +231,7 @@ def load_synteny_table(href):
     from src.components.tables import make_pgv_table  
     
     # Fetch ships that have GFF annotation data
-    table_df = fetch_ship_table(curated=True)
+    table_df = fetch_ship_table(curated=False, with_sequence=True, with_gff_entries=True)
     if table_df is not None and not table_df.empty:
         logger.info(f"Fetched {len(table_df)} ships with GFF annotation data from database")
         logger.info(f"Sample accession_tags from database: {table_df['accession_tag'].head().tolist()}")
