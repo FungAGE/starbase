@@ -159,9 +159,11 @@ def serve_app_layout():
 
 @app.server.before_request
 def log_request_info():
-    """Log incoming requests to the telemetry database."""
+    """Log incoming requests to the telemetry database.
+    Skip static files, Dash internal endpoints, and reload hash
+    """
     try:
-        if request.path.startswith(("/static/", "/_dash-")):
+        if request.path.startswith(("/static/", "/_dash-", "/_reload-hash")):
             return
         client_ip = get_client_ip()
         log_request(client_ip, request.path)
