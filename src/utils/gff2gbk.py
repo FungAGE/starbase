@@ -183,8 +183,13 @@ def _fix_cds_translation(feature, sequence):
         # Extract the CDS sequence
         cds_seq = feature.extract(sequence)
         
-        # Translate to protein (handle different genetic codes if needed)
-        protein_seq = cds_seq.translate(table=1, cds=True)  # Standard genetic code
+        # Try strict translation first (with start/stop codons)
+        try:
+            protein_seq = cds_seq.translate(table=1, cds=True)  # Standard genetic code
+        except Exception:
+            # If strict translation fails, try lenient translation
+            # This allows CDS features that don't have proper start/stop codons
+            protein_seq = cds_seq.translate(table=1, to_stop=True)
         
         # Update the translation qualifier
         if 'translation' not in feature.qualifiers:
