@@ -132,13 +132,15 @@ layout = dmc.Container(
                                         ),
                                     ],
                                 ),
-                                dmc.Button(
-                                    dmc.Text("Generate Visualization", size="lg"),
-                                    id="synteny-update-button",
-                                    variant="gradient",
-                                    gradient={"from": "indigo", "to": "cyan"},
-                                    leftSection=html.I(className="bi bi-diagram-3"),
-                                ),
+                                dmc.Group([
+                                    dmc.Button(
+                                        dmc.Text("Generate Visualization", size="lg"),
+                                        id="synteny-update-button",
+                                        variant="gradient",
+                                        gradient={"from": "indigo", "to": "cyan"},
+                                        leftSection=html.I(className="bi bi-diagram-3")
+                                    ),
+                                ], justify="center", gap="md", grow=False),
                             ], gap="md"),
                             p="xl",
                             radius="md",
@@ -182,12 +184,14 @@ layout = dmc.Container(
                                                 "Save as SVG",
                                                 id="synteny-save-svg",
                                                 variant="light",
+                                                color="green",
                                                 leftSection=html.I(className="bi bi-download"),
                                             ),
                                             dmc.Button(
                                                 "Reset View",
                                                 id="synteny-reset-view", 
                                                 variant="light",
+                                                color="blue",
                                                 leftSection=html.I(className="bi bi-arrow-clockwise"),
                                             ),
                                             dmc.Button(
