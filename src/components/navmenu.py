@@ -65,12 +65,11 @@ def navmenu(buttons_disabled=False):
         brand=dbc.NavbarBrand(
             html.Span("starbase", className="logo-text"),
             className="ms-2",
-            href=HOME_URL,
         ),
         brand_href=HOME_URL,
         brand_style={
-            "align-items": "center",
-            "justify-content": "center",
+            "alignItems": "center",
+            "justifyContent": "center",
             "textAlign": "left",
         },
         color="primary",
