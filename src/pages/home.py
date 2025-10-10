@@ -42,7 +42,7 @@ title = dmc.Paper(
                             style={"color": "white"},
                         ),
                         "A Database and Toolkit for Exploration of ",
-                        html.Span("Starship", style={"font-style": "italic"}),
+                        html.Span("Starship", style={"fontStyle": "italic"}),
                         " Elements in Fungi",
                     ],
                     order=1,
@@ -135,7 +135,7 @@ starship_card = dmc.Paper(
             html.Div(
                 [
                     "What is a ",
-                    html.Span("Starship", style={"font-style": "italic"}),
+                    html.Span("Starship", style={"fontStyle": "italic"}),
                     "?",
                 ]
             ),
@@ -151,34 +151,34 @@ starship_card = dmc.Paper(
                                 html.Div(
                                     [
                                         html.Span(
-                                            "Starships", style={"font-style": "italic"}
+                                            "Starships", style={"fontStyle": "italic"}
                                         ),
                                         " are novel family of class II DNA transposons, endemic to Pezizomycotina. ",
                                         html.Span(
-                                            "Starships", style={"font-style": "italic"}
+                                            "Starships", style={"fontStyle": "italic"}
                                         ),
                                         " can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
                                         html.Span(
                                             "Paecilomyces",
-                                            style={"font-style": "italic"},
+                                            style={"fontStyle": "italic"},
                                         ),
                                         ", and enable the transfer of formaldehyde resistance in ",
                                         html.Span(
                                             "Aspergillus nidulans",
                                             style={
-                                                "font-style": "italic",
+                                                "fontStyle": "italic",
                                             },
                                         ),
                                         " and ",
                                         html.Span(
                                             "Penicillium chrysogenum.",
                                             style={
-                                                "font-style": "italic",
+                                                "fontStyle": "italic",
                                             },
                                         ),
                                         " Read more about ",
                                         html.Span(
-                                            "Starships", style={"font-style": "italic"}
+                                            "Starships", style={"fontStyle": "italic"}
                                         ),
                                         " ",
                                         dmc.Anchor(
@@ -374,7 +374,7 @@ def create_publications_section():
                         html.Div(
                             [
                                 "Publications Characterizing ",
-                                html.Span("Starships", style={"font-style": "italic"}),
+                                html.Span("Starships", style={"fontStyle": "italic"}),
                             ]
                         ),
                         order=2,
@@ -420,7 +420,7 @@ total_starships_info = dmc.Stack(
                             html.Span(
                                 "Starships",
                                 style={
-                                    "font-style": "italic"
+                                    "fontStyle": "italic"
                                 },
                             ),
                         ]
@@ -603,7 +603,7 @@ family_info = dmc.Stack(
                         [
                             html.Span(
                                 "Starship",
-                                style={"font-style": "italic"},
+                                style={"fontStyle": "italic"},
                             ),
                             " Families",
                         ]

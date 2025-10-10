@@ -244,7 +244,7 @@ layout = dmc.Container(
                 dmc.Text(
                     [
                         "Search and explore the characteristics of different ",
-                        html.Span("Starship", style={"font-style": "italic"}),
+                        html.Span("Starship", style={"fontStyle": "italic"}),
                         " families"
                     ],
                     c="dimmed",
@@ -292,12 +292,12 @@ layout = dmc.Container(
                             children=[
                                 curated_switch(
                                     text=html.Div(["Only show curated ",
-                                    html.Span("Starships", style={"font-style": "italic"})]),
+                                    html.Span("Starships", style={"fontStyle": "italic"})]),
                                     size="md",
                                 ),
                                 dereplicated_switch(
                                     text=html.Div(["Only show dereplicated ",
-                                    html.Span("Starships", style={"font-style": "italic"})]),
+                                    html.Span("Starships", style={"fontStyle": "italic"})]),
                                     size="md",
                                 ),
                             ],
@@ -370,7 +370,7 @@ layout = dmc.Container(
                         dmc.Space(h="sm"),
                         dmc.Paper(
                             children=[
-                                dmc.Title(html.Div([html.Span("Starship", style={"font-style": "italic"}),
+                                dmc.Title(html.Div([html.Span("Starship", style={"fontStyle": "italic"}),
                                 " Families"]), order=2, mb="md"),
                                 dcc.Loading(
                                     id="wiki-loading",
@@ -578,7 +578,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                     [
                         dmc.Text(
                             html.Div(["Select individual ",
-                            html.Span("Starships", style={"font-style": "italic"}),
+                            html.Span("Starships", style={"fontStyle": "italic"}),
                             " or download the complete dataset"]),
                             size="lg",
                             c="dimmed",
@@ -590,7 +590,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                 children=[
                                     dmc.Button(
                                         html.Div(["Download All ",
-                                        html.Span("Starships", style={"font-style": "italic"})]),
+                                        html.Span("Starships", style={"fontStyle": "italic"})]),
                                         id="download-all-btn",
                                         variant="gradient",
                                         gradient={
@@ -608,7 +608,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                     ),
                                     dmc.Button(
                                         html.Div(["Download Selected ",
-                                        html.Span("Starships", style={"font-style": "italic"})]),
+                                        html.Span("Starships", style={"fontStyle": "italic"})]),
                                         id="download-selected-btn",
                                         variant="gradient",
                                         gradient={"from": "teal", "to": "lime"},
@@ -644,7 +644,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                 ),
                                 dmc.Text(
                                     html.Div(["Click rows to select ",
-                                    html.Span("Starships", style={"font-style": "italic"})]),
+                                    html.Span("Starships", style={"fontStyle": "italic"})]),
                                     size="sm",
                                     c="dimmed",
                                     style={"fontStyle": "italic"},
