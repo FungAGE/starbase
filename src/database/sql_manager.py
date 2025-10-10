@@ -74,6 +74,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
     meta_query = """
     SELECT j.curated_status, j.starshipID,
            a.accession_tag, a.version_tag,
+           j.ship_id,
            CASE 
                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
                THEN a.accession_tag || '.' || a.version_tag
@@ -164,7 +165,7 @@ def fetch_download_data(curated=True, dereplicate=False):
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
     -- Only show entries that have sequences
-    INNER JOIN ships s ON s.accession_id = a.id
+    INNER JOIN ships s ON s.id = j.ship_id
     WHERE 1=1
     """
 
@@ -211,6 +212,7 @@ def fetch_ships(
         SELECT DISTINCT 
             a.id as accession_id, 
             a.accession_tag, a.version_tag,
+            j.ship_id,
             CASE 
                 WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
                 THEN a.accession_tag || '.' || a.version_tag
@@ -265,6 +267,7 @@ def fetch_ships(
         query += """
         )
         SELECT 
+            v.ship_id,
             v.accession_id,
             v.accession_tag,
             v.version_tag,
@@ -285,7 +288,7 @@ def fetch_ships(
             s.rev_comp_md5,
             v.captainID
         FROM valid_ships v
-        LEFT JOIN ships s ON s.accession_id = v.accession_id
+        LEFT JOIN ships s ON s.id = v.ship_id
         WHERE s.sequence IS NOT NULL"""
 
         if dereplicate:
@@ -335,7 +338,7 @@ def fetch_ships(
 
 
 @db_retry_decorator()
-def fetch_ship_table(curated=False):
+def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
 
@@ -350,17 +353,27 @@ def fetch_ship_table(curated=False):
         f.familyName,
         t.name
     FROM joined_ships js
-    INNER JOIN accessions a ON js.accession_id = a.id
+    LEFT JOIN accessions a ON js.accession_id = a.id
     LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
-    -- Filter for ships that have sequence data
-    INNER JOIN ships s ON js.ship_id = s.id AND s.sequence IS NOT NULL
-    -- Filter for ships that have GFF annotation data
-    INNER JOIN gff g ON g.ship_id = s.id
+    WHERE 1=1
     """
 
+    if with_sequence:
+        query += " AND js.ship_id IS NOT NULL"
+
+
+    if with_gff_entries:
+        with_gff_entries_query = """
+        SELECT DISTINCT js.ship_id
+        FROM joined_ships js
+        LEFT JOIN gff g ON g.ship_id = js.ship_id
+        WHERE g.source IS NOT NULL
+        """
+        query += f" AND js.ship_id IN ({with_gff_entries_query})"
+    
     if curated:
-        query += " WHERE js.curated_status = 'curated'"
+        query += " AND js.curated_status = 'curated'"
 
     query += " ORDER BY f.familyName ASC"
 
@@ -378,40 +391,37 @@ def fetch_accession_ship(accession_tag):
 
     sequence_query = """
     SELECT s.sequence
-    FROM ships s
-    LEFT JOIN accessions a ON s.accession_id = a.id AND a.id = :accession_tag
-    WHERE a.accession_tag = :accession_tag
+    FROM joined_ships j
+    LEFT JOIN ships s ON s.id = j.ship_id
+    LEFT JOIN accessions a ON a.id = j.accession_id
+    WHERE a.accession_tag = :accession_tag AND s.sequence IS NOT NULL
     """
 
     gff_query = """
-    SELECT g.*
-    FROM gff g
-    LEFT JOIN accessions a ON g.accession_id = a.id
-    WHERE a.accession_tag = :accession_tag
+    SELECT g.source, g.type, g.start, g.end, g.phase, g.strand, g.score, g.attributes
+    FROM joined_ships j
+    LEFT JOIN gff g ON g.ship_id = j.ship_id
+    LEFT JOIN accessions a ON a.id = j.accession_id
+    WHERE a.accession_tag = :accession_tag AND g.source IS NOT NULL
     """
 
     try:
-        sequence = pd.read_sql_query(
+        sequence_df = pd.read_sql_query(
             sequence_query, session.bind, params={"accession_tag": accession_tag}
         )
+        if sequence_df.empty:
+            logger.warning(f"No sequence data found for accession: {accession_tag}")
+            sequence_df = None
         gff_df = pd.read_sql_query(
             gff_query, session.bind, params={"accession_tag": accession_tag}
         )
-
-        # Get the sequence string
-        sequence_str = sequence.iloc[0]["sequence"] if not sequence.empty else None
-
-        # Ensure GFF data is a DataFrame
         if gff_df.empty:
             logger.warning(f"No GFF data found for accession: {accession_tag}")
             gff_df = None
 
-        logger.debug(f"GFF data type: {type(gff_df)}")
-        logger.debug(f"GFF columns: {gff_df.columns if gff_df is not None else 'None'}")
-
-        return {"sequence": sequence_str, "gff": gff_df}
+        return {"sequence": sequence_df, "gff": gff_df}
     except Exception as e:
-        logger.error(f"Error fetching ship data for {accession_tag}: {str(e)}")
+        logger.error(f"Error fetching sequence data for {accession_tag}: {str(e)}")
         raise
     finally:
         session.close()
@@ -456,6 +466,7 @@ def fetch_captains(
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         LEFT JOIN captains c ON j.captain_id = c.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
