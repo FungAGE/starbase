@@ -14,38 +14,36 @@ logger = logging.getLogger(__name__)
 def create_temp_gbk_from_gff(accession_tag, temp_dir):
     """Create a temporary GenBank file from GFF data in the database"""
     try:
-        # Strip version number from accession tag for database lookup
         base_accession = accession_tag.split('.')[0] if '.' in accession_tag else accession_tag
         logger.info(f"Looking up base accession: {base_accession} for display accession: {accession_tag}")
         
-        # Fetch sequence and GFF data from database using base accession
         ship_data = fetch_accession_ship(base_accession)
         
-        if not ship_data["sequence"] or ship_data["gff"] is None or ship_data["gff"].empty:
+        if ship_data["sequence"] is None or ship_data["sequence"].empty or ship_data["gff"] is None or ship_data["gff"].empty:
             logger.error(f"No sequence or GFF data found for accession: {base_accession}")
             return None
-            
-        # Create temporary FASTA file
+        
+        # Extract sequence string from DataFrame and save to temporary FASTA file
+        sequence = ship_data["sequence"]["sequence"].iloc[0]            
         fasta_file = temp_dir / f"{accession_tag}.fasta"
         with open(fasta_file, "w") as f:
-            f.write(f">{base_accession}\n{ship_data['sequence']}\n")
-            
-        # Create temporary GFF file with proper GFF format
+            f.write(f">{base_accession}\n{sequence}\n")
+
+        # columns in database used for GFF format
+        gff_columns = ['seqid', 'source', 'type', 'start', 'end', 'score', 'strand', 'phase', 'attributes']
+
+        # Create temporary GFF file with proper GFF format and add seqid column (use base accession as seqid for GFF format to match FASTA)
         gff_file = temp_dir / f"{accession_tag}.gff"
-        
-        # Ensure GFF data has the correct column order and format
-        gff_df = ship_data["gff"].copy()
-        
-        # Add seqid column (use base accession as seqid for GFF format to match FASTA)
+        gff_df = ship_data["gff"].copy()        
         gff_df['seqid'] = base_accession
         
-        # Map database columns to GFF format: seqid, source, type, start, end, score, strand, phase, attributes
-        gff_columns = ['seqid', 'source', 'type', 'start', 'end', 'score', 'strand', 'phase', 'attributes']
-        
-        # Reorder columns to match GFF format
-        gff_df = gff_df[gff_columns]
-        
-        # Write GFF file without header
+        # HACK: Convert "gene" features to "CDS" for clinker visualization. This is just temporary until we have more complete annotation data in the gff table.
+        # Ensure phase is set for CDS features (default to 0 if null) and score has a value (use '.' if null, as per GFF3 standard)
+        gff_df['type'] = gff_df['type'].replace('gene', 'CDS')        
+        gff_df['phase'] = gff_df['phase'].fillna(0)        
+        gff_df['score'] = gff_df['score'].fillna('.')
+                
+        gff_df = gff_df[gff_columns]        
         gff_df.to_csv(gff_file, sep="\t", index=False, header=False)
         
         # Convert GFF to GenBank
