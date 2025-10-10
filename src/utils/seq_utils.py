@@ -702,47 +702,69 @@ def sanitize_header(header: str) -> str:
 
 def create_ncbi_style_header(row):
     try:
-        clean_contig = clean_contigIDs(row["contigID"])
+        def safe_get(key):
+            """
+            Helper function to safely get value from row (handles both dict and Series)
+            Convert to None if it's NaN or empty
+            Convert to string to avoid Series issues
+            """
+            val = row.get(key) if isinstance(row, dict) else row[key]
+            if pd.isna(val):
+                return None
+            return str(val) if val is not None else None
+        
+        clean_contig = clean_contigIDs(safe_get("contigID"))
 
         # Use accession_display if available, otherwise combine accession_tag and version_tag
-        if "accession_display" in row and pd.notnull(row["accession_display"]):
-            accession_with_version = row["accession_display"]
-        elif (
-            "version_tag" in row
-            and pd.notnull(row["version_tag"])
-            and row["version_tag"] != ""
-        ):
-            accession_with_version = f"{row['accession_tag']}.{row['version_tag']}"
+        accession_display = safe_get("accession_display")
+        version_tag = safe_get("version_tag")
+        accession_tag = safe_get("accession_tag")
+        
+        if accession_display:
+            accession_with_version = accession_display
+        elif version_tag and version_tag != "":
+            accession_with_version = f"{accession_tag}.{version_tag}"
         else:
-            accession_with_version = row["accession_tag"]
+            accession_with_version = accession_tag
 
-        organism = row["name"]
+        organism = safe_get("name")
         if organism is None:
             organism = "Unknown"
         else:
             organism = f"[organism={organism}] "
-        if row["order"] is None:
+        
+        order_val = safe_get("order")
+        if order_val is None:
             order = "Unknown"
         else:
-            order = f"[lineage=Fungi; {row['order']}] "
-        if row["family"] is None:
+            order = f"[lineage=Fungi; {order_val}] "
+        
+        family_val = safe_get("family")
+        if family_val is None:
             family = "Unknown"
         else:
-            family = f"[family={row['family']}] "
-        if row["assembly_accession"] is None:
+            family = f"[family={family_val}] "
+        
+        assembly_accession = safe_get("assembly_accession")
+        if assembly_accession is None:
             assembly = ""
         else:
-            assembly = f"[assembly={row['assembly_accession']}] "
-        if row["familyName"] is None:
+            assembly = f"[assembly={assembly_accession}] "
+        
+        family_name_val = safe_get("familyName")
+        if family_name_val is None:
             family_name = ""
         else:
-            family_name = f"[family={row['familyName']}] "
+            family_name = f"[family={family_name_val}] "
+        
+        element_begin = safe_get("elementBegin")
+        element_end = safe_get("elementEnd")
         if (
             clean_contig is not None
-            and row["elementBegin"] is not None
-            and row["elementEnd"] is not None
+            and element_begin is not None
+            and element_end is not None
         ):
-            genomic_location = f"[genomic_location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}]"
+            genomic_location = f"[genomic_location={clean_contig}:{element_begin}-{element_end}]"
         else:
             genomic_location = ""
 
@@ -759,7 +781,7 @@ def create_ncbi_style_header(row):
         return sanitized_header
     except Exception as e:
         logger.warning(
-            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
+            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown') if isinstance(row, dict) else 'unknown'}: {str(e)}"
         )
         return None
 
