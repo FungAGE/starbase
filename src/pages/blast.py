@@ -119,12 +119,12 @@ layout = dmc.Container(
                                 [
                                     dmc.Title("BLAST Search", order=1),
                                     dmc.Text(
-                                        html.Div([
+                                        [
                                             "Search protein/nucleotide sequences for ",
                                             html.Span("Starships", style={"fontStyle": "italic"}),
                                             " and ",
                                             html.Span("Starship-associated genes", style={"fontStyle": "italic"}),
-                                        ]),
+                                        ],
                                         c="dimmed",
                                         size="lg",
                                     ),

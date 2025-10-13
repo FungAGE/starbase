@@ -577,9 +577,11 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                 dmc.Stack(
                     [
                         dmc.Text(
-                            html.Div(["Select individual ",
-                            html.Span("Starships", style={"fontStyle": "italic"}),
-                            " or download the complete dataset"]),
+                            [
+                                "Select individual ",
+                                html.Span("Starships", style={"fontStyle": "italic"}),
+                                " or download the complete dataset"
+                            ],
                             size="lg",
                             c="dimmed",
                         ),
@@ -643,8 +645,10 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                     c="dimmed",
                                 ),
                                 dmc.Text(
-                                    html.Div(["Click rows to select ",
-                                    html.Span("Starships", style={"fontStyle": "italic"})]),
+                                    [
+                                        "Click rows to select ",
+                                        html.Span("Starships", style={"fontStyle": "italic"})
+                                    ],
                                     size="sm",
                                     c="dimmed",
                                     style={"fontStyle": "italic"},
