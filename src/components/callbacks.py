@@ -1,9 +1,11 @@
 from dash import html, Output, Input, State, callback, no_update, dcc, callback_context
+from dash.exceptions import PreventUpdate
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash_iconify import DashIconify
 from typing import List
 
+import functools
 import traceback
 import pandas as pd
 
@@ -12,6 +14,45 @@ from src.database.sql_manager import fetch_meta_data
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
+
+def handle_callback_error(callback_func):
+    """
+    Decorator to handle callback errors gracefully
+
+    Args:
+        callback_func: The callback function to wrap
+
+    Returns:
+        Wrapped function with error handling
+    """
+
+    @functools.wraps(callback_func)
+    def wrapper(*args, **kwargs):
+        try:
+            return callback_func(*args, **kwargs)
+        except PreventUpdate:
+            raise
+        except Exception as e:
+            # Log the error with full traceback
+            logger.error(f"Callback error in {callback_func.__name__}: {str(e)}")
+            logger.error(f"Inputs: args={args}, kwargs={kwargs}")
+            logger.error(traceback.format_exc())
+
+            # Return detailed error alert
+            return dmc.Alert(
+                title="Error Loading Data",
+                children=[
+                    "We encountered a problem processing your request.",
+                    dmc.Space(h=10),
+                    dmc.Text(f"Error: {str(e)}", size="sm"),
+                    dmc.Space(h=10),
+                    dmc.Code(str(traceback.format_exc()), block=True),
+                ],
+                color="red",
+                variant="filled",
+            )
+
+    return wrapper
 
 
 def safe_get_value(df, column, index=0, default="N/A", format_func=None):

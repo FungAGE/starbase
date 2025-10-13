@@ -32,7 +32,7 @@ from src.components.callbacks import (
     create_modal_callback,
     dereplicated_switch,
 )
-from src.components.error_boundary import handle_callback_error
+from src.components.callbacks import handle_callback_error
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)

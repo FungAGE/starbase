@@ -6,8 +6,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from src.components.callbacks import create_modal_callback
-from src.components.error_boundary import handle_callback_error
+from src.components.callbacks import create_modal_callback, handle_callback_error
 from src.config.logging import get_logger
 from src.config.settings import GBK_PATH
 
