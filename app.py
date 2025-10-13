@@ -17,7 +17,9 @@ from src.config.settings import DB_PATHS
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
-from src.telemetry.utils import log_request, get_client_ip, update_ip_locations
+from src.telemetry.utils import get_client_ip, update_ip_locations
+from src.telemetry.tasks import log_request_task
+from src.config.celery_config import run_task
 
 logger = get_logger(__name__)
 
@@ -90,6 +92,7 @@ if os.environ.get("DEV_MODE"):
         dev_tools_props_check=True,
         dev_tools_ui=True,
         dev_tools_hot_reload=True,
+        dev_tools_hot_reload_interval=10000,
         dev_tools_silence_routes_logging=False,
         dev_tools_prune_errors=False,
     )
@@ -160,15 +163,15 @@ def serve_app_layout():
 @app.server.before_request
 def log_request_info():
     """Log incoming requests to the telemetry database.
-    Skip static files, Dash internal endpoints, and reload hash
+    Skip static files, Dash internal endpoints, and reload hash.
     """
     try:
         if request.path.startswith(("/static/", "/_dash-", "/_reload-hash")):
             return
         client_ip = get_client_ip()
-        log_request(client_ip, request.path)
+        run_task(log_request_task, client_ip, request.path)
     except Exception as e:
-        logger.error(f"Error in request logging middleware: {str(e)}")
+        logger.error(f"Error logging telemetry: {str(e)}")
 
 
 def check_submissions_db():
