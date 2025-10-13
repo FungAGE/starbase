@@ -74,7 +74,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
     meta_query = """
     SELECT j.curated_status, j.starshipID,
            a.accession_tag, a.version_tag,
-           j.ship_id,
+           j.ship_id, j.id as joined_ship_id,
            CASE 
                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
                THEN a.accession_tag || '.' || a.version_tag
@@ -94,21 +94,26 @@ def fetch_meta_data(curated=False, accession_tags=None):
     LEFT JOIN genomes g ON j.genome_id = g.id
     """
 
+    # Build WHERE clause conditions
+    where_conditions = []
     params = []
+    
     if curated:
-        meta_query += " WHERE j.curated_status = 'curated'"
+        where_conditions.append("j.curated_status = 'curated'")
 
     if accession_tags:
-        where_clause = " WHERE " if not curated else " AND "
         if isinstance(accession_tags, list):
-            # Use ? for SQLite placeholders
             placeholders = ",".join(["?"] * len(accession_tags))
-            meta_query += f"{where_clause}a.accession_tag IN ({placeholders})"
-            params = tuple(accession_tags)
+            where_conditions.append(f"a.accession_tag IN ({placeholders})")
+            params = list(accession_tags)
         else:
-            # Use ? for SQLite placeholder
-            meta_query += f"{where_clause}a.accession_tag = ?"
-            params = (accession_tags,)
+            where_conditions.append("a.accession_tag = ?")
+            params = [accession_tags]
+    
+    if where_conditions:
+        meta_query += f"\n    WHERE {' AND '.join(where_conditions)}"
+    
+    params = tuple(params) if params else []
 
     try:
         if params:
