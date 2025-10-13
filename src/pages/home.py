@@ -685,12 +685,6 @@ stats_section = dmc.Paper(
 layout = dmc.MantineProvider(
     [
         dcc.Location(id="url", refresh=False),
-        create_hero_section(),
-        dmc.Space(h=40),
-        create_features_section(),
-        dmc.Space(h=40),
-        create_publications_section(),
-        # Database warning if needed
         dmc.Notification(
             title="Database Connection Failed",
             message="Many features will be disabled until connection is re-established.",
@@ -699,6 +693,11 @@ layout = dmc.MantineProvider(
         )
         if not is_connected
         else None,
+        create_hero_section(),
+        dmc.Space(h=40),
+        create_features_section(),
+        dmc.Space(h=40),
+        create_publications_section(),
     ],
     theme={
         "colorScheme": "light",
