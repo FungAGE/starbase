@@ -560,7 +560,9 @@ def get_database_stats():
         curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"]["accession_tag"].unique())
         uncurated_count = total_count - curated_count
         species_count = len(filtered_df["name"].unique())
-        family_count = len(filtered_df["familyName"].unique())
+        families = filtered_df["familyName"].dropna().loc[~filtered_df["familyName"].isin(["NA", "None", None, "NULL"])].unique()
+        logger.info(f"families: {families}")
+        family_count = len(families)
 
         stats = {
             "total_starships": total_count,
