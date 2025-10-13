@@ -12,11 +12,20 @@ from Bio import SearchIO
 from src.utils.seq_utils import (
     clean_shipID,
 )
-from src.components.error_boundary import create_error_alert
 
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
+
+def create_error_alert(error_message, title="Error"):
+    """Create a standardized error alert component"""
+    return dmc.Alert(
+        title=title,
+        children=error_message,
+        color="red",
+        variant="filled",
+        withCloseButton=True,
+    )
 
 
 def run_blast(
