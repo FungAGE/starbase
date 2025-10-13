@@ -103,7 +103,7 @@ working_buttons = [
     create_feature_button("BLAST Search", "/blast", "mdi:dna"),
     create_feature_button("Browse Wiki and Download", "/wiki", "mdi:book-open-variant"),
     create_feature_button(
-        html.Div(
+        html.Span(
             [
                 "Submit to ",
                 html.Span("Starbase", className="logo-text"),
@@ -115,10 +115,10 @@ working_buttons = [
 ]
 
 not_working = [
-    html.Div(
+    html.Span(
         ["Synteny/Genome Browser"],
     ),
-    html.Div(
+    html.Span(
         [
             html.Span(
                 "starfish",
@@ -132,7 +132,7 @@ not_working = [
 starship_card = dmc.Paper(
     [
         dmc.Title(
-            html.Div(
+            html.Span(
                 [
                     "What is a ",
                     html.Span("Starship", style={"fontStyle": "italic"}),
@@ -148,47 +148,43 @@ starship_card = dmc.Paper(
                     [
                         dmc.Text(
                             [
-                                html.Div(
-                                    [
-                                        html.Span(
-                                            "Starships", style={"fontStyle": "italic"}
-                                        ),
-                                        " are novel family of class II DNA transposons, endemic to Pezizomycotina. ",
-                                        html.Span(
-                                            "Starships", style={"fontStyle": "italic"}
-                                        ),
-                                        " can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
-                                        html.Span(
-                                            "Paecilomyces",
-                                            style={"fontStyle": "italic"},
-                                        ),
-                                        ", and enable the transfer of formaldehyde resistance in ",
-                                        html.Span(
-                                            "Aspergillus nidulans",
-                                            style={
-                                                "fontStyle": "italic",
-                                            },
-                                        ),
-                                        " and ",
-                                        html.Span(
-                                            "Penicillium chrysogenum.",
-                                            style={
-                                                "fontStyle": "italic",
-                                            },
-                                        ),
-                                        " Read more about ",
-                                        html.Span(
-                                            "Starships", style={"fontStyle": "italic"}
-                                        ),
-                                        " ",
-                                        dmc.Anchor(
-                                            "here",
-                                            href="https://en.wikipedia.org/wiki/Starship_(genetics)",
-                                            style={"textDecoration": "none"},
-                                        ),
-                                        ".",
-                                    ],
+                                html.Span(
+                                    "Starships", style={"fontStyle": "italic"}
                                 ),
+                                " are novel family of class II DNA transposons, endemic to Pezizomycotina. ",
+                                html.Span(
+                                    "Starships", style={"fontStyle": "italic"}
+                                ),
+                                " can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
+                                html.Span(
+                                    "Paecilomyces",
+                                    style={"fontStyle": "italic"},
+                                ),
+                                ", and enable the transfer of formaldehyde resistance in ",
+                                html.Span(
+                                    "Aspergillus nidulans",
+                                    style={
+                                        "fontStyle": "italic",
+                                    },
+                                ),
+                                " and ",
+                                html.Span(
+                                    "Penicillium chrysogenum.",
+                                    style={
+                                        "fontStyle": "italic",
+                                    },
+                                ),
+                                " Read more about ",
+                                html.Span(
+                                    "Starships", style={"fontStyle": "italic"}
+                                ),
+                                " ",
+                                dmc.Anchor(
+                                    "here",
+                                    href="https://en.wikipedia.org/wiki/Starship_(genetics)",
+                                    style={"textDecoration": "none"},
+                                ),
+                                ".",
                             ],
                             size="lg",
                             c="dimmed",
@@ -294,15 +290,13 @@ accession_card = dmc.Paper(
             mb="md",
         ),
         dmc.Text(
-            html.Div(
-                [
-                    "To maintain data management and integrity, we employ an accessioning framework within ",
-                    html.Span("Starbase", className="logo-text"),
-                    ". ",
-                    html.Span("Starbase", className="logo-text"),
-                    " Ship Accessions (abbreviated as SBS) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",
-                ]
-            ),
+            [
+                "To maintain data management and integrity, we employ an accessioning framework within ",
+                html.Span("Starbase", className="logo-text"),
+                ". ",
+                html.Span("Starbase", className="logo-text"),
+                " Ship Accessions (abbreviated as SBS) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",
+            ],
             c="dimmed",
         ),
         dmc.Space(h=20),
@@ -414,17 +408,15 @@ total_starships_info = dmc.Stack(
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
-                    html.Div(
-                        [
-                            "Total ",
-                            html.Span(
-                                "Starships",
-                                style={
-                                    "fontStyle": "italic"
-                                },
-                            ),
-                        ]
-                    ),
+                    [
+                        "Total ",
+                        html.Span(
+                            "Starships",
+                            style={
+                                "fontStyle": "italic"
+                            },
+                        ),
+                    ],
                     size="lg",
                     c="dimmed",
                     style={
@@ -599,15 +591,13 @@ family_info = dmc.Stack(
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
-                    html.Div(
-                        [
-                            html.Span(
-                                "Starship",
-                                style={"fontStyle": "italic"},
-                            ),
-                            " Families",
-                        ]
-                    ),
+                    [
+                        html.Span(
+                            "Starship",
+                            style={"fontStyle": "italic"},
+                        ),
+                        " Families",
+                    ],
                     size="lg",
                     c="dimmed",
                     style={
