@@ -582,3 +582,130 @@ def get_database_stats():
         raise
     finally:
         session.close()
+
+
+def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto"):
+    """
+    Add a quality tag to a ship.
+    
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+        tag_type (str): Type of tag (e.g., "incomplete", "fragmented", "verified")
+        tag_value (str, optional): Optional value for the tag
+        created_by (str): Who created this tag (default: "auto")
+    
+    Returns:
+        int: ID of the created tag, or existing tag ID if duplicate
+    
+    Example:
+        >>> add_quality_tag(123, "incomplete", created_by="curator_name")
+        >>> add_quality_tag(123, "nested", "inside_SS-1.1", created_by="auto")
+    """
+    from src.database.models.schema import ShipQualityTags
+    from datetime import datetime
+    
+    session = StarbaseSession()
+    try:
+        # Check if tag already exists (unique constraint on joined_ship_id + tag_type)
+        existing_tag = session.query(ShipQualityTags).filter_by(
+            joined_ship_id=joined_ship_id,
+            tag_type=tag_type
+        ).first()
+        
+        if existing_tag:
+            # Update the tag value if provided
+            if tag_value is not None:
+                existing_tag.tag_value = tag_value
+                existing_tag.created_by = created_by
+                session.commit()
+            logger.info(f"Updated existing tag {tag_type} for ship {joined_ship_id}")
+            return existing_tag.id
+        
+        # Create new tag
+        new_tag = ShipQualityTags(
+            joined_ship_id=joined_ship_id,
+            tag_type=tag_type,
+            tag_value=tag_value,
+            created_at=datetime.now(),
+            created_by=created_by
+        )
+        session.add(new_tag)
+        session.commit()
+        logger.info(f"Added tag {tag_type} to ship {joined_ship_id}")
+        return new_tag.id
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding quality tag: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def remove_quality_tag(joined_ship_id, tag_type):
+    """
+    Remove a quality tag from a ship.
+    
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+        tag_type (str): Type of tag to remove
+    
+    Returns:
+        bool: True if tag was removed, False if not found
+    """
+    from src.database.models.schema import ShipQualityTags
+    
+    session = StarbaseSession()
+    try:
+        tag = session.query(ShipQualityTags).filter_by(
+            joined_ship_id=joined_ship_id,
+            tag_type=tag_type
+        ).first()
+        
+        if tag:
+            session.delete(tag)
+            session.commit()
+            logger.info(f"Removed tag {tag_type} from ship {joined_ship_id}")
+            return True
+        else:
+            logger.warning(f"Tag {tag_type} not found for ship {joined_ship_id}")
+            return False
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error removing quality tag: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def get_quality_tags(joined_ship_id):
+    """
+    Get all quality tags for a ship.
+    
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+    
+    Returns:
+        list: List of dicts with tag information
+    """
+    from src.database.models.schema import ShipQualityTags
+    
+    session = StarbaseSession()
+    try:
+        tags = session.query(ShipQualityTags).filter_by(
+            joined_ship_id=joined_ship_id
+        ).all()
+        
+        return [
+            {
+                "tag_type": tag.tag_type,
+                "tag_value": tag.tag_value,
+                "created_at": tag.created_at,
+                "created_by": tag.created_by
+            }
+            for tag in tags
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching quality tags: {str(e)}")
+        raise
+    finally:
+        session.close()

@@ -9,7 +9,7 @@ import functools
 import traceback
 import pandas as pd
 
-from src.database.sql_manager import fetch_meta_data
+from src.database.sql_manager import fetch_meta_data, get_quality_tags
 
 from src.config.logging import get_logger
 
@@ -293,6 +293,56 @@ def curated_switch(text="Only search curated Starships", size="sm"):
     return dmc.Switch(id="curated-input", label=text, size=size, checked=True)
 
 
+def create_quality_tag_badges(quality_tags):
+    """
+    Create badge components for quality tags.
+    
+    Args:
+        quality_tags (list): List of tag strings in format "tag_type" or "tag_type:tag_value"
+    
+    Returns:
+        list: List of dmc.Badge components
+    """
+    if not quality_tags:
+        return []
+    
+    # Define colors for different tag types
+    tag_colors = {
+        "incomplete": "orange",
+        "fragmented": "red",
+        "partial": "yellow",
+        "nested": "grape",
+        "verified": "teal",
+        "high_quality": "green",
+        "low_quality": "red",
+        "default": "gray"
+    }
+    
+    badges = []
+    for tag in quality_tags:
+        # Parse tag_type and tag_value if present
+        if ":" in tag:
+            tag_type, tag_value = tag.split(":", 1)
+            display_text = f"{tag_type}: {tag_value}"
+        else:
+            tag_type = tag
+            display_text = tag_type
+        
+        # Get color for this tag type
+        color = tag_colors.get(tag_type.lower(), tag_colors["default"])
+        
+        badges.append(
+            dmc.Badge(
+                display_text,
+                color=color,
+                variant="light",
+                size="sm",
+            )
+        )
+    
+    return badges
+
+
 def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
     """Create a switch component for toggling dereplicated-only searches."""
     return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True)
@@ -300,20 +350,12 @@ def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
 
 def create_accession_modal(accession):
     try:
-        initial_df = fetch_meta_data()
-
         accession = str(accession).strip("[]").split("/")[-1].strip()
-
-        # If accession contains version (e.g., "SBS123456.1"), extract base accession for lookup
         base_accession = accession.split(".")[0] if "." in accession else accession
 
-        initial_df["accession_tag"] = (
-            initial_df["accession_tag"]
-            .astype(str)
-            .apply(lambda x: x.strip("[]").split("/")[-1].strip())
-        )
+        modal_data = fetch_meta_data(accession_tags=[base_accession])
 
-        if initial_df.empty:
+        if modal_data.empty:
             return (
                 dmc.Stack(
                     [
@@ -330,7 +372,7 @@ def create_accession_modal(accession):
             )
 
         # Validate modal_data
-        if not isinstance(initial_df, pd.DataFrame) or initial_df.empty:
+        if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
             logger.warning("Invalid or empty modal_data received")
             return (
                 dmc.Alert(
@@ -344,7 +386,7 @@ def create_accession_modal(accession):
         # Check for required columns
         required_columns = ["starshipID", "familyName"]
         missing_columns = [
-            col for col in required_columns if col not in initial_df.columns
+            col for col in required_columns if col not in modal_data.columns
         ]
         if missing_columns:
             logger.warning(f"Missing required columns: {missing_columns}")
@@ -357,21 +399,6 @@ def create_accession_modal(accession):
                 f"Error: {accession}",
             )
 
-        # First try to find exact match with the full accession (including version)
-        if "accession_display" in initial_df.columns:
-            modal_data = initial_df[initial_df["accession_display"] == accession]
-            if modal_data.empty:
-                # If no exact match, try with base accession
-                modal_data = initial_df[initial_df["accession_tag"] == base_accession]
-        else:
-            # Fallback to original behavior if accession_display is not available
-            modal_data = initial_df[initial_df["accession_tag"] == accession]
-
-        # Log data info for debugging
-        logger.debug(
-            f"Modal data shape: {modal_data.shape}, columns: {list(modal_data.columns)}"
-        )
-
         # HACK: applying a fix for extra rows in the starship_features table, only take the first begin/end coordinates for each ship_id/accession_id
         # ! this might cause some issues if coordinates are not updated for all rows for a ship_id/accession_id pair, updated only if begin/end coordinates are the same
         # TODO: split features table or move coordinate information to separate table or another existing table
@@ -381,6 +408,22 @@ def create_accession_modal(accession):
         starshipID = safe_get_value(modal_data, "starshipID")
         curated_status = safe_get_value(modal_data, "curated_status", default="unknown")
         badge_color = "green" if curated_status == "curated" else "yellow"
+        
+        # Fetch quality tags separately using joined_ship_id
+        joined_ship_id = safe_get_numeric(modal_data, "joined_ship_id")
+        quality_tags = []
+        if joined_ship_id:
+            try:
+                quality_tags_data = get_quality_tags(joined_ship_id)
+                # Format tags as "tag_type:tag_value" or just "tag_type" if no value
+                for tag in quality_tags_data:
+                    if tag.get("tag_value"):
+                        quality_tags.append(f"{tag['tag_type']}:{tag['tag_value']}")
+                    else:
+                        quality_tags.append(tag['tag_type'])
+            except Exception as e:
+                logger.warning(f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}")
+        
         familyName = safe_get_value(modal_data, "familyName")
         genomes_present = str(len(modal_data))
         navis_name = safe_get_value(modal_data, "navis_name")
@@ -397,6 +440,69 @@ def create_accession_modal(accession):
         element_position = safe_get_position(modal_data, "elementBegin", "elementEnd")
 
         # Basic ship information section
+        ship_info_children = [
+            dmc.Group(
+                [
+                    dmc.Text("starshipID:", fw=700),
+                    dmc.Text(starshipID),
+                ]
+            ),
+            dmc.Group(
+                [
+                    dmc.Text("Curation Status:", fw=700),
+                    dmc.Badge(
+                        curated_status,
+                        color=badge_color,
+                    ),
+                ]
+            ),
+        ]
+        
+        # Add quality tags if present
+        if quality_tags:
+            quality_tag_badges = create_quality_tag_badges(quality_tags)
+            ship_info_children.append(
+                dmc.Group(
+                    [
+                        dmc.Text("Quality Tags:", fw=700),
+                        dmc.Group(
+                            quality_tag_badges,
+                            gap="xs",
+                        ),
+                    ],
+                    align="flex-start",
+                )
+            )
+        
+        # Continue with remaining ship details
+        ship_info_children.extend([
+            dmc.Group(
+                [
+                    dmc.Text("Starship Family:", fw=700),
+                    dmc.Text(familyName),
+                ]
+            ),
+            dmc.Group(
+                [
+                    dmc.Text("Genomes Present:", fw=700),
+                    dmc.Badge(str(genomes_present), color="blue"),
+                ]
+            ),
+            dmc.Group(
+                [
+                    dmc.Text("Starship Navis:", fw=700),
+                    dmc.Text(navis_name),
+                ]
+            ),
+            dmc.Group(
+                [
+                    dmc.Text("Starship Haplotype:", fw=700),
+                    dmc.Text(haplotype_name),
+                ]
+            ),
+        ])
+        
+        # Create the ship_info Paper component
         ship_info = dmc.Paper(
             p="md",
             withBorder=True,
@@ -405,47 +511,7 @@ def create_accession_modal(accession):
                 dmc.SimpleGrid(
                     cols={"base": 1, "sm": 2},
                     spacing="lg",
-                    children=[
-                        dmc.Group(
-                            [
-                                dmc.Text("starshipID:", fw=700),
-                                dmc.Text(starshipID),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Curation Status:", fw=700),
-                                dmc.Badge(
-                                    curated_status,
-                                    color=badge_color,
-                                ),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Starship Family:", fw=700),
-                                dmc.Text(familyName),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Genomes Present:", fw=700),
-                                dmc.Badge(str(genomes_present), color="blue"),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Starship Navis:", fw=700),
-                                dmc.Text(navis_name),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Starship Haplotype:", fw=700),
-                                dmc.Text(haplotype_name),
-                            ]
-                        ),
-                    ],
+                    children=ship_info_children,
                 ),
             ],
         )
