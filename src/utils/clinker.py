@@ -12,19 +12,38 @@ from src.database.sql_manager import fetch_accession_ship
 logger = logging.getLogger(__name__)
 
 def create_temp_gbk_from_gff(accession_tag, temp_dir):
-    """Create a temporary GenBank file from GFF data in the database"""
+    """Create a temporary GenBank file from GFF data in the database with comprehensive validation"""
     try:
+        # Handle version tags - extract base accession for database lookup
         base_accession = accession_tag.split('.')[0] if '.' in accession_tag else accession_tag
         logger.info(f"Looking up base accession: {base_accession} for display accession: {accession_tag}")
         
         ship_data = fetch_accession_ship(base_accession)
         
-        if ship_data["sequence"] is None or ship_data["sequence"].empty or ship_data["gff"] is None or ship_data["gff"].empty:
-            logger.error(f"No sequence or GFF data found for accession: {base_accession}")
-            return None
+        # Validate sequence data exists
+        if ship_data["sequence"] is None or ship_data["sequence"].empty:
+            raise ValueError(f"No sequence data found for accession: {base_accession}")
         
-        # Extract sequence string from DataFrame and save to temporary FASTA file
-        sequence = ship_data["sequence"]["sequence"].iloc[0]            
+        # Validate GFF data exists
+        if ship_data["gff"] is None or ship_data["gff"].empty:
+            raise ValueError(f"No GFF annotation data found for accession: {base_accession}")
+        
+        # Extract sequence string from DataFrame
+        sequence = ship_data["sequence"]["sequence"].iloc[0]
+        
+        # Validate sequence quality
+        if not sequence or len(sequence) < 100:
+            raise ValueError(f"Sequence too short ({len(sequence) if sequence else 0} bp) for accession: {base_accession}. Minimum 100 bp required.")
+        
+        # Validate GFF has minimum features
+        gff_df = ship_data["gff"].copy()
+        if len(gff_df) < 1:
+            raise ValueError(f"No GFF features found for accession: {base_accession}")
+        
+        # Log data quality metrics
+        logger.info(f"Ship {base_accession}: seq_len={len(sequence)} bp, total_features={len(gff_df)}")
+        
+        # Save to temporary FASTA file
         fasta_file = temp_dir / f"{accession_tag}.fasta"
         with open(fasta_file, "w") as f:
             f.write(f">{base_accession}\n{sequence}\n")
@@ -34,7 +53,6 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
 
         # Create temporary GFF file with proper GFF format and add seqid column (use base accession as seqid for GFF format to match FASTA)
         gff_file = temp_dir / f"{accession_tag}.gff"
-        gff_df = ship_data["gff"].copy()        
         gff_df['seqid'] = base_accession
         
         # HACK: Convert "gene" features to "CDS" for clinker visualization. This is just temporary until we have more complete annotation data in the gff table.
@@ -42,6 +60,14 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
         gff_df['type'] = gff_df['type'].replace('gene', 'CDS')        
         gff_df['phase'] = gff_df['phase'].fillna(0)        
         gff_df['score'] = gff_df['score'].fillna('.')
+        
+        # Validate we have CDS features for visualization
+        cds_count = len(gff_df[gff_df['type'] == 'CDS'])
+        if cds_count < 1:
+            logger.warning(f"No CDS features found for {base_accession}. Found types: {gff_df['type'].unique().tolist()}")
+            raise ValueError(f"No CDS features found for {base_accession}. At least 1 CDS required for synteny visualization.")
+        
+        logger.info(f"Ship {base_accession}: {cds_count} CDS features available for visualization")
                 
         gff_df = gff_df[gff_columns]        
         gff_df.to_csv(gff_file, sep="\t", index=False, header=False)
@@ -53,9 +79,13 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
         logger.info(f"Successfully created GenBank file for {accession_tag}")
         return str(gbk_file)
         
+    except ValueError as e:
+        # Re-raise validation errors for better error reporting
+        logger.error(f"Validation error for {accession_tag}: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"Error creating GenBank file for {accession_tag}: {str(e)}")
-        return None
+        logger.error(f"Error creating GenBank file for {accession_tag}: {str(e)}", exc_info=True)
+        raise ValueError(f"Failed to create GenBank file for {accession_tag}: {str(e)}")
 
 def process_local_files(gff_paths, fasta_paths):
     """Process local GFF and FASTA files using clinker"""
@@ -102,9 +132,13 @@ def process_gbk_files(gbk_files, accession_tags=None):
     Args:
         gbk_files: List of GenBank file paths or directory path
         accession_tags: List of accession tags to generate GenBank files from GFF data
+    
+    Raises:
+        ValueError: If validation fails or processing errors occur
     """
     try:
         gbk_file_paths = []
+        failed_accessions = []
         
         # If accession_tags are provided, generate GenBank files on-the-fly
         if accession_tags:
@@ -114,11 +148,18 @@ def process_gbk_files(gbk_files, accession_tags=None):
             temp_dir = Path(tempfile.mkdtemp())
             
             for accession_tag in accession_tags:
-                gbk_file = create_temp_gbk_from_gff(accession_tag, temp_dir)
-                if gbk_file:
-                    gbk_file_paths.append(gbk_file)
-                else:
-                    logger.warning(f"Failed to generate GenBank file for {accession_tag}")
+                try:
+                    gbk_file = create_temp_gbk_from_gff(accession_tag, temp_dir)
+                    if gbk_file:
+                        gbk_file_paths.append(gbk_file)
+                        logger.info(f"Successfully generated GenBank file for {accession_tag}")
+                except ValueError as e:
+                    # Validation error - collect for reporting
+                    failed_accessions.append(f"{accession_tag}: {str(e)}")
+                    logger.warning(f"Failed to generate GenBank file for {accession_tag}: {str(e)}")
+                except Exception as e:
+                    failed_accessions.append(f"{accession_tag}: Unexpected error - {str(e)}")
+                    logger.error(f"Unexpected error generating GenBank file for {accession_tag}: {str(e)}")
         else:
             # Handle both directory path and list of files
             if isinstance(gbk_files, (str, Path)):
@@ -129,16 +170,24 @@ def process_gbk_files(gbk_files, accession_tags=None):
             
             gbk_file_paths = [str(f) for f in gbk_files]
         
+        # Report any failures
+        if failed_accessions:
+            error_msg = f"Failed to process {len(failed_accessions)} accession(s):\n" + "\n".join(f"  - {err}" for err in failed_accessions)
+            if not gbk_file_paths:
+                # All failed
+                raise ValueError(f"All accessions failed validation. {error_msg}")
+            else:
+                # Some succeeded, log warnings
+                logger.warning(f"Partial success: {len(gbk_file_paths)} succeeded, {len(failed_accessions)} failed")
+        
         if not gbk_file_paths:
-            logger.error(f"No GenBank files found or generated")
-            return None
+            raise ValueError("No GenBank files found or generated")
             
         # Check if there are too many files
         if len(gbk_file_paths) > 4:
-            logger.warning(f"Found {len(gbk_file_paths)} GenBank files, exceeding limit of 4")
-            raise ValueError("Too many GenBank files. Please limit to 4 files for visualization.")
+            raise ValueError(f"Too many GenBank files ({len(gbk_file_paths)}). Maximum 4 files allowed for visualization.")
             
-        logger.info(f"Processing {len(gbk_file_paths)} GenBank files")
+        logger.info(f"Processing {len(gbk_file_paths)} GenBank files successfully")
         
         # Parse files using clinker
         logger.info("Parsing files with clinker...")
@@ -148,27 +197,41 @@ def process_gbk_files(gbk_files, accession_tags=None):
             logger.info(f"Successfully parsed {len(clusters)} clusters")
             
             # Use align_clusters to create a Globaligner object
-            # Set a lower cutoff for alignment to handle potentially poor translations
+            # Set a lower cutoff (0.1) for alignment to handle potentially poor translations
+            # This is more permissive than the default to accommodate lower quality annotations
+            logger.info("Aligning clusters with cutoff=0.1...")
             globaligner = align_clusters(*clusters, cutoff=0.1)
             logger.info(f"Successfully created globaligner with {len(globaligner.clusters)} clusters")
             return globaligner
         except Exception as e:
-            logger.error(f"Error parsing files with clinker: {str(e)}")
+            logger.error(f"Error during alignment with cutoff=0.1: {str(e)}")
             # If alignment fails, try with an even lower cutoff or no alignment
             try:
-                logger.warning("Retrying with no sequence alignment...")
+                logger.warning("Retrying alignment with cutoff=0.0 (no filtering)...")
                 globaligner = align_clusters(*clusters, cutoff=0.0)
+                logger.info(f"Successfully aligned with cutoff=0.0")
                 return globaligner
             except Exception as e2:
-                logger.error(f"Failed even with no alignment: {str(e2)}")
-                raise e
+                logger.error(f"Failed even with cutoff=0.0: {str(e2)}")
+                raise ValueError(f"Failed to align clusters: {str(e)}. This may indicate issues with the sequence or annotation quality.")
                 
+    except ValueError:
+        # Re-raise validation errors as-is
+        raise
     except Exception as e:
-        logger.error(f"Error in process_gbk_files: {str(e)}", exc_info=True)
-        raise  # Let the callback handle the error
+        logger.error(f"Unexpected error in process_gbk_files: {str(e)}", exc_info=True)
+        raise ValueError(f"Failed to process GenBank files: {str(e)}")
 
 def create_clustermap_data(globaligner, use_file_order=False):
-    """Convert clinker Globaligner to clustermap.js format"""
+    """Convert clinker Globaligner to clustermap.js format.
+    
+    This function processes the gene data from clinker and extracts gene labels
+    from the 'Alias' attribute in GFF files (if available). The label extraction
+    follows this priority:
+    1. Direct 'label' field from gene object
+    2. 'gene', 'label', or 'locus_tag' from gene.names dictionary
+    3. Falls back to gene UID if no label found
+    """
     data = globaligner.to_data(use_file_order=use_file_order)
     
     # Transform data structure if needed
@@ -196,9 +259,23 @@ def create_clustermap_data(globaligner, use_file_order=False):
             
             # Process genes
             for gene in locus['genes']:
+                # Try to extract gene label from various sources
+                gene_label = gene.get('label')  # First try direct label
+                if not gene_label:
+                    # Try to get from names dict if available
+                    names = gene.get('names', {})
+                    gene_label = names.get('gene') or names.get('label') or names.get('locus_tag')
+                if not gene_label:
+                    # Fallback to UID
+                    gene_label = gene['uid']
+                
+                # Log gene label extraction for debugging
+                if gene.get('names'):
+                    logger.debug(f"Gene {gene['uid']}: extracted label '{gene_label}' from names {gene.get('names')}")
+                
                 formatted_gene = {
                     "uid": gene['uid'],
-                    "name": gene.get('label', gene['uid']),
+                    "name": gene_label,
                     "start": gene['start'],
                     "end": gene['end'],
                     "strand": gene['strand'],

@@ -158,8 +158,10 @@ layout = dmc.Container(
                                 html.Div(id="synteny-message"),
                                 dcc.Loading(
                                     id="synteny-loading-viz",
-                                    type="circle",
+                                    type="default",
+                                    fullscreen=False,
                                     children=[
+                                        html.Div(id="synteny-loading-trigger"),  # Hidden div to trigger loading
                                         # STATIC CONTAINER - never changes ID
                                         html.Div(
                                             "Select Starships with GFF annotation data and click 'Generate Visualization'",
@@ -239,7 +241,7 @@ def load_synteny_table(href):
         table = make_pgv_table(
             df=table_df,
             columns=table_columns,
-            id="synteny-table",
+            id="synteny-table-grid",
             select_rows=True,
             pg_sz=10,
         )
@@ -253,8 +255,8 @@ def load_synteny_table(href):
     Output("synteny-data-store", "data"),
     [Input("synteny-update-button", "n_clicks")],
     [
-        State("synteny-table", "selectedRows"),
-        State("synteny-table", "rowData"),
+        State("synteny-table-grid", "selectedRows"),
+        State("synteny-table-grid", "rowData"),
         State("synteny-identity-threshold", "value"),
         State("synteny-use-file-order", "value"),
     ],
@@ -267,9 +269,6 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
     
     if not n_clicks:
         return no_update
-
-    # Add small delay to ensure UI state is settled
-    time.sleep(0.1)
     
     logger.info(f"Button clicked: {n_clicks}, Selected rows: {selected_rows}")
     
@@ -280,14 +279,20 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
         return {"error": "Please select no more than 4 Starships."}
 
     try:
-        selected_ships = [row["accession_display"] for row in selected_rows]
+        # Extract base accession_tag (not accession_display) for database lookup
+        selected_ships = [row["accession_tag"] for row in selected_rows]
+        selected_displays = [row.get("accession_display", row["accession_tag"]) for row in selected_rows]
         
         # Generate GenBank files on-the-fly from GFF data
-        logger.info(f"Generating GenBank files for selected ships: {selected_ships}")
+        logger.info(f"Generating GenBank files for selected ships: {selected_ships} (display: {selected_displays})")
         globaligner = process_gbk_files(None, accession_tags=selected_ships)
         
         if not globaligner:
-            return {"error": "Error processing GenBank files from GFF data."}
+            return {
+                "error": "Failed to process GenBank files from GFF data.",
+                "reason": "No valid clusters generated",
+                "details": {"accessions": selected_ships}
+            }
 
         clustermap_data = create_clustermap_data(globaligner, use_file_order or False)
         
@@ -299,6 +304,8 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
             "use_file_order": use_file_order or False,
         }
         
+        logger.info(f"Successfully created clustermap data with {len(clean_data.get('clusters', []))} clusters and {len(clean_data.get('links', []))} links")
+        
         return {
             "data": clean_data,
             "config": config,
@@ -306,9 +313,32 @@ def prepare_synteny_data(n_clicks, selected_rows, table_data, identity_threshold
             "timestamp": time.time()  # Add timestamp for cache busting
         }
 
+    except ValueError as e:
+        # Validation errors - these are user-actionable
+        logger.warning(f"Validation error in synteny data: {str(e)}")
+        return {
+            "error": f"Data validation error: {str(e)}",
+            "reason": "Invalid or missing data",
+            "details": {"accessions": selected_ships}
+        }
     except Exception as e:
-        logger.error(f"Error in preparing synteny data: {str(e)}")
-        return {"error": f"Error: {str(e)}"}
+        # Unexpected errors - these need investigation
+        logger.error(f"Unexpected error in preparing synteny data: {str(e)}", exc_info=True)
+        return {
+            "error": f"Processing error: {str(e)}",
+            "reason": "Unexpected failure during visualization generation",
+            "details": {"accessions": selected_ships}
+        }
+
+@callback(
+    Output("synteny-loading-trigger", "children"),
+    Input("synteny-data-store", "data"),
+)
+def update_loading_trigger(data):
+    """Update loading trigger to ensure loading indicator shows"""
+    if data:
+        return ""
+    return ""
 # Remove this callback as it references non-existent IDs and conflicts with the static container approach
 
 
@@ -330,7 +360,7 @@ clientside_callback(
                 container.style.color = '#6c757d';
                 container.style.fontSize = '16px';
             }
-            return ["Visualization cleared", {"display": "none"}];
+            return [None, {"display": "none"}];
         }
         
         // Handle null/cleared data store
@@ -350,8 +380,16 @@ clientside_callback(
         if (store_data.error) {
             const container = document.getElementById(containerId);
             if (container) {
-                container.innerHTML = store_data.error;
-                container.style.color = 'red';
+                let errorHtml = `<div style="color: red; padding: 20px; text-align: center;">
+                    <strong>${store_data.error}</strong>`;
+                if (store_data.reason) {
+                    errorHtml += `<br><small>${store_data.reason}</small>`;
+                }
+                if (store_data.details) {
+                    errorHtml += `<br><small style="font-family: monospace;">Details: ${JSON.stringify(store_data.details)}</small>`;
+                }
+                errorHtml += `</div>`;
+                container.innerHTML = errorHtml;
             }
             return [store_data.error, {"display": "none"}];
         }

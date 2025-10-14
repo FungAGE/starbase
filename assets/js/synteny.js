@@ -189,5 +189,3 @@ window.syntenyViz = {
     serialiseSVG: serialiseSVG,
     downloadFile: downloadFile
 };
-
-console.log("Synteny visualization helpers loaded");

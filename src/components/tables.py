@@ -121,7 +121,7 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     if select_rows:
         grid_options.update(
             {
-                "rowSelection": "multiple",
+                "rowSelection": {"mode": "multiRow"},
                 "suppressRowClickSelection": True,  # Only select via checkbox
             }
         )
@@ -234,7 +234,7 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     if select_rows:
         grid_options.update(
             {
-                "rowSelection": "multiple",
+                "rowSelection": {"mode": "multiRow"},
                 "suppressRowClickSelection": True,
             }
         )
@@ -435,7 +435,7 @@ def make_dl_table(df, id, table_columns):
         "suppressPropertyNamesCheck": True,
         "rowHeight": 48,
         "headerHeight": 48,
-        "rowSelection": "multiple",
+        "rowSelection": {"mode": "multiRow"},
         "suppressRowClickSelection": True,  # Only select via checkbox
     }
 
