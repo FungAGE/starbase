@@ -413,15 +413,18 @@ def create_accession_modal(accession):
         # Fetch quality tags separately using joined_ship_id
         joined_ship_id = safe_get_numeric(modal_data, "joined_ship_id")
         quality_tags = []
+        accepted_quality_tags = ["missing_direct_repeats","missing_tir","missing_boundaries","missing_genome_context","unannotated","missing_empty_site"]
         if joined_ship_id:
             try:
                 quality_tags_data = get_quality_tags(joined_ship_id)
                 # Format tags as "tag_type:tag_value" or just "tag_type" if no value
                 for tag in quality_tags_data:
                     if tag.get("tag_value"):
-                        quality_tags.append(f"{tag['tag_type']}:{tag['tag_value']}")
+                        tag_value = f"{tag['tag_type']}:{tag['tag_value']}"
                     else:
-                        quality_tags.append(tag['tag_type'])
+                        tag_value = tag['tag_type']
+                    if tag_value in accepted_quality_tags:
+                        quality_tags.append(tag_value)
             except Exception as e:
                 logger.warning(f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}")
         
