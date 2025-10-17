@@ -692,7 +692,8 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                     html.P(f"Details: {str(e)}"),
                 ]
             )
-            return True, "Error", error_content
+            error_title = dmc.Title("Error", order=3)
+            return True, error_content, error_title
 
     return toggle_modal
 
