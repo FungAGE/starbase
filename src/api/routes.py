@@ -25,12 +25,16 @@ def check_blast_limit():
 def get_accession_details(accession_id):
     """Get details for a specific accession."""
     try:
-        modal_content = create_accession_modal(accession_id)
+        modal_content, modal_title = create_accession_modal(accession_id)
 
         # Convert directly to HTML string instead of returning Dash components
         html_content = dash_to_html(modal_content)
+        html_title = dash_to_html(modal_title)
 
-        return jsonify({"content": html_content})
+        return jsonify({
+            "title": html_title,
+            "content": html_content
+        })
     except Exception as e:
         logger.error(f"Error in get_accession_details: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -196,6 +200,39 @@ def dash_to_html(component):
         children = component.children if hasattr(component, "children") else []
         return f"""
         <div style="display:flex; flex-direction:column; gap:16px;">
+            {dash_to_html(children)}
+        </div>
+        """
+
+    # Alerts - error/warning messages
+    elif isinstance(component, dmc.Alert):
+        children = component.children if hasattr(component, "children") else ""
+        title = component.title if hasattr(component, "title") else ""
+        color = component.color if hasattr(component, "color") else "blue"
+        
+        colors = {
+            "red": ("#fef2f2", "#dc2626", "#fecaca"),
+            "yellow": ("#fffbeb", "#d97706", "#fed7aa"),
+            "blue": ("#f0f9ff", "#0284c7", "#bae6fd"),
+        }
+        bg_color, text_color, border_color = colors.get(color, colors["blue"])
+        
+        return f"""
+        <div style="background-color:{bg_color}; color:{text_color}; border:1px solid {border_color}; 
+                    border-radius:4px; padding:12px 16px; margin-bottom:16px;">
+            {f'<div style="font-weight:600; margin-bottom:8px;">{title}</div>' if title else ''}
+            <div>{dash_to_html(children)}</div>
+        </div>
+        """
+
+    # Flex containers
+    elif isinstance(component, dmc.Flex):
+        children = component.children if hasattr(component, "children") else []
+        wrap = component.wrap if hasattr(component, "wrap") else "nowrap"
+        gap = component.gap if hasattr(component, "gap") else "8px"
+        
+        return f"""
+        <div style="display:flex; gap:{gap}; flex-wrap:{wrap};">
             {dash_to_html(children)}
         </div>
         """
