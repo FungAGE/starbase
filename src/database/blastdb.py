@@ -199,17 +199,11 @@ def create_dbs():
                         if header:
                             ship_sequences_dict[header] = sequence
 
-            # If DB already exists, skip rebuild
-            if blast_db_exists(ship_fasta_path):
-                logger.info(
-                    f"BLAST DB already exists for {dataset_name}; skipping rebuild"
-                )
-            else:
-                logger.info(
-                    f"Writing {len(ship_sequences_dict)} sequences to {dataset_name} FASTA file"
-                )
-                write_fasta(ship_sequences_dict, ship_fasta_path)
-                create_blast_database(ship_fasta_path, "nucl")
+            # rebuild BLAST database everytime?
+            logger.info(f"Rebuilding {dataset_name} BLAST database...")
+            write_fasta(ship_sequences_dict, ship_fasta_path)
+            create_blast_database(ship_fasta_path, "nucl")
+            logger.info(f"{dataset_name} BLAST database rebuilt successfully")
 
     # Create captain database
     captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]
