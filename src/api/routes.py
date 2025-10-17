@@ -25,17 +25,12 @@ def check_blast_limit():
 def get_accession_details(accession_id):
     """Get details for a specific accession."""
     try:
-        content, title = create_accession_modal(accession_id)
+        modal_content = create_accession_modal(accession_id)
 
         # Convert directly to HTML string instead of returning Dash components
-        html_content = dash_to_html(content)
-        html_title = (
-            f"Ship Accession: {accession_id}"
-            if not hasattr(title, "children")
-            else dash_to_html(title)
-        )
+        html_content = dash_to_html(modal_content)
 
-        return jsonify({"content": html_content, "title": html_title})
+        return jsonify({"content": html_content})
     except Exception as e:
         logger.error(f"Error in get_accession_details: {str(e)}")
         return jsonify({"error": str(e)}), 500

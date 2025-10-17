@@ -336,7 +336,7 @@ def create_quality_tag_badges(quality_tags):
                 display_text,
                 color=color,
                 variant="light",
-                size="sm",
+                size="xs",
             )
         )
     
@@ -403,6 +403,7 @@ def create_accession_modal(accession):
         # ! this might cause some issues if coordinates are not updated for all rows for a ship_id/accession_id pair, updated only if begin/end coordinates are the same
         # TODO: split features table or move coordinate information to separate table or another existing table
         modal_data = modal_data.groupby("accession_tag").first().reset_index()
+        modal_content = []
 
         # create variables for each data used in the sections of the modal
         starshipID = safe_get_value(modal_data, "starshipID")
@@ -439,133 +440,129 @@ def create_accession_modal(accession):
         element_length = safe_get_numeric(modal_data, "elementLength", default="")
         element_position = safe_get_position(modal_data, "elementBegin", "elementEnd")
 
+        modal_title = dmc.Title(f"Starship Accession: {accession}", order=2)
+
         # Basic ship information section
-        ship_info_children = [
-            dmc.Group(
-                [
-                    dmc.Text("starshipID:", fw=700),
-                    dmc.Text(starshipID),
-                ]
-            ),
-            dmc.Group(
-                [
-                    dmc.Text("Curation Status:", fw=700),
-                    dmc.Badge(
-                        curated_status,
-                        color=badge_color,
-                    ),
-                ]
-            ),
-        ]
-        
+        ship_info = dmc.Paper(
+                        p="md",
+                        withBorder=True,
+                        children=[
+                            dmc.SimpleGrid(
+                                cols={"base": 1, "sm": 2},
+                                spacing="lg",
+                                children=[
+                                        dmc.Group(
+                                            [
+                                                dmc.Text("starshipID:", fw=700),
+                                                dmc.Text(starshipID),
+                                            ]
+                                        ),
+                                        dmc.Group(
+                                            [
+                                                dmc.Text("Starship Family:", fw=700),
+                                                dmc.Text(familyName),
+                                            ]
+                                        ),
+                                        dmc.Group(
+                                            [
+                                                dmc.Text("Genomes Present:", fw=700),
+                                                dmc.Badge(str(genomes_present), color="blue"),
+                                            ]
+                                        ),
+                                        dmc.Group(
+                                            [
+                                                dmc.Text("Starship Navis:", fw=700),
+                                                dmc.Text(navis_name),
+                                            ]
+                                        ),
+                                        dmc.Group(
+                                            [
+                                                dmc.Text("Starship Haplotype:", fw=700),
+                                                dmc.Text(haplotype_name),
+                                            ]
+                                        ),
+                                    ]
+                                    )
+                        ])
+        modal_content.append(ship_info)
+
         # Add quality tags if present
         if quality_tags:
             quality_tag_badges = create_quality_tag_badges(quality_tags)
-            ship_info_children.append(
-                dmc.Group(
-                    [
-                        dmc.Text("Quality Tags:", fw=700),
-                        dmc.Group(
-                            quality_tag_badges,
-                            gap="xs",
-                        ),
-                    ],
-                    align="flex-start",
-                )
-            )
-        
-        # Continue with remaining ship details
-        ship_info_children.extend([
-            dmc.Group(
-                [
-                    dmc.Text("Starship Family:", fw=700),
-                    dmc.Text(familyName),
-                ]
-            ),
-            dmc.Group(
-                [
-                    dmc.Text("Genomes Present:", fw=700),
-                    dmc.Badge(str(genomes_present), color="blue"),
-                ]
-            ),
-            dmc.Group(
-                [
-                    dmc.Text("Starship Navis:", fw=700),
-                    dmc.Text(navis_name),
-                ]
-            ),
-            dmc.Group(
-                [
-                    dmc.Text("Starship Haplotype:", fw=700),
-                    dmc.Text(haplotype_name),
-                ]
-            ),
-        ])
-        
-        # Create the ship_info Paper component
-        ship_info = dmc.Paper(
-            p="md",
-            withBorder=True,
-            children=[
-                dmc.Title("Ship Details", order=4, mb=10),
-                dmc.SimpleGrid(
-                    cols={"base": 1, "sm": 2},
-                    spacing="lg",
-                    children=ship_info_children,
-                ),
-            ],
-        )
 
+            curation_info = dmc.Paper(
+                p="md",
+                withBorder=True,
+                children=[
+                            dmc.Stack([
+                                dmc.Group(
+                                    [
+                                        dmc.Text("Curation Status:", fw=700),
+                                        dmc.Badge(
+                                            curated_status,
+                                            color=badge_color,
+                                        ),
+                                    ]
+                                ),
+                                dmc.Stack([
+                                    dmc.Text("Quality Tags:", fw=700),
+                                    dmc.Flex(quality_tag_badges, wrap="wrap", gap="xs"),
+                                ])
+                            ])
+                        ]
+            )
+            modal_content.append(curation_info)
+        
         # Taxonomy section
         taxonomy_info = dmc.Paper(
-            p="md",
-            withBorder=True,
-            children=[
-                dmc.Title("Taxonomy", order=4, mb=10),
-                dmc.SimpleGrid(
-                    cols={"base": 1, "sm": 2},
-                    spacing="lg",
+                    p="md",
+                    withBorder=True,
                     children=[
-                        dmc.Group(
-                            [
-                                dmc.Text("Order:", fw=700),
-                                dmc.Text(order),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Family:", fw=700),
-                                dmc.Text(familyName),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("Species:", fw=700),
-                                dmc.Text(species_name),
-                            ]
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Text("NCBI Taxonomy ID:", fw=700),
-                                (
-                                    dmc.Anchor(
-                                        tax_id,
-                                        href=(
-                                            f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
-                                            if tax_id != "N/A"
-                                            else "#"
-                                        ),
-                                        target="_blank" if tax_id != "N/A" else None,
-                                    )
-                                    if tax_id != "N/A"
-                                    else dmc.Text(tax_id)
+                        dmc.SimpleGrid(
+                            cols={"base": 1, "sm": 2},
+                            spacing="lg",
+                            children=[
+                                dmc.Group(
+                                    [
+                                        dmc.Text("Order:", fw=700),
+                                        dmc.Text(order),
+                                    ]
                                 ),
-                            ]
+                                dmc.Group(
+                                    [
+                                        dmc.Text("Family:", fw=700),
+                                        dmc.Text(familyName),
+                                    ]
+                                ),
+                                dmc.Group(
+                                    [
+                                        dmc.Text("Species:", fw=700),
+                                        dmc.Text(species_name),
+                                    ]
+                                ),
+                                dmc.Group(
+                                    [
+                                        dmc.Text("NCBI Taxonomy ID:", fw=700),
+                                        (
+                                            dmc.Anchor(
+                                                tax_id,
+                                                href=(
+                                                    f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
+                                                    if tax_id != "N/A"
+                                                    else "#"
+                                                ),
+                                                target="_blank" if tax_id != "N/A" else None,
+                                            )
+                                            if tax_id != "N/A"
+                                            else dmc.Text(tax_id)
+                                        ),
+                                    ]
+                                ),
+                            ],
                         ),
                     ],
-                ),
-            ],
-        )
+                )
+        modal_content.append(taxonomy_info)
 
         # Genome details section
         genome_details = dmc.Paper(
@@ -623,11 +620,9 @@ def create_accession_modal(accession):
                 ),
             ],
         )
+        modal_content.append(genome_details)
 
-        modal_content = dmc.Stack([ship_info, taxonomy_info, genome_details], gap="md")
-
-        modal_title = dmc.Title(f"Ship Accession: {accession}", order=2)
-        return modal_content, modal_title
+        return dmc.Stack(modal_content, gap="md"), modal_title
 
     except Exception as e:
         logger.error(f"Error in create_accession_modal: {str(e)}")
@@ -684,8 +679,7 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 modal_content, modal_title = create_accession_modal(accession)
                 return True, modal_content, modal_title
 
-            return False, no_update, no_update
-
+            return False, no_update, no_update      
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
             logger.error(traceback.format_exc())
@@ -695,7 +689,7 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                     html.P(f"Details: {str(e)}"),
                 ]
             )
-            return True, error_content, "Error"
+            return True, "Error", error_content
 
     return toggle_modal
 
