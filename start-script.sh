@@ -1,7 +1,12 @@
 #!/bin/bash
 
-# Default to production mode
-DEV_MODE=false
+# get DEV_MODE from `.env` file
+DEV_MODE=$(grep DEV_MODE .env | cut -d '=' -f 2)
+
+if [ -z "$DEV_MODE" ]; then
+    DEV_MODE=false
+fi
+
 
 # Parse command line arguments
 while [ $# -gt 0 ]; do

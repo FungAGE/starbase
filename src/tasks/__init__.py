@@ -7,7 +7,7 @@ from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
 from src.config.logging import get_logger
-from src.config.celery_config import celery
+from src.config.celery_config import celery, CELERY_AVAILABLE
 
 logger = get_logger(__name__)
 
@@ -23,9 +23,9 @@ __all__ = [
 ]
 
 
-@celery.task(name="refresh_telemetry_task")
-def refresh_telemetry_task(ipstack_api_key):
-    """Task to refresh telemetry data (formerly Celery task)"""
+# Implementation functions
+def _refresh_telemetry_impl(ipstack_api_key):
+    """Implementation of refresh telemetry task"""
     try:
         update_ip_locations(ipstack_api_key)
         cache.delete("telemetry_data")
@@ -35,9 +35,8 @@ def refresh_telemetry_task(ipstack_api_key):
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="src.tasks.cleanup_cache_task")
-def cleanup_cache_task():
-    """Task to clean up cache files (formerly Celery task)"""
+def _cleanup_cache_impl():
+    """Implementation of cleanup cache task"""
     try:
         cleanup_old_cache()
         return {"status": "success", "message": "Cache cleanup completed"}
@@ -46,143 +45,186 @@ def cleanup_cache_task():
         return {"status": "error", "message": str(e)}
 
 
-@celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
-def run_blast_search_task(
-    self, query_header, query_seq, query_type, eval_threshold=0.01, curated=None
-):
-    """Celery task to run BLAST search"""
+# Create task wrappers or plain functions depending on Celery availability
+if CELERY_AVAILABLE and celery:
+    @celery.task(name="refresh_telemetry_task")
+    def refresh_telemetry_task(ipstack_api_key):
+        """Task to refresh telemetry data (Celery task)"""
+        return _refresh_telemetry_impl(ipstack_api_key)
 
+    @celery.task(name="src.tasks.cleanup_cache_task")
+    def cleanup_cache_task():
+        """Task to clean up cache files (Celery task)"""
+        return _cleanup_cache_impl()
+else:
+    def refresh_telemetry_task(ipstack_api_key):
+        """Task to refresh telemetry data (direct call)"""
+        return _refresh_telemetry_impl(ipstack_api_key)
+
+    def cleanup_cache_task():
+        """Task to clean up cache files (direct call)"""
+        return _cleanup_cache_impl()
+
+
+def _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold=0.01, curated=None):
+    """Implementation of BLAST search task"""
+    # Write sequence to temporary FASTA file
+    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
+    tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
+
+    # Run BLAST
+    blast_results_file = run_blast(
+        query_type=query_type,
+        query_fasta=tmp_query_fasta,
+        tmp_blast=tmp_blast,
+        input_eval=eval_threshold,
+        threads=2,
+        curated=curated,
+    )
+
+    if blast_results_file is None:
+        return None
+
+    # Read the file contents instead of returning the path
+    with open(blast_results_file, "r") as f:
+        blast_results_content = f.read()
+
+    # Create a temp file name to help consumers know what type of file this was
+    temp_name = os.path.basename(blast_results_file)
+
+    # Clean up the temporary file after reading
     try:
-        # Write sequence to temporary FASTA file
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-        tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
+        os.unlink(blast_results_file)
+    except Exception as e:
+        logger.error(f"Error cleaning up BLAST results file: {str(e)}")
 
-        # Run BLAST
-        blast_results_file = run_blast(
-            query_type=query_type,
-            query_fasta=tmp_query_fasta,
-            tmp_blast=tmp_blast,
-            input_eval=eval_threshold,
-            threads=2,
-            curated=curated,
-        )
+    # Return the file contents and metadata instead of the path
+    return {
+        "content": blast_results_content,
+        "original_filename": temp_name,
+        "file_type": "blast",
+    }
 
-        if blast_results_file is None:
+
+if CELERY_AVAILABLE and celery:
+    @celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
+    def run_blast_search_task(
+        self, query_header, query_seq, query_type, eval_threshold=0.01, curated=None
+    ):
+        """Celery task to run BLAST search"""
+        try:
+            return _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold, curated)
+        except Exception as e:
+            logger.error(f"BLAST search failed: {str(e)}")
+            # Retry the task if it's a transient error
+            if self.request.retries < self.max_retries:
+                raise self.retry(countdown=60 * (2 ** self.request.retries))
+            return None
+else:
+    def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01, curated=None):
+        """Direct BLAST search (no Celery)"""
+        try:
+            return _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold, curated)
+        except Exception as e:
+            logger.error(f"BLAST search failed: {str(e)}")
             return None
 
-        # Read the file contents instead of returning the path
-        with open(blast_results_file, "r") as f:
-            blast_results_content = f.read()
 
-        # Create a temp file name to help consumers know what type of file this was
-        temp_name = os.path.basename(blast_results_file)
+def _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold=0.01):
+    """Implementation of HMMER search task"""
+    tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
-        # Clean up the temporary file after reading
+    results_dict, protein_filename = run_hmmer(
+        query_type=query_type,
+        input_gene="tyr",
+        input_eval=eval_threshold,
+        query_fasta=tmp_query_fasta,
+        threads=2,
+    )
+
+    # If protein_filename exists, read its content
+    protein_content = None
+    if protein_filename and os.path.exists(protein_filename):
+        with open(protein_filename, "r") as f:
+            protein_content = f.read()
+
+        # Clean up the temporary file
         try:
-            os.unlink(blast_results_file)
+            os.unlink(protein_filename)
         except Exception as e:
-            logger.error(f"Error cleaning up BLAST results file: {str(e)}")
+            logger.error(f"Error cleaning up HMMER results file: {str(e)}")
 
-        # Return the file contents and metadata instead of the path
-        return {
-            "content": blast_results_content,
-            "original_filename": temp_name,
-            "file_type": "blast",
-        }
-
-    except Exception as e:
-        logger.error(f"BLAST search failed: {str(e)}")
-        # Retry the task if it's a transient error
-        if self.request.retries < self.max_retries:
-            raise self.retry(countdown=60 * (2 ** self.request.retries))
-        return None
+    return {
+        "results": results_dict,
+        "protein_content": protein_content,
+        "original_filename": os.path.basename(protein_filename)
+        if protein_filename
+        else None,
+    }
 
 
-@celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
-def run_hmmer_search_task(self, query_header, query_seq, query_type, eval_threshold=0.01):
-    """Celery task to run HMMER search"""
-
-    try:
-        tmp_query_fasta = write_temp_fasta(query_header, query_seq)
-
-        results_dict, protein_filename = run_hmmer(
-            query_type=query_type,
-            input_gene="tyr",
-            input_eval=eval_threshold,
-            query_fasta=tmp_query_fasta,
-            threads=2,
-        )
-
-        # If protein_filename exists, read its content
-        protein_content = None
-        if protein_filename and os.path.exists(protein_filename):
-            with open(protein_filename, "r") as f:
-                protein_content = f.read()
-
-            # Clean up the temporary file
-            try:
-                os.unlink(protein_filename)
-            except Exception as e:
-                logger.error(f"Error cleaning up HMMER results file: {str(e)}")
-
-        return {
-            "results": results_dict,
-            "protein_content": protein_content,
-            "original_filename": os.path.basename(protein_filename)
-            if protein_filename
-            else None,
-        }
-
-    except Exception as e:
-        logger.error(f"HMMER search failed: {str(e)}")
-        # Retry the task if it's a transient error
-        if self.request.retries < self.max_retries:
-            raise self.retry(countdown=60 * (2 ** self.request.retries))
-        return None
+if CELERY_AVAILABLE and celery:
+    @celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
+    def run_hmmer_search_task(self, query_header, query_seq, query_type, eval_threshold=0.01):
+        """Celery task to run HMMER search"""
+        try:
+            return _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold)
+        except Exception as e:
+            logger.error(f"HMMER search failed: {str(e)}")
+            # Retry the task if it's a transient error
+            if self.request.retries < self.max_retries:
+                raise self.retry(countdown=60 * (2 ** self.request.retries))
+            return None
+else:
+    def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
+        """Direct HMMER search (no Celery)"""
+        try:
+            return _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold)
+        except Exception as e:
+            logger.error(f"HMMER search failed: {str(e)}")
+            return None
 
 
-@celery.task(name="run_multi_pgv")
-def run_multi_pgv_task(gff_files, seqs, tmp_file, len_thr, id_thr):
-    from src.pages.pgv import multi_pgv
+if CELERY_AVAILABLE and celery:
 
-    try:
-        return multi_pgv(gff_files, seqs, tmp_file, len_thr, id_thr)
-    except Exception as e:
-        logger.error(f"Multi PGV failed: {str(e)}")
-        return None
+    @celery.task(name="run_classification_workflow_task", bind=True)
+    def run_classification_workflow_task(self, workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+        """
+        Run the main classification workflow.
+        This workflow runs the following tasks sequentially:
+            1. Exact match check
+            2. Contained match check
+            3. Similarity match check
+            4. Family classification
+            5. Navis classification
+            6. Haplotype classification
 
+        Args:
+            workflow_state_dict: WorkflowState object or dictionary
+            blast_data_dict: BlastData object or dictionary
+            classification_data_dict: ClassificationData object or dictionary
+            meta_dict: MetaData object or dictionary
+        """
+        return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+else:
+    def run_classification_workflow_task(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+        """
+        Run the main classification workflow directly (no Celery).
+        This workflow runs the following tasks sequentially:
+            1. Exact match check
+            2. Contained match check
+            3. Similarity match check
+            4. Family classification
+            5. Navis classification
+            6. Haplotype classification
 
-@celery.task(name="run_single_pgv")
-def run_single_pgv_task(gff_file, tmp_file):
-    """Task to run `single_pgv` (formerly Celery task)"""
-    from src.pages.pgv import single_pgv
-
-    try:
-        return single_pgv(gff_file, tmp_file)
-    except Exception as e:
-        logger.error(f"Single PGV failed: {str(e)}")
-        return None
-
-
-@celery.task(name="run_classification_workflow_task", bind=True)
-def run_classification_workflow_task(self, workflow_state, blast_data=None, classification_data=None, meta_dict=None):
-    """
-    Run the main classification workflow.
-    This workflow runs the following tasks sequentially:
-        1. Exact match check
-        2. Contained match check
-        3. Similarity match check
-        4. Family classification
-        5. Navis classification
-        6. Haplotype classification
-
-    Args:
-        workflow_state_dict: WorkflowState object or dictionary
-        blast_data_dict: BlastData object or dictionary
-        classification_data_dict: ClassificationData object or dictionary
-        meta_dict: MetaData object or dictionary
-    """
-    return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+        Args:
+            workflow_state_dict: WorkflowState object or dictionary
+            blast_data_dict: BlastData object or dictionary
+            classification_data_dict: ClassificationData object or dictionary
+            meta_dict: MetaData object or dictionary
+        """
+        return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
 
 
 def run_classification_workflow_sync(workflow_state, blast_data=None, classification_data=None, meta_dict=None):

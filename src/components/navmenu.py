@@ -4,7 +4,7 @@ from dash import html
 from src.config.settings import (
     HOME_URL,
     WIKI_URL,
-    PGV_URL,
+    SYNTENY_URL,
     BLAST_URL,
     SUBMIT_URL,
     ABOUT_URL,
@@ -24,8 +24,8 @@ def navmenu(buttons_disabled=False):
         ),
         dbc.NavItem(
             dbc.NavLink(
-                "Starship Viewer",
-                href=PGV_URL,
+                "Synteny Viewer",
+                href=SYNTENY_URL,
                 active="exact",
                 className="nav-item-link",
                 disabled=buttons_disabled,
@@ -65,12 +65,11 @@ def navmenu(buttons_disabled=False):
         brand=dbc.NavbarBrand(
             html.Span("starbase", className="logo-text"),
             className="ms-2",
-            href=HOME_URL,
         ),
         brand_href=HOME_URL,
         brand_style={
-            "align-items": "center",
-            "justify-content": "center",
+            "alignItems": "center",
+            "justifyContent": "center",
             "textAlign": "left",
         },
         color="primary",

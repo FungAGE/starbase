@@ -5,6 +5,7 @@ import hashlib
 import os
 import glob
 import signal
+import shutil
 import screed
 from sourmash import (
     SourmashSignature,
@@ -134,7 +135,7 @@ def assign_accession(
         return container_match, True  # Flag for review since it's truncated
 
     logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
-    similar_match = check_similar_match(sequence, existing_ships, threshold)
+    similar_match, similarities = check_similar_match(sequence, existing_ships, threshold)
     if similar_match:
         logger.debug(f"Found similar match: {similar_match}")
         return similar_match, True  # Flag for review due to high similarity
@@ -185,12 +186,11 @@ def get_version_sort_key(version_tag):
 
 # sequence can be a string, Seq object, or SeqRecord object
 def generate_md5_hash(sequence):
-    """Generate an MD5 hash of a sequence."""
     if sequence is None:
-        return None
-    elif type(sequence) == SeqIO.SeqRecord:
+        raise ValueError("Sequence is None, can't generate MD5 hash")
+    if type(sequence) == SeqIO.SeqRecord:
         sequence = str(sequence.seq)
-    elif type(sequence) == Seq:  # Handle Seq objects
+    if type(sequence) == Seq:  # Handle Seq objects
         sequence = str(sequence)
     return hashlib.md5(sequence.encode()).hexdigest()
 
@@ -234,26 +234,46 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
             )
             continue
         query_md5[seq] = md5_hash
+        # Also store reverse complement hash for checking
+        query_md5[f"{seq}_revcomp"] = md5_hash_revcomp
 
     # collect existing md5 in dict
     # Create reverse mapping: md5 -> accession_display (includes version)
     existing_hashes = {}
     sequences_without_md5 = []
 
+    stored_md5_count = 0
+    stored_rev_comp_count = 0
+    calculated_md5_count = 0
+    
     for _, row in existing_ships.iterrows():
         # Use accession_display if available, otherwise fall back to accession_tag
         accession_display = row.get("accession_display", row.get("accession_tag"))
 
         if row.get("md5") is not None and accession_display is not None:
             existing_hashes[row["md5"]] = accession_display
-        elif row.get("sequence") is not None and accession_display is not None:
+            stored_md5_count += 1
+        # Also check reverse complement MD5 if available in database
+        if row.get("rev_comp_md5") is not None and accession_display is not None:
+            existing_hashes[row["rev_comp_md5"]] = accession_display
+            stored_rev_comp_count += 1
+        # Calculate MD5 on the fly for sequences without stored MD5 (both md5 and rev_comp_md5 are None)
+        if (row.get("md5") is None and row.get("rev_comp_md5") is None and 
+            row.get("sequence") is not None and accession_display is not None):
             # Calculate MD5 on the fly for sequences without stored MD5
             clean_seq = clean_sequence(row["sequence"])
             if clean_seq:
                 calculated_md5 = generate_md5_hash(clean_seq)
+                calculated_md5_revcomp = generate_md5_hash(revcomp(clean_seq))
                 if calculated_md5:
                     existing_hashes[calculated_md5] = accession_display
                     sequences_without_md5.append(accession_display)
+                    calculated_md5_count += 1
+                if calculated_md5_revcomp:
+                    existing_hashes[calculated_md5_revcomp] = accession_display
+                    calculated_md5_count += 1
+    
+    logger.debug(f"MD5 hash sources: stored={stored_md5_count}, stored_rev_comp={stored_rev_comp_count}, calculated={calculated_md5_count}")
 
     logger.debug(f"Found {len(existing_hashes)} existing MD5 hashes in database")
     if sequences_without_md5:
@@ -264,10 +284,9 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
 
     # Check if query hash exists in database
     for seq, md5 in query_md5.items():
-        logger.debug(f"Checking query MD5: {md5}")
         match = existing_hashes.get(md5)
         if match:
-            logger.debug(f"Found exact hash match: {match}")
+            logger.info(f"Found exact hash match: {match}")
             return match
 
     logger.debug("No exact match found")
@@ -573,10 +592,8 @@ def classify_navis(
     - All existing classified captain sequences
     """
 
-    protein = list(load_fasta_to_dict(fasta).values())[0]
-
     logger.debug("Starting navis classification")
-    tmp_fasta_dir = create_tmp_fasta_dir(protein, existing_captains)
+    tmp_fasta_dir = create_tmp_fasta_dir(fasta, existing_captains)
     logger.debug(f"Created temporary FASTA directory: {tmp_fasta_dir}")
 
     # Run mmseqs clustering
@@ -606,7 +623,7 @@ def classify_navis(
         return None
     else:
         # Look up the navis name from the cluster representative
-        # Try both captainID and accession_display if available
+        # Try captainID first, then accession_display, then accession_tag
         matching_captains = existing_captains[
             existing_captains["captainID"] == cluster_rep
         ]
@@ -615,6 +632,12 @@ def classify_navis(
         if matching_captains.empty and "accession_display" in existing_captains.columns:
             matching_captains = existing_captains[
                 existing_captains["accession_display"] == cluster_rep
+            ]
+
+        # If still not found and accession_tag column exists, try that too
+        if matching_captains.empty and "accession_tag" in existing_captains.columns:
+            matching_captains = existing_captains[
+                existing_captains["accession_tag"] == cluster_rep
             ]
 
         if matching_captains.empty:
@@ -646,12 +669,6 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
         if isinstance(existing_ships, list):
             logger.debug("Converting existing_ships from list to DataFrame")
             existing_ships = pd.DataFrame(existing_ships)
-
-        logger.debug(
-            f"existing_ships shape: {existing_ships.shape if not existing_ships.empty else 'empty'}"
-        )
-        if not existing_ships.empty:
-            logger.debug(f"existing_ships columns: {existing_ships.columns.tolist()}")
 
         # Print the type and value of navis for debugging
         logger.debug(f"navis type: {type(navis)}, value: {navis}")
@@ -716,86 +733,109 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
         ]
         if missing_columns:
             logger.warning(f"Missing columns in ships DataFrame: {missing_columns}")
-
-            # Cluster sequences
-            try:
-                groups = cluster_sequences(similarities, threshold=0.95)
-                logger.debug(f"Clustered sequences into {len(groups)} groups")
-            except Exception as e:
-                logger.error(f"Error clustering sequences: {e}")
-                return {
-                    "haplotype_name": "Error",
-                    "confidence": 0,
-                    "note": f"Clustering error: {str(e)}",
-                }
-
-            # Find the group containing the query sequence
-            query_group = None
-            query_seq = SeqIO.read(fasta, "fasta")
-            for group in groups:
-                if query_seq.id in group:
-                    query_group = group
-                    break
-
-            if query_group is None:
-                logger.warning("Query sequence not found in any cluster")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "Query did not cluster with any existing sequence",
-                }
-
-            # Get ship IDs in the same group
-            ship_ids = [seq_id for seq_id in query_group if seq_id != query_seq.id]
-            logger.debug(f"Found {len(ship_ids)} ships in the same cluster as query")
-
-            if not ship_ids:
-                logger.warning("No ships in the same cluster as query")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "Query formed its own cluster",
-                }
-
-            # Get haplotypes for these ships
-            ship_haplotypes = filtered_ships[
-                filtered_ships["captainID"].isin(ship_ids)
-            ]["haplotype_name"].dropna()
-
-            if ship_haplotypes.empty:
-                logger.warning("No haplotype information for clustered ships")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "No haplotype information available",
-                }
-
-            # Count haplotype occurrences
-            haplotype_counts = ship_haplotypes.value_counts()
-            logger.debug(f"Haplotype counts: {haplotype_counts.to_dict()}")
-
-            if haplotype_counts.empty:
-                logger.warning("No haplotype counts found")
-                return {
-                    "haplotype_name": "Novel",
-                    "confidence": 0,
-                    "note": "No haplotype information available",
-                }
-
-            # Get the most common haplotype
-            most_common_haplotype = haplotype_counts.index[0]
-            confidence = haplotype_counts.iloc[0] / haplotype_counts.sum()
-
-            logger.debug(
-                f"Most common haplotype: {most_common_haplotype} with confidence {confidence:.2f}"
-            )
-
             return {
-                "haplotype_name": most_common_haplotype,
-                "confidence": float(confidence),
-                "counts": haplotype_counts.to_dict(),
-                "cluster_size": len(query_group) - 1,  # Excluding the query itself
+                "haplotype_name": "Unknown",
+                "confidence": 0,
+                "note": f"Missing required columns: {missing_columns}",
             }
+
+        # Cluster sequences
+        if similarities is None:
+            logger.warning("No similarities provided, cannot perform clustering")
+            return {
+                "haplotype_name": "Unknown",
+                "confidence": 0,
+                "note": "No similarity data available for clustering",
+            }
+        
+        try:
+            groups = cluster_sequences(similarities, threshold=0.95)
+            logger.debug(f"Clustered sequences into {len(groups)} groups")
+        except Exception as e:
+            logger.error(f"Error clustering sequences: {e}")
+            return {
+                "haplotype_name": "Error",
+                "confidence": 0,
+                "note": f"Clustering error: {str(e)}",
+            }
+
+        # Find the group containing the query sequence
+        query_group = None
+        query_seq = SeqIO.read(fasta, "fasta")
+        for group in groups:
+            if query_seq.id in group:
+                query_group = group
+                break
+
+        if query_group is None:
+            logger.warning("Query sequence not found in any cluster")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "Query did not cluster with any existing sequence",
+            }
+
+        # Get ship IDs in the same group
+        ship_ids = [seq_id for seq_id in query_group if seq_id != query_seq.id]
+        logger.debug(f"Found {len(ship_ids)} ships in the same cluster as query")
+
+        if not ship_ids:
+            logger.warning("No ships in the same cluster as query")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "Query formed its own cluster",
+            }
+
+        # Get haplotypes for these ships
+        # Match by accession_display since ship_ids are sequence IDs
+        if "accession_display" in filtered_ships.columns:
+            matching_ships = filtered_ships[
+                filtered_ships["accession_display"].isin(ship_ids)
+            ]
+            ship_haplotypes = matching_ships["haplotype_name"]
+        else:
+            # Fallback to accession_tag if accession_display not available
+            matching_ships = filtered_ships[
+                filtered_ships["accession_tag"].isin(ship_ids)
+            ]
+            ship_haplotypes = matching_ships["haplotype_name"]
+        
+
+        if ship_haplotypes.empty:
+            logger.warning("No haplotype information for clustered ships")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "No haplotype information available",
+            }
+
+        # Count haplotype occurrences
+        haplotype_counts = ship_haplotypes.value_counts()
+        logger.debug(f"Haplotype counts: {haplotype_counts.to_dict()}")
+
+        if haplotype_counts.empty:
+            logger.warning("No haplotype counts found")
+            return {
+                "haplotype_name": "Novel",
+                "confidence": 0,
+                "note": "No haplotype information available",
+            }
+
+        # Get the most common haplotype
+        most_common_haplotype = haplotype_counts.index[0]
+        confidence = haplotype_counts.iloc[0] / haplotype_counts.sum()
+
+        logger.debug(
+            f"Most common haplotype: {most_common_haplotype} with confidence {confidence:.2f}"
+        )
+
+        return {
+            "haplotype_name": most_common_haplotype,
+            "confidence": float(confidence),
+            "counts": haplotype_counts.to_dict(),
+            "cluster_size": len(query_group) - 1,  # Excluding the query itself
+        }
     except Exception as e:
         logger.error(f"Unexpected error in classify_haplotype: {e}")
         logger.exception("Full traceback:")
@@ -1249,29 +1289,64 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
         for (node1, node2), weight in sorted(edge_data.items()):
             f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
 
+def metaeuk_createdb(query_fasta):
+    """Run MetaEuk createdb for reference database."""
+    
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        cmd = [
+            "metaeuk",
+            "createdb",
+            os.path.abspath(query_fasta),
+            os.path.join(tmp_dir, "db"),
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return os.path.join(tmp_dir, "db"), tmp_dir
+    except Exception:
+        # Clean up on failure
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
 
-# TODO: make sure `ref_db` is a fasta file (do we need to `createdb` for this fasta file?)
-# TODO: make sure that `output_prefix` is a temp directory
-def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
+def metaeuk_easy_predict(query_fasta, threads=20):
     """Run MetaEuk easy-predict for de novo annotation.
 
     Args:
         query_fasta: Path to input FASTA file
-        ref_db: Path to reference database
-        output_prefix: Prefix for output files
         threads: Number of threads to use
+    
+    Returns:
+        Tuple of (codon_fasta_path, fasta_path, gff_path) or (None, None, None) on error
     """
 
+    if not os.path.exists(query_fasta):
+        logger.warning("Query FASTA file does not exist")
+        return None, None, None
+
+    if not isinstance(query_fasta, str) or query_fasta == "" or query_fasta is None:
+        logger.warning("query_fasta should be a path to a fasta file")
+        return None, None, None  
+
+    ref_db = None
+    ref_db_tmp_dir = None
+    
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        ref_db, ref_db_tmp_dir = metaeuk_createdb(query_fasta)
+    except Exception as e:
+        logger.error(f"Error in metaeuk_createdb: {e}")
+        return None, None, None
+
+    try:
+        with tempfile.TemporaryDirectory() as output_dir:
+            # Output prefix for MetaEuk files
+            output_prefix = os.path.join(output_dir, "prediction")
+            
             # Run MetaEuk with explicit paths
             cmd = [
                 "metaeuk",
                 "easy-predict",
                 os.path.abspath(query_fasta),
                 os.path.abspath(ref_db),
-                os.path.abspath(output_prefix),
-                tmp_dir,
+                output_prefix,
                 "--metaeuk-eval",
                 "0.0001",
                 "-e",
@@ -1287,20 +1362,37 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
             ]
 
             # Run command and capture output
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            logger.debug(f"MetaEuk command completed successfully")
 
-            # Check if output files were created
+            # Check if output files were created with correct paths
             codon_fasta = f"{output_prefix}.codon.fas"
             fasta = f"{output_prefix}.fas"
             gff = f"{output_prefix}.gff"
 
+            missing_files = []
             for file_path in [codon_fasta, fasta, gff]:
                 if not os.path.exists(file_path):
-                    raise FileNotFoundError(
-                        f"Expected output file not created: {file_path}"
-                    )
+                    missing_files.append(file_path)
 
-            return codon_fasta, fasta, gff
+            if missing_files:
+                logger.error(f"Expected output files not created: {missing_files}")
+                logger.error(f"MetaEuk stdout: {result.stdout}")
+                logger.error(f"MetaEuk stderr: {result.stderr}")
+                raise FileNotFoundError(f"Expected output files not created: {missing_files}")
+
+            # Copy files to a permanent location outside the temp directory
+            permanent_dir = tempfile.mkdtemp(prefix="metaeuk_output_")
+            
+            permanent_codon = os.path.join(permanent_dir, "prediction.codon.fas")
+            permanent_fasta = os.path.join(permanent_dir, "prediction.fas") 
+            permanent_gff = os.path.join(permanent_dir, "prediction.gff")
+            
+            shutil.copy2(codon_fasta, permanent_codon)
+            shutil.copy2(fasta, permanent_fasta)
+            shutil.copy2(gff, permanent_gff)
+
+            return permanent_codon, permanent_fasta, permanent_gff
 
     except subprocess.CalledProcessError as e:
         logger.error(f"MetaEuk easy-predict failed with return code {e.returncode}")
@@ -1311,6 +1403,10 @@ def metaeuk_easy_predict(query_fasta, ref_db, output_prefix, threads=20):
         logger.error(f"Error during MetaEuk easy-predict: {str(e)}")
         logger.exception("Full traceback:")
         raise
+    finally:
+        # Clean up reference database temporary directory
+        if ref_db_tmp_dir and os.path.exists(ref_db_tmp_dir):
+            shutil.rmtree(ref_db_tmp_dir, ignore_errors=True)
 
 
 def run_classification_workflow(workflow_state, blast_data, classification_data, meta_dict=None):

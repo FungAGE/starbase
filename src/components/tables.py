@@ -263,7 +263,7 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
 
 
 def make_paper_table():
-    """Table for displaying paper data."""
+    """Simple table for displaying paper data."""
     df = cache.get("paper_data")
     if df is None:
         df = fetch_paper_data()
@@ -285,67 +285,101 @@ def make_paper_table():
         )
         df = df_summary.sort_values(by="PublicationYear", ascending=False)
 
-        df["DOI"] = df["DOI"].apply(
-            lambda x: f"[{x}](https://doi.org/{x})" if pd.notnull(x) else ""
-        )
+    # Create table rows
+    rows = []
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        for _, row in df.iterrows():
+            # Create DOI link if DOI exists
+            doi_cell = (
+                html.A(
+                    row["DOI"],
+                    href=f"https://doi.org/{row['DOI']}",
+                    target="_blank",
+                    style={"color": "#228be6", "textDecoration": "none"},
+                )
+                if pd.notnull(row["DOI"]) and row["DOI"]
+                else ""
+            )
+            
+            # Cell styles with truncation
+            title_style = {
+                "padding": "12px",
+                "maxWidth": "400px",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+                "whiteSpace": "nowrap",
+            }
+            
+            author_style = {
+                "padding": "12px",
+                "maxWidth": "250px",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+                "whiteSpace": "nowrap",
+            }
+            
+            year_style = {
+                "textAlign": "center",
+                "padding": "12px",
+                "whiteSpace": "nowrap",
+            }
+            
+            doi_style = {
+                "textAlign": "center",
+                "padding": "12px",
+                "whiteSpace": "nowrap",
+            }
+            
+            rows.append(
+                html.Tr(
+                    [
+                        html.Td(
+                            row.get("Title", ""),
+                            style=title_style,
+                            title=row.get("Title", ""),  # Tooltip on hover
+                        ),
+                        html.Td(row.get("PublicationYear", ""), style=year_style),
+                        html.Td(
+                            row.get("Author", ""),
+                            style=author_style,
+                            title=row.get("Author", ""),  # Tooltip on hover
+                        ),
+                        html.Td(doi_cell, style=doi_style),
+                    ],
+                    style={"borderBottom": "1px solid #dee2e6"}
+                )
+            )
 
-    columns = [
-        {
-            "field": "Title",
-            "headerName": "Title",
-            "flex": 2,
-            "tooltipField": "Title",
-            "wrapText": True,
-        },
-        {
-            "field": "PublicationYear",
-            "headerName": "Publication Year",
-            "flex": 1,
-        },
-        {
-            "field": "Author",
-            "headerName": "Authors",
-            "flex": 1.5,
-            "tooltipField": "Author",
-            "wrapText": True,
-        },
-        {"field": "DOI", "headerName": "DOI", "flex": 1, "cellRenderer": "markdown"},
-    ]
-
-    if isinstance(df, pd.DataFrame):
-        row_data = df.fillna("").to_dict("records")
-    else:
-        row_data = []
-
+    # Wrap table in a scrollable container for mobile
     return html.Div(
-        dag.AgGrid(
-            id="papers-table",
-            columnDefs=columns,
-            rowData=row_data,
-            defaultColDef={
-                "resizable": True,
-                "minWidth": 100,
-            },
-            dashGridOptions={
-                "pagination": True,
-                "paginationPageSize": 10,
-                "suppressPropertyNamesCheck": True,
-                "rowHeight": 48,
-                "headerHeight": 48,
-            },
-            className="ag-theme-alpine",
-            style={
-                "width": "100%",
-                "height": "500px",
-                "border": "1px solid #dee2e6",
-                "borderRadius": "4px",
-            },
-            persistence=True,
-            persistence_type="memory",
+        dmc.Table(
+            [
+                html.Thead(
+                    html.Tr([
+                        html.Th("Title", style={"minWidth": "200px"}),
+                        html.Th("Year", style={"textAlign": "center", "minWidth": "80px"}),
+                        html.Th("Authors", style={"minWidth": "150px"}),
+                        html.Th("DOI", style={"textAlign": "center", "minWidth": "120px"}),
+                    ]),
+                    style={"borderBottom": "1px solid #dee2e6"}
+                ),
+                html.Tbody(rows if rows else [
+                    html.Tr([
+                        html.Td("No publications found", colSpan=4, style={"textAlign": "center", "color": "#868e96"})
+                    ])
+                ]),
+            ],
+            striped=True,
+            highlightOnHover=True,
+            withTableBorder=True,
+            withColumnBorders=True,
+            style={"width": "100%"},
         ),
-        style={"width": "100%"},
+        style={
+            "width": "100%",
+            "overflowX": "auto",
+        }
     )
-
 
 def make_dl_table(df, id, table_columns):
     """

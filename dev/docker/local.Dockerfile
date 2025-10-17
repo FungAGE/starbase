@@ -66,7 +66,7 @@ ENV PATH=$HOME/miniconda/bin:$PATH
 
 # Copy environment file and create conda environment using mamba
 COPY environment.yaml .
-RUN mamba env create -f environment.yaml && \
+RUN mamba env create -y -f environment.yaml && \
     mamba clean -afy
 
 # Set conda environment to activate by default

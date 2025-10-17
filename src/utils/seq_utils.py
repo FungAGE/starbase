@@ -20,6 +20,10 @@ def clean_sequence(seq):
     if seq is None:
         return None
 
+    # Ensure seq is a string
+    if not isinstance(seq, str):
+        seq = str(seq)
+
     # Remove any content within parentheses
     seq = re.sub(r"\(.*?\)", "", seq)
     seq = seq.upper()
@@ -235,13 +239,20 @@ def revcomp(seq: str) -> str:
     """
     Reverse complement a sequence. Able to handle both strings and Seq objects.
     """
+    if seq is None:
+        return None
+
+    # Ensure seq is a string
+    if not isinstance(seq, str):
+        seq = str(seq)
+
     if type(seq) == str:
         rv_comp_seq = Seq(seq).reverse_complement()
     elif type(seq) == Seq:
         rv_comp_seq = seq.reverse_complement()
     else:
         return None
-    return rv_comp_seq
+    return str(rv_comp_seq)
 
 
 def find_longest_orf(aa_seq, min_length=50):
@@ -691,47 +702,69 @@ def sanitize_header(header: str) -> str:
 
 def create_ncbi_style_header(row):
     try:
-        clean_contig = clean_contigIDs(row["contigID"])
+        def safe_get(key):
+            """
+            Helper function to safely get value from row (handles both dict and Series)
+            Convert to None if it's NaN or empty
+            Convert to string to avoid Series issues
+            """
+            val = row.get(key) if isinstance(row, dict) else row[key]
+            if pd.isna(val):
+                return None
+            return str(val) if val is not None else None
+        
+        clean_contig = clean_contigIDs(safe_get("contigID"))
 
         # Use accession_display if available, otherwise combine accession_tag and version_tag
-        if "accession_display" in row and pd.notnull(row["accession_display"]):
-            accession_with_version = row["accession_display"]
-        elif (
-            "version_tag" in row
-            and pd.notnull(row["version_tag"])
-            and row["version_tag"] != ""
-        ):
-            accession_with_version = f"{row['accession_tag']}.{row['version_tag']}"
+        accession_display = safe_get("accession_display")
+        version_tag = safe_get("version_tag")
+        accession_tag = safe_get("accession_tag")
+        
+        if accession_display:
+            accession_with_version = accession_display
+        elif version_tag and version_tag != "":
+            accession_with_version = f"{accession_tag}.{version_tag}"
         else:
-            accession_with_version = row["accession_tag"]
+            accession_with_version = accession_tag
 
-        organism = row["name"]
+        organism = safe_get("name")
         if organism is None:
             organism = "Unknown"
         else:
             organism = f"[organism={organism}] "
-        if row["order"] is None:
+        
+        order_val = safe_get("order")
+        if order_val is None:
             order = "Unknown"
         else:
-            order = f"[lineage=Fungi; {row['order']}] "
-        if row["family"] is None:
+            order = f"[lineage=Fungi; {order_val}] "
+        
+        family_val = safe_get("family")
+        if family_val is None:
             family = "Unknown"
         else:
-            family = f"[family={row['family']}] "
-        if row["assembly_accession"] is None:
+            family = f"[family={family_val}] "
+        
+        assembly_accession = safe_get("assembly_accession")
+        if assembly_accession is None:
             assembly = ""
         else:
-            assembly = f"[assembly={row['assembly_accession']}] "
-        if row["familyName"] is None:
+            assembly = f"[assembly={assembly_accession}] "
+        
+        family_name_val = safe_get("familyName")
+        if family_name_val is None:
             family_name = ""
         else:
-            family_name = f"[family={row['familyName']}] "
+            family_name = f"[family={family_name_val}] "
+        
+        element_begin = safe_get("elementBegin")
+        element_end = safe_get("elementEnd")
         if (
             clean_contig is not None
-            and row["elementBegin"] is not None
-            and row["elementEnd"] is not None
+            and element_begin is not None
+            and element_end is not None
         ):
-            genomic_location = f"[genomic_location={clean_contig}:{row['elementBegin']}-{row['elementEnd']}]"
+            genomic_location = f"[genomic_location={clean_contig}:{element_begin}-{element_end}]"
         else:
             genomic_location = ""
 
@@ -748,14 +781,27 @@ def create_ncbi_style_header(row):
         return sanitized_header
     except Exception as e:
         logger.warning(
-            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown')}: {str(e)}"
+            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown') if isinstance(row, dict) else 'unknown'}: {str(e)}"
         )
         return None
 
 
 def write_temp_fasta(header, sequence):
+    """Write a temporary FASTA file."""
+    if header is None or sequence is None:
+        logger.error("Header or sequence is None")
+        return None
+    logger.debug(f"input is type: {type(sequence)}")
+    if isinstance(sequence, str):
+        seq_obj = Seq(sequence)
+    elif isinstance(sequence, Seq):
+        seq_obj = sequence
+    else:
+        logger.error("Sequence is not a string or Seq object")
+        return None
+    
     try:
-        cleaned_query_seq = SeqRecord(Seq(sequence), id=header, description="")
+        cleaned_query_seq = SeqRecord(seq_obj, id=header, description="")
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
         SeqIO.write(cleaned_query_seq, tmp_query_fasta, "fasta")
         logger.debug(f"Temporary FASTA file written: {tmp_query_fasta}")
@@ -814,13 +860,17 @@ def write_combined_fasta(
         str: Path to temporary FASTA file
     """
     try:
-        records = []
-
-        records.append(
-            SeqRecord(Seq(new_sequence), id="query_sequence", description="")
-        )
-
-        write_multi_fasta(existing_sequences, fasta_path, sequence_col, id_col)
+        # Create a new DataFrame that includes the new sequence
+        new_row = pd.DataFrame({
+            sequence_col: [new_sequence],
+            id_col if id_col else 'index': ['query_sequence']
+        })
+        
+        # Combine the new sequence with existing sequences
+        combined_sequences = pd.concat([new_row, existing_sequences], ignore_index=True)
+        
+        # Use write_multi_fasta to write the combined sequences
+        write_multi_fasta(combined_sequences, fasta_path, sequence_col, id_col)
 
     except Exception as e:
         logger.error(f"Error writing combined FASTA: {e}")
@@ -852,7 +902,21 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
     # save each as a fasta file in a temporary directory
     tmp_fasta_dir = tempfile.mkdtemp()
     for seq_id, seq in sequences.items():
-        tmp_fasta = os.path.join(tmp_fasta_dir, f"{seq_id}.fa")
-        write_fasta({seq_id: seq}, tmp_fasta)
+        if seq_id in fasta_sequences:
+            file_id = "query_sequence"
+        else:
+            file_id = seq_id
+        tmp_fasta = os.path.join(tmp_fasta_dir, f"{file_id}.fa")
+        write_fasta({file_id: seq}, tmp_fasta)
     logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
     return tmp_fasta_dir
+
+def generate_random_sequence(length: int = 1000, seq_type: str = "nucl") -> str:
+    """Generate a random sequence of the given length."""
+    import random
+    if seq_type == "nucl":
+        return "".join(random.choices("ATGC", k=length))
+    elif seq_type == "prot":
+        return "".join(random.choices("ARNDBCEQZGHILKMFPSTWYV", k=length))
+    else:
+        raise ValueError(f"Invalid sequence type: {seq_type}")

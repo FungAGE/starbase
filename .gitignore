@@ -178,7 +178,19 @@ src/database/db.tar.gz
 src/database/cache/
 src/database/logs/
 
-tests/*.png
-
+# database conversion/cleanup
+src/database/cleanup/
 src/database/complete_cleanup_report.txt
 src/utils/mysql_config.json
+
+# testing
+tests/classification/*.png
+tests/classification/test_results*
+# Large test data files - these should be pulled from database instead
+tests/test_data/*.fasta
+tests/test_data/large_*
+tests/test_data/real_*
+
+# Keep small test files tracked
+!tests/test_data/small_*
+!tests/test_data/mock_*

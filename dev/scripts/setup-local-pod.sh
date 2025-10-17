@@ -188,7 +188,7 @@ start_environment() {
     
     # Use docker-compose to start the environment
     if command -v docker-compose &> /dev/null; then
-        docker-compose -f dev/docker/docker-compose.local.yaml up -d
+        docker compose -f dev/docker/docker-compose.local.yaml up -d
     else
         docker compose -f dev/docker/docker-compose.local.yaml up -d
     fi
@@ -239,8 +239,8 @@ show_connection_info() {
     echo ""
     echo -e "${BLUE}Useful Commands:${NC}"
     echo -e "  View logs:     docker logs starbase-local-pod -f"
-    echo -e "  Stop pod:      docker-compose -f dev/docker/docker-compose.local.yaml down"
-    echo -e "  Restart pod:   docker-compose -f dev/docker/docker-compose.local.yaml restart"
+    echo -e "  Stop pod:      docker compose -f dev/docker/docker-compose.local.yaml down"
+    echo -e "  Restart pod:   docker compose -f dev/docker/docker-compose.local.yaml restart"
     echo -e "  Shell access:  docker exec -it starbase-local-pod /bin/bash"
     echo ""
     echo -e "${YELLOW}Note:${NC} This environment simulates a single Kubernetes pod for local testing."

@@ -36,14 +36,35 @@ def db_retry_decorator(additional_retry_exceptions=()):
     )
 
 
-@cache.memoize()
-def fetch_meta_data(curated=False, accession_tag=None):
+# Context manager for database sessions with timeout
+@contextmanager
+def db_session_manager():
+    """Context manager for database sessions with timeout"""
+    session = None
+    try:
+        session = StarbaseSession()
+        # SQLite doesn't support SET SESSION, so we'll skip the timeout setting
+        if session.bind.dialect.name != "sqlite":
+            session.execute(text("SET SESSION wait_timeout=30"))  # Only for MySQL
+        yield session
+    except Exception as e:
+        logger.error(f"Database error: {str(e)}")
+        if session:
+            session.rollback()
+        raise
+    finally:
+        if session:
+            session.close()
+
+
+@db_retry_decorator()
+def fetch_meta_data(curated=False, accession_tags=None):
     """
     Fetch metadata from the database with caching.
 
     Args:
         curated (bool): If True, only return curated entries
-        accession_tag (str or list): Single accession tag or list of accession tags
+        accession_tags (str or list): Single accession tag or list of accession tags
 
     Returns:
         pd.DataFrame: Metadata for the specified accession tags
@@ -51,8 +72,9 @@ def fetch_meta_data(curated=False, accession_tag=None):
     session = StarbaseSession()
 
     meta_query = """
-    SELECT j.curated_status, j.starshipID, j.ship_id,
+    SELECT j.curated_status, j.starshipID,
            a.accession_tag, a.version_tag,
+           j.ship_id, j.id as joined_ship_id,
            CASE 
                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
                THEN a.accession_tag || '.' || a.version_tag
@@ -63,7 +85,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
            f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
     FROM joined_ships j
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
     LEFT JOIN starship_features sf ON a.id = sf.accession_id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -72,21 +94,26 @@ def fetch_meta_data(curated=False, accession_tag=None):
     LEFT JOIN genomes g ON j.genome_id = g.id
     """
 
+    # Build WHERE clause conditions
+    where_conditions = []
     params = []
+    
     if curated:
-        meta_query += " WHERE j.curated_status = 'curated'"
+        where_conditions.append("j.curated_status = 'curated'")
 
-    if accession_tag:
-        where_clause = " WHERE " if not curated else " AND "
-        if isinstance(accession_tag, list):
-            # Use ? for SQLite placeholders
-            placeholders = ",".join(["?"] * len(accession_tag))
-            meta_query += f"{where_clause}a.accession_tag IN ({placeholders})"
-            params = tuple(accession_tag)
+    if accession_tags:
+        if isinstance(accession_tags, list):
+            placeholders = ",".join(["?"] * len(accession_tags))
+            where_conditions.append(f"a.accession_tag IN ({placeholders})")
+            params = list(accession_tags)
         else:
-            # Use ? for SQLite placeholder
-            meta_query += f"{where_clause}a.accession_tag = ?"
-            params = (accession_tag,)
+            where_conditions.append("a.accession_tag = ?")
+            params = [accession_tags]
+    
+    if where_conditions:
+        meta_query += f"\n    WHERE {' AND '.join(where_conditions)}"
+    
+    params = tuple(params) if params else []
 
     try:
         if params:
@@ -101,8 +128,7 @@ def fetch_meta_data(curated=False, accession_tag=None):
     finally:
         session.close()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = StarbaseSession()
@@ -124,8 +150,7 @@ def fetch_paper_data():
     finally:
         session.close()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
@@ -140,12 +165,12 @@ def fetch_download_data(curated=True, dereplicate=False):
            f.familyName, p.shortCitation, t.`order`, t.family, t.name 
     FROM joined_ships j
     LEFT JOIN taxonomy t ON j.tax_id = t.id
-    INNER JOIN accessions a ON j.ship_id = a.id
+    INNER JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
     -- Only show entries that have sequences
-    INNER JOIN ships s ON s.accession_id = a.id
+    INNER JOIN ships s ON s.id = j.ship_id
     WHERE 1=1
     """
 
@@ -192,6 +217,7 @@ def fetch_ships(
         SELECT DISTINCT 
             a.id as accession_id, 
             a.accession_tag, a.version_tag,
+            j.ship_id,
             CASE 
                 WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
                 THEN a.accession_tag || '.' || a.version_tag
@@ -201,7 +227,7 @@ def fetch_ships(
             sf.elementBegin, sf.elementEnd, sf.contigID,
             t.name, t.family, t.`order`,
             f.familyName, n.navis_name, h.haplotype_name,
-            g.assembly_accession"""
+            g.assembly_accession, c.captainID"""
 
     if dereplicate:
         base_query += """,
@@ -215,13 +241,14 @@ def fetch_ships(
 
     base_query += """
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
         LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
+        LEFT JOIN captains c ON j.captain_id = c.id
         WHERE 1=1
     """
 
@@ -245,6 +272,7 @@ def fetch_ships(
         query += """
         )
         SELECT 
+            v.ship_id,
             v.accession_id,
             v.accession_tag,
             v.version_tag,
@@ -257,11 +285,15 @@ def fetch_ships(
             v.family,
             v.`order`,
             v.familyName,
+            v.navis_name,
+            v.haplotype_name,
             v.assembly_accession,
             s.sequence,
-            s.md5
+            s.md5,
+            s.rev_comp_md5,
+            v.captainID
         FROM valid_ships v
-        LEFT JOIN ships s ON s.accession_id = v.accession_id
+        LEFT JOIN ships s ON s.id = v.ship_id
         WHERE s.sequence IS NOT NULL"""
 
         if dereplicate:
@@ -285,7 +317,10 @@ def fetch_ships(
             v.family,
             v.`order`,
             v.familyName,
-            v.assembly_accession
+            v.navis_name,
+            v.haplotype_name,
+            v.assembly_accession,
+            v.captainID
         FROM valid_ships v"""
 
         if dereplicate:
@@ -307,9 +342,8 @@ def fetch_ships(
         session.close()
 
 
-@cache.memoize()
 @db_retry_decorator()
-def fetch_ship_table(curated=False):
+def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     session = StarbaseSession()
 
@@ -324,14 +358,25 @@ def fetch_ship_table(curated=False):
         f.familyName,
         t.name
     FROM joined_ships js
-    LEFT JOIN accessions a ON js.ship_id = a.id
+    LEFT JOIN accessions a ON js.accession_id = a.id
     LEFT JOIN taxonomy t ON js.tax_id = t.id
     LEFT JOIN family_names f ON js.ship_family_id = f.id
-    -- Filter for ships that have sequence data
-    LEFT JOIN ships s ON s.accession_id = a.id AND s.sequence IS NOT NULL
-    LEFT JOIN gff g ON g.ship_id = a.id
+    WHERE 1=1
     """
 
+    if with_sequence:
+        query += " AND js.ship_id IS NOT NULL"
+
+
+    if with_gff_entries:
+        with_gff_entries_query = """
+        SELECT DISTINCT js.ship_id
+        FROM joined_ships js
+        LEFT JOIN gff g ON g.ship_id = js.ship_id
+        WHERE g.source IS NOT NULL
+        """
+        query += f" AND js.ship_id IN ({with_gff_entries_query})"
+    
     if curated:
         query += " AND js.curated_status = 'curated'"
 
@@ -344,27 +389,6 @@ def fetch_ship_table(curated=False):
         logger.error(f"Error fetching ship table data: {str(e)}")
         raise
 
-
-@contextmanager
-def db_session_manager():
-    """Context manager for database sessions with timeout"""
-    session = None
-    try:
-        session = StarbaseSession()
-        # SQLite doesn't support SET SESSION, so we'll skip the timeout setting
-        if session.bind.dialect.name != "sqlite":
-            session.execute(text("SET SESSION wait_timeout=30"))  # Only for MySQL
-        yield session
-    except Exception as e:
-        logger.error(f"Database error: {str(e)}")
-        if session:
-            session.rollback()
-        raise
-    finally:
-        if session:
-            session.close()
-
-
 @db_retry_decorator()
 def fetch_accession_ship(accession_tag):
     """Fetch sequence and GFF data for a specific ship."""
@@ -372,45 +396,42 @@ def fetch_accession_ship(accession_tag):
 
     sequence_query = """
     SELECT s.sequence
-    FROM ships s
-    LEFT JOIN accessions a ON s.accession_id = a.id
-    WHERE a.accession_tag = :accession_tag
+    FROM joined_ships j
+    LEFT JOIN ships s ON s.id = j.ship_id
+    LEFT JOIN accessions a ON a.id = j.accession_id
+    WHERE a.accession_tag = :accession_tag AND s.sequence IS NOT NULL
     """
 
     gff_query = """
-    SELECT g.*
-    FROM gff g
-    LEFT JOIN accessions a ON g.ship_id = a.id
-    WHERE a.accession_tag = :accession_tag
+    SELECT g.source, g.type, g.start, g.end, g.phase, g.strand, g.score, g.attributes
+    FROM joined_ships j
+    LEFT JOIN gff g ON g.ship_id = j.ship_id
+    LEFT JOIN accessions a ON a.id = j.accession_id
+    WHERE a.accession_tag = :accession_tag AND g.source IS NOT NULL
     """
 
     try:
-        sequence = pd.read_sql_query(
+        sequence_df = pd.read_sql_query(
             sequence_query, session.bind, params={"accession_tag": accession_tag}
         )
+        if sequence_df.empty:
+            logger.warning(f"No sequence data found for accession: {accession_tag}")
+            sequence_df = None
         gff_df = pd.read_sql_query(
             gff_query, session.bind, params={"accession_tag": accession_tag}
         )
-
-        # Get the sequence string
-        sequence_str = sequence.iloc[0]["sequence"] if not sequence.empty else None
-
-        # Ensure GFF data is a DataFrame
         if gff_df.empty:
             logger.warning(f"No GFF data found for accession: {accession_tag}")
             gff_df = None
 
-        logger.debug(f"GFF data type: {type(gff_df)}")
-        logger.debug(f"GFF columns: {gff_df.columns if gff_df is not None else 'None'}")
-
-        return {"sequence": sequence_str, "gff": gff_df}
+        return {"sequence": sequence_df, "gff": gff_df}
     except Exception as e:
-        logger.error(f"Error fetching ship data for {accession_tag}: {str(e)}")
+        logger.error(f"Error fetching sequence data for {accession_tag}: {str(e)}")
         raise
     finally:
         session.close()
 
-
+@db_retry_decorator()
 def fetch_captains(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -442,12 +463,15 @@ def fetch_captains(
             j.starshipID,
             sf.captainID,
             c."sequence",
-            n.navis_name
+            n.navis_name,
+            h.haplotype_name,
+            c.captainID
         FROM joined_ships j
-        INNER JOIN accessions a ON j.ship_id = a.id
+        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         LEFT JOIN captains c ON j.captain_id = c.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
@@ -473,7 +497,9 @@ def fetch_captains(
             v.starshipID,
             v.captainID,
             v.sequence,
-            v.navis_name
+            v.navis_name,
+            v.haplotype_name,
+            v.captainID
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
         """
@@ -488,7 +514,9 @@ def fetch_captains(
             v.curated_status,
             v.starshipID,
             v.captainID,
-            v.navis_name
+            v.navis_name,
+            v.haplotype_name,
+            v.captainID
         FROM valid_captains v
         """
 
@@ -507,16 +535,14 @@ def fetch_captains(
     finally:
         session.close()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_captain_tree():
     fallback_tree_path = PHYLOGENY_PATHS["tree"]
 
     with open(fallback_tree_path, "r") as f:
         return f.read()
 
-
-@cache.memoize()
+@db_retry_decorator()
 def fetch_sf_data():
     sf_data = pd.read_csv(PHYLOGENY_PATHS["clades"], sep="\t")
 
@@ -527,7 +553,6 @@ def fetch_sf_data():
     return sf_data
 
 
-@cache.memoize()
 @db_retry_decorator()
 def get_database_stats():
     """Get statistics about the Starship database."""
@@ -535,11 +560,14 @@ def get_database_stats():
     try:
         # use metadata from previous query
         meta_df = fetch_meta_data(curated=False)
-        total_count = len(meta_df)
-        curated_count = len(meta_df[meta_df["curated_status"] == "curated"])
+        filtered_df = meta_df[meta_df["accession_tag"].notna()]
+        total_count = len(filtered_df["accession_tag"].unique())
+        curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"]["accession_tag"].unique())
         uncurated_count = total_count - curated_count
-        species_count = len(meta_df["name"].dropna().unique())
-        family_count = len(meta_df["familyName"].dropna().unique())
+        species_count = len(filtered_df["name"].unique())
+        families = filtered_df["familyName"].dropna().loc[~filtered_df["familyName"].isin(["NA", "None", None, "NULL"])].unique()
+        logger.info(f"families: {families}")
+        family_count = len(families)
 
         stats = {
             "total_starships": total_count,
@@ -551,6 +579,133 @@ def get_database_stats():
         return stats
     except Exception as e:
         logger.error(f"Error fetching database stats: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto"):
+    """
+    Add a quality tag to a ship.
+    
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+        tag_type (str): Type of tag (e.g., "incomplete", "fragmented", "verified")
+        tag_value (str, optional): Optional value for the tag
+        created_by (str): Who created this tag (default: "auto")
+    
+    Returns:
+        int: ID of the created tag, or existing tag ID if duplicate
+    
+    Example:
+        >>> add_quality_tag(123, "incomplete", created_by="curator_name")
+        >>> add_quality_tag(123, "nested", "inside_SS-1.1", created_by="auto")
+    """
+    from src.database.models.schema import ShipQualityTags
+    from datetime import datetime
+    
+    session = StarbaseSession()
+    try:
+        # Check if tag already exists (unique constraint on joined_ship_id + tag_type)
+        existing_tag = session.query(ShipQualityTags).filter_by(
+            joined_ship_id=joined_ship_id,
+            tag_type=tag_type
+        ).first()
+        
+        if existing_tag:
+            # Update the tag value if provided
+            if tag_value is not None:
+                existing_tag.tag_value = tag_value
+                existing_tag.created_by = created_by
+                session.commit()
+            logger.info(f"Updated existing tag {tag_type} for ship {joined_ship_id}")
+            return existing_tag.id
+        
+        # Create new tag
+        new_tag = ShipQualityTags(
+            joined_ship_id=joined_ship_id,
+            tag_type=tag_type,
+            tag_value=tag_value,
+            created_at=datetime.now(),
+            created_by=created_by
+        )
+        session.add(new_tag)
+        session.commit()
+        logger.info(f"Added tag {tag_type} to ship {joined_ship_id}")
+        return new_tag.id
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding quality tag: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def remove_quality_tag(joined_ship_id, tag_type):
+    """
+    Remove a quality tag from a ship.
+    
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+        tag_type (str): Type of tag to remove
+    
+    Returns:
+        bool: True if tag was removed, False if not found
+    """
+    from src.database.models.schema import ShipQualityTags
+    
+    session = StarbaseSession()
+    try:
+        tag = session.query(ShipQualityTags).filter_by(
+            joined_ship_id=joined_ship_id,
+            tag_type=tag_type
+        ).first()
+        
+        if tag:
+            session.delete(tag)
+            session.commit()
+            logger.info(f"Removed tag {tag_type} from ship {joined_ship_id}")
+            return True
+        else:
+            logger.warning(f"Tag {tag_type} not found for ship {joined_ship_id}")
+            return False
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error removing quality tag: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def get_quality_tags(joined_ship_id):
+    """
+    Get all quality tags for a ship.
+    
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+    
+    Returns:
+        list: List of dicts with tag information
+    """
+    from src.database.models.schema import ShipQualityTags
+    
+    session = StarbaseSession()
+    try:
+        tags = session.query(ShipQualityTags).filter_by(
+            joined_ship_id=joined_ship_id
+        ).all()
+        
+        return [
+            {
+                "tag_type": tag.tag_type,
+                "tag_value": tag.tag_value,
+                "created_at": tag.created_at,
+                "created_by": tag.created_by
+            }
+            for tag in tags
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching quality tags: {str(e)}")
         raise
     finally:
         session.close()
