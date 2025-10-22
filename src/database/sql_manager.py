@@ -9,7 +9,7 @@ from tenacity import (
 from contextlib import contextmanager
 import sqlalchemy.exc
 from sqlalchemy import text
-from src.config.cache import cache
+from src.config.cache import smart_cache
 from src.config.settings import PHYLOGENY_PATHS
 
 from src.config.logging import get_logger
@@ -58,6 +58,7 @@ def db_session_manager():
 
 
 @db_retry_decorator()
+@smart_cache(timeout=3600)  # Cache for 1 hour
 def fetch_meta_data(curated=False, accession_tags=None):
     """
     Fetch metadata from the database with caching.
@@ -129,6 +130,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
         session.close()
 
 @db_retry_decorator()
+@smart_cache(timeout=None)
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     session = StarbaseSession()
@@ -151,6 +153,7 @@ def fetch_paper_data():
         session.close()
 
 @db_retry_decorator()
+@smart_cache(timeout=7200)
 def fetch_download_data(curated=True, dereplicate=False):
     """Fetch download data from the database and cache the result."""
     session = StarbaseSession()
@@ -194,6 +197,7 @@ def fetch_download_data(curated=True, dereplicate=False):
 
 
 @db_retry_decorator()
+@smart_cache(timeout=3600)  # Cache for 1 hour
 def fetch_ships(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -554,6 +558,7 @@ def fetch_sf_data():
 
 
 @db_retry_decorator()
+@smart_cache(timeout=0)
 def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
