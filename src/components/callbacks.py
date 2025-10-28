@@ -429,6 +429,7 @@ def create_accession_modal(accession):
                 logger.warning(f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}")
         
         familyName = safe_get_value(modal_data, "familyName")
+        taxonomic_family = safe_get_value(modal_data, "family")
         genomes_present = str(len(modal_data))
         navis_name = safe_get_value(modal_data, "navis_name")
         haplotype_name = safe_get_value(modal_data, "haplotype_name")
@@ -534,7 +535,7 @@ def create_accession_modal(accession):
                                 dmc.Group(
                                     [
                                         dmc.Text("Family:", fw=700),
-                                        dmc.Text(familyName),
+                                        dmc.Text(taxonomic_family),
                                     ]
                                 ),
                                 dmc.Group(
