@@ -384,7 +384,7 @@ def create_accession_modal(accession):
             )
 
         # Check for required columns
-        required_columns = ["starshipID", "familyName"]
+        required_columns = ["accession_tag", "familyName"]
         missing_columns = [
             col for col in required_columns if col not in modal_data.columns
         ]
