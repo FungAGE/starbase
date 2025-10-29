@@ -406,7 +406,6 @@ def create_accession_modal(accession):
         modal_content = []
 
         # create variables for each data used in the sections of the modal
-        starshipID = safe_get_value(modal_data, "starshipID")
         curated_status = safe_get_value(modal_data, "curated_status", default="unknown")
         badge_color = "green" if curated_status == "curated" else "yellow"
         
@@ -455,12 +454,6 @@ def create_accession_modal(accession):
                                 cols={"base": 1, "sm": 2},
                                 spacing="lg",
                                 children=[
-                                        dmc.Group(
-                                            [
-                                                dmc.Text("starshipID:", fw=700),
-                                                dmc.Text(starshipID),
-                                            ]
-                                        ),
                                         dmc.Group(
                                             [
                                                 dmc.Text("Starship Family:", fw=700),
