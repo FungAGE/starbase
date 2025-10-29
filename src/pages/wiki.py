@@ -845,6 +845,7 @@ def handle_taxa_and_family_search(
         return []
 
 
+# TODO: only change sunburst plot if the "Search" button is clicked? instead of if the switches are changed?
 @callback(
     Output("search-sunburst-plot", "children"),
     [

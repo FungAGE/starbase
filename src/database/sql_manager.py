@@ -56,9 +56,9 @@ def db_session_manager():
         if session:
             session.close()
 
-
+# TODO: caching can be much more efficient, if we only cache the full dataset, and then apply curation/dereplication filters to the cached dataset afterwards
 @db_retry_decorator()
-@smart_cache(timeout=3600)  # Cache for 1 hour
+@smart_cache(timeout=3600)
 def fetch_meta_data(curated=False, accession_tags=None):
     """
     Fetch metadata from the database with caching.
@@ -197,7 +197,7 @@ def fetch_download_data(curated=True, dereplicate=False):
 
 
 @db_retry_decorator()
-@smart_cache(timeout=3600)  # Cache for 1 hour
+@smart_cache(timeout=3600)
 def fetch_ships(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):

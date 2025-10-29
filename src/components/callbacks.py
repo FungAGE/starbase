@@ -438,6 +438,7 @@ def create_accession_modal(accession):
         assembly_accession = safe_get_value(
             modal_data, "assembly_accession", default=""
         )
+        # TODO: if this is an ncbi genome assembly, we should be able to link to the genomic location?
         genome_source = safe_get_value(modal_data, "genomeSource", default="")
         contig_id = safe_get_value(modal_data, "contigID", default="")
         element_length = safe_get_numeric(modal_data, "elementLength", default="")
