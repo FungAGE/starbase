@@ -347,8 +347,8 @@ def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
     """Create a switch component for toggling dereplicated-only searches."""
     return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True)
 
-
-def create_accession_modal(accession):
+def create_accession_modal_data(accession):
+    """Create structured data for accession modal instead of Dash components."""
     try:
         accession = str(accession).strip("[]").split("/")[-1].strip()
         base_accession = accession.split(".")[0] if "." in accession else accession
@@ -356,32 +356,17 @@ def create_accession_modal(accession):
         modal_data = fetch_meta_data(accession_tags=[base_accession])
 
         if modal_data.empty:
-            return (
-                dmc.Stack(
-                    [
-                        dmc.Alert(
-                            title="No Data Found",
-                            color="red",
-                            children=[
-                                f"No data found for accession: {accession}",
-                            ],
-                        )
-                    ]
-                ),
-                f"Accession: {accession}",
-            )
+            return {
+                "title": f"Accession: {accession}",
+                "error": f"No data found for accession: {accession}"
+            }
 
         # Validate modal_data
         if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
-            logger.warning("Invalid or empty modal_data received")
-            return (
-                dmc.Alert(
-                    title="Invalid Data",
-                    color="red",
-                    children="Invalid modal data received",
-                ),
-                f"Error: {accession}",
-            )
+            return {
+                "title": f"Accession: {accession}",
+                "error": "Invalid modal data received"
+            }
 
         # Check for required columns
         required_columns = ["accession_tag", "familyName"]
@@ -389,26 +374,16 @@ def create_accession_modal(accession):
             col for col in required_columns if col not in modal_data.columns
         ]
         if missing_columns:
-            logger.warning(f"Missing required columns: {missing_columns}")
-            return (
-                dmc.Alert(
-                    title="Missing Data",
-                    color="red",
-                    children=f"Missing required columns: {missing_columns}",
-                ),
-                f"Error: {accession}",
-            )
+            return {
+                "title": f"Accession: {accession}",
+                "error": f"Missing required columns: {missing_columns}"
+            }
 
         # HACK: applying a fix for extra rows in the starship_features table, only take the first begin/end coordinates for each ship_id/accession_id
         # ! this might cause some issues if coordinates are not updated for all rows for a ship_id/accession_id pair, updated only if begin/end coordinates are the same
         # TODO: split features table or move coordinate information to separate table or another existing table
         modal_data = modal_data.groupby("accession_tag").first().reset_index()
-        modal_content = []
 
-        # create variables for each data used in the sections of the modal
-        curated_status = safe_get_value(modal_data, "curated_status", default="unknown")
-        badge_color = "green" if curated_status == "curated" else "yellow"
-        
         # Fetch quality tags separately using joined_ship_id
         joined_ship_id = safe_get_numeric(modal_data, "joined_ship_id")
         quality_tags = []
@@ -426,24 +401,53 @@ def create_accession_modal(accession):
                         quality_tags.append(tag_value)
             except Exception as e:
                 logger.warning(f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}")
-        
-        familyName = safe_get_value(modal_data, "familyName")
-        taxonomic_family = safe_get_value(modal_data, "family")
-        genomes_present = str(len(modal_data))
-        navis_name = safe_get_value(modal_data, "navis_name")
-        haplotype_name = safe_get_value(modal_data, "haplotype_name")
-        order = safe_get_value(modal_data, "order")
-        species_name = safe_get_value(modal_data, "name")
-        tax_id = safe_get_numeric(modal_data, "taxID")
-        assembly_accession = safe_get_value(
-            modal_data, "assembly_accession", default=""
-        )
-        # TODO: if this is an ncbi genome assembly, we should be able to link to the genomic location?
-        genome_source = safe_get_value(modal_data, "genomeSource", default="")
-        contig_id = safe_get_value(modal_data, "contigID", default="")
-        element_length = safe_get_numeric(modal_data, "elementLength", default="")
-        element_position = safe_get_position(modal_data, "elementBegin", "elementEnd")
 
+        # Create structured data
+        result = {
+            "title": f"Starship Accession: {accession}",
+            "familyName": safe_get_value(modal_data, "familyName"),
+            "taxonomic_family": safe_get_value(modal_data, "family"),
+            "genomes_present": str(len(modal_data)),
+            "navis_name": safe_get_value(modal_data, "navis_name"),
+            "haplotype_name": safe_get_value(modal_data, "haplotype_name"),
+            "order": safe_get_value(modal_data, "order"),
+            "species_name": safe_get_value(modal_data, "name"),
+            "tax_id": safe_get_numeric(modal_data, "taxID"),
+            "assembly_accession": safe_get_value(modal_data, "assembly_accession", default=""),
+            "genome_source": safe_get_value(modal_data, "genomeSource", default=""),
+            "contig_id": safe_get_value(modal_data, "contigID", default=""),
+            "element_length": safe_get_numeric(modal_data, "elementLength", default=""),
+            "element_position": safe_get_position(modal_data, "elementBegin", "elementEnd"),
+            "curated_status": safe_get_value(modal_data, "curated_status", default="unknown"),
+            "quality_tags": quality_tags
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in create_accession_modal_data: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
+def create_accession_modal(modal_data):
+    accession = modal_data["accession_tag"]
+    familyName = modal_data["familyName"]
+    genomes_present = modal_data["genomes_present"]
+    navis_name = modal_data["navis_name"]
+    haplotype_name = modal_data["haplotype_name"]
+    order = modal_data["order"]
+    taxonomic_family = modal_data["taxonomic_family"]
+    species_name = modal_data["species_name"]
+    tax_id = modal_data["tax_id"]
+    assembly_accession = modal_data["assembly_accession"]
+    genome_source = modal_data["genome_source"]
+    contig_id = modal_data["contig_id"]
+    element_length = modal_data["element_length"]
+    element_position = modal_data["element_position"]
+    curated_status = modal_data["curated_status"]
+    quality_tags = modal_data["quality_tags"]
+    badge_color = modal_data["badge_color"]
+    try:
         modal_title = dmc.Title(f"Starship Accession: {accession}", order=2)
 
         # Basic ship information section
@@ -482,7 +486,7 @@ def create_accession_modal(accession):
                                     ]
                                     )
                         ])
-        modal_content.append(ship_info)
+        modal_data.append(ship_info)
 
         # Add quality tags if present
         if quality_tags:
@@ -509,7 +513,7 @@ def create_accession_modal(accession):
                             ])
                         ]
             )
-            modal_content.append(curation_info)
+            modal_data.append(curation_info)
         
         # Taxonomy section
         taxonomy_info = dmc.Paper(
@@ -560,7 +564,7 @@ def create_accession_modal(accession):
                         ),
                     ],
                 )
-        modal_content.append(taxonomy_info)
+        modal_data.append(taxonomy_info)
 
         # Genome details section
         genome_details = dmc.Paper(
@@ -618,9 +622,9 @@ def create_accession_modal(accession):
                 ),
             ],
         )
-        modal_content.append(genome_details)
+        modal_data.append(genome_details)
 
-        return dmc.Stack(modal_content, gap="md"), modal_title
+        return dmc.Stack(modal_data, gap="md"), modal_title
 
     except Exception as e:
         logger.error(f"Error in create_accession_modal: {str(e)}")
@@ -674,8 +678,12 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 accession = accession.strip("[]").split("/")[-1].strip()
                 logger.debug(f"Looking for accession in cache: {accession}")
 
-                modal_content, modal_title = create_accession_modal(accession)
-                return True, modal_content, modal_title
+                # Instead of opening a Dash modal, trigger the universal modal via JavaScript
+                return (
+                    False,  # Don't open the Dash modal
+                    no_update,
+                    no_update
+                )
 
             return False, no_update, no_update      
         except Exception as e:

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import dash
-from dash import dcc, html, callback
+from dash import dcc, html, callback, clientside_callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 
@@ -671,6 +671,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                             id="dl-table-container",
                             children=[table],
                         ),
+                        # Dummy div for clientside callback
+                        html.Div(id="dummy-output", style={"display": "none"}),
                     ],
                 ),
             ],
@@ -993,7 +995,7 @@ def generate_download_helper(rows, curated, dereplicate):
             raise ValueError("No rows selected for download")
 
         accessions = [
-            re.sub(pattern="\..*", repl="", string=row["accession_tag"]) for row in rows
+            re.sub(pattern=r"\..*", repl="", string=row["accession_tag"]) for row in rows
         ]
         dl_df = fetch_ships(
             accession_tags=accessions,
@@ -1155,7 +1157,48 @@ def update_download_selected_button(selected_rows):
     return not selected_rows or len(selected_rows) == 0
 
 
-# Rename this to avoid conflict with the wiki table modal
-download_table_modal = create_modal_callback(
-    "dl-table", "accession-modal", "modal-content", "modal-title"
+# Add clientside callback to handle accession modal clicks
+clientside_callback(
+    """
+    function(cellClicked, activeCell, tableData, pageCurrent, pageSize) {
+        if (!cellClicked && !activeCell) {
+            return window.dash_clientside.no_update;
+        }
+
+        let accession = null;
+
+        // Handle AG Grid cell clicks
+        if (cellClicked && (cellClicked.colId === 'accession_tag' || cellClicked.colId === 'accession_display')) {
+            accession = cellClicked.value;
+        }
+        // Handle DataTable active cell
+        else if (activeCell && (activeCell.column_id === 'accession_tag' || activeCell.column_id === 'accession_display')) {
+            const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
+            if (tableData && actualRowIdx < tableData.length) {
+                accession = tableData[actualRowIdx][activeCell.column_id];
+            }
+        }
+
+        if (accession) {
+            // Clean and standardize the accession tag
+            accession = accession.toString().trim().split('/').pop().trim();
+
+            // Show the universal modal
+            showAccessionModal(accession);
+        }
+
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("dummy-output", "children"),  # Dummy output since we don't need to update any Dash components
+    [
+        Input("dl-table", "cellClicked"),
+        Input("dl-table", "active_cell"),
+    ],
+    [
+        State("dl-table", "derived_virtual_data"),
+        State("dl-table", "page_current"),
+        State("dl-table", "page_size"),
+    ],
+    prevent_initial_call=True,
 )

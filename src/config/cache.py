@@ -98,13 +98,11 @@ def smart_cache(timeout=3600, unless=None):
             result = cache.get(cache_key)
             
             if result is not None:
-                logger.debug(f"Cache hit for {cache_key}")
                 if isinstance(result, dict) and "pandas_df" in result:
                     # Reconstruct DataFrame from cached dict
                     return pd.DataFrame.from_dict(result["pandas_df"])
                 return result
             
-            logger.debug(f"Cache miss for {cache_key}")
             result = f(*args, **kwargs)
             
             if isinstance(result, pd.DataFrame):
