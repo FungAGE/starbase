@@ -15,18 +15,31 @@ DATABASE_URLS = {
 }
 
 # Create engines with proper connection pooling
-engines = {
-    name: create_engine(
-        url,
-        poolclass=QueuePool,
-        pool_size=10,
-        max_overflow=20,
-        pool_timeout=30,
-        pool_recycle=1800,
-        echo=IS_DEV,  # Only log SQL in development mode
-    )
-    for name, url in DATABASE_URLS.items()
-}
+# For SQLite, we need special handling due to threading restrictions
+engines = {}
+for name, url in DATABASE_URLS.items():
+    if url.startswith("sqlite"):
+        engines[name] = create_engine(
+            url,
+            poolclass=QueuePool,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_recycle=1800,
+            echo=IS_DEV,
+            connect_args={"check_same_thread": False},
+        )
+    else:
+        # MySQL/PostgreSQL configuration
+        engines[name] = create_engine(
+            url,
+            poolclass=QueuePool,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_recycle=1800,
+            echo=IS_DEV,
+        )
 
 # Extract individual engines for backward compatibility
 starbase_engine = engines["starbase"]
