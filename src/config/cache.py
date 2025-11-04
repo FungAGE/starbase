@@ -28,55 +28,67 @@ cache = Cache(
 )
 
 
-def cleanup_old_cache():
-    """Smart cache cleanup that only removes expired items and maintains size limits"""
+def cleanup_old_cache(max_age_days=None):
+    """Optional cache cleanup for persistent database data.
+
+    Since our cached data is persistent with database versions and remains
+    stable once generated at startup, cleanup is primarily for disk space management.
+
+    Args:
+        max_age_days: If provided, remove files older than this many days.
+                     If None, only enforce size limits.
+    """
     try:
-        import time
-        import json
         from pathlib import Path
-        
+        import time
+
         cleanup_count = 0
         total_size = 0
         current_time = time.time()
         cache_files = []
 
-        # Collect cache file information
+        # Collect all cache files with their metadata
         for filepath in Path(cache_dir).rglob('*'):
-            if filepath.is_file():
+            if filepath.is_file() and filepath.suffix not in ['.lock']:  # Skip lock files
                 try:
                     stats = filepath.stat()
-                    # Check if file is a cache file by attempting to read it
-                    with open(filepath, 'rb') as f:
-                        cache_data = cache._read_cache_file(f)
-                        if cache_data:
-                            expiry = cache_data.get('exp', 0)
-                            if expiry and current_time >= expiry:
-                                filepath.unlink()
-                                cleanup_count += 1
-                            else:
-                                cache_files.append((filepath, stats.st_size, stats.st_mtime))
-                                total_size += stats.st_size
-                except (json.JSONDecodeError, IOError):
-                    # Not a valid cache file or can't read it
+                    age_days = (current_time - stats.st_mtime) / (24 * 3600)
+                    cache_files.append((filepath, stats.st_size, stats.st_mtime, age_days))
+                    total_size += stats.st_size
+                except OSError:
                     continue
+
+        # Remove files older than max_age_days if specified
+        if max_age_days is not None:
+            for filepath, size, _, age_days in cache_files[:]:  # Copy list to avoid modification during iteration
+                if age_days > max_age_days:
+                    try:
+                        filepath.unlink()
+                        total_size -= size
+                        cleanup_count += 1
+                        logger.debug(f"Removed old cache file (age: {age_days:.1f} days): {filepath}")
+                    except OSError:
+                        continue
 
         # If we're over size limit, remove oldest files until under limit
         if total_size > MAX_CACHE_SIZE:
             # Sort by modification time (oldest first)
             cache_files.sort(key=lambda x: x[2])
-            
-            for filepath, size, _ in cache_files:
+
+            for filepath, size, _, _ in cache_files:
                 if total_size <= MAX_CACHE_SIZE:
                     break
                 try:
                     filepath.unlink()
                     total_size -= size
                     cleanup_count += 1
-                except IOError:
+                    logger.debug(f"Removed old cache file (size limit): {filepath}")
+                except OSError:
                     continue
 
-        logger.info(f"Cleaned up {cleanup_count} cache items. Current cache size: {total_size / 1024 / 1024:.2f}MB")
-        
+        if cleanup_count > 0:
+            logger.info(f"Cleaned up {cleanup_count} cache items. Current cache size: {total_size / 1024 / 1024:.2f}MB")
+
     except Exception as e:
         logger.error(f"Cache cleanup failed: {str(e)}", exc_info=True)
 
