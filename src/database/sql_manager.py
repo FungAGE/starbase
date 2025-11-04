@@ -56,78 +56,81 @@ def db_session_manager():
         if session:
             session.close()
 
-# TODO: caching can be much more efficient, if we only cache the full dataset, and then apply curation/dereplication filters to the cached dataset afterwards
+# Cache the full dataset and apply filters in memory for efficiency
 @db_retry_decorator()
-@smart_cache(timeout=3600)
 def fetch_meta_data(curated=False, accession_tags=None):
     """
-    Fetch metadata from the database with caching.
+    Fetch metadata from the database with efficient caching.
+
+    Caches the full dataset and applies filters in memory for maximum efficiency.
 
     Args:
         curated (bool): If True, only return curated entries
         accession_tags (str or list): Single accession tag or list of accession tags
 
     Returns:
-        pd.DataFrame: Metadata for the specified accession tags
+        pd.DataFrame: Metadata for the specified filters
     """
-    session = StarbaseSession()
+    from src.config.cache import cache
 
-    meta_query = """
-    SELECT j.curated_status, j.starshipID,
-           a.accession_tag, a.version_tag,
-           j.ship_id, j.id as joined_ship_id,
-           CASE 
-               WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
-               THEN a.accession_tag || '.' || a.version_tag
-               ELSE a.accession_tag
-           END as accession_display,
-           t.taxID, t.strain, t.`order`, t.family, t.name, 
-           sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd, 
-           f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
-           g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
-    FROM joined_ships j
-    INNER JOIN accessions a ON j.accession_id = a.id
-    LEFT JOIN taxonomy t ON j.tax_id = t.id
-    LEFT JOIN starship_features sf ON a.id = sf.accession_id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-    LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-    LEFT JOIN genomes g ON j.genome_id = g.id
-    """
+    # Always cache the full dataset with a fixed key
+    cache_key = "fetch_meta_data:full_dataset"
 
-    # Build WHERE clause conditions
-    where_conditions = []
-    params = []
-    
+    # Try to get cached full dataset
+    full_df = cache.get(cache_key)
+    if full_df is not None:
+        if isinstance(full_df, dict) and "pandas_df" in full_df:
+            full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
+    else:
+        # Fetch and cache the full dataset
+        session = StarbaseSession()
+        try:
+            meta_query = """
+            SELECT j.curated_status, j.starshipID,
+                   a.accession_tag, a.version_tag,
+                   j.ship_id, j.id as joined_ship_id,
+                   CASE
+                       WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
+                       THEN a.accession_tag || '.' || a.version_tag
+                       ELSE a.accession_tag
+                   END as accession_display,
+                   t.taxID, t.strain, t.`order`, t.family, t.name,
+                   sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
+                   f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+                   g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
+            FROM joined_ships j
+            INNER JOIN accessions a ON j.accession_id = a.id
+            LEFT JOIN taxonomy t ON j.tax_id = t.id
+            LEFT JOIN starship_features sf ON a.id = sf.accession_id
+            LEFT JOIN family_names f ON j.ship_family_id = f.id
+            LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+            LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
+            LEFT JOIN genomes g ON j.genome_id = g.id
+            """
+
+            full_df = pd.read_sql_query(meta_query, session.bind)
+            # Cache as dictionary for DataFrame serialization
+            cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
+
+        except Exception as e:
+            logger.error(f"Error fetching meta data: {str(e)}")
+            raise
+        finally:
+            session.close()
+
+    # Apply filters in memory
+    filtered_df = full_df.copy()
+
     if curated:
-        where_conditions.append("j.curated_status = 'curated'")
+        filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
 
     if accession_tags:
         if isinstance(accession_tags, list):
-            placeholders = ",".join(["?"] * len(accession_tags))
-            where_conditions.append(f"a.accession_tag IN ({placeholders})")
-            params = list(accession_tags)
+            filtered_df = filtered_df[filtered_df["accession_tag"].isin(accession_tags)]
         else:
-            where_conditions.append("a.accession_tag = ?")
-            params = [accession_tags]
-    
-    if where_conditions:
-        meta_query += f"\n    WHERE {' AND '.join(where_conditions)}"
-    
-    params = tuple(params) if params else []
+            filtered_df = filtered_df[filtered_df["accession_tag"] == accession_tags]
 
-    try:
-        if params:
-            meta_df = pd.read_sql_query(meta_query, session.bind, params=params)
-        else:
-            meta_df = pd.read_sql_query(meta_query, session.bind)
-
-        return meta_df
-    except Exception as e:
-        logger.error(f"Error fetching meta data: {str(e)}")
-        raise
-    finally:
-        session.close()
+    return filtered_df
 
 @db_retry_decorator()
 @smart_cache(timeout=None)
@@ -151,50 +154,6 @@ def fetch_paper_data():
         raise
     finally:
         session.close()
-
-@db_retry_decorator()
-@smart_cache(timeout=7200)
-def fetch_download_data(curated=True, dereplicate=False):
-    """Fetch download data from the database and cache the result."""
-    session = StarbaseSession()
-
-    query = """
-    SELECT a.accession_tag, a.version_tag, 
-           CASE 
-               WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
-               THEN a.accession_tag || '.' || a.version_tag
-               ELSE a.accession_tag
-           END as accession_display,
-           f.familyName, p.shortCitation, t.`order`, t.family, t.name 
-    FROM joined_ships j
-    LEFT JOIN taxonomy t ON j.tax_id = t.id
-    INNER JOIN accessions a ON j.accession_id = a.id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    LEFT JOIN genomes g ON j.genome_id = g.id
-    LEFT JOIN papers p ON f.type_element_reference = p.shortCitation
-    -- Only show entries that have sequences
-    INNER JOIN ships s ON s.id = j.ship_id
-    WHERE 1=1
-    """
-
-    if curated:
-        query += " AND j.curated_status = 'curated'"
-
-    try:
-        df = pd.read_sql_query(query.strip(), session.bind)
-
-        if dereplicate:
-            df = df.drop_duplicates(subset="accession_tag")
-
-        if df.empty:
-            logger.warning("Fetched Download DataFrame is empty.")
-        return df
-    except Exception as e:
-        logger.error(f"Error fetching download data: {str(e)}")
-        raise
-    finally:
-        session.close()
-
 
 @db_retry_decorator()
 @smart_cache(timeout=3600)
@@ -345,53 +304,62 @@ def fetch_ships(
     finally:
         session.close()
 
-
+@smart_cache(timeout=None)
 @db_retry_decorator()
 def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
-    session = StarbaseSession()
+    from src.config.cache import cache
+    cache_key = "fetch_ship_table:full_dataset"
 
-    query = """
-    SELECT DISTINCT 
-        a.accession_tag, a.version_tag,
-        CASE 
-            WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
-            THEN a.accession_tag || '.' || a.version_tag
-            ELSE a.accession_tag
-        END as accession_display,
-        f.familyName,
-        t.name
-    FROM joined_ships js
-    LEFT JOIN accessions a ON js.accession_id = a.id
-    LEFT JOIN taxonomy t ON js.tax_id = t.id
-    LEFT JOIN family_names f ON js.ship_family_id = f.id
-    WHERE 1=1
-    """
+    full_df = cache.get(cache_key)
+    if full_df is not None:
+        if isinstance(full_df, dict) and "pandas_df" in full_df:
+            full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
+    else:
+        session = StarbaseSession()
+
+        try:
+            query = """
+            SELECT DISTINCT 
+                a.accession_tag, a.version_tag,
+                CASE 
+                    WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+                    THEN a.accession_tag || '.' || a.version_tag
+                    ELSE a.accession_tag
+                END as accession_display,
+                f.familyName,
+                t.name
+            FROM joined_ships js
+            LEFT JOIN accessions a ON js.accession_id = a.id
+            LEFT JOIN taxonomy t ON js.tax_id = t.id
+            LEFT JOIN family_names f ON js.ship_family_id = f.id
+            WHERE 1=1
+            """
+
+            full_df = pd.read_sql_query(query, session.bind)
+            cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
+
+        except Exception as e:
+            logger.error(f"Error fetching ship table data: {str(e)}")
+            raise
+        finally:
+            session.close()
+
+    filtered_df = full_df.copy()
 
     if with_sequence:
-        query += " AND js.ship_id IS NOT NULL"
+        filtered_df = filtered_df[filtered_df["ship_id"].notna()]
 
 
     if with_gff_entries:
-        with_gff_entries_query = """
-        SELECT DISTINCT js.ship_id
-        FROM joined_ships js
-        LEFT JOIN gff g ON g.ship_id = js.ship_id
-        WHERE g.source IS NOT NULL
-        """
-        query += f" AND js.ship_id IN ({with_gff_entries_query})"
+        filtered_df = filtered_df[filtered_df["source"].notna()]
     
     if curated:
-        query += " AND js.curated_status = 'curated'"
+        filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
 
-    query += " ORDER BY f.familyName ASC"
+    filtered_df = filtered_df.sort_values(by="familyName")
 
-    try:
-        df = pd.read_sql_query(query, session.bind)
-        return df
-    except Exception as e:
-        logger.error(f"Error fetching ship table data: {str(e)}")
-        raise
+    return filtered_df
 
 @db_retry_decorator()
 def fetch_accession_ship(accession_tag):
@@ -558,7 +526,7 @@ def fetch_sf_data():
 
 
 @db_retry_decorator()
-@smart_cache(timeout=0)
+@smart_cache(timeout=None)
 def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
