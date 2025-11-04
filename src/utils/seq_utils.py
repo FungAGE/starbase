@@ -709,10 +709,18 @@ def create_ncbi_style_header(row):
             Convert to string to avoid Series issues
             """
             val = row.get(key) if isinstance(row, dict) else row[key]
-            if pd.isna(val):
+            if pd.isna(val) or val is None:
                 return None
-            return str(val) if val is not None else None
-        
+            str_val = str(val)
+            if str_val.lower() in {"nan", "none", "null", "unknown", ""}:
+                return None
+            return str_val
+
+        def format_field(key, format_str, default=""):
+            """Helper to get field value and format it, with fallback to default"""
+            val = safe_get(key)
+            return format_str.format(val) if val is not None else default
+
         clean_contig = clean_contigIDs(safe_get("contigID"))
 
         # Use accession_display if available, otherwise combine accession_tag and version_tag
@@ -727,35 +735,25 @@ def create_ncbi_style_header(row):
         else:
             accession_with_version = accession_tag
 
-        organism = safe_get("name")
-        if organism is None:
-            organism = "Unknown"
-        else:
-            organism = f"[organism={organism}] "
+        # Collect taxonomic information in a single consolidated field
+        tax_field_mapping = {
+            "organism": "name",
+            "order": "order",
+            "family": "family"
+        }
+        tax_pairs = [f"{key}={safe_get(field)}" for key, field in tax_field_mapping.items() if safe_get(field)]
+        tax_info = f"[taxonomy: {';'.join(tax_pairs)}] " if tax_pairs else ""
         
-        order_val = safe_get("order")
-        if order_val is None:
-            order = "Unknown"
-        else:
-            order = f"[lineage=Fungi; {order_val}] "
-        
-        family_val = safe_get("family")
-        if family_val is None:
-            family = "Unknown"
-        else:
-            family = f"[family={family_val}] "
-        
-        assembly_accession = safe_get("assembly_accession")
-        if assembly_accession is None:
-            assembly = ""
-        else:
-            assembly = f"[assembly={assembly_accession}] "
-        
-        family_name_val = safe_get("familyName")
-        if family_name_val is None:
-            family_name = ""
-        else:
-            family_name = f"[family={family_name_val}] "
+        assembly = format_field("assembly_accession", "[assembly={}] ")
+
+        # Collect starship classification information in a single consolidated field
+        starship_classification_field_mapping = {
+            "familyName": "familyName",
+            "navis_name": "navis_name",
+            "haplotype_name": "haplotype_name"
+        }
+        starship_classification_pairs = [f"{key}={safe_get(field)}" for key, field in starship_classification_field_mapping.items() if safe_get(field)]
+        starship_classification_info = f"[starship_classification: {';'.join(starship_classification_pairs)}] " if starship_classification_pairs else ""
         
         element_begin = safe_get("elementBegin")
         element_end = safe_get("elementEnd")
@@ -764,17 +762,15 @@ def create_ncbi_style_header(row):
             and element_begin is not None
             and element_end is not None
         ):
-            genomic_location = f"[genomic_location={clean_contig}:{element_begin}-{element_end}]"
+            genomic_location = f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
         else:
             genomic_location = ""
 
         header = (
                 f"{accession_with_version} "
-                + organism
-                + order
-                + family
+                + tax_info
+                + starship_classification_info
                 + assembly
-                + family_name
                 + genomic_location
             )
         sanitized_header = sanitize_header(header)
