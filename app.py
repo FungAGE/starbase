@@ -72,7 +72,7 @@ external_scripts = [
     "/assets/js/clustermap.min.js",
     "/assets/js/synteny.js",
     "/assets/js/universal-modal.js",
-    "/assets/js/blaster.js"
+    "/assets/js/blaster.min.woaln.js"
 ]
 
 app = Dash(
