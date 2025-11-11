@@ -54,7 +54,7 @@ class UniversalModal {
                             cursor: pointer;
                             transition: color 0.2s;
                             padding: 10px;
-                            margin: -10px;
+                            margin: -10px -10px -10px 10px;
                         ">&times;</span>
                         <h2 id="universal-modal-title" style="
                             margin: 0 0 8px 0;
@@ -64,10 +64,6 @@ class UniversalModal {
                             line-height: 1.2;
                             text-align: center;
                             padding: 16px 20px;
-                            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                            border-radius: 8px;
-                            border: 1px solid #e9ecef;
-                            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
                             width: 100%;
                             box-sizing: border-box;
                         "></h2>
@@ -106,12 +102,19 @@ class UniversalModal {
                 margin: 0 auto;
             }
 
+            #universal-modal-title {
+                box-sizing: border-box;
+                padding: 0 20px;
+            }
+
             .modal-container {
                 display: flex;
                 flex-direction: column;
                 gap: 20px;
                 align-items: center;
                 width: 100%;
+                box-sizing: border-box;
+                padding: 0 20px;
             }
 
             .modal-section {
@@ -148,8 +151,6 @@ class UniversalModal {
                 transform: translateX(-50%);
                 width: 60px;
                 height: 3px;
-                background: linear-gradient(90deg, #228be6, #339af0);
-                border-radius: 2px;
             }
 
             .section-content {
@@ -187,7 +188,6 @@ class UniversalModal {
                 font-weight: 600;
                 color: #495057;
                 font-size: 14px;
-                text-transform: uppercase;
                 letter-spacing: 0.5px;
                 flex-shrink: 0;
                 min-width: 120px;
@@ -207,7 +207,6 @@ class UniversalModal {
                 border-radius: 4px;
                 font-size: 12px;
                 font-weight: 500;
-                text-transform: uppercase;
             }
 
             .badge-green {
@@ -329,16 +328,10 @@ class UniversalModal {
                                     <span class="modal-value">${data.familyName}</span>
                                 </div>
                             ` : ''}
-                            ${data.navis_name ? `
+                            ${data.navis_name && ['Aristaeus', 'Arwing', 'Atlantia', 'Chrysoar', 'Defiant', 'Enterprise', 'Galactica', 'Hephaestus', 'Horizon', 'Mithridate', 'Osiris', 'Phoenix', 'Prometheus', 'Typhon', 'Voyager', 'Wallaby'].includes(data.navis_name) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Navis:</span>
                                     <span class="modal-value">${data.navis_name}</span>
-                                </div>
-                            ` : ''}
-                            ${data.haplotype_name ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Starship Haplotype:</span>
-                                    <span class="modal-value">${data.haplotype_name}</span>
                                 </div>
                             ` : ''}
                             ${data.genomes_present ? `
