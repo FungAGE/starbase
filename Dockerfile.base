@@ -1,0 +1,61 @@
+# Base image with common system dependencies and conda setup
+FROM python:3.9
+LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
+LABEL org.opencontainers.image.description="STARBASE base image with common dependencies"
+
+# Create variables for user name and home directory
+ENV USER=starbase
+ENV HOME=/home/$USER
+
+# Add user to system
+RUN useradd -m -u 1000 $USER
+
+# Set working directory
+WORKDIR $HOME/
+
+# Install comprehensive system dependencies (combines needs from both testing and production)
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y \
+        curl \
+        iptables \
+        wget \
+        redis-server \
+        build-essential \
+        # Bioinformatics tools needed for testing and runtime
+        blast2 \
+        clustalw \
+        hmmer \
+        # Additional tools that might be needed
+        git \
+        vim \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Mambaforge (conda package manager)
+RUN wget https://github.com/conda-forge/miniforge/releases/download/25.3.0-3/Miniforge3-25.3.0-3-Linux-x86_64.sh -O miniforge.sh && \
+    bash miniforge.sh -b -p $HOME/miniconda && \
+    rm miniforge.sh && \
+    echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
+    echo "conda activate starbase" >> $HOME/.bashrc
+
+ENV PATH=$HOME/miniconda/bin:$PATH
+
+# Copy environment file and create conda environment using mamba
+COPY environment.yaml .
+RUN mamba env create -y -f environment.yaml && \
+    mamba clean -afy
+
+# Set conda environment to activate by default
+ENV PATH=$HOME/miniconda/envs/starbase/bin:$HOME/miniconda/bin:$PATH
+ENV CONDA_DEFAULT_ENV=starbase
+
+# Install Node.js, npm, and blasterjs (needed for the application)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g biojs-vis-blasterjs
+
+# Create db directory with proper permissions
+RUN mkdir -p $HOME/src/database/db && \
+    chown -R $USER:$USER $HOME
+
+# Switch to user for subsequent operations
+USER $USER
