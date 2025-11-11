@@ -295,7 +295,7 @@ accession_card = dmc.Paper(
                 html.Span("Starbase", className="logo-text"),
                 ". ",
                 html.Span("Starbase", className="logo-text"),
-                " Ship Accessions (abbreviated as SBS) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",
+                " Ship Accessions (abbreviated as SSA) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",
             ],
             c="dimmed",
         ),

@@ -179,7 +179,7 @@ def large_dataframe():
     """Large DataFrame for performance testing"""
     n_rows = 1000
     return pd.DataFrame({
-        "accession_tag": [f"SBS{i:06d}" for i in range(n_rows)],
+        "accession_tag": [f"SSA{i:06d}" for i in range(n_rows)],
         "familyName": [f"Family{i % 10}" for i in range(n_rows)],
         "curated_status": ["curated" if i % 2 == 0 else "uncurated" for i in range(n_rows)],
         "elementLength": [1000 + i for i in range(n_rows)],
