@@ -179,7 +179,7 @@ src/database/cache/
 src/database/logs/
 
 # database conversion/cleanup
-src/database/cleanup/
+src/database/cleanup*
 src/database/complete_cleanup_report.txt
 src/utils/mysql_config.json
 
