@@ -531,19 +531,48 @@ def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
     try:
-        # use metadata from previous query
-        meta_df = fetch_meta_data(curated=False)
-        filtered_df = meta_df[meta_df["accession_tag"].notna()]
-        total_count = len(filtered_df["accession_tag"].unique())
-        curated_count = len(filtered_df[filtered_df["curated_status"] == "curated"]["accession_tag"].unique())
+
+        # new sql query for stats
+        # stats metdata
+        stats_metadata_query = """
+        SELECT j.curated_status, j.starshipID,
+                a.accession_tag, a.version_tag,
+                j.ship_id, j.id as joined_ship_id,
+                CASE
+                    WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
+                    THEN a.accession_tag || '.' || a.version_tag
+                    ELSE a.accession_tag
+                END as accession_display,
+                t.taxID, t.strain, t.`order`, t.family, t.name,
+                sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
+                f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+                g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
+        FROM joined_ships j
+        INNER JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN taxonomy t ON j.tax_id = t.id
+        LEFT JOIN starship_features sf ON a.id = sf.accession_id
+        LEFT JOIN family_names f ON j.ship_family_id = f.id
+        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
+        LEFT JOIN genomes g ON j.genome_id = g.id
+        LEFT JOIN ships s ON s.id = j.ship_id
+        """
+        stats_df = pd.read_sql_query(stats_metadata_query, session.bind)
+
+        # total numer of ships (regardless of duplicates or sequencing similarity)
+        total_count = len(stats_df)
+        # total number of unique sequences (by md5 or rev_comp_md5)
+        unique_sequences_df = stats_df[["md5","rev_comp_md5"]].drop_duplicates()
+        unique_sequences_count = len(unique_sequences_df)
+
+        curated_count = len(stats_df[stats_df["curated_status"] == "curated"])
         uncurated_count = total_count - curated_count
-        species_count = len(filtered_df["name"].unique())
-        families = filtered_df["familyName"].dropna().loc[~filtered_df["familyName"].isin(["NA", "None", None, "NULL"])].unique()
-        logger.info(f"families: {families}")
-        family_count = len(families)
+        species_count = len(stats_df["name"].unique())
+        family_count = len(stats_df["familyName"].dropna().loc[~stats_df["familyName"].isin(["NA", "None", None, "NULL"])].unique())
 
         stats = {
             "total_starships": total_count,
+            "unique_sequences": unique_sequences_count,
             "curated_starships": curated_count,
             "uncurated_starships": uncurated_count,
             "species_count": species_count,
