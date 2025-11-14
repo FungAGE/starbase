@@ -28,7 +28,6 @@ paper_family_association = Table(
 class Accessions(Base):
     __tablename__ = "accessions"
     id = Column(Integer, primary_key=True)
-    ship_name = Column(String)
     accession_tag = Column(String, unique=True)
     version_tag = Column(Integer)
 

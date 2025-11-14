@@ -56,7 +56,6 @@ def db_session_manager():
         if session:
             session.close()
 
-# Cache the full dataset and apply filters in memory for efficiency
 @db_retry_decorator()
 def fetch_meta_data(curated=False, accession_tags=None):
     """
@@ -97,15 +96,18 @@ def fetch_meta_data(curated=False, accession_tags=None):
                    t.taxID, t.strain, t.`order`, t.family, t.name,
                    sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                    f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
-                   g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession
+                   g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
+                   s.md5, s.rev_comp_md5
             FROM joined_ships j
-            INNER JOIN accessions a ON j.accession_id = a.id
+            LEFT JOIN accessions a ON j.accession_id = a.id
             LEFT JOIN taxonomy t ON j.tax_id = t.id
             LEFT JOIN starship_features sf ON a.id = sf.accession_id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
             LEFT JOIN navis_names n ON j.ship_navis_id = n.id
             LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
             LEFT JOIN genomes g ON j.genome_id = g.id
+            LEFT JOIN ships s ON s.id = j.ship_id
+            WHERE j.accession_id IS NOT NULL
             """
 
             full_df = pd.read_sql_query(meta_query, session.bind)
@@ -548,7 +550,7 @@ def get_database_stats():
                 f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                 g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
         FROM joined_ships j
-        INNER JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
