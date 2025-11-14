@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 def sample_meta_dataframe():
     """Sample metadata DataFrame for testing"""
     return pd.DataFrame({
-        "accession_tag": ["SBS000001", "SBS000002", "SBS000003", "SBS000004"],
+        "accession_tag": ["SSA000001", "SSA000002", "SSA000003", "SSA000004"],
         "familyName": ["Family1", "Family1", "Family2", "Family2"],
         "curated_status": ["curated", "uncurated", "curated", "uncurated"],
         "elementLength": [1000, 2000, 1500, 2500],
@@ -56,8 +56,8 @@ def sample_papers_dict(sample_papers_dataframe):
 def sample_download_rows():
     """Sample rows for download testing"""
     return [
-        {"accession_tag": "SBS000001", "familyName": "Family1"},
-        {"accession_tag": "SBS000002", "familyName": "Family2"},
+        {"accession_tag": "SSA000001", "familyName": "Family1"},
+        {"accession_tag": "SSA000002", "familyName": "Family2"},
     ]
 
 
@@ -65,7 +65,7 @@ def sample_download_rows():
 def sample_ships_dataframe():
     """Sample ships DataFrame for download testing"""
     return pd.DataFrame({
-        "accession_tag": ["SBS000001", "SBS000002"],
+        "accession_tag": ["SSA000001", "SSA000002"],
         "familyName": ["Family1", "Family2"],
         "sequence": ["ATGCATGCATGC", "TTGGTTGGTTGG"],
         "name": ["Species1", "Species2"],
@@ -166,7 +166,7 @@ def empty_dataframe():
 def dataframe_with_nans():
     """DataFrame with NaN values for testing"""
     return pd.DataFrame({
-        "accession_tag": ["SBS000001", None, "SBS000003"],
+        "accession_tag": ["SSA000001", None, "SSA000003"],
         "familyName": ["Family1", "Family2", None],
         "elementLength": [1000, np.nan, 1500],
         "upDR": ["ATGC", None, "TTAA"],

@@ -134,8 +134,8 @@ class TestCreateAccordionCallback:
     def test_create_accordion_with_data(self):
         """Test accordion creation with valid data"""
         meta_data = [
-            {"familyName": "Family1", "accession_tag": "SBS000001"},
-            {"familyName": "Family2", "accession_tag": "SBS000002"},
+            {"familyName": "Family1", "accession_tag": "SSA000001"},
+            {"familyName": "Family2", "accession_tag": "SSA000002"},
         ]
         paper_data = [
             {"familyName": "Family1", "type_element_reference": "Ref1"},
@@ -169,11 +169,11 @@ class TestCreateSearchResultsCallback:
     def test_create_search_results_with_filtered_data(self):
         """Test search results with filtered data"""
         filtered_data = [
-            {"accession_tag": "SBS000001", "familyName": "Family1", "curated_status": "curated"},
-            {"accession_tag": "SBS000002", "familyName": "Family1", "curated_status": "uncurated"},
+            {"accession_tag": "SSA000001", "familyName": "Family1", "curated_status": "curated"},
+            {"accession_tag": "SSA000002", "familyName": "Family1", "curated_status": "uncurated"},
         ]
         cached_data = [
-            {"accession_tag": "SBS000003", "familyName": "Family2", "curated_status": "curated"},
+            {"accession_tag": "SSA000003", "familyName": "Family2", "curated_status": "curated"},
         ]
         
         with patch('src.pages.wiki.make_dl_table') as mock_table:
@@ -199,8 +199,8 @@ class TestCreateSearchResultsCallback:
     def test_create_search_results_with_curated_filter(self):
         """Test search results with curated filter"""
         data = [
-            {"accession_tag": "SBS000001", "familyName": "Family1", "curated_status": "curated"},
-            {"accession_tag": "SBS000002", "familyName": "Family1", "curated_status": "uncurated"},
+            {"accession_tag": "SSA000001", "familyName": "Family1", "curated_status": "curated"},
+            {"accession_tag": "SSA000002", "familyName": "Family1", "curated_status": "uncurated"},
         ]
         
         with patch('src.pages.wiki.make_dl_table') as mock_table:
@@ -383,13 +383,13 @@ class TestGenerateDownloadCallbacks:
     def test_generate_download_all_success(self):
         """Test successful download all generation"""
         table_data = [
-            {"accession_tag": "SBS000001", "familyName": "Family1"},
-            {"accession_tag": "SBS000002", "familyName": "Family2"},
+            {"accession_tag": "SSA000001", "familyName": "Family1"},
+            {"accession_tag": "SSA000002", "familyName": "Family2"},
         ]
         
         with patch('src.pages.wiki.generate_download_helper') as mock_helper:
             mock_helper.return_value = (
-                {"content": ">SBS000001\nATGC", "filename": "test.fasta", "type": "text/plain"},
+                {"content": ">SSA000001\nATGC", "filename": "test.fasta", "type": "text/plain"},
                 2
             )
             
@@ -417,16 +417,16 @@ class TestGenerateDownloadCallbacks:
     def test_generate_download_selected_success(self):
         """Test successful download selected generation"""
         table_data = [
-            {"accession_tag": "SBS000001", "familyName": "Family1"},
-            {"accession_tag": "SBS000002", "familyName": "Family2"},
+            {"accession_tag": "SSA000001", "familyName": "Family1"},
+            {"accession_tag": "SSA000002", "familyName": "Family2"},
         ]
         selected_rows = [
-            {"accession_tag": "SBS000001", "familyName": "Family1"},
+            {"accession_tag": "SSA000001", "familyName": "Family1"},
         ]
         
         with patch('src.pages.wiki.generate_download_helper') as mock_helper:
             mock_helper.return_value = (
-                {"content": ">SBS000001\nATGC", "filename": "test.fasta", "type": "text/plain"},
+                {"content": ">SSA000001\nATGC", "filename": "test.fasta", "type": "text/plain"},
                 1
             )
             
@@ -458,7 +458,7 @@ class TestGenerateDownloadCallbacks:
         with pytest.raises(dash.exceptions.PreventUpdate):
             generate_download_selected(
                 dl_select_clicks=1,
-                table_data=[{"accession_tag": "SBS000001"}],
+                table_data=[{"accession_tag": "SSA000001"}],
                 selected_rows=[],
                 curated=False,
                 dereplicate=False
@@ -518,12 +518,12 @@ class TestWikiCallbackIntegration:
     def test_download_workflow(self):
         """Test complete download workflow"""
         table_data = [
-            {"accession_tag": "SBS000001", "familyName": "Family1"},
+            {"accession_tag": "SSA000001", "familyName": "Family1"},
         ]
         
         with patch('src.pages.wiki.fetch_ships') as mock_fetch:
             mock_df = pd.DataFrame({
-                "accession_tag": ["SBS000001"],
+                "accession_tag": ["SSA000001"],
                 "familyName": ["Family1"],
                 "sequence": ["ATGCATGC"],
             })

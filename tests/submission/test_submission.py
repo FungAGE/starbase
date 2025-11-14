@@ -23,7 +23,7 @@ def test_create_new_submission():
         import pandas as pd
         import hashlib
         existing_ships = pd.DataFrame({
-            "accession_tag": ["SBS000001", "SBS000002"],
+            "accession_tag": ["SSA000001", "SSA000002"],
             "sequence": [
                 "ATGCATGCATGCATGCATGC",
                 "TTTTTTTTTTTTTTTTTTTT"

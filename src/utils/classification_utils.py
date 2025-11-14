@@ -40,8 +40,8 @@ accession_workflow = """
 # assigning accessions
 ########################################################
 accession format:
-- normal ship accession: SBS123456
-- updated ship accession: SBS123456.1
+- normal ship accession: SSA123456
+- updated ship accession: SSA123456.1
 
 workflow:
 - first check for exact matches
