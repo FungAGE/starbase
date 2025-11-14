@@ -39,13 +39,32 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
+def dereplicate(df):
+    seen_sequences = set()
+    indices_to_keep = []
+    
+    for idx, row in df.iterrows():
+        md5_val = row.get('md5', '')
+        rev_comp_md5_val = row.get('rev_comp_md5', '')
+        
+        if not md5_val or not rev_comp_md5_val:
+            indices_to_keep.append(idx)
+            continue                    
+        if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
+            indices_to_keep.append(idx)
+            seen_sequences.add(md5_val)
+            seen_sequences.add(rev_comp_md5_val)
+    
+    filtered_df = df.loc[indices_to_keep]
+    return filtered_df
+
 
 def create_accordion_item(df, papers, category):
     if category == "nan":
         return None
     else:
         filtered_meta_df = df[df["familyName"] == category]
-        n_ships = len(filtered_meta_df["accession_tag"].dropna().unique())
+        n_ships = len(dereplicate(filtered_meta_df))
 
         element_lengths = pd.to_numeric(
             filtered_meta_df["elementLength"], errors="coerce"
@@ -502,10 +521,8 @@ def create_accordion(cached_meta, cached_papers):
     [
         Input("filtered-meta-data", "data"),
         Input("meta-data", "data"),
-    ],
-    [
-        State("curated-input", "checked"),
-        State("dereplicated-input", "checked"),
+        Input("curated-input", "checked"),
+        Input("dereplicated-input", "checked"),
     ],
 )
 @handle_callback_error
@@ -535,30 +552,38 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                 "No results match your search criteria.", color="blue", variant="filled"
             )
 
-        # Calculate the count for unique ship_ids for each accession_tag
-        # TODO: eventually accession_tag should be the correct column to use for deduplication
-        genome_counts = (
-            df.groupby("accession_tag")["ship_id"]
-            .nunique()
-            .reset_index(name="n_genomes")
-        )
-
-        # Remove duplicates and merge with counts
         if dereplicate:
-            filtered_meta_df = df.drop_duplicates(subset=["accession_tag"]).merge(
-                genome_counts, on="accession_tag", how="left"
-            )
+            # Remove both exact duplicates and reverse complement duplicates
+            # Step 1: Create a set to track sequences we want to keep
+            seen_sequences = set()
+            indices_to_keep = []
+            
+            for idx, row in df.iterrows():
+                md5_val = row.get('md5', '')
+                rev_comp_md5_val = row.get('rev_comp_md5', '')
+                
+                # Skip if either value is missing/empty
+                if not md5_val or not rev_comp_md5_val:
+                    indices_to_keep.append(idx)
+                    continue
+                    
+                # Check if this sequence (or its reverse complement) has been seen
+                if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
+                    # This is a new sequence - keep it and mark both orientations as seen
+                    indices_to_keep.append(idx)
+                    seen_sequences.add(md5_val)
+                    seen_sequences.add(rev_comp_md5_val)
+                # Otherwise, it's a duplicate or reverse complement duplicate - skip it
+            
+            filtered_meta_df = df.loc[indices_to_keep].copy()
         else:
-            # If not dereplicating, use the original dataframe and add n_genomes column
             filtered_meta_df = df.copy()
-            # Add n_genomes column with default value of 1 for each row
-            filtered_meta_df["n_genomes"] = 1
 
         if filtered_meta_df.empty:
             return dmc.Text("No results found", size="lg", c="dimmed")
 
         # drop unnecessary columns
-        filtered_meta_df = filtered_meta_df.drop(columns=["n_genomes", "elementLength"])
+        filtered_meta_df = filtered_meta_df.drop(columns=["elementLength"])
 
         # Fill NA values
         filtered_meta_df = filtered_meta_df.fillna("")
@@ -879,7 +904,28 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
 
         # Deduplicate data to match table processing
         if dereplicate:
-            df = df.drop_duplicates(subset=["accession_tag"])
+            # Remove both exact duplicates and reverse complement duplicates
+            seen_sequences = set()
+            indices_to_keep = []
+            
+            for idx, row in df.iterrows():
+                md5_val = row.get('md5', '')
+                rev_comp_md5_val = row.get('rev_comp_md5', '')
+                
+                # Skip if either value is missing/empty
+                if not md5_val or not rev_comp_md5_val:
+                    indices_to_keep.append(idx)
+                    continue
+                    
+                # Check if this sequence (or its reverse complement) has been seen
+                if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
+                    # This is a new sequence - keep it and mark both orientations as seen
+                    indices_to_keep.append(idx)
+                    seen_sequences.add(md5_val)
+                    seen_sequences.add(rev_comp_md5_val)
+                # Otherwise, it's a duplicate or reverse complement duplicate - skip it
+            
+            df = df.loc[indices_to_keep].copy()
 
         # Create sunburst plot
         sunburst_figure = create_sunburst_plot(
@@ -971,15 +1017,37 @@ def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
         # Apply curated/dereplicated filters if switches are enabled
         if curated:
             df = df[df["curated_status"] == "curated"]
+        
         if dereplicate:
-            df = df.drop_duplicates(subset=["accession_tag"])
+            # Remove both exact duplicates and reverse complement duplicates
+            seen_sequences = set()
+            indices_to_keep = []
+            
+            for idx, row in df.iterrows():
+                md5_val = row.get('md5', '')
+                rev_comp_md5_val = row.get('rev_comp_md5', '')
+                
+                # Skip if either value is missing/empty
+                if not md5_val or not rev_comp_md5_val:
+                    indices_to_keep.append(idx)
+                    continue
+                    
+                # Check if this sequence (or its reverse complement) has been seen
+                if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
+                    # This is a new sequence - keep it and mark both orientations as seen
+                    indices_to_keep.append(idx)
+                    seen_sequences.add(md5_val)
+                    seen_sequences.add(rev_comp_md5_val)
+                # Otherwise, it's a duplicate or reverse complement duplicate - skip it
+            
+            df = df.loc[indices_to_keep].copy()
 
         if df.empty:
             return "No records found"
 
-        # Count unique accession tags
-        unique_count = len(df["accession_tag"].dropna().unique())
-        return f"Showing {unique_count} records"
+        # Count unique accession ships
+        unique_ships = len(df)
+        return f"Showing {unique_ships} records"
 
     except Exception as e:
         logger.error(f"Error updating table stats: {str(e)}")
