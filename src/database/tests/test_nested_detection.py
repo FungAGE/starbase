@@ -20,7 +20,7 @@ def test_nested_detection():
     # Create a small test dataset
     test_data = {
         'accession_id': [1, 2, 3, 4, 5],
-        'accession_tag': ['SBS000001', 'SBS000002', 'SBS000003', 'SBS000004', 'SBS000005'],
+        'accession_tag': ['SSA000001', 'SSA000002', 'SSA000003', 'SSA000004', 'SSA000005'],
         'version_tag': [None, None, None, None, None],
         'sequence': [
             'ATCGATCGATCG',  # Longest sequence
@@ -47,9 +47,9 @@ def test_nested_detection():
     
     # Verify the results
     expected_pairs = [
-        ('SBS000004', 'SBS000001'),  # ATCG nested in ATCGATCGATCG
-        ('SBS000004', 'SBS000002'),  # ATCG nested in ATCGATCG
-        ('SBS000002', 'SBS000001'),  # ATCGATCG nested in ATCGATCGATCG
+        ('SSA000004', 'SSA000001'),  # ATCG nested in ATCGATCGATCG
+        ('SSA000004', 'SSA000002'),  # ATCG nested in ATCGATCG
+        ('SSA000002', 'SSA000001'),  # ATCGATCG nested in ATCGATCGATCG
     ]
     
     print(f"\nExpected pairs: {len(expected_pairs)}")
