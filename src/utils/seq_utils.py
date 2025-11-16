@@ -838,7 +838,11 @@ def write_fasta(sequences: Dict[str, str], fasta_path: str):
     """
     with open(fasta_path, "w") as fasta_file:
         for name, sequence in sequences.items():
-            fasta_file.write(f">{name}\n{sequence}\n")
+            # Strip any leading ">" to avoid duplication, then add exactly one
+            clean_name = name.lstrip(">")
+            # Also clean non-ASCII characters that might cause BLAST issues
+            clean_name = clean_name.encode('ascii', errors='ignore').decode()
+            fasta_file.write(f">{clean_name}\n{sequence}\n")
 
 
 def write_multi_fasta(sequences, fasta_path, sequence_col, id_col):

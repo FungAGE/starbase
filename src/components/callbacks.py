@@ -351,6 +351,9 @@ def create_accession_modal_data(accession):
     """Create structured data for accession modal instead of Dash components."""
     try:
         accession = str(accession).strip("[]").split("/")[-1].strip()
+        # strip ">" from the beginning of the accession if present
+        if accession.startswith(">"):
+            accession = accession[1:]
         base_accession = accession.split(".")[0] if "." in accession else accession
 
         modal_data = fetch_meta_data(accession_tags=[base_accession])

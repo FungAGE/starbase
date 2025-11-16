@@ -3,6 +3,7 @@ import os
 import glob
 import fcntl
 import pandas as pd
+from Bio import SeqIO
 
 from src.config.cache import cache
 from src.config.settings import BLAST_DB_PATHS
@@ -34,7 +35,6 @@ class FileLock:
         finally:
             self._fh = None
 
-
 def create_blast_database(fasta_path, dbtype):
     """
     Create a BLAST database from the provided FASTA file.
@@ -42,8 +42,8 @@ def create_blast_database(fasta_path, dbtype):
     - Uses the FASTA basename (without extension) as the DB prefix
     - Proactively removes any stale BLAST index/taxonomy files to avoid taxonomy LMDB conflicts
     """
-    # Use basename without extension as the BLAST DB prefix (avoid using the .fa suffix)
-    out_prefix, _ = os.path.splitext(fasta_path)
+    # Use basename without extension as the BLAST DB prefix
+    out_prefix, _ = os.path.splitext(fasta_path)                                                                                                                                                                                
 
     # Best-effort cleanup of old index/taxonomy files (prevents taxonomy-related crashes)
     stale_suffixes = [
@@ -190,7 +190,15 @@ def create_dbs():
                     ship_metadata["accession_tag"] == accession_tag
                 ]
                 if not metadata_rows.empty:
-                    metadata = metadata_rows.iloc[0].to_dict()
+                    # Ensure all values are scalars, not pandas objects
+                    metadata = {}
+                    for col in metadata_rows.columns:
+                        val = metadata_rows.iloc[0][col]
+                        # Convert to Python types
+                        if pd.isna(val):
+                            metadata[col] = None
+                        else:
+                            metadata[col] = val.item() if hasattr(val, 'item') else val
 
                     header = create_ncbi_style_header(metadata)
                     if header and sequence:
@@ -216,11 +224,12 @@ def create_dbs():
 
     captain_sequences_dict = {}
     for index, row in captain_sequences.iterrows():
-        # Convert Series to scalar values to avoid unhashable type errors
-        accession = str(row["captainID"]) if pd.notna(row["captainID"]) else None
-        sequence = str(row["sequence"]) if pd.notna(row["sequence"]) else None
-        
-        if accession and sequence:
+        captain_id_val = row.get("captain_id_col", row.get("captainID"))
+        sequence_val = row["sequence"]
+
+        if pd.notna(captain_id_val) and pd.notna(sequence_val):
+            accession = str(captain_id_val)
+            sequence = str(sequence_val)
             captain_sequences_dict[accession] = sequence
 
     # Captain DBs: skip if already exist

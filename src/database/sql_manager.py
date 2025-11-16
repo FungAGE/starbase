@@ -157,6 +157,26 @@ def fetch_paper_data():
     finally:
         session.close()
 
+def dereplicate_sequences(df):
+    """Deduplicate sequences based on MD5 hashes (forward and reverse complement)."""
+    seen_sequences = set()
+    indices_to_keep = []
+
+    for idx, row in df.iterrows():
+        md5_val = row.get('md5', '')
+        rev_comp_md5_val = row.get('rev_comp_md5', '')
+
+        if not md5_val or not rev_comp_md5_val:
+            indices_to_keep.append(idx)
+            continue
+        if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
+            indices_to_keep.append(idx)
+            seen_sequences.add(md5_val)
+            seen_sequences.add(rev_comp_md5_val)
+
+    filtered_df = df.loc[indices_to_keep]
+    return filtered_df
+
 # TODO: figure out a way to handle caching with queries related to this query
 @db_retry_decorator()
 def fetch_ships(
@@ -194,16 +214,6 @@ def fetch_ships(
             t.name, t.family, t.`order`,
             f.familyName, n.navis_name, h.haplotype_name,
             g.assembly_accession, c.captainID"""
-
-    if dereplicate:
-        base_query += """,
-            ROW_NUMBER() OVER (
-                PARTITION BY a.accession_tag 
-                ORDER BY CASE 
-                    WHEN a.version_tag IS NULL OR a.version_tag = '' THEN 0 
-                    ELSE CAST(a.version_tag AS INTEGER) 
-                END DESC
-            ) as rn"""
 
     base_query += """
         FROM joined_ships j
@@ -263,9 +273,6 @@ def fetch_ships(
         LEFT JOIN ships s ON s.id = v.ship_id
         WHERE s.sequence IS NOT NULL"""
 
-        if dereplicate:
-            query += " AND v.rn = 1"
-
         query += """
         """
     else:
@@ -291,9 +298,6 @@ def fetch_ships(
             v.captainID
         FROM valid_ships v"""
 
-        if dereplicate:
-            query += " WHERE v.rn = 1"
-
         query += """
         """
 
@@ -302,6 +306,12 @@ def fetch_ships(
 
         if df.empty:
             logger.warning("Fetched ships DataFrame is empty.")
+            return df
+
+        # Apply MD5-based deduplication if sequences are available and deduplication is requested
+        if with_sequence and dereplicate and 'md5' in df.columns and 'rev_comp_md5' in df.columns:
+            df = dereplicate_sequences(df)
+
         return df
     except Exception as e:
         logger.error(f"Error fetching ships data: {str(e)}")
@@ -427,18 +437,18 @@ def fetch_captains(
 
     query = """
     WITH valid_captains AS (
-        SELECT DISTINCT 
-            a.id, 
+        SELECT DISTINCT
+            a.id,
             a.accession_tag,
             a.version_tag,
-            CASE 
-                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+            CASE
+                WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
                 THEN a.accession_tag || '.' || a.version_tag
                 ELSE a.accession_tag
             END as accession_display,
             j.curated_status,
             j.starshipID,
-            sf.captainID,
+            c.captainID as captain_id,
             c."sequence",
             n.navis_name,
             h.haplotype_name,
@@ -465,18 +475,18 @@ def fetch_captains(
     if with_sequence:
         query += """
         )
-        SELECT 
+        SELECT
             v.id,
             v.accession_tag,
             v.version_tag,
             v.accession_display,
             v.curated_status,
             v.starshipID,
-            v.captainID,
+            v.captain_id,
             v.sequence,
             v.navis_name,
             v.haplotype_name,
-            v.captainID
+            v.captain_id as captain_id_col
         FROM valid_captains v
         WHERE v.sequence IS NOT NULL
         """

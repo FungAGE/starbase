@@ -20,6 +20,7 @@ from src.database.sql_manager import (
     fetch_meta_data,
     fetch_paper_data,
     fetch_ships,
+    dereplicate_sequences,
 )
 from src.components.tables import (
     make_dl_table,
@@ -38,26 +39,6 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 dash.register_page(__name__)
-
-def dereplicate_sequences(df):
-    seen_sequences = set()
-    indices_to_keep = []
-    
-    for idx, row in df.iterrows():
-        md5_val = row.get('md5', '')
-        rev_comp_md5_val = row.get('rev_comp_md5', '')
-        
-        if not md5_val or not rev_comp_md5_val:
-            indices_to_keep.append(idx)
-            continue                    
-        if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
-            indices_to_keep.append(idx)
-            seen_sequences.add(md5_val)
-            seen_sequences.add(rev_comp_md5_val)
-    
-    filtered_df = df.loc[indices_to_keep]
-    return filtered_df
-
 
 def create_accordion_item(df, papers, category):
     if category == "nan":
