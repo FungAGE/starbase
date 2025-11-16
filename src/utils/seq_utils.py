@@ -691,16 +691,21 @@ def clean_contigIDs(string):
 
 
 def sanitize_header(header: str) -> str:
-    # Replace non-breaking spaces and remove non-ASCII characters
-    return (
-        header.replace('\xa0', ' ')
-              .replace('\u00A0', ' ')
-              .replace('\u200b', '')  # zero-width space, if present
-              .encode('ascii', errors='ignore')
-              .decode()
-    )
+    # Ensure header starts with ">" and avoid duplication
+    if header and header != "None":
+        header = header.lstrip(">")  # Remove any existing ">" at start
+        header = f">{header}"  # Add exactly one ">" at start
+        # Replace non-breaking spaces and remove non-ASCII characters
+        header = (
+            header.replace('\xa0', ' ')
+                .replace('\u00A0', ' ')
+                .replace('\u200b', '')  # zero-width space, if present
+                .encode('ascii', errors='ignore')
+                .decode()
+        )
+    return header
 
-def create_ncbi_style_header(row):
+def create_ncbi_style_header(row, count=1):
     try:
         def safe_get(key):
             """
@@ -708,18 +713,33 @@ def create_ncbi_style_header(row):
             Convert to None if it's NaN or empty
             Convert to string to avoid Series issues
             """
-            val = row.get(key) if isinstance(row, dict) else row[key]
-            if pd.isna(val):
+            try:
+                val = row.get(key) if isinstance(row, dict) else row[key]
+            except (KeyError, AttributeError):
                 return None
-            return str(val) if val is not None else None
-        
+            if pd.isna(val) or val is None:
+                return None
+            str_val = str(val)
+            if str_val.lower() in {"nan", "none", "null", "unknown", ""}:
+                return None
+            return str_val
+
+        def format_field(key, format_str, default=""):
+            """Helper to get field value and format it, with fallback to default"""
+            val = safe_get(key)
+            return format_str.format(val) if val is not None else default
+
         clean_contig = clean_contigIDs(safe_get("contigID"))
 
+        # safe get values from row    
         # Use accession_display if available, otherwise combine accession_tag and version_tag
         accession_display = safe_get("accession_display")
         version_tag = safe_get("version_tag")
         accession_tag = safe_get("accession_tag")
-        
+        starshipID = safe_get("starshipID")
+        element_begin = safe_get("elementBegin")
+        element_end = safe_get("elementEnd")
+
         if accession_display:
             accession_with_version = accession_display
         elif version_tag and version_tag != "":
@@ -727,54 +747,52 @@ def create_ncbi_style_header(row):
         else:
             accession_with_version = accession_tag
 
-        organism = safe_get("name")
-        if organism is None:
-            organism = "Unknown"
-        else:
-            organism = f"[organism={organism}] "
+        # Ensure accession_with_version is never None - provide fallback
+        if not accession_with_version:
+            starshipID_fallback = starshipID if starshipID else "unknown"
+            accession_with_version = f"unknown_accession [starshipID={starshipID_fallback}]"
+
+        # Collect taxonomic information in a single consolidated field
+        tax_field_mapping = {
+            "organism": "name",
+            "order": "order",
+            "family": "family"
+        }
+        tax_pairs = [f"{key}={safe_get(field)}" for key, field in tax_field_mapping.items() if safe_get(field)]
+        tax_info = f"[taxonomy: {';'.join(tax_pairs)}] " if tax_pairs else ""
         
-        order_val = safe_get("order")
-        if order_val is None:
-            order = "Unknown"
-        else:
-            order = f"[lineage=Fungi; {order_val}] "
+        assembly = format_field("assembly_accession", "[assembly={}] ")
+
+        # Collect starship classification information in a single consolidated field
+        starship_classification_field_mapping = {
+            "familyName": "familyName",
+            "navis_name": "navis_name",
+            "haplotype_name": "haplotype_name"
+        }
+        starship_classification_pairs = [f"{key}={safe_get(field)}" for key, field in starship_classification_field_mapping.items() if safe_get(field)]
+        starship_classification_info = f"[starship_classification: {';'.join(starship_classification_pairs)}] " if starship_classification_pairs else ""
         
-        family_val = safe_get("family")
-        if family_val is None:
-            family = "Unknown"
-        else:
-            family = f"[family={family_val}] "
-        
-        assembly_accession = safe_get("assembly_accession")
-        if assembly_accession is None:
-            assembly = ""
-        else:
-            assembly = f"[assembly={assembly_accession}] "
-        
-        family_name_val = safe_get("familyName")
-        if family_name_val is None:
-            family_name = ""
-        else:
-            family_name = f"[family={family_name_val}] "
-        
-        element_begin = safe_get("elementBegin")
-        element_end = safe_get("elementEnd")
+
         if (
             clean_contig is not None
             and element_begin is not None
             and element_end is not None
         ):
-            genomic_location = f"[genomic_location={clean_contig}:{element_begin}-{element_end}]"
+            genomic_location = f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
         else:
             genomic_location = ""
 
+        if count > 1:
+            # we need a way to tell different sequences apart that have the same accession
+            # Handle None starshipID gracefully
+            starshipID_str = starshipID if starshipID else "unknown"
+            accession_with_version = accession_with_version + f" [starshipID={starshipID_str}] [n_genomes={count}]"
+
         header = (
                 f"{accession_with_version} "
-                + organism
-                + order
-                + family
+                + tax_info
+                + starship_classification_info
                 + assembly
-                + family_name
                 + genomic_location
             )
         sanitized_header = sanitize_header(header)
@@ -820,7 +838,11 @@ def write_fasta(sequences: Dict[str, str], fasta_path: str):
     """
     with open(fasta_path, "w") as fasta_file:
         for name, sequence in sequences.items():
-            fasta_file.write(f">{name}\n{sequence}\n")
+            # Strip any leading ">" to avoid duplication, then add exactly one
+            clean_name = name.lstrip(">")
+            # Also clean non-ASCII characters that might cause BLAST issues
+            clean_name = clean_name.encode('ascii', errors='ignore').decode()
+            fasta_file.write(f">{clean_name}\n{sequence}\n")
 
 
 def write_multi_fasta(sequences, fasta_path, sequence_col, id_col):

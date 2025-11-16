@@ -20,14 +20,14 @@ def test_reverse_complement_detection():
     # Create a small test dataset
     test_data = {
         'accession_id': [1, 2, 3, 4, 5, 6],
-        'accession_tag': ['SBS000001', 'SBS000002', 'SBS000003', 'SBS000004', 'SBS000005', 'SBS000006'],
+        'accession_tag': ['SSA000001', 'SSA000002', 'SSA000003', 'SSA000004', 'SSA000005', 'SSA000006'],
         'version_tag': [None, None, None, None, None, None],
         'sequence': [
             'ATCGATCG',      # Normal sequence
-            'CGATCGAT',      # Reverse complement of SBS000001
+            'CGATCGAT',      # Reverse complement of SSA000001
             'GCTAGCTA',      # Different sequence
-            'TAGCTAGC',      # Reverse complement of SBS000003
-            'ATCGATCG',      # Identical to SBS000001 (should be filtered out as duplicate)
+            'TAGCTAGC',      # Reverse complement of SSA000003
+            'ATCGATCG',      # Identical to SSA000001 (should be filtered out as duplicate)
             'TTTTTTTT',      # Self-complementary sequence
         ],
         'md5': ['hash1', 'hash2', 'hash3', 'hash4', 'hash5', 'hash6']
@@ -52,9 +52,9 @@ def test_reverse_complement_detection():
     
     # Verify the results
     expected_pairs = [
-        ('SBS000001', 'SBS000002'),  # ATCGATCG <-> CGATCGAT
-        ('SBS000003', 'SBS000004'),  # GCTAGCTA <-> TAGCTAGC
-        ('SBS000005', 'SBS000002'),  # SBS000005 is identical to SBS000001, so also <-> SBS000002
+        ('SSA000001', 'SSA000002'),  # ATCGATCG <-> CGATCGAT
+        ('SSA000003', 'SSA000004'),  # GCTAGCTA <-> TAGCTAGC
+        ('SSA000005', 'SSA000002'),  # SSA000005 is identical to SSA000001, so also <-> SSA000002
     ]
     
     print(f"\nExpected pairs: {len(expected_pairs)}")

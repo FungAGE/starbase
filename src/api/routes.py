@@ -1,6 +1,9 @@
 from flask import Blueprint, jsonify, request
-from src.components.callbacks import create_accession_modal
+import pandas as pd
+import traceback
 from src.config.limiter import limiter
+from src.database.sql_manager import fetch_meta_data, get_quality_tags
+from src.components.callbacks import create_accession_modal_data, safe_get_value, safe_get_numeric, safe_get_position
 
 from src.config.logging import get_logger
 
@@ -25,16 +28,10 @@ def check_blast_limit():
 def get_accession_details(accession_id):
     """Get details for a specific accession."""
     try:
-        modal_content, modal_title = create_accession_modal(accession_id)
+        # Get the modal data from the callback function
+        modal_data = create_accession_modal_data(accession_id)
 
-        # Convert directly to HTML string instead of returning Dash components
-        html_content = dash_to_html(modal_content)
-        html_title = dash_to_html(modal_title)
-
-        return jsonify({
-            "title": html_title,
-            "content": html_content
-        })
+        return jsonify(modal_data)
     except Exception as e:
         logger.error(f"Error in get_accession_details: {str(e)}")
         return jsonify({"error": str(e)}), 500

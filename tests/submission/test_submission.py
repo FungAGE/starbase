@@ -23,7 +23,7 @@ def test_create_new_submission():
         import pandas as pd
         import hashlib
         existing_ships = pd.DataFrame({
-            "accession_tag": ["SBS000001", "SBS000002"],
+            "accession_tag": ["SSA000001", "SSA000002"],
             "sequence": [
                 "ATGCATGCATGCATGCATGC",
                 "TTTTTTTTTTTTTTTTTTTT"
@@ -41,7 +41,7 @@ def test_create_new_submission():
         # Get accession and review status
         accession, needs_review = assign_accession(sequence_content, existing_ships)
 
-        assert accession.startswith("SBS")
+        assert accession.startswith("SSA")
         assert needs_review is False  # Should be new since it's different from existing
 
         today = datetime.now().strftime("%Y-%m-%d")

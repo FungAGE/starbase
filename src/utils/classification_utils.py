@@ -40,8 +40,8 @@ accession_workflow = """
 # assigning accessions
 ########################################################
 accession format:
-- normal ship accession: SBS123456
-- updated ship accession: SBS123456.1
+- normal ship accession: SSA123456
+- updated ship accession: SSA123456.1
 
 workflow:
 - first check for exact matches
@@ -150,23 +150,23 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     """Generate a new unique accession number."""
     # Extract existing accession numbers
     existing_nums = [
-        int(acc.replace("SBS", "").split(".")[0])
+        int(acc.replace("SSA", "").split(".")[0])
         for acc in existing_ships["accession_tag"]
-        if acc.startswith("SBS")
+        if acc is not None and acc.startswith("SSA")
     ]
 
     # Check if we have existing accessions
     if not existing_nums:
-        error_msg = "Problem with loading existing ships. No existing SBS accessions found in database."
-        logger.error(error_msg)
-        raise ValueError(error_msg)
+        logger.info("No existing SSA accessions found - starting fresh accession numbering from 1")
+        next_num = 1
+        logger.debug(f"Assigning new accession number: SSA{next_num:06d}")
+    else:
+        # Find next available number
+        next_num = max(existing_nums) + 1
+        logger.debug(f"Last used accession number: SSA{max(existing_nums):06d}")
+        logger.debug(f"Assigning new accession number: SSA{next_num:06d}")
 
-    # Find next available number
-    next_num = max(existing_nums) + 1
-    logger.debug(f"Last used accession number: SBS{max(existing_nums):06d}")
-    logger.debug(f"Assigning new accession number: SBS{next_num:06d}")
-
-    return f"SBS{next_num:06d}"
+    return f"SSA{next_num:06d}"
 
 
 def get_version_sort_key(version_tag):

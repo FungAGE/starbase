@@ -94,7 +94,7 @@ def driver(chrome_options):
 @pytest.fixture
 def test_meta_data():
     try:
-        meta_df = fetch_meta_data(accession_tags=["SBS000001", "SBS000130"])
+        meta_df = fetch_meta_data(accession_tags=["SSA000001", "SSA000130"])
         if not meta_df.empty:
             return meta_df
     except Exception:
@@ -129,7 +129,7 @@ def test_meta_data():
 @pytest.fixture
 def test_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SBS000001", "SBS000130", "SBS000288"], with_sequence=True)
+        ships_df = fetch_ships(accession_tags=["SSA000001", "SSA000130", "SSA000288"], with_sequence=True)
         if not ships_df.empty:
             return ships_df
     except Exception:
@@ -138,7 +138,7 @@ def test_ships_df():
     
     return pd.DataFrame(
         {
-            "accession_tag": ["SBS000001", "SBS000130", "SBS000288"],
+            "accession_tag": ["SSA000001", "SSA000130", "SSA000288"],
             "sequence": [
                 "ATGCATGCATGC",  # Simple sequence for exact match
                 "ATGCATGCATGCATGC",  # Longer sequence for contained match
@@ -163,7 +163,7 @@ def test_ships_df():
 def test_captains_df():
     try:
         # Try a few different accession tags that are more likely to work
-        for accession in ["SBS000288", "SBS000567", "SBS000342"]:
+        for accession in ["SSA000288", "SSA000567", "SSA000342"]:
             captains_df = fetch_captains(accession_tags=[accession], with_sequence=True)
             if not captains_df.empty:
                 return captains_df
@@ -180,7 +180,7 @@ def test_captains_df():
                 "MALWMRLLPLLALLALWGPDPBBB",  # Different sequence
             ],
             "navis_name": ["Phoenix", "Phoenix", "Galactica"],
-            "accession_tag": ["SBS000288", "SBS000567", "SBS000342"],  # Multiple accession tags
+            "accession_tag": ["SSA000288", "SSA000567", "SSA000342"],  # Multiple accession tags
         }
     )
 
@@ -189,7 +189,7 @@ def test_captains_df():
 def test_sequence():
     # looking for a real sequence from the database
     try:
-        ship_df = fetch_ships(accession_tags=["SBS000130"], with_sequence=True)
+        ship_df = fetch_ships(accession_tags=["SSA000130"], with_sequence=True)
         if not ship_df.empty:
             sequence = ship_df.iloc[0]["sequence"]
             return sequence
@@ -230,7 +230,7 @@ def test_similar_sequence(test_sequence):
 @pytest.fixture
 def test_haplotype_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SBS000130", "SBS001285", "SBS001247"], with_sequence=True)
+        ships_df = fetch_ships(accession_tags=["SSA000130", "SSA001285", "SSA001247"], with_sequence=True)
         if not ships_df.empty:
             return ships_df
     except Exception:
@@ -239,8 +239,8 @@ def test_haplotype_ships_df():
     
     return pd.DataFrame(
         {
-            "accession_tag": ["SBS000130", "SBS001285", "SBS001247"],
-            "accession_display": ["SBS000130.1", "SBS001285.1", "SBS001247.1"],
+            "accession_tag": ["SSA000130", "SSA001285", "SSA001247"],
+            "accession_display": ["SSA000130.1", "SSA001285.1", "SSA001247.1"],
             "sequence": [
                 "ATGCATGCATGCATGCATGC",  # Base sequence
                 "ATGCATGCATGCATGCATGC",  # Identical sequence (should have 1.0 similarity)
@@ -265,7 +265,7 @@ def test_haplotype_ships_df():
 def test_haplotype_sequence(test_haplotype_ships_df):
     # return the sequence with the haplotype
     try:
-        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SBS000130
+        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SSA000130
         if sequence is not None:
             return sequence
     except Exception:
@@ -324,8 +324,8 @@ def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
     
     # Fallback to mock similarities data, containing 3 sequences
     return [
-        ("query_sequence", "SBS000130.1", 0.99),
-        ("query_sequence", "SBS001285.1", 0.85),
-        ("query_sequence", "SBS000342.1", 0.85),
-        ("SBS000130.1", "SBS000567.1", 0.98),
+        ("query_sequence", "SSA000130.1", 0.99),
+        ("query_sequence", "SSA001285.1", 0.85),
+        ("query_sequence", "SSA000342.1", 0.85),
+        ("SSA000130.1", "SSA000567.1", 0.98),
     ]

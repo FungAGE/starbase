@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import dash
-from dash import dcc, html, callback
+from dash import dcc, html, callback, clientside_callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 
@@ -20,6 +20,7 @@ from src.database.sql_manager import (
     fetch_meta_data,
     fetch_paper_data,
     fetch_ships,
+    dereplicate_sequences,
 )
 from src.components.tables import (
     make_dl_table,
@@ -39,13 +40,12 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
-
 def create_accordion_item(df, papers, category):
     if category == "nan":
         return None
     else:
         filtered_meta_df = df[df["familyName"] == category]
-        n_ships = len(filtered_meta_df["accession_tag"].dropna().unique())
+        n_ships = len(dereplicate_sequences(filtered_meta_df))
 
         element_lengths = pd.to_numeric(
             filtered_meta_df["elementLength"], errors="coerce"
@@ -156,14 +156,8 @@ modal = dmc.Modal(
 def load_initial_data():
     """Load initial data for the page"""
     try:
-        meta_data = cache.get("meta_data")
-        if meta_data is None:
-            logger.debug("Cache miss for meta_data, fetching from database")
-            meta_data = fetch_meta_data()
-            if meta_data is not None:
-                cache.set("meta_data", meta_data)
-
-        if isinstance(meta_data, pd.DataFrame):
+        meta_data = fetch_meta_data()
+        if meta_data is not None and isinstance(meta_data, pd.DataFrame):
             return meta_data.to_dict("records")
         return meta_data
     except Exception as e:
@@ -407,12 +401,7 @@ def load_meta_data(url):
         raise PreventUpdate
 
     try:
-        meta_data = cache.get("meta_data")
-        if meta_data is None:
-            meta_data = fetch_meta_data()
-
-            if meta_data is not None:
-                cache.set("meta_data", meta_data)
+        meta_data = fetch_meta_data()
 
         if meta_data is None:
             logger.error("Failed to fetch metadata")
@@ -502,10 +491,8 @@ def create_accordion(cached_meta, cached_papers):
     [
         Input("filtered-meta-data", "data"),
         Input("meta-data", "data"),
-    ],
-    [
-        State("curated-input", "checked"),
-        State("dereplicated-input", "checked"),
+        Input("curated-input", "checked"),
+        Input("dereplicated-input", "checked"),
     ],
 )
 @handle_callback_error
@@ -535,30 +522,16 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                 "No results match your search criteria.", color="blue", variant="filled"
             )
 
-        # Calculate the count for unique ship_ids for each accession_tag
-        # TODO: eventually accession_tag should be the correct column to use for deduplication
-        genome_counts = (
-            df.groupby("accession_tag")["ship_id"]
-            .nunique()
-            .reset_index(name="n_genomes")
-        )
-
-        # Remove duplicates and merge with counts
-        if dereplicate:
-            filtered_meta_df = df.drop_duplicates(subset=["accession_tag"]).merge(
-                genome_counts, on="accession_tag", how="left"
-            )
+        if dereplicate:            
+            filtered_meta_df = dereplicate_sequences(df)
         else:
-            # If not dereplicating, use the original dataframe and add n_genomes column
             filtered_meta_df = df.copy()
-            # Add n_genomes column with default value of 1 for each row
-            filtered_meta_df["n_genomes"] = 1
 
         if filtered_meta_df.empty:
             return dmc.Text("No results found", size="lg", c="dimmed")
 
         # drop unnecessary columns
-        filtered_meta_df = filtered_meta_df.drop(columns=["n_genomes", "elementLength"])
+        filtered_meta_df = filtered_meta_df.drop(columns=["elementLength"])
 
         # Fill NA values
         filtered_meta_df = filtered_meta_df.fillna("")
@@ -671,6 +644,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                             id="dl-table-container",
                             children=[table],
                         ),
+                        # Dummy div for clientside callback
+                        html.Div(id="dummy-output", style={"display": "none"}),
                     ],
                 ),
             ],
@@ -845,6 +820,7 @@ def handle_taxa_and_family_search(
         return []
 
 
+# TODO: only change sunburst plot if the "Search" button is clicked? instead of if the switches are changed?
 @callback(
     Output("search-sunburst-plot", "children"),
     [
@@ -875,8 +851,8 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
             df = df[df["curated_status"] == "curated"]
 
         # Deduplicate data to match table processing
-        if dereplicate:
-            df = df.drop_duplicates(subset=["accession_tag"])
+        if dereplicate:            
+            df = dereplicate_sequences(df)
 
         # Create sunburst plot
         sunburst_figure = create_sunburst_plot(
@@ -968,15 +944,16 @@ def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
         # Apply curated/dereplicated filters if switches are enabled
         if curated:
             df = df[df["curated_status"] == "curated"]
+        
         if dereplicate:
-            df = df.drop_duplicates(subset=["accession_tag"])
+            df = dereplicate_sequences(df)
 
         if df.empty:
             return "No records found"
 
-        # Count unique accession tags
-        unique_count = len(df["accession_tag"].dropna().unique())
-        return f"Showing {unique_count} records"
+        # Count unique accession ships
+        unique_ships = len(df)
+        return f"Showing {unique_ships} records"
 
     except Exception as e:
         logger.error(f"Error updating table stats: {str(e)}")
@@ -992,7 +969,7 @@ def generate_download_helper(rows, curated, dereplicate):
             raise ValueError("No rows selected for download")
 
         accessions = [
-            re.sub(pattern="\..*", repl="", string=row["accession_tag"]) for row in rows
+            re.sub(pattern=r"\..*", repl="", string=row["accession_tag"]) for row in rows
         ]
         dl_df = fetch_ships(
             accession_tags=accessions,
@@ -1012,26 +989,11 @@ def generate_download_helper(rows, curated, dereplicate):
             subset=["accession_tag", "sequence"]
         ).iterrows():
             count = accession_counts[row["accession_tag"]]
-
-            if count > 1:
-                # Simplified header for multiple representatives
-                header = (
-                    f">{row['accession_tag']} "
-                    f"[family={row['familyName']}] "
-                    f"[representatives={count}]"
-                )
-            else:
-                # Full header for single entries
-                header = create_ncbi_style_header(row)
-                # Ensure header starts with ">" and avoid duplication
-                if header and header != "None":
-                    header = header.lstrip(">")  # Remove any existing ">" at start
-                    header = f">{header}"  # Add exactly one ">" at start
-                else:
-                    header = f">{row['accession_tag']}" + (
-                        f" [family={row['familyName']}]" if row.get("familyName") else ""
-                    )
-            
+            header = create_ncbi_style_header(row, count)
+            # Skip if header creation failed (returns None)
+            if header is None:
+                logger.warning(f"Skipping sequence with accession_tag={row.get('accession_tag', 'unknown')} due to header creation failure")
+                continue
             fasta_content.append(f"{header}\n{row['sequence']}")
 
         fasta_str = "\n".join(fasta_content)
@@ -1154,7 +1116,48 @@ def update_download_selected_button(selected_rows):
     return not selected_rows or len(selected_rows) == 0
 
 
-# Rename this to avoid conflict with the wiki table modal
-download_table_modal = create_modal_callback(
-    "dl-table", "accession-modal", "modal-content", "modal-title"
+# Add clientside callback to handle accession modal clicks
+clientside_callback(
+    """
+    function(cellClicked, activeCell, tableData, pageCurrent, pageSize) {
+        if (!cellClicked && !activeCell) {
+            return window.dash_clientside.no_update;
+        }
+
+        let accession = null;
+
+        // Handle AG Grid cell clicks
+        if (cellClicked && (cellClicked.colId === 'accession_tag' || cellClicked.colId === 'accession_display')) {
+            accession = cellClicked.value;
+        }
+        // Handle DataTable active cell
+        else if (activeCell && (activeCell.column_id === 'accession_tag' || activeCell.column_id === 'accession_display')) {
+            const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
+            if (tableData && actualRowIdx < tableData.length) {
+                accession = tableData[actualRowIdx][activeCell.column_id];
+            }
+        }
+
+        if (accession) {
+            // Clean and standardize the accession tag
+            accession = accession.toString().trim().split('/').pop().trim();
+
+            // Show the universal modal
+            showAccessionModal(accession);
+        }
+
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("dummy-output", "children"),  # Dummy output since we don't need to update any Dash components
+    [
+        Input("dl-table", "cellClicked"),
+        Input("dl-table", "active_cell"),
+    ],
+    [
+        State("dl-table", "derived_virtual_data"),
+        State("dl-table", "page_current"),
+        State("dl-table", "page_size"),
+    ],
+    prevent_initial_call=True,
 )

@@ -24,7 +24,7 @@ class TestWikiCoreFunctions:
         """Test basic accordion item creation"""
         meta_df = pd.DataFrame({
             "familyName": ["Family1", "Family1"],
-            "accession_tag": ["SBS000001", "SBS000002"],
+            "accession_tag": ["SSA000001", "SSA000002"],
             "elementLength": [1000, 2000],
             "upDR": ["ATGC", "ATGC"],
             "downDR": ["GCAT", "GCAT"],
@@ -79,12 +79,12 @@ class TestWikiCoreFunctions:
     def test_generate_download_helper_success(self, mock_fetch_ships):
         """Test successful download generation"""
         rows = [
-            {"accession_tag": "SBS000001", "familyName": "Family1"},
-            {"accession_tag": "SBS000002", "familyName": "Family2"},
+            {"accession_tag": "SSA000001", "familyName": "Family1"},
+            {"accession_tag": "SSA000002", "familyName": "Family2"},
         ]
         
         mock_df = pd.DataFrame({
-            "accession_tag": ["SBS000001", "SBS000002"],
+            "accession_tag": ["SSA000001", "SSA000002"],
             "familyName": ["Family1", "Family2"],
             "sequence": ["ATGCATGC", "TTGGTTGG"],
         })
@@ -112,9 +112,9 @@ class TestWikiCoreFunctions:
     def test_update_table_stats_with_data(self):
         """Test table stats with valid data"""
         meta_data = [
-            {"accession_tag": "SBS000001", "curated_status": "curated"},
-            {"accession_tag": "SBS000002", "curated_status": "uncurated"},
-            {"accession_tag": "SBS000003", "curated_status": "curated"},
+            {"accession_tag": "SSA000001", "curated_status": "curated"},
+            {"accession_tag": "SSA000002", "curated_status": "uncurated"},
+            {"accession_tag": "SSA000003", "curated_status": "curated"},
         ]
         
         result = update_table_stats(meta_data, None, False, False)
@@ -123,9 +123,9 @@ class TestWikiCoreFunctions:
     def test_update_table_stats_with_curated_filter(self):
         """Test table stats with curated filter"""
         meta_data = [
-            {"accession_tag": "SBS000001", "curated_status": "curated"},
-            {"accession_tag": "SBS000002", "curated_status": "uncurated"},
-            {"accession_tag": "SBS000003", "curated_status": "curated"},
+            {"accession_tag": "SSA000001", "curated_status": "curated"},
+            {"accession_tag": "SSA000002", "curated_status": "uncurated"},
+            {"accession_tag": "SSA000003", "curated_status": "curated"},
         ]
         
         result = update_table_stats(meta_data, None, True, False)
@@ -139,8 +139,8 @@ class TestWikiCoreFunctions:
     def test_update_download_selected_button_with_selection(self):
         """Test button state with selected rows"""
         selected_rows = [
-            {"accession_tag": "SBS000001"},
-            {"accession_tag": "SBS000002"},
+            {"accession_tag": "SSA000001"},
+            {"accession_tag": "SSA000002"},
         ]
         
         result = update_download_selected_button(selected_rows)
@@ -188,7 +188,7 @@ class TestWikiDataProcessing:
     def test_accordion_creation_with_complete_data(self):
         """Test accordion creation with complete data"""
         meta_data = pd.DataFrame({
-            "accession_tag": ["SBS000001", "SBS000002", "SBS000003"],
+            "accession_tag": ["SSA000001", "SSA000002", "SSA000003"],
             "familyName": ["Family1", "Family1", "Family2"],
             "curated_status": ["curated", "uncurated", "curated"],
             "elementLength": [1000, 2000, 1500],
@@ -217,9 +217,9 @@ class TestWikiDataProcessing:
     def test_table_stats_integration(self):
         """Test table stats with complete data"""
         meta_data = [
-            {"accession_tag": "SBS000001", "curated_status": "curated"},
-            {"accession_tag": "SBS000002", "curated_status": "uncurated"},
-            {"accession_tag": "SBS000003", "curated_status": "curated"},
+            {"accession_tag": "SSA000001", "curated_status": "curated"},
+            {"accession_tag": "SSA000002", "curated_status": "uncurated"},
+            {"accession_tag": "SSA000003", "curated_status": "curated"},
         ]
         
         # Test without filters
@@ -237,13 +237,13 @@ class TestWikiDataProcessing:
     def test_download_helper_with_duplicate_accessions(self):
         """Test download helper with duplicate accession tags"""
         rows = [
-            {"accession_tag": "SBS000001", "familyName": "Family1"},
-            {"accession_tag": "SBS000001", "familyName": "Family1"},  # Duplicate
+            {"accession_tag": "SSA000001", "familyName": "Family1"},
+            {"accession_tag": "SSA000001", "familyName": "Family1"},  # Duplicate
         ]
         
         with patch('src.pages.wiki.fetch_ships') as mock_fetch:
             mock_df = pd.DataFrame({
-                "accession_tag": ["SBS000001", "SBS000001"],
+                "accession_tag": ["SSA000001", "SSA000001"],
                 "familyName": ["Family1", "Family1"],
                 "sequence": ["ATGCATGC", "ATGCATGC"],
             })
@@ -263,7 +263,7 @@ class TestWikiEdgeCases:
         """Test accordion item creation with missing columns - should handle gracefully"""
         df = pd.DataFrame({
             "familyName": ["Family1"],
-            "accession_tag": ["SBS000001"],
+            "accession_tag": ["SSA000001"],
         })
         papers = pd.DataFrame({
             "familyName": ["Family1"],
@@ -279,7 +279,7 @@ class TestWikiEdgeCases:
         """Test accordion item creation with NaN values"""
         df = pd.DataFrame({
             "familyName": ["Family1", "Family1"],
-            "accession_tag": ["SBS000001", None],
+            "accession_tag": ["SSA000001", None],
             "elementLength": [1000, np.nan],
             "upDR": ["ATGC", None],
             "downDR": ["GCAT", None],
@@ -295,7 +295,7 @@ class TestWikiEdgeCases:
     
     def test_generate_download_helper_exception(self):
         """Test download helper when exception occurs"""
-        rows = [{"accession_tag": "SBS000001", "familyName": "Family1"}]
+        rows = [{"accession_tag": "SSA000001", "familyName": "Family1"}]
         
         with patch('src.pages.wiki.fetch_ships') as mock_fetch:
             mock_fetch.side_effect = Exception("Database error")

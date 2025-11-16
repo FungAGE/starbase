@@ -2,8 +2,7 @@ import os
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import QueuePool
+from sqlalchemy import text
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
@@ -13,7 +12,6 @@ from src.components import navmenu
 from src.components.callbacks import create_feedback_button
 from src.config.cache import cache, cleanup_old_cache
 from src.config.database import SubmissionsSession
-from src.config.settings import DB_PATHS
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
@@ -70,7 +68,9 @@ external_scripts = [
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
     "https://d3js.org/d3.v6.min.js",
     "/assets/js/clustermap.min.js",
-    "/assets/js/synteny.js"
+    "/assets/js/synteny.js",
+    "/assets/js/universal-modal.js",
+    "/assets/js/blaster.min.woaln.js"
 ]
 
 app = Dash(
@@ -97,25 +97,6 @@ if os.environ.get("DEV_MODE"):
         dev_tools_prune_errors=False,
     )
 
-DATABASE_URLS = {
-    "starbase": f"sqlite:///{DB_PATHS['starbase']}",
-    "submissions": f"sqlite:///{DB_PATHS['submissions']}",
-    "telemetry": f"sqlite:///{DB_PATHS['telemetry']}",
-}
-
-engines = {
-    name: create_engine(
-        url,
-        poolclass=QueuePool,
-        pool_size=10,
-        max_overflow=20,
-        pool_timeout=30,
-        pool_recycle=1800,
-        echo=IS_DEV,  # Only log SQL in development mode
-    )
-    for name, url in DATABASE_URLS.items()
-}
-
 
 def initialize_app():
     """Initialize app components and perform setup tasks."""
@@ -140,7 +121,7 @@ def initialize_app():
             task_always_eager=False,  # Ensure tasks run asynchronously
             task_eager_propagates=True,
         )
-        
+
         logger.info("Celery initialized successfully")
 
 

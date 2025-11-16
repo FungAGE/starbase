@@ -1697,18 +1697,13 @@ def update_active_tab(active_tab):
 # Define the clientside JavaScript function directly in the callback
 clientside_callback(
     """
-    function(data, active_tab_idx) {
-        console.log("BlasterJS callback triggered", data, "active tab:", active_tab_idx);
-        
+    function(data, active_tab_idx) {        
         // Check if we have valid data
         if (!data || !data.blast_text) {
-            console.log("No valid BLAST data available");
             return window.dash_clientside.no_update;
         }
         
-        try {
-            console.log("Initializing BlasterJS with text length:", data.blast_text.length);
-            
+        try {            
             // Find the correct container based on active tab
             let containerId = active_tab_idx !== null ? 
                 `blast-container-${active_tab_idx}` : 'blast-container';
@@ -1720,23 +1715,19 @@ clientside_callback(
                 
                 // If no container is found and we haven't exceeded max attempts, retry
                 if (!container && attempts < maxAttempts) {
-                    console.log(`Container ${containerId} not found, retrying in 100ms (attempt ${attempts + 1}/${maxAttempts})`);
                     setTimeout(() => initializeBlasterJS(attempts + 1, maxAttempts), 100);
                     return;
                 }
                 
                 // If still no container after max attempts, try fallback options
                 if (!container) {
-                    console.log(`No container found with ID: ${containerId} after ${maxAttempts} attempts`);
                     // Try to find the default container first since this is likely a single sequence view
                     container = document.getElementById('blast-container');
                     
                     if (!container) {
-                        console.log("No default container found, trying by class");
                         // If still not found, try to find a container with class blast-container 
                         let containers = document.getElementsByClassName('blast-container');
                         if (containers.length > 0) {
-                            console.log("Found container by class instead");
                             container = containers[0];
                         } else {
                             console.error("No blast containers found in the DOM");
@@ -1744,9 +1735,6 @@ clientside_callback(
                         }
                     }
                 }
-                
-                console.log("Found container:", container);
-                
                 // Clear existing content first
                 container.innerHTML = '';
                 
@@ -1811,13 +1799,11 @@ clientside_callback(
                 // Basic BlasterJS initialization
                 try {
                     var blasterjs = require("biojs-vis-blasterjs");
-                    console.log("BlasterJS loaded successfully");
                     var instance = new blasterjs({
                         string: data.blast_text,
                         multipleAlignments: alignmentsDivId,
                         alignmentsTable: tablesDivId
                     });
-                    console.log("BlasterJS initialized successfully for", containerId);
                     
                     // Store instance ID in a data attribute for potential future reference
                     container.dataset.blasterjsInstance = uniquePrefix;
@@ -1833,10 +1819,8 @@ clientside_callback(
                         
                         // BlasterJS should now display clean accession numbers
                         const buttons = container.querySelectorAll('.alignment-table-description');
-                        console.log(`Found ${buttons.length} BlasterJS buttons in ${containerId}`);
                     }, 100);
                 } catch (blasterError) {
-                    console.error("Error initializing BlasterJS library:", blasterError);
                     container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
                     container.dataset.initialized = "error";
                 }
@@ -1862,22 +1846,15 @@ clientside_callback(
 clientside_callback(
     """
     function(active_tab, blast_data) {
-        console.log("Tab BlasterJS callback triggered", 
-                    active_tab, 
-                    blast_data ? (blast_data.blast_text ? "has text" : "no text") : "no data");
-        
         if (!active_tab) {
-            console.warn("No active tab provided");
             return window.dash_clientside.no_update;
         }
         
         if (!blast_data) {
-            // console.warn("No blast data available");
             return window.dash_clientside.no_update;
         }
         
         if (!blast_data.blast_text) {
-            console.warn("No blast text in data");
             return window.dash_clientside.no_update;
         }
 
@@ -1885,7 +1862,6 @@ clientside_callback(
             // Extract the tab index from the active tab ID
             const tabIdx = parseInt(active_tab.split("-")[1]);
             if (isNaN(tabIdx)) {
-                console.error("Invalid tab index:", active_tab);
                 return window.dash_clientside.no_update;
             }
 
@@ -1898,26 +1874,21 @@ clientside_callback(
                 
                 // If no container is found and we haven't exceeded max attempts, retry
                 if (!container && attempts < maxAttempts) {
-                    console.log(`Container ${containerId} not found, retrying in 100ms (attempt ${attempts + 1}/${maxAttempts})`);
                     setTimeout(() => initializeBlasterJS(attempts + 1, maxAttempts), 100);
                     return;
                 }
                 
                 // If still no container after max attempts, try fallback options
                 if (!container) {
-                    console.log(`No container found with ID: ${containerId} after ${maxAttempts} attempts`);
                     // Try fallback options
                     const containers = document.getElementsByClassName('blast-container');
                     if (containers.length > 0) {
-                        console.log("Found container by class instead");
                         container = containers[0];
                     } else {
                         const mainContainer = document.getElementById('blast-container');
                         if (mainContainer) {
-                            console.log("Using main blast-container as fallback");
                             container = mainContainer;
                         } else {
-                            console.error("No blast containers found in the DOM");
                             return;
                         }
                     }
@@ -1925,8 +1896,6 @@ clientside_callback(
 
                 // Only initialize if empty or not initialized yet
                 if (container.children.length === 0 || !container.dataset.initialized) {
-                    console.log(`Initializing BlasterJS for tab ${tabIdx}`);
-                    
                     // Clear existing content
                     container.innerHTML = '';
                     
@@ -2028,10 +1997,7 @@ clientside_callback(
                               
                               // BlasterJS should now display clean accession numbers
                               const buttons = container.querySelectorAll('.alignment-table-description');
-                              console.log(`Found ${buttons.length} BlasterJS buttons in tab ${tabIdx}`);
-                          }, 100);
-                        
-                        console.log(`BlasterJS initialized for tab ${tabIdx}`);
+                          }, 100);                        
                     } catch (error) {
                         console.error("Error initializing BlasterJS:", error);
                         container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
