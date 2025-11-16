@@ -175,14 +175,8 @@ modal = dmc.Modal(
 def load_initial_data():
     """Load initial data for the page"""
     try:
-        meta_data = cache.get("meta_data")
-        if meta_data is None:
-            logger.debug("Cache miss for meta_data, fetching from database")
-            meta_data = fetch_meta_data()
-            if meta_data is not None:
-                cache.set("meta_data", meta_data)
-
-        if isinstance(meta_data, pd.DataFrame):
+        meta_data = fetch_meta_data()
+        if meta_data is not None and isinstance(meta_data, pd.DataFrame):
             return meta_data.to_dict("records")
         return meta_data
     except Exception as e:
@@ -426,12 +420,7 @@ def load_meta_data(url):
         raise PreventUpdate
 
     try:
-        meta_data = cache.get("meta_data")
-        if meta_data is None:
-            meta_data = fetch_meta_data()
-
-            if meta_data is not None:
-                cache.set("meta_data", meta_data)
+        meta_data = fetch_meta_data()
 
         if meta_data is None:
             logger.error("Failed to fetch metadata")
