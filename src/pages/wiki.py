@@ -1008,26 +1008,11 @@ def generate_download_helper(rows, curated, dereplicate):
             subset=["accession_tag", "sequence"]
         ).iterrows():
             count = accession_counts[row["accession_tag"]]
-
-            if count > 1:
-                # Simplified header for multiple representatives
-                header = (
-                    f">{row['accession_tag']} "
-                    f"[family={row['familyName']}] "
-                    f"[representatives={count}]"
-                )
-            else:
-                # Full header for single entries
-                header = create_ncbi_style_header(row)
-                # Ensure header starts with ">" and avoid duplication
-                if header and header != "None":
-                    header = header.lstrip(">")  # Remove any existing ">" at start
-                    header = f">{header}"  # Add exactly one ">" at start
-                else:
-                    header = f">{row['accession_tag']}" + (
-                        f" [family={row['familyName']}]" if row.get("familyName") else ""
-                    )
-            
+            header = create_ncbi_style_header(row, count)
+            # Skip if header creation failed (returns None)
+            if header is None:
+                logger.warning(f"Skipping sequence with accession_tag={row.get('accession_tag', 'unknown')} due to header creation failure")
+                continue
             fasta_content.append(f"{header}\n{row['sequence']}")
 
         fasta_str = "\n".join(fasta_content)

@@ -691,16 +691,21 @@ def clean_contigIDs(string):
 
 
 def sanitize_header(header: str) -> str:
-    # Replace non-breaking spaces and remove non-ASCII characters
-    return (
-        header.replace('\xa0', ' ')
-              .replace('\u00A0', ' ')
-              .replace('\u200b', '')  # zero-width space, if present
-              .encode('ascii', errors='ignore')
-              .decode()
-    )
+    # Ensure header starts with ">" and avoid duplication
+    if header and header != "None":
+        header = header.lstrip(">")  # Remove any existing ">" at start
+        header = f">{header}"  # Add exactly one ">" at start
+        # Replace non-breaking spaces and remove non-ASCII characters
+        header = (
+            header.replace('\xa0', ' ')
+                .replace('\u00A0', ' ')
+                .replace('\u200b', '')  # zero-width space, if present
+                .encode('ascii', errors='ignore')
+                .decode()
+        )
+    return header
 
-def create_ncbi_style_header(row):
+def create_ncbi_style_header(row, count=1):
     try:
         def safe_get(key):
             """
@@ -708,7 +713,10 @@ def create_ncbi_style_header(row):
             Convert to None if it's NaN or empty
             Convert to string to avoid Series issues
             """
-            val = row.get(key) if isinstance(row, dict) else row[key]
+            try:
+                val = row.get(key) if isinstance(row, dict) else row[key]
+            except (KeyError, AttributeError):
+                return None
             if pd.isna(val) or val is None:
                 return None
             str_val = str(val)
@@ -723,17 +731,26 @@ def create_ncbi_style_header(row):
 
         clean_contig = clean_contigIDs(safe_get("contigID"))
 
+        # safe get values from row    
         # Use accession_display if available, otherwise combine accession_tag and version_tag
         accession_display = safe_get("accession_display")
         version_tag = safe_get("version_tag")
         accession_tag = safe_get("accession_tag")
-        
+        starshipID = safe_get("starshipID")
+        element_begin = safe_get("elementBegin")
+        element_end = safe_get("elementEnd")
+
         if accession_display:
             accession_with_version = accession_display
         elif version_tag and version_tag != "":
             accession_with_version = f"{accession_tag}.{version_tag}"
         else:
             accession_with_version = accession_tag
+
+        # Ensure accession_with_version is never None - provide fallback
+        if not accession_with_version:
+            starshipID_fallback = starshipID if starshipID else "unknown"
+            accession_with_version = f"unknown_accession [starshipID={starshipID_fallback}]"
 
         # Collect taxonomic information in a single consolidated field
         tax_field_mapping = {
@@ -755,8 +772,7 @@ def create_ncbi_style_header(row):
         starship_classification_pairs = [f"{key}={safe_get(field)}" for key, field in starship_classification_field_mapping.items() if safe_get(field)]
         starship_classification_info = f"[starship_classification: {';'.join(starship_classification_pairs)}] " if starship_classification_pairs else ""
         
-        element_begin = safe_get("elementBegin")
-        element_end = safe_get("elementEnd")
+
         if (
             clean_contig is not None
             and element_begin is not None
@@ -765,6 +781,12 @@ def create_ncbi_style_header(row):
             genomic_location = f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
         else:
             genomic_location = ""
+
+        if count > 1:
+            # we need a way to tell different sequences apart that have the same accession
+            # Handle None starshipID gracefully
+            starshipID_str = starshipID if starshipID else "unknown"
+            accession_with_version = accession_with_version + f" [starshipID={starshipID_str}] [n_genomes={count}]"
 
         header = (
                 f"{accession_with_version} "

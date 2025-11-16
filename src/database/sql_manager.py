@@ -157,8 +157,8 @@ def fetch_paper_data():
     finally:
         session.close()
 
+# TODO: figure out a way to handle caching with queries related to this query
 @db_retry_decorator()
-@smart_cache(timeout=3600)
 def fetch_ships(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -189,6 +189,7 @@ def fetch_ships(
                 ELSE a.accession_tag
             END as accession_display,
             j.curated_status,
+            j.starshipID,
             sf.elementBegin, sf.elementEnd, sf.contigID,
             t.name, t.family, t.`order`,
             f.familyName, n.navis_name, h.haplotype_name,
@@ -243,6 +244,7 @@ def fetch_ships(
             v.version_tag,
             v.accession_display,
             v.curated_status,
+            v.starshipID,
             v.elementBegin,
             v.elementEnd,
             v.contigID,
@@ -275,6 +277,7 @@ def fetch_ships(
             v.version_tag,
             v.accession_display,
             v.curated_status,
+            v.starshipID,
             v.elementBegin,
             v.elementEnd,
             v.contigID,
