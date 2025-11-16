@@ -51,7 +51,7 @@ title = dmc.Paper(
                         "color": "white",
                         "textAlign": "left",
                         "wordBreak": "break-word",
-                        "flex": "1",  # Allow title to take remaining space
+                        "flex": "1",
                     },
                 ),
             ],
@@ -148,13 +148,9 @@ starship_card = dmc.Paper(
                     [
                         dmc.Text(
                             [
-                                html.Span(
-                                    "Starships", style={"fontStyle": "italic"}
-                                ),
+                                html.Span("Starships", style={"fontStyle": "italic"}),
                                 " are novel family of class II DNA transposons, endemic to Pezizomycotina. ",
-                                html.Span(
-                                    "Starships", style={"fontStyle": "italic"}
-                                ),
+                                html.Span("Starships", style={"fontStyle": "italic"}),
                                 " can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
                                 html.Span(
                                     "Paecilomyces",
@@ -175,9 +171,7 @@ starship_card = dmc.Paper(
                                     },
                                 ),
                                 " Read more about ",
-                                html.Span(
-                                    "Starships", style={"fontStyle": "italic"}
-                                ),
+                                html.Span("Starships", style={"fontStyle": "italic"}),
                                 " ",
                                 dmc.Anchor(
                                     "here",
@@ -213,59 +207,66 @@ starship_card = dmc.Paper(
 )
 
 
-working_features_card = dmc.Paper([
-    dmc.Stack([
-        dmc.Group([
-            dmc.Title(
-                [
-                    "What can I currently use ",
-                    html.Span(
-                        "starbase",
-                        className="logo-text",
-                    ),
-                    " for?",
-                ],
-                order=2,
-                mb="md",
-            ),
-            dmc.Stack(
-                working_buttons,
-                gap="md",
-                align="center",
-                justify="center",
-                style={"width": "100%", "alignItems": "center"},
-            ),
-        ],
-        justify="space-between",
-        align="center",
-        ),
-        dmc.Group(
+working_features_card = dmc.Paper(
+    [
+        dmc.Stack(
             [
-                dmc.Title(
-                [
-                    "Most functions of ",
-                    html.Span(
-                        "starbase",
-                        className="logo-text",
-                    ),
-                    " are still under active development. We plan on implementing:",
-                ],
-                order=2,
-                mb="md",
-            ),
-            dmc.List(
-                [dmc.ListItem(dmc.Text(item, c="dimmed")) for item in not_working],
-                size="lg",
-                spacing="sm",
-            ),
-        ],
+                dmc.Group(
+                    [
+                        dmc.Title(
+                            [
+                                "What can I currently use ",
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
+                                ),
+                                " for?",
+                            ],
+                            order=2,
+                            mb="md",
+                        ),
+                        dmc.Stack(
+                            working_buttons,
+                            gap="md",
+                            align="center",
+                            justify="center",
+                            style={"width": "100%", "alignItems": "center"},
+                        ),
+                    ],
+                    justify="space-between",
+                    align="center",
+                ),
+                dmc.Group(
+                    [
+                        dmc.Title(
+                            [
+                                "Most functions of ",
+                                html.Span(
+                                    "starbase",
+                                    className="logo-text",
+                                ),
+                                " are still under active development. We plan on implementing:",
+                            ],
+                            order=2,
+                            mb="md",
+                        ),
+                        dmc.List(
+                            [
+                                dmc.ListItem(dmc.Text(item, c="dimmed"))
+                                for item in not_working
+                            ],
+                            size="lg",
+                            spacing="sm",
+                        ),
+                    ],
+                    justify="space-between",
+                    align="center",
+                ),
+            ],
             justify="space-between",
             align="center",
-        ),
+        )
     ],
-    justify="space-between",
-    align="center",
-    )],
     shadow="sm",
     p="xl",
     radius="md",
@@ -291,20 +292,29 @@ accession_card = dmc.Paper(
         ),
         dmc.Text(
             [
-                "To maintain data management and integrity, we employ an accessioning framework within ",
-                html.Span("Starbase", className="logo-text"),
+                "To maintain data integrity, we employ an accessioning framework within ",
+                html.Span("starbase", className="logo-text"),
                 ". ",
-                html.Span("Starbase", className="logo-text"),
-                " Ship Accessions (abbreviated as SSA) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. These accessions  provide a system for identifying any unique Starship sequence, meaning that any completely identical (or nested) starship sequences will be under the same accession. Accessions in this database are meant to provide standardized nomenclature for Starship identification.",
+                html.Span("starbase", className="logo-text"),
+                " Ship Accessions (abbreviated as SSA) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. SSAs  provide a system for standardized nomenclature for ",
+                html.Span("Starship", style={"fontStyle": "italic"}),
+                " identification. Each SSA represents a single or multiple ",
+                html.Span("Starship", style={"fontStyle": "italic"}),
+                " sequences which may be identical, nested, or highly similar to another sequence within ",
+                html.Span("starbase", className="logo-text"),
             ],
             c="dimmed",
         ),
         dmc.Space(h=20),
         dmc.Image(
-            src="assets/images/accession_tag.svg",
+            src="assets/images/accession_tag.png",
             fit="contain",
             radius="md",
-            style={"maxWidth": "100%"},
+            style={
+                "maxWidth": "100%",
+                "objectFit": "contain",
+                "height": "auto",
+            },
         ),
     ],
     shadow="sm",
@@ -336,12 +346,8 @@ def create_features_section():
                     dmc.GridCol(
                         [working_features_card], span={"base": 12, "sm": 6, "lg": 4}
                     ),
-                    dmc.GridCol(
-                        [accession_card], span={"base": 12, "sm": 6, "lg": 4}
-                    ),
-                    dmc.GridCol(
-                        [stats_section], span={"base": 12, "sm": 6, "lg": 4}
-                    )
+                    dmc.GridCol([accession_card], span={"base": 12, "sm": 6, "lg": 4}),
+                    dmc.GridCol([stats_section], span={"base": 12, "sm": 6, "lg": 4}),
                 ],
                 grow=True,
                 gutter="xl",
@@ -385,6 +391,7 @@ def create_publications_section():
         flex=True,
     )
 
+
 stats = (
     get_database_stats()
     if is_connected
@@ -412,16 +419,12 @@ total_starships_info = dmc.Stack(
                         "Total ",
                         html.Span(
                             "Starships",
-                            style={
-                                "fontStyle": "italic"
-                            },
+                            style={"fontStyle": "italic"},
                         ),
                     ],
                     size="lg",
                     c="dimmed",
-                    style={
-                        "fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"
-                    },
+                    style={"fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"},
                 ),
             ],
             gap="xs",
@@ -462,9 +465,7 @@ curated_starships_info = dmc.Stack(
                     "Curated",
                     size="sm",
                     c="dimmed",
-                    style={
-                        "fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"
-                    },
+                    style={"fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"},
                 ),
             ],
             gap="xs",
@@ -506,9 +507,7 @@ uncurated_starships_info = dmc.Stack(
                     "Uncurated",
                     size="sm",
                     c="dimmed",
-                    style={
-                        "fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"
-                    },
+                    style={"fontSize": "clamp(0.9rem, 1.5vw, 1.2rem)"},
                 ),
             ],
             gap="xs",
@@ -550,9 +549,7 @@ species_info = dmc.Stack(
                     "Species",
                     size="lg",
                     c="dimmed",
-                    style={
-                        "fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"
-                    },
+                    style={"fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"},
                 ),
             ],
             gap="xs",
@@ -600,9 +597,7 @@ family_info = dmc.Stack(
                     ],
                     size="lg",
                     c="dimmed",
-                    style={
-                        "fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"
-                    },
+                    style={"fontSize": "clamp(0.9rem, 1.5vw, 1.3rem)"},
                 ),
             ],
             gap="xs",
