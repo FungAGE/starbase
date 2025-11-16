@@ -39,7 +39,7 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
-def dereplicate(df):
+def dereplicate_sequences(df):
     seen_sequences = set()
     indices_to_keep = []
     
@@ -64,7 +64,7 @@ def create_accordion_item(df, papers, category):
         return None
     else:
         filtered_meta_df = df[df["familyName"] == category]
-        n_ships = len(dereplicate(filtered_meta_df))
+        n_ships = len(dereplicate_sequences(filtered_meta_df))
 
         element_lengths = pd.to_numeric(
             filtered_meta_df["elementLength"], errors="coerce"
@@ -541,30 +541,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                 "No results match your search criteria.", color="blue", variant="filled"
             )
 
-        if dereplicate:
-            # Remove both exact duplicates and reverse complement duplicates
-            # Step 1: Create a set to track sequences we want to keep
-            seen_sequences = set()
-            indices_to_keep = []
-            
-            for idx, row in df.iterrows():
-                md5_val = row.get('md5', '')
-                rev_comp_md5_val = row.get('rev_comp_md5', '')
-                
-                # Skip if either value is missing/empty
-                if not md5_val or not rev_comp_md5_val:
-                    indices_to_keep.append(idx)
-                    continue
-                    
-                # Check if this sequence (or its reverse complement) has been seen
-                if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
-                    # This is a new sequence - keep it and mark both orientations as seen
-                    indices_to_keep.append(idx)
-                    seen_sequences.add(md5_val)
-                    seen_sequences.add(rev_comp_md5_val)
-                # Otherwise, it's a duplicate or reverse complement duplicate - skip it
-            
-            filtered_meta_df = df.loc[indices_to_keep].copy()
+        if dereplicate:            
+            filtered_meta_df = dereplicate_sequences(df)
         else:
             filtered_meta_df = df.copy()
 
@@ -892,29 +870,8 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
             df = df[df["curated_status"] == "curated"]
 
         # Deduplicate data to match table processing
-        if dereplicate:
-            # Remove both exact duplicates and reverse complement duplicates
-            seen_sequences = set()
-            indices_to_keep = []
-            
-            for idx, row in df.iterrows():
-                md5_val = row.get('md5', '')
-                rev_comp_md5_val = row.get('rev_comp_md5', '')
-                
-                # Skip if either value is missing/empty
-                if not md5_val or not rev_comp_md5_val:
-                    indices_to_keep.append(idx)
-                    continue
-                    
-                # Check if this sequence (or its reverse complement) has been seen
-                if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
-                    # This is a new sequence - keep it and mark both orientations as seen
-                    indices_to_keep.append(idx)
-                    seen_sequences.add(md5_val)
-                    seen_sequences.add(rev_comp_md5_val)
-                # Otherwise, it's a duplicate or reverse complement duplicate - skip it
-            
-            df = df.loc[indices_to_keep].copy()
+        if dereplicate:            
+            df = dereplicate_sequences(df)
 
         # Create sunburst plot
         sunburst_figure = create_sunburst_plot(
@@ -1008,28 +965,7 @@ def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
             df = df[df["curated_status"] == "curated"]
         
         if dereplicate:
-            # Remove both exact duplicates and reverse complement duplicates
-            seen_sequences = set()
-            indices_to_keep = []
-            
-            for idx, row in df.iterrows():
-                md5_val = row.get('md5', '')
-                rev_comp_md5_val = row.get('rev_comp_md5', '')
-                
-                # Skip if either value is missing/empty
-                if not md5_val or not rev_comp_md5_val:
-                    indices_to_keep.append(idx)
-                    continue
-                    
-                # Check if this sequence (or its reverse complement) has been seen
-                if md5_val not in seen_sequences and rev_comp_md5_val not in seen_sequences:
-                    # This is a new sequence - keep it and mark both orientations as seen
-                    indices_to_keep.append(idx)
-                    seen_sequences.add(md5_val)
-                    seen_sequences.add(rev_comp_md5_val)
-                # Otherwise, it's a duplicate or reverse complement duplicate - skip it
-            
-            df = df.loc[indices_to_keep].copy()
+            df = dereplicate_sequences(df)
 
         if df.empty:
             return "No records found"
