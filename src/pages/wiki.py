@@ -76,44 +76,56 @@ def create_accordion_item(df, papers, category):
             filtered_papers_df["type_element_reference"].dropna().unique().astype(str)
         )
 
-        if len(downDRs) > 10:
+        if len(upDRs) > 10:
             uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
 
             if not os.path.exists(uplogo_img_path):
-                uplogo_img_path = make_logo(upDRs, uplogo_img_path, type="up")
-            uplogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    dmc.Center(html.H5("Upstream DRs")),
-                    dmc.Center(
-                        html.Img(
-                            src=uplogo_img_path,
-                            style={"width": "100%"},
+                created_path = make_logo(upDRs, uplogo_img_path, type="up")
+                if created_path:
+                    uplogo_img_path = created_path
+
+            if os.path.exists(uplogo_img_path):
+                uplogo_img = dbc.Col(
+                    lg=6,
+                    sm=12,
+                    children=[
+                        dmc.Center(html.H5("Upstream DRs")),
+                        dmc.Center(
+                            html.Img(
+                                src=f"/{uplogo_img_path}",
+                                style={"width": "100%"},
+                            ),
                         ),
-                    ),
-                ],
-            )
+                    ],
+                )
+            else:
+                uplogo_img = None
         else:
             uplogo_img = None
 
         if len(downDRs) > 10:
             downlogo_img_path = f"assets/images/DR/{category}-downDR.png"
             if not os.path.exists(downlogo_img_path):
-                downlogo_img_path = make_logo(downDRs, downlogo_img_path, type="down")
-            downlogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    dmc.Center(html.H5("Downstream DRs")),
-                    dmc.Center(
-                        html.Img(
-                            src=downlogo_img_path,
-                            style={"width": "100%"},
+                created_path = make_logo(downDRs, downlogo_img_path, type="down")
+                if created_path:
+                    downlogo_img_path = created_path
+
+            if os.path.exists(downlogo_img_path):
+                downlogo_img = dbc.Col(
+                    lg=6,
+                    sm=12,
+                    children=[
+                        dmc.Center(html.H5("Downstream DRs")),
+                        dmc.Center(
+                            html.Img(
+                                src=f"/{downlogo_img_path}",
+                                style={"width": "100%"},
+                            ),
                         ),
-                    ),
-                ],
-            )
+                    ],
+                )
+            else:
+                downlogo_img = None
         else:
             downlogo_img = None
 

@@ -165,7 +165,10 @@ def make_logo(seqs, fig_name=None, type=None):
 
             if fig_name:
                 fig.savefig(fig_name, format="png")
-                return None
+                plt.close(fig)
+                os.remove(temp_in_file.name)
+                os.remove(temp_out_file.name)
+                return fig_name
             else:
                 # Save the figure to a BytesIO object
                 buf = io.BytesIO()
