@@ -56,6 +56,7 @@ def db_session_manager():
         if session:
             session.close()
 
+
 @db_retry_decorator()
 def fetch_meta_data(curated=False, accession_tags=None):
     """
@@ -134,6 +135,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
 
     return filtered_df
 
+
 @db_retry_decorator()
 @smart_cache(timeout=None)
 def fetch_paper_data():
@@ -157,14 +159,15 @@ def fetch_paper_data():
     finally:
         session.close()
 
+
 def dereplicate_sequences(df):
     """Deduplicate sequences based on MD5 hashes (forward and reverse complement)."""
     seen_sequences = set()
     indices_to_keep = []
 
     for idx, row in df.iterrows():
-        md5_val = row.get('md5', '')
-        rev_comp_md5_val = row.get('rev_comp_md5', '')
+        md5_val = row.get("md5", "")
+        rev_comp_md5_val = row.get("rev_comp_md5", "")
 
         if not md5_val or not rev_comp_md5_val:
             indices_to_keep.append(idx)
@@ -176,6 +179,7 @@ def dereplicate_sequences(df):
 
     filtered_df = df.loc[indices_to_keep]
     return filtered_df
+
 
 # TODO: figure out a way to handle caching with queries related to this query
 @db_retry_decorator()
@@ -309,7 +313,12 @@ def fetch_ships(
             return df
 
         # Apply MD5-based deduplication if sequences are available and deduplication is requested
-        if with_sequence and dereplicate and 'md5' in df.columns and 'rev_comp_md5' in df.columns:
+        if (
+            with_sequence
+            and dereplicate
+            and "md5" in df.columns
+            and "rev_comp_md5" in df.columns
+        ):
             df = dereplicate_sequences(df)
 
         return df
@@ -319,11 +328,13 @@ def fetch_ships(
     finally:
         session.close()
 
+
 @smart_cache(timeout=None)
 @db_retry_decorator()
 def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     from src.config.cache import cache
+
     cache_key = "fetch_ship_table:full_dataset"
 
     full_df = cache.get(cache_key)
@@ -365,16 +376,16 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     if with_sequence:
         filtered_df = filtered_df[filtered_df["ship_id"].notna()]
 
-
     if with_gff_entries:
         filtered_df = filtered_df[filtered_df["source"].notna()]
-    
+
     if curated:
         filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
 
     filtered_df = filtered_df.sort_values(by="familyName")
 
     return filtered_df
+
 
 @db_retry_decorator()
 def fetch_accession_ship(accession_tag):
@@ -417,6 +428,7 @@ def fetch_accession_ship(accession_tag):
         raise
     finally:
         session.close()
+
 
 @db_retry_decorator()
 def fetch_captains(
@@ -522,12 +534,14 @@ def fetch_captains(
     finally:
         session.close()
 
+
 @db_retry_decorator()
 def fetch_captain_tree():
     fallback_tree_path = PHYLOGENY_PATHS["tree"]
 
     with open(fallback_tree_path, "r") as f:
         return f.read()
+
 
 @db_retry_decorator()
 def fetch_sf_data():
@@ -546,7 +560,6 @@ def get_database_stats():
     """Get statistics about the Starship database."""
     session = StarbaseSession()
     try:
-
         # new sql query for stats
         # stats metdata
         stats_metadata_query = """
@@ -577,13 +590,18 @@ def get_database_stats():
         # total numer of ships (regardless of duplicates or sequencing similarity)
         total_count = len(stats_df)
         # total number of unique sequences (by md5 or rev_comp_md5)
-        unique_sequences_df = stats_df[["md5","rev_comp_md5"]].drop_duplicates()
+        unique_sequences_df = stats_df[["md5", "rev_comp_md5"]].drop_duplicates()
         unique_sequences_count = len(unique_sequences_df)
 
         curated_count = len(stats_df[stats_df["curated_status"] == "curated"])
         uncurated_count = total_count - curated_count
         species_count = len(stats_df["name"].unique())
-        family_count = len(stats_df["familyName"].dropna().loc[~stats_df["familyName"].isin(["NA", "None", None, "NULL"])].unique())
+        family_count = len(
+            stats_df["familyName"]
+            .dropna()
+            .loc[~stats_df["familyName"].isin(["NA", "None", None, "NULL"])]
+            .unique()
+        )
 
         stats = {
             "total_starships": total_count,
@@ -604,31 +622,32 @@ def get_database_stats():
 def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto"):
     """
     Add a quality tag to a ship.
-    
+
     Args:
         joined_ship_id (int): ID of the joined_ships record
         tag_type (str): Type of tag (e.g., "incomplete", "fragmented", "verified")
         tag_value (str, optional): Optional value for the tag
         created_by (str): Who created this tag (default: "auto")
-    
+
     Returns:
         int: ID of the created tag, or existing tag ID if duplicate
-    
+
     Example:
         >>> add_quality_tag(123, "incomplete", created_by="curator_name")
         >>> add_quality_tag(123, "nested", "inside_SS-1.1", created_by="auto")
     """
     from src.database.models.schema import ShipQualityTags
     from datetime import datetime
-    
+
     session = StarbaseSession()
     try:
         # Check if tag already exists (unique constraint on joined_ship_id + tag_type)
-        existing_tag = session.query(ShipQualityTags).filter_by(
-            joined_ship_id=joined_ship_id,
-            tag_type=tag_type
-        ).first()
-        
+        existing_tag = (
+            session.query(ShipQualityTags)
+            .filter_by(joined_ship_id=joined_ship_id, tag_type=tag_type)
+            .first()
+        )
+
         if existing_tag:
             # Update the tag value if provided
             if tag_value is not None:
@@ -637,14 +656,14 @@ def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto")
                 session.commit()
             logger.info(f"Updated existing tag {tag_type} for ship {joined_ship_id}")
             return existing_tag.id
-        
+
         # Create new tag
         new_tag = ShipQualityTags(
             joined_ship_id=joined_ship_id,
             tag_type=tag_type,
             tag_value=tag_value,
             created_at=datetime.now(),
-            created_by=created_by
+            created_by=created_by,
         )
         session.add(new_tag)
         session.commit()
@@ -661,23 +680,24 @@ def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto")
 def remove_quality_tag(joined_ship_id, tag_type):
     """
     Remove a quality tag from a ship.
-    
+
     Args:
         joined_ship_id (int): ID of the joined_ships record
         tag_type (str): Type of tag to remove
-    
+
     Returns:
         bool: True if tag was removed, False if not found
     """
     from src.database.models.schema import ShipQualityTags
-    
+
     session = StarbaseSession()
     try:
-        tag = session.query(ShipQualityTags).filter_by(
-            joined_ship_id=joined_ship_id,
-            tag_type=tag_type
-        ).first()
-        
+        tag = (
+            session.query(ShipQualityTags)
+            .filter_by(joined_ship_id=joined_ship_id, tag_type=tag_type)
+            .first()
+        )
+
         if tag:
             session.delete(tag)
             session.commit()
@@ -697,27 +717,29 @@ def remove_quality_tag(joined_ship_id, tag_type):
 def get_quality_tags(joined_ship_id):
     """
     Get all quality tags for a ship.
-    
+
     Args:
         joined_ship_id (int): ID of the joined_ships record
-    
+
     Returns:
         list: List of dicts with tag information
     """
     from src.database.models.schema import ShipQualityTags
-    
+
     session = StarbaseSession()
     try:
-        tags = session.query(ShipQualityTags).filter_by(
-            joined_ship_id=joined_ship_id
-        ).all()
-        
+        tags = (
+            session.query(ShipQualityTags)
+            .filter_by(joined_ship_id=joined_ship_id)
+            .all()
+        )
+
         return [
             {
                 "tag_type": tag.tag_type,
                 "tag_value": tag.tag_value,
                 "created_at": tag.created_at,
-                "created_by": tag.created_by
+                "created_by": tag.created_by,
             }
             for tag in tags
         ]
