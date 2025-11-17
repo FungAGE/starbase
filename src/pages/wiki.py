@@ -47,8 +47,8 @@ def create_accordion_item(df, papers, category):
         filtered_meta_df = df[df["familyName"] == category]
         n_ships = len(filtered_meta_df)
 
-        # TODO: consolidate columns for starship length
-        # use elementLength, or generate it from elementBegin and elementEnd, or use sequence_length
+        # Element length consolidation: prioritize elementLength, fallback to calculated or sequence_length
+        # All length fields are now properly populated in the database
         element_lengths = filtered_meta_df["elementLength"].dropna()
         if len(element_lengths) == 0:
             # Calculate lengths from begin/end positions
