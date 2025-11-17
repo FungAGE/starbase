@@ -97,7 +97,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
                    sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                    f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                    g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                   s.md5, s.rev_comp_md5
+                   s.md5, s.rev_comp_md5, s.sequence_length
             FROM joined_ships j
             LEFT JOIN accessions a ON j.accession_id = a.id
             LEFT JOIN taxonomy t ON j.tax_id = t.id

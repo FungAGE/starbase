@@ -30,7 +30,6 @@ from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
 from src.components.callbacks import (
     curated_switch,
-    create_modal_callback,
     dereplicated_switch,
 )
 from src.components.callbacks import handle_callback_error
@@ -40,16 +39,29 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
+
 def create_accordion_item(df, papers, category):
     if category == "nan":
         return None
     else:
         filtered_meta_df = df[df["familyName"] == category]
-        n_ships = len(dereplicate_sequences(filtered_meta_df))
+        n_ships = len(filtered_meta_df)
 
-        element_lengths = pd.to_numeric(
-            filtered_meta_df["elementLength"], errors="coerce"
-        ).dropna()
+        # TODO: consolidate columns for starship length
+        # use elementLength, or generate it from elementBegin and elementEnd, or use sequence_length
+        element_lengths = filtered_meta_df["elementLength"].dropna()
+        if len(element_lengths) == 0:
+            # Calculate lengths from begin/end positions
+            begin_vals = filtered_meta_df["elementBegin"].dropna()
+            end_vals = filtered_meta_df["elementEnd"].dropna()
+            if len(begin_vals) > 0 and len(end_vals) > 0:
+                # Use the minimum length of begin/end pairs to avoid mismatched lengths
+                min_len = min(len(begin_vals), len(end_vals))
+                element_lengths = abs(
+                    begin_vals.iloc[:min_len] - end_vals.iloc[:min_len]
+                )
+            else:
+                element_lengths = filtered_meta_df["sequence_length"].dropna()
 
         if len(element_lengths) == 0:
             min_size = 0
