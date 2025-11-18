@@ -346,10 +346,13 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
 
         try:
             query = """
-            SELECT DISTINCT 
+            SELECT DISTINCT
+                js.ship_id,
+                js.source,
+                js.curated_status,
                 a.accession_tag, a.version_tag,
-                CASE 
-                    WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+                CASE
+                    WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
                     THEN a.accession_tag || '.' || a.version_tag
                     ELSE a.accession_tag
                 END as accession_display,
@@ -377,7 +380,24 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
         filtered_df = filtered_df[filtered_df["ship_id"].notna()]
 
     if with_gff_entries:
-        filtered_df = filtered_df[filtered_df["source"].notna()]
+        # generate a list of accession tags that have GFF entries, using a separate query
+        session = StarbaseSession()
+        try:
+            gff_query = """
+            SELECT DISTINCT accession_tag, ship_id
+            FROM gff
+            WHERE accession_tag IS NOT NULL AND ship_id IS NOT NULL
+            """
+            gff_df = pd.read_sql_query(gff_query, session.bind)
+            gff_ship_ids = gff_df["ship_id"].tolist()
+            filtered_df = filtered_df[filtered_df["ship_id"].isin(gff_ship_ids)]
+        except Exception as e:
+            logger.error(f"Error fetching GFF data for filtering: {str(e)}")
+            # If GFF query fails, return empty dataframe to ensure no entries without GFF data are shown
+            filtered_df = filtered_df.iloc[0:0]
+        finally:
+            session.close()
+
 
     if curated:
         filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
