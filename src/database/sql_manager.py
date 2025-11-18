@@ -555,6 +555,61 @@ def fetch_sf_data():
 
 
 @db_retry_decorator()
+def get_database_version():
+    """Get the current database semantic version from the database_versions table."""
+    session = StarbaseSession()
+    try:
+        result = session.execute(text("""
+            SELECT semantic_version FROM database_versions
+            ORDER BY created_at DESC LIMIT 1
+        """)).fetchone()
+
+        return result[0] if result else "unknown"
+    except Exception as e:
+        logger.error(f"Error fetching database version: {str(e)}")
+        return "unknown"
+    finally:
+        session.close()
+
+
+@db_retry_decorator()
+def set_database_version(semantic_version, description="", created_by="manual"):
+    """Manually set a new semantic version for the database."""
+    session = StarbaseSession()
+    try:
+        session.execute(text("""
+            INSERT INTO database_versions (semantic_version, description, created_by)
+            VALUES (:version, :desc, :creator)
+        """), {"version": semantic_version, "desc": description, "creator": created_by})
+        session.commit()
+        logger.info(f"Database version manually set to {semantic_version}")
+        return True
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error setting database version: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+@db_retry_decorator()
+def get_alembic_schema_version():
+    """Get the current Alembic schema version (for schema tracking)."""
+    try:
+        from alembic.migration import MigrationContext
+
+        with StarbaseSession() as session:
+            conn = session.connection()
+            context = MigrationContext.configure(conn)
+            current_rev = context.get_current_revision()
+
+        return current_rev if current_rev else "unknown"
+    except Exception as e:
+        logger.error(f"Error fetching Alembic schema version: {str(e)}")
+        return "unknown"
+
+
+@db_retry_decorator()
 @smart_cache(timeout=None)
 def get_database_stats():
     """Get statistics about the Starship database."""

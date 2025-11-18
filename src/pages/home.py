@@ -7,16 +7,13 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from src.components.tables import make_paper_table
-from src.database.sql_engine import check_database_connection
-from src.database.sql_manager import get_database_stats
+from src.database.sql_manager import get_database_stats, get_database_version, get_alembic_schema_version
 
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
 dash.register_page(__name__, title="starbase Home", name="Home", path="/")
-
-is_connected = check_database_connection()
 
 title = dmc.Paper(
     [
@@ -91,7 +88,6 @@ def create_feature_button(label, href, icon):
             size="lg",
             radius="md",
             fullWidth=False,
-            disabled=not is_connected,
             style={"minWidth": "200px"},
         ),
         href=href,
@@ -324,6 +320,67 @@ accession_card = dmc.Paper(
     h="100%",
 )
 
+# Database version card for the hero section
+db_version_card = dmc.Paper(
+    [
+        dmc.Title("Database Version", order=2, mb="md"),
+        dmc.Stack(
+            [
+                dmc.Group(
+                    [
+                        DashIconify(
+                            icon="mdi:database",
+                            width=24,
+                            color="#868E96",
+                        ),
+                        dmc.Text(
+                            "Current Version:",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                    ],
+                    gap="xs",
+                    align="center",
+                ),
+                dmc.Title(
+                    get_database_version(),
+                    order=3,
+                    style={"fontSize": "1.5rem", "color": "#228be6"},
+                ),
+                dmc.Divider(my="sm"),
+                dmc.Group(
+                    [
+                        DashIconify(
+                            icon="mdi:cog",
+                            width=20,
+                            color="#868E96",
+                        ),
+                        dmc.Text(
+                            "Schema Version:",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                    ],
+                    gap="xs",
+                    align="center",
+                ),
+                dmc.Text(
+                    get_alembic_schema_version()[:8] + "..." if len(get_alembic_schema_version()) > 8 else get_alembic_schema_version(),
+                    size="sm",
+                    c="dimmed",
+                    style={"fontFamily": "monospace"},
+                ),
+            ],
+            gap="xs",
+        ),
+    ],
+    shadow="sm",
+    p="xl",
+    radius="md",
+    withBorder=True,
+    h="100%",
+)
+
 
 def create_hero_section():
     return dmc.Container(
@@ -331,7 +388,16 @@ def create_hero_section():
             dmc.Space(h=20),
             dmc.Center(title),
             dmc.Space(h=40),
-            dmc.Center(starship_card),
+            dmc.Grid(
+                [
+                    dmc.GridCol(
+                        starship_card,
+                        span={"base": 12, "md": 12}
+                    ),
+                ],
+                gutter="xl",
+                align="stretch",
+            ),
         ],
         size="xl",
         flex=True,
@@ -392,17 +458,7 @@ def create_publications_section():
     )
 
 
-stats = (
-    get_database_stats()
-    if is_connected
-    else {
-        "total_starships": "—",
-        "curated_starships": "—",
-        "uncurated_starships": "—",
-        "species_count": "—",
-        "family_count": "—",
-    }
-)
+stats = get_database_stats()
 
 total_starships_info = dmc.Stack(
     [
@@ -625,6 +681,7 @@ family_info = dmc.Stack(
     style={"height": "100%"},
 )
 
+
 stats_section = dmc.Paper(
     [
         dmc.Title("Database Statistics", order=2, mb="xl"),
@@ -680,28 +737,20 @@ stats_section = dmc.Paper(
 layout = dmc.MantineProvider(
     [
         dcc.Location(id="url", refresh=False),
-        dmc.Notification(
-            title="Database Connection Failed",
-            message="Many features will be disabled until connection is re-established.",
-            c="red",
-            style={"position": "fixed", "top": 20, "right": 20},
-        )
-        if not is_connected
-        else None,
         create_hero_section(),
         dmc.Space(h=40),
         create_features_section(),
         dmc.Space(h=40),
         create_publications_section(),
     ],
-    theme={
-        "colorScheme": "light",
-        "primaryColor": "indigo",
-        "components": {
-            "Container": {"defaultProps": {"size": "xl"}},
-            "Title": {"defaultProps": {"color": "indigo"}},
+        theme={
+            "colorScheme": "light",
+            "primaryColor": "indigo",
+            "components": {
+                "Container": {"defaultProps": {"size": "xl"}},
+                "Title": {"defaultProps": {"color": "indigo"}},
+            },
         },
-    },
 )
 
 
