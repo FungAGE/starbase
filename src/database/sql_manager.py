@@ -380,16 +380,16 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
         filtered_df = filtered_df[filtered_df["ship_id"].notna()]
 
     if with_gff_entries:
-        # generate a list of accession tags that have GFF entries, using a separate query
+        # generate a list of ship_ids that have GFF entries, using a separate query
         session = StarbaseSession()
         try:
             gff_query = """
-            SELECT DISTINCT accession_tag, ship_id
-            FROM gff
-            WHERE accession_tag IS NOT NULL AND ship_id IS NOT NULL
+            SELECT DISTINCT g.ship_id
+            FROM gff g
+            WHERE g.ship_id IS NOT NULL AND g.ship_id != ''
             """
             gff_df = pd.read_sql_query(gff_query, session.bind)
-            gff_ship_ids = gff_df["ship_id"].tolist()
+            gff_ship_ids = gff_df["ship_id"].dropna().tolist()
             filtered_df = filtered_df[filtered_df["ship_id"].isin(gff_ship_ids)]
         except Exception as e:
             logger.error(f"Error fetching GFF data for filtering: {str(e)}")
@@ -397,7 +397,6 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
             filtered_df = filtered_df.iloc[0:0]
         finally:
             session.close()
-
 
     if curated:
         filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
@@ -579,10 +578,12 @@ def get_database_version():
     """Get the current database semantic version from the database_versions table."""
     session = StarbaseSession()
     try:
-        result = session.execute(text("""
+        result = session.execute(
+            text("""
             SELECT semantic_version FROM database_versions
             ORDER BY created_at DESC LIMIT 1
-        """)).fetchone()
+        """)
+        ).fetchone()
 
         return result[0] if result else "unknown"
     except Exception as e:
@@ -597,10 +598,13 @@ def set_database_version(semantic_version, description="", created_by="manual"):
     """Manually set a new semantic version for the database."""
     session = StarbaseSession()
     try:
-        session.execute(text("""
+        session.execute(
+            text("""
             INSERT INTO database_versions (semantic_version, description, created_by)
             VALUES (:version, :desc, :creator)
-        """), {"version": semantic_version, "desc": description, "creator": created_by})
+        """),
+            {"version": semantic_version, "desc": description, "creator": created_by},
+        )
         session.commit()
         logger.info(f"Database version manually set to {semantic_version}")
         return True
