@@ -48,25 +48,33 @@ def cleanup_old_cache(max_age_days=None):
         cache_files = []
 
         # Collect all cache files with their metadata
-        for filepath in Path(cache_dir).rglob('*'):
-            if filepath.is_file() and filepath.suffix not in ['.lock']:  # Skip lock files
+        for filepath in Path(cache_dir).rglob("*"):
+            if filepath.is_file() and filepath.suffix not in [
+                ".lock"
+            ]:  # Skip lock files
                 try:
                     stats = filepath.stat()
                     age_days = (current_time - stats.st_mtime) / (24 * 3600)
-                    cache_files.append((filepath, stats.st_size, stats.st_mtime, age_days))
+                    cache_files.append(
+                        (filepath, stats.st_size, stats.st_mtime, age_days)
+                    )
                     total_size += stats.st_size
                 except OSError:
                     continue
 
         # Remove files older than max_age_days if specified
         if max_age_days is not None:
-            for filepath, size, _, age_days in cache_files[:]:  # Copy list to avoid modification during iteration
+            for filepath, size, _, age_days in cache_files[
+                :
+            ]:  # Copy list to avoid modification during iteration
                 if age_days > max_age_days:
                     try:
                         filepath.unlink()
                         total_size -= size
                         cleanup_count += 1
-                        logger.debug(f"Removed old cache file (age: {age_days:.1f} days): {filepath}")
+                        logger.debug(
+                            f"Removed old cache file (age: {age_days:.1f} days): {filepath}"
+                        )
                     except OSError:
                         continue
 
@@ -87,10 +95,13 @@ def cleanup_old_cache(max_age_days=None):
                     continue
 
         if cleanup_count > 0:
-            logger.info(f"Cleaned up {cleanup_count} cache items. Current cache size: {total_size / 1024 / 1024:.2f}MB")
+            logger.info(
+                f"Cleaned up {cleanup_count} cache items. Current cache size: {total_size / 1024 / 1024:.2f}MB"
+            )
 
     except Exception as e:
         logger.error(f"Cache cleanup failed: {str(e)}", exc_info=True)
+
 
 def cache_key_builder(*args, **kwargs):
     """Build a cache key from function arguments"""
@@ -98,31 +109,41 @@ def cache_key_builder(*args, **kwargs):
     key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
     return "|".join(key_parts)
 
+
 def smart_cache(timeout=3600, unless=None):
     """Smart caching decorator that handles pandas DataFrames"""
+
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
             if unless and unless(*args, **kwargs):
                 return f(*args, **kwargs)
-            
+            env = os.getenv("ENVIRONMENT", "development")
+            actual_timeout = timeout
+            if env == "development" and timeout is None:
+                actual_timeout = 300
+
             cache_key = f"{f.__name__}:{cache_key_builder(*args, **kwargs)}"
             result = cache.get(cache_key)
-            
+
             if result is not None:
                 if isinstance(result, dict) and "pandas_df" in result:
                     # Reconstruct DataFrame from cached dict
                     return pd.DataFrame.from_dict(result["pandas_df"])
                 return result
-            
+
             result = f(*args, **kwargs)
-            
+
             if isinstance(result, pd.DataFrame):
                 # Cache DataFrame as dictionary
-                cache.set(cache_key, {"pandas_df": result.to_dict()}, timeout=timeout)
+                cache.set(
+                    cache_key, {"pandas_df": result.to_dict()}, timeout=actual_timeout
+                )
             else:
-                cache.set(cache_key, result, timeout=timeout)
-            
+                cache.set(cache_key, result, timeout=actual_timeout)
+
             return result
+
         return wrapper
+
     return decorator
