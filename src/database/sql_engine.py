@@ -49,14 +49,3 @@ def get_telemetry_session():
         raise
     finally:
         session.close()
-
-
-def check_database_connection():
-    """Check if database connections are working"""
-    try:
-        with get_starbase_session() as session:
-            session.execute("SELECT 1")
-        return True
-    except Exception as e:
-        logger.error(f"Database connection check failed: {e}")
-        return False

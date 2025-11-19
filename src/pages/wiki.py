@@ -30,7 +30,6 @@ from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
 from src.components.callbacks import (
     curated_switch,
-    create_modal_callback,
     dereplicated_switch,
 )
 from src.components.callbacks import handle_callback_error
@@ -40,16 +39,29 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__)
 
+
 def create_accordion_item(df, papers, category):
     if category == "nan":
         return None
     else:
         filtered_meta_df = df[df["familyName"] == category]
-        n_ships = len(dereplicate_sequences(filtered_meta_df))
+        n_ships = len(filtered_meta_df)
 
-        element_lengths = pd.to_numeric(
-            filtered_meta_df["elementLength"], errors="coerce"
-        ).dropna()
+        # Element length consolidation: prioritize elementLength, fallback to calculated or sequence_length
+        # All length fields are now properly populated in the database
+        element_lengths = filtered_meta_df["elementLength"].dropna()
+        if len(element_lengths) == 0:
+            # Calculate lengths from begin/end positions
+            begin_vals = filtered_meta_df["elementBegin"].dropna()
+            end_vals = filtered_meta_df["elementEnd"].dropna()
+            if len(begin_vals) > 0 and len(end_vals) > 0:
+                # Use the minimum length of begin/end pairs to avoid mismatched lengths
+                min_len = min(len(begin_vals), len(end_vals))
+                element_lengths = abs(
+                    begin_vals.iloc[:min_len] - end_vals.iloc[:min_len]
+                )
+            else:
+                element_lengths = filtered_meta_df["sequence_length"].dropna()
 
         if len(element_lengths) == 0:
             min_size = 0
@@ -64,44 +76,56 @@ def create_accordion_item(df, papers, category):
             filtered_papers_df["type_element_reference"].dropna().unique().astype(str)
         )
 
-        if len(downDRs) > 10:
+        if len(upDRs) > 10:
             uplogo_img_path = f"assets/images/DR/{category}-upDR.png"
 
             if not os.path.exists(uplogo_img_path):
-                uplogo_img_path = make_logo(upDRs, uplogo_img_path, type="up")
-            uplogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    dmc.Center(html.H5("Upstream DRs")),
-                    dmc.Center(
-                        html.Img(
-                            src=uplogo_img_path,
-                            style={"width": "100%"},
+                created_path = make_logo(upDRs, uplogo_img_path, type="up")
+                if created_path:
+                    uplogo_img_path = created_path
+
+            if os.path.exists(uplogo_img_path):
+                uplogo_img = dbc.Col(
+                    lg=6,
+                    sm=12,
+                    children=[
+                        dmc.Center(html.H5("Upstream DRs")),
+                        dmc.Center(
+                            html.Img(
+                                src=f"/{uplogo_img_path}",
+                                style={"width": "100%"},
+                            ),
                         ),
-                    ),
-                ],
-            )
+                    ],
+                )
+            else:
+                uplogo_img = None
         else:
             uplogo_img = None
 
         if len(downDRs) > 10:
             downlogo_img_path = f"assets/images/DR/{category}-downDR.png"
             if not os.path.exists(downlogo_img_path):
-                downlogo_img_path = make_logo(downDRs, downlogo_img_path, type="down")
-            downlogo_img = dbc.Col(
-                lg=6,
-                sm=12,
-                children=[
-                    dmc.Center(html.H5("Downstream DRs")),
-                    dmc.Center(
-                        html.Img(
-                            src=downlogo_img_path,
-                            style={"width": "100%"},
+                created_path = make_logo(downDRs, downlogo_img_path, type="down")
+                if created_path:
+                    downlogo_img_path = created_path
+
+            if os.path.exists(downlogo_img_path):
+                downlogo_img = dbc.Col(
+                    lg=6,
+                    sm=12,
+                    children=[
+                        dmc.Center(html.H5("Downstream DRs")),
+                        dmc.Center(
+                            html.Img(
+                                src=f"/{downlogo_img_path}",
+                                style={"width": "100%"},
+                            ),
                         ),
-                    ),
-                ],
-            )
+                    ],
+                )
+            else:
+                downlogo_img = None
         else:
             downlogo_img = None
 
@@ -239,7 +263,7 @@ layout = dmc.Container(
                     [
                         "Search and explore the characteristics of different ",
                         html.Span("Starship", style={"fontStyle": "italic"}),
-                        " families"
+                        " families",
                     ],
                     c="dimmed",
                     size="lg",
@@ -285,13 +309,27 @@ layout = dmc.Container(
                         dmc.Group(
                             children=[
                                 curated_switch(
-                                    text=html.Div(["Only show curated ",
-                                    html.Span("Starships", style={"fontStyle": "italic"})]),
+                                    text=html.Div(
+                                        [
+                                            "Only show curated ",
+                                            html.Span(
+                                                "Starships",
+                                                style={"fontStyle": "italic"},
+                                            ),
+                                        ]
+                                    ),
                                     size="md",
                                 ),
                                 dereplicated_switch(
-                                    text=html.Div(["Only show dereplicated ",
-                                    html.Span("Starships", style={"fontStyle": "italic"})]),
+                                    text=html.Div(
+                                        [
+                                            "Only show dereplicated ",
+                                            html.Span(
+                                                "Starships",
+                                                style={"fontStyle": "italic"},
+                                            ),
+                                        ]
+                                    ),
                                     size="md",
                                 ),
                             ],
@@ -364,8 +402,19 @@ layout = dmc.Container(
                         dmc.Space(h="sm"),
                         dmc.Paper(
                             children=[
-                                dmc.Title(html.Div([html.Span("Starship", style={"fontStyle": "italic"}),
-                                " Families"]), order=2, mb="md"),
+                                dmc.Title(
+                                    html.Div(
+                                        [
+                                            html.Span(
+                                                "Starship",
+                                                style={"fontStyle": "italic"},
+                                            ),
+                                            " Families",
+                                        ]
+                                    ),
+                                    order=2,
+                                    mb="md",
+                                ),
                                 dcc.Loading(
                                     id="wiki-loading",
                                     type="circle",
@@ -417,8 +466,8 @@ def load_meta_data(url):
 
 
 # Callback to load paper data
-@callback(Output("paper-data", "data"), Input("url", "href"))
 @handle_callback_error
+@callback(Output("paper-data", "data"), Input("url", "href"))
 def load_paper_data(url):
     if url:
         try:
@@ -522,7 +571,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                 "No results match your search criteria.", color="blue", variant="filled"
             )
 
-        if dereplicate:            
+        if dereplicate:
             filtered_meta_df = dereplicate_sequences(df)
         else:
             filtered_meta_df = df.copy()
@@ -553,7 +602,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                             [
                                 "Select individual ",
                                 html.Span("Starships", style={"fontStyle": "italic"}),
-                                " or download the complete dataset"
+                                " or download the complete dataset",
                             ],
                             size="lg",
                             c="dimmed",
@@ -564,8 +613,15 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                 gap="xl",
                                 children=[
                                     dmc.Button(
-                                        html.Div(["Download All ",
-                                        html.Span("Starships", style={"fontStyle": "italic"})]),
+                                        html.Div(
+                                            [
+                                                "Download All ",
+                                                html.Span(
+                                                    "Starships",
+                                                    style={"fontStyle": "italic"},
+                                                ),
+                                            ]
+                                        ),
                                         id="download-all-btn",
                                         variant="gradient",
                                         gradient={
@@ -582,8 +638,15 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                         },
                                     ),
                                     dmc.Button(
-                                        html.Div(["Download Selected ",
-                                        html.Span("Starships", style={"fontStyle": "italic"})]),
+                                        html.Div(
+                                            [
+                                                "Download Selected ",
+                                                html.Span(
+                                                    "Starships",
+                                                    style={"fontStyle": "italic"},
+                                                ),
+                                            ]
+                                        ),
                                         id="download-selected-btn",
                                         variant="gradient",
                                         gradient={"from": "teal", "to": "lime"},
@@ -620,7 +683,9 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
                                 dmc.Text(
                                     [
                                         "Click rows to select ",
-                                        html.Span("Starships", style={"fontStyle": "italic"})
+                                        html.Span(
+                                            "Starships", style={"fontStyle": "italic"}
+                                        ),
                                     ],
                                     size="sm",
                                     c="dimmed",
@@ -715,13 +780,19 @@ def populate_search_components(meta_data):
 
         # Convert to sorted list and format for Autocomplete
         # sort by length instead of alphabetically
-        taxa_search_data = [{"value": val, "label": val} for val in sorted(all_taxa_values, key=lambda s: len(s))]
+        taxa_search_data = [
+            {"value": val, "label": val}
+            for val in sorted(all_taxa_values, key=lambda s: len(s))
+        ]
 
         # Get family search data
         family_values = []
         if "familyName" in df.columns:
             family_values = df["familyName"].dropna().astype(str).unique()
-            family_search_data = [{"value": val, "label": val} for val in sorted(family_values, key=lambda s: len(s))]
+            family_search_data = [
+                {"value": val, "label": val}
+                for val in sorted(family_values, key=lambda s: len(s))
+            ]
         else:
             family_search_data = []
 
@@ -730,9 +801,6 @@ def populate_search_components(meta_data):
     except Exception as e:
         logger.error(f"Error in populate_search_components: {str(e)}")
         return [], []
-
-
-
 
 
 @callback(
@@ -796,7 +864,9 @@ def handle_taxa_and_family_search(
                 if col in filtered_df.columns:
                     # Case-insensitive partial matching
                     mask |= (
-                        filtered_df[col].astype(str).str.contains(taxa_search_value, case=False, na=False)
+                        filtered_df[col]
+                        .astype(str)
+                        .str.contains(taxa_search_value, case=False, na=False)
                     )
 
             filtered_df = filtered_df[mask]
@@ -806,7 +876,8 @@ def handle_taxa_and_family_search(
             if "familyName" in filtered_df.columns:
                 # Case-insensitive exact matching for family
                 filtered_df = filtered_df[
-                    filtered_df["familyName"].astype(str).str.lower() == family_search_value.lower()
+                    filtered_df["familyName"].astype(str).str.lower()
+                    == family_search_value.lower()
                 ]
 
         # Return empty list if no results found, otherwise return the filtered data
@@ -851,7 +922,7 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
             df = df[df["curated_status"] == "curated"]
 
         # Deduplicate data to match table processing
-        if dereplicate:            
+        if dereplicate:
             df = dereplicate_sequences(df)
 
         # Create sunburst plot
@@ -944,7 +1015,7 @@ def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
         # Apply curated/dereplicated filters if switches are enabled
         if curated:
             df = df[df["curated_status"] == "curated"]
-        
+
         if dereplicate:
             df = dereplicate_sequences(df)
 
@@ -969,7 +1040,8 @@ def generate_download_helper(rows, curated, dereplicate):
             raise ValueError("No rows selected for download")
 
         accessions = [
-            re.sub(pattern=r"\..*", repl="", string=row["accession_tag"]) for row in rows
+            re.sub(pattern=r"\..*", repl="", string=row["accession_tag"])
+            for row in rows
         ]
         dl_df = fetch_ships(
             accession_tags=accessions,
@@ -992,7 +1064,9 @@ def generate_download_helper(rows, curated, dereplicate):
             header = create_ncbi_style_header(row, count)
             # Skip if header creation failed (returns None)
             if header is None:
-                logger.warning(f"Skipping sequence with accession_tag={row.get('accession_tag', 'unknown')} due to header creation failure")
+                logger.warning(
+                    f"Skipping sequence with accession_tag={row.get('accession_tag', 'unknown')} due to header creation failure"
+                )
                 continue
             fasta_content.append(f"{header}\n{row['sequence']}")
 
@@ -1149,7 +1223,9 @@ clientside_callback(
         return window.dash_clientside.no_update;
     }
     """,
-    Output("dummy-output", "children"),  # Dummy output since we don't need to update any Dash components
+    Output(
+        "dummy-output", "children"
+    ),  # Dummy output since we don't need to update any Dash components
     [
         Input("dl-table", "cellClicked"),
         Input("dl-table", "active_cell"),

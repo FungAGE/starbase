@@ -16,20 +16,11 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 metadata = Base.metadata
 
-# Association tables for many-to-many relationships
-paper_family_association = Table(
-    "paper_family_association",
-    Base.metadata,
-    Column("paper_id", Integer, ForeignKey("papers.id")),
-    Column("family_id", Integer, ForeignKey("family_names.id")),
-)
-
-
 class Accessions(Base):
     __tablename__ = "accessions"
     id = Column(Integer, primary_key=True)
-    accession_tag = Column(String, unique=True)
-    version_tag = Column(Integer)
+    accession_tag = Column(String, unique=True, nullable=False)
+    version_tag = Column(Integer, nullable=False)
 
     # Relationships
     ships = relationship("Ships", back_populates="accession_obj")
@@ -42,6 +33,8 @@ class Ships(Base):
     id = Column(Integer, primary_key=True)
     sequence = Column(String)
     md5 = Column(String)
+    sequence_length = Column(Integer)
+    header = Column(String)
     rev_comp_md5 = Column(String)
     accession_id = Column(Integer, ForeignKey("accessions.id"))
 
@@ -56,6 +49,7 @@ class Captains(Base):
     sequence = Column(String)
     ship_id = Column(Integer, ForeignKey("ships.id"))
     reviewed = Column(String)
+    evidence = Column(String)
 
     # Relationships
     ship = relationship("Ships")
@@ -67,19 +61,20 @@ class Genome(Base):
 
     id = Column(Integer, primary_key=True)
     ome = Column(String(50))
-    taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
     version = Column(String(50))
     genomeSource = Column(String(50))
     citation = Column(String(50))
     biosample = Column(String(50))
     acquisition_date = Column(Integer)
     assembly_accession = Column(String(50))
-    taxonomy = relationship("Taxonomy", back_populates="genomes")
+    taxonomy_id = relationship("Taxonomy", back_populates="genomes")
 
 
 class StarshipFeatures(Base):
     __tablename__ = "starship_features"
     id = Column(Integer, primary_key=True)
+    accession_id = Column(Integer, ForeignKey("accessions.id"))
+    ship_id = Column(Integer, ForeignKey("ships.id"))
     contigID = Column(String)
     starshipID = Column(String)
     captainID = Column(String)
@@ -101,7 +96,13 @@ class StarshipFeatures(Base):
     TIRedit = Column(String)
     nestedInside = Column(String)
     containNested = Column(String)
-    ship_id = Column(Integer, ForeignKey("ships.id"))
+    dr = Column(String)
+    tir = Column(String)
+    target = Column(String)
+    spok = Column(String)
+    ars = Column(String)
+    other = Column(String)
+    hgt = Column(String)
     captain_id = Column(Integer, ForeignKey("captains.id"))
 
     # Relationships
@@ -125,12 +126,6 @@ class Papers(Base):
     typePaper = Column(String)
     shortCitation = Column(String)
 
-    # Relationships
-    family_names = relationship(
-        "FamilyNames", secondary=paper_family_association, back_populates="papers"
-    )
-
-
 class FamilyNames(Base):
     __tablename__ = "family_names"
     id = Column(Integer, primary_key=True)
@@ -143,12 +138,6 @@ class FamilyNames(Base):
     notes = Column(String)
     otherFamilyID = Column(String)
     paper_id = Column(Integer, ForeignKey("papers.id"))
-
-    # Relationships
-    papers = relationship(
-        "Papers", secondary=paper_family_association, back_populates="family_names"
-    )
-
 
 class Taxonomy(Base):
     __tablename__ = "taxonomy"

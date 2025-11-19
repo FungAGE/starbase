@@ -179,8 +179,7 @@ src/database/cache/
 src/database/logs/
 
 # database cleanup 
-src/database/cleanup_old*
-src/database/cleanup.zip
+src/database/cleanup*
 
 # testing
 tests/classification/*.png

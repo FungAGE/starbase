@@ -9,7 +9,7 @@ import functools
 import traceback
 import pandas as pd
 
-from src.database.sql_manager import fetch_meta_data, get_quality_tags
+from src.database.sql_manager import fetch_meta_data, get_quality_tags, get_database_version, get_alembic_schema_version
 
 from src.config.logging import get_logger
 
@@ -751,7 +751,6 @@ def create_feedback_button():
         title="Found an issue?",
         id="feedback-notify",
         action="show",
-        # icon=DashIconify(icon="octicon:mark-github-16", width=20),
         autoClose=20000,
         color="gray",
         radius="md",
@@ -772,6 +771,54 @@ def create_feedback_button():
         style={
             "width": "250px",
             "backgroundColor": "var(--mantine-color-gray-1)",
+        },
+    )
+
+def create_database_version_indicator():
+    """Create a database version indicator for the bottom-left corner"""
+    try:
+        db_version = get_database_version()
+        schema_version = get_alembic_schema_version()
+        version_text = f"v{db_version}" if db_version != "unknown" else "Unknown"
+        schema_text = f"Schema: {schema_version[:8]}..." if len(str(schema_version)) > 8 else f"Schema: {schema_version}"
+    except Exception as e:
+        logger.error(f"Error fetching database version: {str(e)}")
+        version_text = "Error"
+        schema_text = "Schema: Error"
+
+    return dmc.Notification(
+        title="Database Version",
+        id="db-version-notify",
+        action="show",
+        autoClose=30000,  # Auto-close after 30 seconds (longer than feedback button)
+        color="blue",
+        radius="md",
+        message=[
+            dmc.Stack(
+                [
+                    dmc.Group(
+                        [
+                            DashIconify(icon="mdi:database", width=16, color="white"),
+                            dmc.Text(
+                                version_text,
+                                size="sm",
+                                c="white",
+                                fw="bold",
+                            ),
+                        ],
+                        gap="xs",
+                        align="center",
+                    ),
+                ],
+                gap="xs",
+                align="flex-start",
+            )
+        ],
+        className="d-none d-md-block",
+        style={
+            "width": "200px",
+            "backgroundColor": "var(--mantine-color-blue-6)",
+            "color": "white",
         },
     )
 
