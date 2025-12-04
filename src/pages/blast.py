@@ -1394,14 +1394,83 @@ def process_additional_sequence(
             logger.error(f"Error processing sequence for tab {tab_idx}: {analysis.error}")
 
         sequence_length = len(analysis.sequence or "")
+        logger.debug(f"Analysis object has blast_result: {hasattr(analysis, 'blast_result')}")
+        logger.debug(f"BLAST result exists: {analysis.blast_result is not None if hasattr(analysis, 'blast_result') else 'N/A'}")
+
+        # Check for perfect BLAST matches (100% identity, full coverage)
+        perfect_blast_match = None
+        logger.debug(f"Checking for perfect BLAST matches: blast_result={analysis.blast_result is not None if hasattr(analysis, 'blast_result') else False}")
+        if analysis.blast_result:
+            logger.debug(f"BLAST result has hits: {hasattr(analysis.blast_result, 'blast_hits')}")
+            if hasattr(analysis.blast_result, 'blast_hits'):
+                logger.debug(f"BLAST hits: {analysis.blast_result.blast_hits}")
+
+        if (analysis.blast_result and
+            analysis.blast_result.blast_hits and
+            len(analysis.blast_result.blast_hits) > 0):
+
+            logger.debug(f"Checking {len(analysis.blast_result.blast_hits)} BLAST hits for perfect matches")
+            logger.debug(f"Sequence length: {sequence_length}")
+
+            # Look for a perfect match (100% identity, full query coverage)
+            for i, hit in enumerate(analysis.blast_result.blast_hits):
+                logger.debug(f"BLAST hit {i}: {hit}")
+
+                pident = hit.get('pident', 0)
+                query_start = hit.get('query_start', 0)  # 1-based
+                query_end = hit.get('query_end', 0)     # 1-based
+                aln_length = hit.get('aln_length', 0)
+                hit_ids = hit.get('hit_IDs')
+
+                logger.debug(f"Hit {i}: pident={pident}, query_start={query_start}, query_end={query_end}, aln_length={aln_length}, hit_IDs={hit_ids}")
+
+                # Check if this is a perfect match (100% identity and covers full query)
+                covers_full = query_start <= 2 and query_end >= sequence_length - 1  # Allow small variations
+                is_perfect = pident >= 99.9 and covers_full  # Allow for floating point precision
+
+                logger.debug(f"Hit {i} analysis: pident={pident}, covers_full={covers_full}, is_perfect={is_perfect}")
+
+                if is_perfect:
+                    perfect_blast_match = hit_ids
+                    logger.info(f"Found perfect BLAST match: {perfect_blast_match} (pident={pident}, coverage={query_start}-{query_end}/{sequence_length})")
+                    break
+
+            if not perfect_blast_match:
+                logger.debug("No perfect BLAST matches found, will run full classification")
+
         should_classify = (
-            sequence_length >= 5000 and 
+            sequence_length >= 5000 and
             not analysis.has_error() and
             analysis.blast_result and
-            analysis.blast_result.blast_content
+            analysis.blast_result.blast_content and
+            perfect_blast_match is None  # Don't classify if we already have a perfect match
         )
 
-        if should_classify:
+        if perfect_blast_match:
+            # Create direct exact match classification
+            logger.info(f"Skipping classification workflow - using perfect BLAST match: {perfect_blast_match}")
+            from src.utils.blast_data import ClassificationData
+
+            classification_data = ClassificationData(
+                source="exact",
+                closest_match=perfect_blast_match,
+                confidence="High",
+                match_details=f"Exact sequence match to {perfect_blast_match}"
+            )
+
+            # Update pipeline state with the classification
+            pipeline_state.update_classification_data(tab_sequence_id, classification_data)
+
+            # Mark as complete in workflow state
+            workflow_state = WorkflowState()
+            workflow_state.complete = True
+            workflow_state.found_match = True
+            workflow_state.match_stage = "exact"
+            workflow_state.match_result = perfect_blast_match
+            workflow_state.set_classification(classification_data)
+            pipeline_state.update_workflow_state(tab_sequence_id, workflow_state)
+
+        elif should_classify:
             logger.info(
                 f"Running classification workflow for tab {tab_idx} (length: {sequence_length})"
             )
@@ -2085,9 +2154,11 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
     if workflow_state_dict is None or classification_data_dict is None:
         raise PreventUpdate
     
+    from src.utils.blast_data import ClassificationData
+
     adapter = get_dash_adapter()
     pipeline_state = adapter.pipeline_state
-    
+
     workflow_state = WorkflowState.from_dict(workflow_state_dict)
     classification_data = ClassificationData.from_dict(classification_data_dict)
     blast_results = BlastData.from_dict(blast_results_dict) if blast_results_dict else None
@@ -2168,11 +2239,18 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
             if (updated_workflow_state.found_match and updated_workflow_state.match_result):
                 logger.info(f"Workflow found match: {updated_workflow_state.match_stage} -> {updated_workflow_state.match_result}")
                 
+                # Get existing classification data from workflow state
+                existing_classification = None
+                if hasattr(updated_workflow_state, 'classification_data') and updated_workflow_state.classification_data:
+                    from src.utils.blast_data import ClassificationData
+                    existing_classification = ClassificationData.from_dict(updated_workflow_state.classification_data)
+
                 # Create enriched classification data with metadata lookup
                 enriched_classification = _create_enriched_classification(
                     updated_workflow_state.match_stage,
                     updated_workflow_state.match_result,
-                    meta_df
+                    meta_df,
+                    existing_classification
                 )
                 
                 # Update centralized state with enriched classification - SINGLE UPDATE
@@ -2205,16 +2283,28 @@ def update_classification_workflow_state(workflow_state_dict, classification_dat
         store_data = adapter.sync_all_stores(sequence_id)
         return store_data["workflow_state"], False, store_data["blast_data"]
 
-def _create_enriched_classification(match_stage, match_accession, meta_df):
+def _create_enriched_classification(match_stage, match_accession, meta_df, existing_classification=None):
     """Create ClassificationData with metadata lookup"""
     from src.utils.blast_data import ClassificationData
-    
-    # Create base classification
-    classification_data = ClassificationData(
-        source=match_stage,
-        closest_match=match_accession,
-        confidence="High" if match_stage in ["exact", "contained"] else "Medium"
-    )
+
+    # Start with existing classification data if available, otherwise create new
+    if existing_classification:
+        classification_data = ClassificationData(
+            source=existing_classification.source or match_stage,
+            closest_match=existing_classification.closest_match or match_accession,
+            confidence=existing_classification.confidence or ("High" if match_stage in ["exact", "contained"] else "Medium"),
+            match_details=existing_classification.match_details,  # Preserve existing match_details
+            family=existing_classification.family,
+            navis=existing_classification.navis,
+            haplotype=existing_classification.haplotype
+        )
+    else:
+        # Create base classification
+        classification_data = ClassificationData(
+            source=match_stage,
+            closest_match=match_accession,
+            confidence="High" if match_stage in ["exact", "contained"] else "Medium"
+        )
     
     # Look up metadata
     try:
@@ -2230,15 +2320,20 @@ def _create_enriched_classification(match_stage, match_accession, meta_df):
                         if value and value != "None":
                             setattr(classification_data, attr, value)
                 
-                # Add match details
-                if match_stage == "exact":
-                    classification_data.match_details = f"Exact sequence match to {match_accession}"
-                elif match_stage == "contained":
-                    classification_data.match_details = f"Query sequence contained within {match_accession}"
-                elif match_stage == "similar":
-                    classification_data.match_details = f"High similarity to {match_accession}"
-                else:
-                    classification_data.match_details = f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
+                # Add match details (only if not already set by workflow)
+                if not hasattr(classification_data, 'match_details') or not classification_data.match_details:
+                    if match_stage == "exact":
+                        classification_data.match_details = f"Exact sequence match to {match_accession}"
+                    elif match_stage == "contained":
+                        # Check if it's a perfect match (High confidence indicates perfect match)
+                        if hasattr(classification_data, 'confidence') and classification_data.confidence == "High":
+                            classification_data.match_details = f"Perfect sequence match to {match_accession}"
+                        else:
+                            classification_data.match_details = f"Query sequence contained within {match_accession}"
+                    elif match_stage == "similar":
+                        classification_data.match_details = f"High similarity to {match_accession}"
+                    else:
+                        classification_data.match_details = f"{match_stage.replace('_', ' ').title()} match to {match_accession}"
             else:
                 logger.warning(f"No metadata found for {match_accession}")
     except Exception as e:

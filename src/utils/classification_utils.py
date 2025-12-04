@@ -124,15 +124,23 @@ def assign_accession(
         return exact_match, False
 
     logger.debug("Step 2: Checking for contained matches...")
-    container_match = check_contained_match(
+    container_result = check_contained_match(
         fasta=sequence,
         existing_ships=existing_ships,
         min_coverage=0.95,
         min_identity=0.95,
     )
-    if container_match:
-        logger.debug(f"Found containing match: {container_match}")
-        return container_match, True  # Flag for review since it's truncated
+    if container_result:
+        container_match, is_perfect_match = container_result
+        logger.debug(f"Found containing match: {container_match} (perfect: {is_perfect_match})")
+
+        # If it's a perfect match (coverage=1.0, identity=1.0), treat as exact match
+        if is_perfect_match:
+            logger.debug("Perfect match found - treating as exact match")
+            return container_match, False  # No review needed for perfect matches
+        else:
+            logger.debug("Imperfect match found - requires review")
+            return container_match, True  # Flag for review since it's truncated or imperfect
 
     logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
     similar_match, similarities = check_similar_match(sequence, existing_ships, threshold)
@@ -298,7 +306,7 @@ def check_contained_match(
     existing_ships: pd.DataFrame,
     min_coverage: float = 0.95,
     min_identity: float = 0.95,
-) -> Optional[str]:
+) -> Optional[Tuple[str, bool]]:
     """Check if sequence is contained within any existing sequences.
 
     Args:
@@ -308,7 +316,8 @@ def check_contained_match(
         min_identity: Minimum sequence identity required (default: 0.95)
 
     Returns:
-        accession_tag of the best containing match, or None if no match found
+        Tuple of (accession_tag, is_perfect_match) of the best containing match,
+        or None if no match found. is_perfect_match is True if coverage=1.0 and identity=1.0.
     """
     containing_matches = []
 
@@ -397,13 +406,17 @@ def check_contained_match(
 
                     if not matching_rows.empty:
                         sequence_length = len(matching_rows["sequence"].iloc[0])
-                        containing_matches.append(
-                            (
-                                identity * coverage,  # score for sorting
-                                sequence_length,  # length for tiebreaking
-                                ref_name,
-                            )
+                    # Check if this is a perfect match (coverage=1.0 and identity=1.0)
+                    is_perfect_match = (coverage >= 1.0 and identity >= 1.0)
+
+                    containing_matches.append(
+                        (
+                            identity * coverage,  # score for sorting
+                            sequence_length,  # length for tiebreaking
+                            ref_name,
+                            is_perfect_match,  # whether this is a perfect match
                         )
+                    )
 
             logger.debug(f"Processed {alignment_count} alignments from minimap2")
 
@@ -413,9 +426,10 @@ def check_contained_match(
         logger.debug(f"Found {len(containing_matches)} containing matches")
         logger.debug(
             f"Selected best match: {containing_matches[0][2]} "
-            f"(score: {containing_matches[0][0]:.2f}, length: {containing_matches[0][1]})"
+            f"(score: {containing_matches[0][0]:.2f}, length: {containing_matches[0][1]}, "
+            f"perfect_match: {containing_matches[0][3]})"
         )
-        return containing_matches[0][2]  # Return accession of best match
+        return containing_matches[0][2], containing_matches[0][3]  # Return (accession, is_perfect_match)
 
     logger.debug("No containing matches found")
     return None
@@ -1486,14 +1500,22 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                 )
 
                 if result:
-                    logger.debug(f"Found contained match: {result}")
+                    match_accession, is_perfect_match = result
+                    logger.debug(f"Found contained match: {match_accession} (perfect: {is_perfect_match})")
                     workflow_state.stages[stage_id]["progress"] = 30
                     workflow_state.stages[stage_id]["status"] = "complete"
-                    
-                    classification_data.source = "contained"
-                    classification_data.closest_match = result
-                    classification_data.confidence = "High"
-                    classification_data.match_details = f"Query sequence contained within {result}"
+
+                    # Set source to "exact" for perfect matches, "contained" for imperfect matches
+                    classification_data.source = "exact" if is_perfect_match else "contained"
+                    classification_data.closest_match = match_accession
+                    classification_data.confidence = "High" if is_perfect_match else "Medium"
+
+                    # Update workflow state to reflect the correct stage
+                    workflow_state.match_stage = classification_data.source
+                    if is_perfect_match:
+                        classification_data.match_details = f"Exact sequence match to {match_accession}"
+                    else:
+                        classification_data.match_details = f"Query sequence contained within {match_accession}"
                     
                     workflow_state.set_classification(classification_data)
                     workflow_state.complete = True
@@ -1829,7 +1851,12 @@ def create_classification_card(classification_data):
         if source == "exact":
             closest_match_text = f"Exact match to {closest_match}"
         elif source == "contained":
-            closest_match_text = f"Contained in {closest_match}"
+            # Check if this is a perfect match (High confidence + perfect match in details)
+            if (confidence == "High" and match_details and
+                ("perfect match" in match_details.lower() or "perfect" in match_details.lower())):
+                closest_match_text = f"Perfect match to {closest_match}"
+            else:
+                closest_match_text = f"Contained in {closest_match}"
         elif source == "similar":
             closest_match_text = f"Similar to {closest_match}"
         else:
