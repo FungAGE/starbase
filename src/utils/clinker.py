@@ -11,6 +11,67 @@ from src.database.sql_manager import fetch_accession_ship
 
 logger = logging.getLogger(__name__)
 
+# Global cache for original GFF data to preserve gene names
+gff_data_cache = {}
+
+def parse_gff_attributes(attributes_str):
+    """Parse GFF attributes string into a dict."""
+    attrs = {}
+    if not attributes_str:
+        return attrs
+    for attr in attributes_str.split(';'):
+        if '=' in attr:
+            key, value = attr.split('=', 1)
+            attrs[key.strip()] = value.strip()
+    return attrs
+
+def find_matching_gff_entry(gene, gff_df):
+    """Find the matching GFF entry for a gene based on coordinates."""
+    if gff_df is None or gff_df.empty:
+        return None
+
+    # Try to match by start/end coordinates
+    matches = gff_df[
+        (gff_df['start'] == gene.get('start')) &
+        (gff_df['end'] == gene.get('end'))
+    ]
+
+    if not matches.empty:
+        return matches.iloc[0].to_dict()
+
+    return None
+
+def extract_stable_gene_name(gene, original_gff_data=None):
+    """Extract the most stable/meaningful gene name available."""
+    # Priority 1: Original GFF attributes (most stable)
+    if original_gff_data and 'attributes' in original_gff_data:
+        attrs = parse_gff_attributes(original_gff_data['attributes'])
+        if 'Name' in attrs:
+            return attrs['Name']
+        if 'ID' in attrs:
+            return attrs['ID']
+
+    # Priority 2: GenBank qualifiers (less stable)
+    if hasattr(gene, 'feature') and gene.feature:
+        qualifiers = gene.feature.qualifiers
+        for key in ['gene', 'locus_tag', 'protein_id', 'product']:
+            if key in qualifiers and qualifiers[key]:
+                value = qualifiers[key][0]
+                # Skip generic/auto-generated names
+                if not value.startswith(('gene_', 'protein_', '<unknown')):
+                    return value
+
+    # Priority 3: Stable fallback (most stable option available)
+    if hasattr(gene, 'feature') and gene.feature and 'locus_tag' in gene.feature.qualifiers:
+        locus_tag = gene.feature.qualifiers['locus_tag'][0]
+        # If locus_tag looks generic, create a more stable coordinate-based ID
+        if locus_tag.startswith('gene_'):
+            return f"gene_{gene.get('start', 0)}_{gene.get('end', 0)}"
+        return locus_tag
+
+    # Last resort: Use a stable coordinate-based identifier
+    return f"gene_{gene.get('start', 0)}_{gene.get('end', 0)}"
+
 def create_temp_gbk_from_gff(accession_tag, temp_dir):
     """Create a temporary GenBank file from GFF data in the database"""
     try:
@@ -43,13 +104,17 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
         gff_df['phase'] = gff_df['phase'].fillna(0)        
         gff_df['score'] = gff_df['score'].fillna('.')
                 
-        gff_df = gff_df[gff_columns]        
+        gff_df = gff_df[gff_columns]
+
+        # Cache the original GFF data for stable gene name extraction
+        gff_data_cache[accession_tag] = gff_df.copy()
+
         gff_df.to_csv(gff_file, sep="\t", index=False, header=False)
-        
+
         # Convert GFF to GenBank
         gbk_file = temp_dir / f"{accession_tag}.gbk"
         gff2gb(str(gff_file), str(fasta_file), str(gbk_file))
-        
+
         logger.info(f"Successfully created GenBank file for {accession_tag}")
         return str(gbk_file)
         
@@ -106,17 +171,21 @@ def process_gbk_files(gbk_files, accession_tags=None):
     try:
         gbk_file_paths = []
         
+        # Track accession tags for each file
+        accession_tag_map = {}  # filename -> accession_tag
+
         # If accession_tags are provided, generate GenBank files on-the-fly
         if accession_tags:
             logger.info(f"Generating GenBank files for {len(accession_tags)} accession tags")
-            
+
             # Create temporary directory for generated files
             temp_dir = Path(tempfile.mkdtemp())
-            
+
             for accession_tag in accession_tags:
                 gbk_file = create_temp_gbk_from_gff(accession_tag, temp_dir)
                 if gbk_file:
                     gbk_file_paths.append(gbk_file)
+                    accession_tag_map[gbk_file] = accession_tag
                 else:
                     logger.warning(f"Failed to generate GenBank file for {accession_tag}")
         else:
@@ -151,6 +220,14 @@ def process_gbk_files(gbk_files, accession_tags=None):
             # Set a lower cutoff for alignment to handle potentially poor translations
             globaligner = align_clusters(*clusters, cutoff=0.1)
             logger.info(f"Successfully created globaligner with {len(globaligner.clusters)} clusters")
+
+            # Attach accession tag information to clusters
+            for i, cluster in enumerate(globaligner.clusters):
+                # Try to find which file this cluster came from
+                cluster_file = getattr(cluster, '_source_file', None)
+                if cluster_file and cluster_file in accession_tag_map:
+                    cluster._accession_tag = accession_tag_map[cluster_file]
+
             return globaligner
         except Exception as e:
             logger.error(f"Error parsing files with clinker: {str(e)}")
@@ -181,7 +258,8 @@ def create_clustermap_data(globaligner, use_file_order=False):
         formatted_cluster = {
             "uid": cluster['uid'],
             "name": cluster['name'],
-            "loci": []
+            "loci": [],
+            "_accession_tag": getattr(cluster, '_accession_tag', '')  # Pass through accession tag
         }
         
         # Process loci
@@ -191,18 +269,35 @@ def create_clustermap_data(globaligner, use_file_order=False):
                 "name": locus['name'],
                 "start": locus['start'],
                 "end": locus['end'],
-                "genes": []
+                "genes": [],
+                "_accession_tag": cluster.get('_accession_tag', '')  # Pass through accession tag
             }
             
             # Process genes
             for gene in locus['genes']:
+                # Try to get original GFF data for this gene
+                original_gff = None
+                if locus.get('_accession_tag') and locus['_accession_tag'] in gff_data_cache:
+                    # Match gene by coordinates or other stable identifier
+                    original_gff = find_matching_gff_entry({
+                        'start': gene.get('start'),
+                        'end': gene.get('end')
+                    }, gff_data_cache[locus['_accession_tag']])
+
+                # Use stable name extraction
+                name = extract_stable_gene_name(gene, original_gff)
+
                 formatted_gene = {
                     "uid": gene['uid'],
-                    "name": gene.get('label', gene['uid']),
+                    "name": name,
+                    "stable_name": name,  # New stable field for clustermap.js
+                    "locus_tag": gene.get('locus_tag', ''),
                     "start": gene['start'],
                     "end": gene['end'],
                     "strand": gene['strand'],
-                    "names": gene.get('names', {})  # Include gene names for labeling
+                    "names": gene.get('names', {}),  # Include gene names for labeling
+                    "_locus": locus['uid'],  # Reference to parent locus
+                    "_cluster": cluster['uid'],  # Reference to parent cluster
                 }
                 formatted_locus['genes'].append(formatted_gene)
                 
