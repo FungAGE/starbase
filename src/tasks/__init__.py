@@ -1,6 +1,7 @@
 import tempfile
 import os
 import json
+from typing import Dict, Any
 
 from src.config.cache import cache, cleanup_old_cache
 from src.telemetry.utils import update_ip_locations
@@ -20,6 +21,7 @@ __all__ = [
     "run_multi_pgv_task",
     "run_single_pgv_task",
     "run_classification_workflow_task",
+    "process_submission_task",
 ]
 
 
@@ -338,3 +340,154 @@ def _run_classification_workflow_internal(workflow_state, blast_data=None, class
             "class_dict": {},
             "task_id": "",
         }
+
+
+def _process_submission_impl(submission_data: Dict[str, Any], submission_id: str = None) -> Dict[str, Any]:
+    """
+    Implementation of submission processing task.
+
+    Args:
+        submission_data: Dict containing all submission data
+        submission_id: Optional submission ID for status tracking
+
+    Returns:
+        Dict with processing results
+    """
+    try:
+        from src.database.cleanup.utils.submission_utils import (
+            validate_submission_data,
+            process_submission_data,
+            perform_database_insertion
+        )
+        from src.pages.submit import update_submission_status
+
+        logger.info(f"Starting submission processing for file: {submission_data.get('seq_filename', 'unknown')}")
+
+        # Update status if we have a submission ID
+        if submission_id:
+            update_submission_status(submission_id, "processing", 25, "Validating submission data...")
+
+        # Step 1: Validate input data
+        logger.debug("Validating submission data")
+        validated_data = validate_submission_data(
+            submission_data["seq_contents"],
+            submission_data["seq_filename"],
+            submission_data["uploader"],
+            submission_data["evidence"],
+            submission_data["genus"],
+            submission_data["species"],
+            submission_data["hostchr"],
+            submission_data["shipstart"],
+            submission_data["shipend"]
+        )
+        validated_data["comment"] = submission_data.get("comment", "")
+
+        if submission_id:
+            update_submission_status(submission_id, "processing", 50, "Processing sequence data...")
+
+        # Step 2: Process the data
+        logger.debug("Processing submission data")
+        processed_data = process_submission_data(validated_data, submission_data["strand_radio"])
+
+        if submission_id:
+            update_submission_status(submission_id, "processing", 75, "Inserting into database...")
+
+        # Step 3: Insert into database
+        logger.debug("Inserting submission into database")
+        result = perform_database_insertion(
+            processed_data,
+            submission_data.get("anno_contents"),
+            submission_data.get("anno_filename"),
+            submission_data.get("anno_date"),
+            submission_data.get("seq_date")
+        )
+
+        logger.info(f"Successfully processed submission for {result['filename']} with accession {result['accession']}")
+
+        final_result = {
+            "success": True,
+            "accession": result["accession"],
+            "needs_review": result["needs_review"],
+            "filename": result["filename"],
+            "uploader": result["uploader"],
+            "message": "Submission processed successfully",
+            "status": "completed"
+        }
+
+        if submission_id:
+            update_submission_status(submission_id, "completed", 100, "Submission completed successfully", final_result)
+
+        return final_result
+
+    except Exception as e:
+        logger.error(f"Submission processing failed: {str(e)}")
+        logger.exception("Full traceback:")
+
+        # Determine error type for user-friendly message
+        if "ValidationError" in str(type(e)):
+            error_type = "validation"
+            user_message = str(e)
+        elif "ProcessingError" in str(type(e)):
+            error_type = "processing"
+            user_message = str(e)
+        elif "DatabaseError" in str(type(e)):
+            error_type = "database"
+            user_message = "A database error occurred. Please try again."
+        else:
+            error_type = "general"
+            user_message = "An unexpected error occurred. Please try again."
+
+        error_result = {
+            "success": False,
+            "error": str(e),
+            "error_type": error_type,
+            "user_message": user_message,
+            "status": "failed"
+        }
+
+        if submission_id:
+            update_submission_status(submission_id, "failed", 100, user_message, error_result)
+
+        return error_result
+
+
+if CELERY_AVAILABLE and celery:
+    @celery.task(name="process_submission_task", bind=True, max_retries=2, retry_backoff=True)
+    def process_submission_task(self, submission_data: Dict[str, Any], submission_id: str = None) -> Dict[str, Any]:
+        """Celery task to process submission asynchronously"""
+        try:
+            return _process_submission_impl(submission_data, submission_id)
+        except Exception as e:
+            logger.error(f"Submission task failed: {str(e)}")
+            # Retry on transient errors
+            if self.request.retries < self.max_retries:
+                raise self.retry(countdown=30 * (2 ** self.request.retries))
+            error_result = {
+                "success": False,
+                "error": f"Task failed after retries: {str(e)}",
+                "error_type": "general",
+                "user_message": "Processing failed. Please contact support if this persists.",
+                "status": "failed"
+            }
+            if submission_id:
+                from src.pages.submit import update_submission_status
+                update_submission_status(submission_id, "failed", 100, error_result["user_message"], error_result)
+            return error_result
+else:
+    def process_submission_task(submission_data: Dict[str, Any], submission_id: str = None) -> Dict[str, Any]:
+        """Direct submission processing (no Celery)"""
+        try:
+            return _process_submission_impl(submission_data, submission_id)
+        except Exception as e:
+            logger.error(f"Submission processing failed: {str(e)}")
+            error_result = {
+                "success": False,
+                "error": str(e),
+                "error_type": "general",
+                "user_message": "An unexpected error occurred. Please try again.",
+                "status": "failed"
+            }
+            if submission_id:
+                from src.pages.submit import update_submission_status
+                update_submission_status(submission_id, "failed", 100, error_result["user_message"], error_result)
+            return error_result
