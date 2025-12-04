@@ -55,25 +55,16 @@ else
     # we are provided 4cpu and 8gb of memory within a single pod
     # we can use 4 workers to maximize the utilization of the resources
 
-    # key parameters to consider:
-    # --worker-class=uvicorn.workers.UvicornWorker: Explicitly specifies the worker class for consistency.
-    # --worker-timeout=300: Kills workers that have been running for more than 5 minutes, preventing infinite hangs while allowing your "few minutes" task duration.
-    # --max-requests-jitter=50: Adds randomness to the 1000 request limit to prevent all workers from restarting simultaneously.
-    # --timeout-graceful-shutdown=30: Reduces graceful shutdown time from 60 to 30 seconds for faster recovery.
-
     uvicorn --host=0.0.0.0 \
         --port=8000 \
         --workers=4 \
-        --worker-class=uvicorn.workers.UvicornWorker \
-        --worker-timeout=300 \
-        --max-requests=1000 \
-        --max-requests-jitter=50 \
         --log-level=warning \
         --interface wsgi \
         --proxy-headers \
         --forwarded-allow-ips='*' \
         --timeout-keep-alive=5 \
         --timeout-graceful-shutdown=30 \
+        --limit-max-requests=1000 \
         --no-access-log \
         app:server
 fi
