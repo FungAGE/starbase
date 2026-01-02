@@ -9,7 +9,10 @@ import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, _dash_renderer
 
 from src.components import navmenu
-from src.components.callbacks import create_feedback_button, create_database_version_indicator
+from src.components.callbacks import (
+    create_feedback_button,
+    create_database_version_indicator,
+)
 from src.config.cache import cache, cleanup_old_cache
 from src.config.database import SubmissionsSession
 from src.api import register_routes
@@ -70,7 +73,7 @@ external_scripts = [
     "/assets/js/clustermap.min.js",
     "/assets/js/synteny.js",
     "/assets/js/universal-modal.js",
-    "/assets/js/blaster.min.woaln.js"
+    "/assets/js/blaster.min.woaln.js",
 ]
 
 app = Dash(
@@ -105,16 +108,18 @@ def initialize_app():
         from src.database.blastdb import create_dbs
         from src.config.celery_config import celery
 
+        # Always run these
         create_database_indexes()
         cleanup_old_cache()
-        update_ip_locations()
 
-        try:
-            logger.info("Rebuilding BLAST databases on startup...")
-            create_dbs()
-            logger.info("BLAST databases rebuilt successfully on startup")
-        except Exception as e:
-            logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        if not IS_DEV:
+            update_ip_locations()
+            try:
+                logger.info("Rebuilding BLAST databases on startup...")
+                create_dbs()
+                logger.info("BLAST databases rebuilt successfully on startup")
+            except Exception as e:
+                logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
 
         # Initialize Celery with Flask app context
         celery.conf.update(
