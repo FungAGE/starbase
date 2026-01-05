@@ -22,6 +22,12 @@ from src.config.cache import cache
 from src.config.celery_config import run_task
 from src.tasks import process_submission_task
 from src.database.cleanup.utils.web_submission_adapter import validate_submission_data
+from src.utils.email_notifications import (
+    send_curator_notification,
+    send_submission_confirmation,
+)
+from src.components.leaderboard import create_leaderboard
+from src.components.submission_queue import create_submission_queue
 
 
 logger = get_logger(__name__)
@@ -234,7 +240,7 @@ dash.register_page(__name__)
 
 
 layout = dmc.Container(
-    size="md",
+    size="lg",
     children=[
         # Header Section
         dmc.Title(
@@ -250,135 +256,73 @@ layout = dmc.Container(
         dmc.Paper(
             children=[
                 dmc.Text(
-                    "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements. Submissions should include some metadata about the host genome the Starship was found in. Please upload the necessary files, a FASTA file containing the Starship sequence and a GFF file containing the gene annotations (optional), using our submission portal below.",
+                    "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
                     size="md",
                     c="dimmed",
                     mb="md",
                 ),
                 dmc.Text(
-                    "With each submission, you will be assigned a unique submission ID. You can use this ID to check the status of your submission and to track your submission.",
-                    size="md",
-                    c="dimmed",
-                    mb="md",
-                ),
-                # Submission Status Section
-                dmc.Paper(
-                    children=[
-                        dmc.Title("Submission Status", order=3, mb="md"),
-                        dmc.Stack(
-                            [
-                                dmc.TextInput(
-                                    id="status-submission-id",
-                                    label="Check Submission Status",
-                                    placeholder="Submission ID",
-                                    description="Enter the submission ID to check processing status",
-                                ),
-                                dmc.Group(
-                                    [
-                                        dmc.Button(
-                                            "Check Status",
-                                            id="check-status-btn",
-                                            variant="light",
-                                            size="sm",
-                                        ),
-                                        dmc.Switch(
-                                            id="auto-refresh-switch",
-                                            label="Auto-refresh",
-                                            checked=False,
-                                            size="sm",
-                                        ),
-                                    ],
-                                    gap="md",
-                                ),
-                                html.Div(id="status-display", className="mt-3"),
-                                dcc.Interval(
-                                    id="status-refresh-interval",
-                                    interval=5000,  # 5 seconds
-                                    disabled=True,
-                                    n_intervals=0,
-                                ),
-                            ],
-                            gap="sm",
-                        ),
-                    ],
-                    p="xl",
-                    radius="md",
-                    withBorder=True,
-                    mb="xl",
-                ),
-                # Modal
-                dbc.Modal(
-                    [
-                        dbc.ModalHeader(
-                            dbc.ModalTitle("Submission Status", className="text-info"),
-                            close_button=True,
-                        ),
-                        dbc.ModalBody(
-                            [
-                                html.Div(
-                                    [
-                                        html.Div(
-                                            id="output-data-upload", className="mt-3"
-                                        ),
-                                    ],
-                                    className="text-center",
-                                )
-                            ]
-                        ),
-                        dbc.ModalFooter(
-                            dbc.Button(
-                                "Close",
-                                id="close",
-                                className="ms-auto",
-                                color="primary",
-                                n_clicks=0,
-                            )
-                        ),
-                    ],
-                    id="submit-modal",
-                    is_open=False,
-                    centered=True,
-                ),
-                dmc.Text(
-                    "Each submission is processed by our automated pipeline, and then manually reviewed by a curator. The steps of the pre-submission pipeline are as follows:",
+                    "Each submission is processed by our automated pipeline, then manually reviewed by our curation team. You'll receive a confirmation email once your submission is processed.",
                     size="md",
                     c="dimmed",
                     mb="md",
                 ),
                 dmc.List(
                     [
-                        dmc.ListItem(dmc.Text("The sequence is parsed and validated")),
+                        dmc.ListItem(dmc.Text("Sequence validation and parsing")),
+                        dmc.ListItem(dmc.Text("Duplicate checking and classification")),
+                        dmc.ListItem(dmc.Text("Accession number assignment")),
+                        dmc.ListItem(dmc.Text("Curator review")),
                         dmc.ListItem(
-                            dmc.Text(
-                                "The sequence is checked against the existing database and classified"
-                            )
-                        ),
-                        dmc.ListItem(dmc.Text("An accession number is assigned")),
-                        dmc.ListItem(
-                            dmc.Text(
-                                "Additional metadata is added to the submission and stored in a staging database to be reviewed by a curator."
-                            )
-                        ),
-                        dmc.ListItem(
-                            dmc.Text(
-                                "The submission is reviewed by a curator and either approved or rejected."
-                            )
-                        ),
-                        dmc.ListItem(
-                            dmc.Text(
-                                "If approved, the submission is added to the database and made publicly available in the subsequent database release."
-                            )
+                            dmc.Text("Inclusion in next database release (if approved)")
                         ),
                     ],
                     type="ordered",
-                    size="lg",
-                    spacing="sm",
+                    size="sm",
+                    spacing="xs",
+                    icon=dmc.ThemeIcon(
+                        DashIconify(icon="tabler:check", width=16),
+                        size="sm",
+                        variant="light",
+                        color="blue",
+                    ),
                 ),
             ],
             p="xl",
             radius="md",
             withBorder=True,
             mb="xl",
+        ),
+        # Modal
+        dbc.Modal(
+            [
+                dbc.ModalHeader(
+                    dbc.ModalTitle("Submission Received", className="text-info"),
+                    close_button=True,
+                ),
+                dbc.ModalBody(
+                    [
+                        html.Div(
+                            [
+                                html.Div(id="output-data-upload", className="mt-3"),
+                            ],
+                            className="text-center",
+                        )
+                    ]
+                ),
+                dbc.ModalFooter(
+                    dbc.Button(
+                        "Close",
+                        id="close",
+                        className="ms-auto",
+                        color="primary",
+                        n_clicks=0,
+                    )
+                ),
+            ],
+            id="submit-modal",
+            is_open=False,
+            centered=True,
         ),
         dmc.Alert(
             "Fields marked with * are required",
@@ -583,7 +527,13 @@ layout = dmc.Container(
             p="xl",
             radius="md",
             withBorder=True,
+            mb="xl",
         ),
+        # Leaderboard Section
+        create_leaderboard(limit=10, title="🏆 Top Contributors"),
+        dmc.Space(h=20),
+        # Pending Submissions Queue
+        create_submission_queue(max_items=15),
     ],
     style={
         "margin": "0 auto",
@@ -618,7 +568,6 @@ def create_fasta_display(records, filename):
         Output("shipstart", "value"),
         Output("shipend", "value"),
         Output("comment", "value"),
-        Output("status-submission-id", "value"),
     ],
     [
         Input("submit-ship", "n_clicks"),
@@ -679,7 +628,6 @@ def submit_ship(
             False,
             "",
             False,
-            dash.no_update,
             dash.no_update,
             dash.no_update,
             dash.no_update,
@@ -756,6 +704,7 @@ def submit_ship(
         task_result = run_task(process_submission_task, validated_data, submission_id)
 
         # Store task ID for status checking
+        accession_assigned = None
         if hasattr(task_result, "id"):
             update_submission_status(
                 submission_id,
@@ -773,8 +722,22 @@ def submit_ship(
                 message=task_result.get("message", "Processing complete"),
                 result=task_result,
             )
+            if task_result.get("success"):
+                accession_assigned = task_result.get("accession")
 
-        # Step 6: Show immediate feedback with submission ID
+        # Step 6: Send email notifications
+        try:
+            # Send curator notification
+            send_curator_notification(submission_id, validated_data, accession_assigned)
+            # Send confirmation to submitter
+            if uploader:
+                send_submission_confirmation(
+                    uploader, submission_id, accession_assigned
+                )
+        except Exception as e:
+            logger.error(f"Failed to send email notifications: {str(e)}")
+
+        # Step 7: Show immediate feedback
         loading = False
         modal_open = True
 
@@ -782,36 +745,30 @@ def submit_ship(
             # Async processing
             message = html.Div(
                 [
-                    html.H4("Submission Queued!", className="mb-3"),
-                    dmc.Text(
-                        "Your submission is being processed in the background.",
-                        className="text-muted",
-                    ),
-                    dmc.Group(
-                        [
+                    dmc.Alert(
+                        children=[
                             dmc.Text(
-                                f"Submission ID: {submission_id}",
-                                fw=500,
-                                className="text-info",
+                                "✓ Your submission has been received and is being processed!",
+                                fw=600,
+                                size="lg",
                             ),
-                            dmc.CopyButton(value=submission_id),
+                            html.Br(),
+                            dmc.Text(
+                                f"Submission ID: {submission_id}", size="sm", c="dimmed"
+                            ),
+                            html.Br(),
+                            dmc.Text(
+                                "You'll receive a confirmation email shortly. Our curation team will review your submission.",
+                                size="sm",
+                            ),
                         ],
-                        gap="xs",
-                        align="center",
-                    ),
-                    html.Br(),
-                    dmc.Text(
-                        "You can close this dialog. Processing will continue.",
-                        className="text-muted small",
-                    ),
-                    html.Br(),
-                    dmc.Text(
-                        "Check the status below to see when processing is complete.",
-                        className="text-muted small",
+                        title="Submission Received",
+                        color="green",
+                        variant="light",
                     ),
                 ]
             )
-            # Reset form and pre-fill submission ID for status checking
+            # Reset form
             return (
                 modal_open,
                 message,
@@ -824,32 +781,34 @@ def submit_ship(
                 None,
                 None,
                 "",  # Reset form fields
-                submission_id,  # Pre-fill submission ID for status checking
             )
         else:
             # Sync processing completed
             if task_result.get("success"):
-                message = html.Div(
-                    [
-                        html.H4("Successfully submitted!", className="mb-3"),
+                message = dmc.Alert(
+                    children=[
+                        dmc.Text("✓ Successfully submitted!", fw=600, size="lg"),
+                        html.Br(),
                         dmc.Text(
-                            f"Assigned accession: {task_result['accession']}",
+                            f"Accession: {task_result['accession']}",
+                            size="md",
                             fw=500,
                             c="green",
                         ),
                         dmc.Text(
-                            f"Review status: {'Needs review' if task_result['needs_review'] else 'Auto-approved'}",
-                            className="text-muted",
-                        ),
-                        dmc.Text(
                             f"Filename: {task_result['filename']}",
-                            className="text-muted",
+                            size="sm",
+                            c="dimmed",
                         ),
+                        html.Br(),
                         dmc.Text(
-                            f"Uploaded by: {task_result['uploader']}",
-                            className="text-muted",
+                            "Your submission will be reviewed by our curation team. You'll receive an email confirmation.",
+                            size="sm",
                         ),
-                    ]
+                    ],
+                    title="Submission Complete",
+                    color="green",
+                    variant="light",
                 )
                 # Reset form on success
                 return (
@@ -864,24 +823,26 @@ def submit_ship(
                     None,
                     None,
                     "",  # Reset form fields
-                    "",  # Clear submission ID field
                 )
             else:
-                message = html.Div(
-                    [
-                        html.H4("Submission Failed", className="text-danger mb-3"),
+                message = dmc.Alert(
+                    children=[
                         dmc.Text(
-                            task_result.get("user_message", "An error occurred"),
-                            className="text-muted",
+                            task_result.get(
+                                "user_message", "An error occurred during submission."
+                            ),
+                            size="sm",
                         ),
-                    ]
+                    ],
+                    title="Submission Failed",
+                    color="red",
+                    variant="light",
                 )
                 # Keep form filled on error
                 return (
                     modal_open,
                     message,
                     loading,
-                    dash.no_update,
                     dash.no_update,
                     dash.no_update,
                     dash.no_update,
@@ -907,7 +868,6 @@ def submit_ship(
             dash.no_update,
             dash.no_update,
             dash.no_update,
-            dash.no_update,
         )
 
     except Exception as e:
@@ -918,7 +878,6 @@ def submit_ship(
             error_response["modal_open"],
             error_response["message"],
             error_response["loading"],
-            dash.no_update,
             dash.no_update,
             dash.no_update,
             dash.no_update,
@@ -1009,125 +968,3 @@ def update_gff_details(anno_contents, anno_filename):
             color="red",
             variant="light",
         )
-
-
-@callback(
-    Output("status-refresh-interval", "disabled"),
-    Input("auto-refresh-switch", "checked"),
-    prevent_initial_call=True,
-)
-def toggle_auto_refresh(checked):
-    """Enable/disable auto-refresh interval based on switch state."""
-    return not checked
-
-
-@callback(
-    Output("status-display", "children"),
-    [
-        Input("check-status-btn", "n_clicks"),
-        Input("status-refresh-interval", "n_intervals"),
-    ],
-    [
-        State("status-submission-id", "value"),
-        State("auto-refresh-switch", "checked"),
-    ],
-    prevent_initial_call=True,
-)
-def check_submission_status(n_clicks, n_intervals, submission_id, auto_refresh):
-    """Check and display submission status."""
-    # Determine what triggered this callback
-    triggered_id = ctx.triggered_id if ctx.triggered else None
-
-    # If auto-refresh triggered but it's not enabled, don't update
-    if triggered_id == "status-refresh-interval" and not auto_refresh:
-        raise PreventUpdate
-
-    # If button triggered but no submission ID, show message
-    if triggered_id == "check-status-btn" and (
-        not submission_id or not submission_id.strip()
-    ):
-        return html.Div("Please enter a submission ID", className="text-muted")
-
-    # If auto-refresh but no submission ID, don't update
-    if not submission_id or not submission_id.strip():
-        raise PreventUpdate
-
-    submission_id = submission_id.strip()
-    status_data = get_submission_status(submission_id)
-
-    if not status_data:
-        return dmc.Alert(
-            "Submission not found or expired. Submission status is only available for 1 hour after submission.",
-            title="Status Not Found",
-            color="orange",
-            variant="light",
-        )
-
-    status = status_data.get("status", "unknown")
-    progress = status_data.get("progress", 0)
-    message = status_data.get("message", "")
-    created_at = status_data.get("created_at", "")
-    updated_at = status_data.get("updated_at", "")
-
-    # Status color mapping
-    status_colors = {
-        "queued": "blue",
-        "processing": "yellow",
-        "completed": "green",
-        "failed": "red",
-        "unknown": "gray",
-    }
-
-    color = status_colors.get(status, "gray")
-
-    status_display = [
-        dmc.Group(
-            [
-                dmc.Text("Status:", fw=700),
-                dmc.Badge(status.upper(), color=color, variant="light"),
-            ]
-        ),
-        dmc.Progress(value=progress, color=color, size="lg"),
-        dmc.Text(f"Progress: {progress}%", size="sm", c="dimmed"),
-        dmc.Text(message, size="sm"),
-    ]
-
-    if created_at:
-        status_display.append(
-            dmc.Text(f"Submitted: {created_at}", size="xs", c="dimmed")
-        )
-
-    if updated_at and updated_at != created_at:
-        status_display.append(
-            dmc.Text(f"Last updated: {updated_at}", size="xs", c="dimmed")
-        )
-
-    # Show result if completed
-    result = status_data.get("result")
-    if result and status == "completed" and result.get("success"):
-        status_display.extend(
-            [
-                dmc.Divider(),
-                dmc.Text("Result:", fw=700),
-                dmc.Text(f"Accession: {result.get('accession', 'N/A')}", size="sm"),
-                dmc.Text(
-                    f"Review needed: {'Yes' if result.get('needs_review') else 'No'}",
-                    size="sm",
-                ),
-                dmc.Text(f"Filename: {result.get('filename', 'N/A')}", size="sm"),
-            ]
-        )
-    elif result and status == "failed":
-        status_display.extend(
-            [
-                dmc.Divider(),
-                dmc.Alert(
-                    result.get("user_message", "Processing failed"),
-                    title="Error",
-                    color="red",
-                    variant="light",
-                ),
-            ]
-        )
-
-    return dmc.Stack(status_display, gap="xs")
