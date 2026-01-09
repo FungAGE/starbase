@@ -8,7 +8,6 @@ from sqlalchemy import (
     DateTime,
     Boolean,
     VARCHAR,
-    DateTime,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
