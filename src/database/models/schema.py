@@ -67,8 +67,10 @@ class Genome(Base):
     biosample = Column(String(50))
     acquisition_date = Column(Integer)
     assembly_accession = Column(String(50))
-    taxonomy_id = relationship("Taxonomy", back_populates="genomes")
+    taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
 
+    # Relationships
+    taxonomy = relationship("Taxonomy", back_populates="genomes")
 
 class StarshipFeatures(Base):
     __tablename__ = "starship_features"
