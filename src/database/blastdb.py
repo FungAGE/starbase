@@ -398,6 +398,88 @@ def update_signature_file_from_database(dataset_name="all", seq_type="nucl"):
         return False
 
 
+def create_reference_fasta_for_minimap2(fasta_path):
+    """
+    Create a reference FASTA file for minimap2 alignment from existing ship sequences.
+    
+    This is used for the "check_contained_match" step in accession assignment.
+    Pre-creating this file avoids writing all reference sequences to a temp file
+    on every alignment check.
+    
+    Args:
+        fasta_path: Path to the ship FASTA file
+        
+    Returns:
+        str: Path to the created reference FASTA file (.ref.fasta)
+    """
+    ref_fasta_path = fasta_path + ".ref.fasta"
+    
+    try:
+        # The reference file is just a copy of the main FASTA
+        # We keep it separate so it can be updated independently
+        if os.path.exists(fasta_path):
+            import shutil
+            shutil.copy2(fasta_path, ref_fasta_path)
+            logger.info(f"Created reference FASTA for minimap2: {ref_fasta_path}")
+            return ref_fasta_path
+        else:
+            logger.warning(f"Source FASTA not found: {fasta_path}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to create reference FASTA: {e}")
+        return None
+
+
+def append_to_reference_fasta(fasta_path, sequences):
+    """
+    Append sequences to the reference FASTA file for minimap2.
+    
+    Args:
+        fasta_path: Base path to FASTA file (reference is fasta_path + '.ref.fasta')
+        sequences: List of (accession, sequence) tuples to append
+        
+    Returns:
+        int: Number of sequences appended
+    """
+    ref_fasta_path = fasta_path + ".ref.fasta"
+    
+    try:
+        # Deduplicate sequences by accession
+        seen = {}
+        for accession, sequence in sequences:
+            seen[accession] = sequence
+        deduped_sequences = list(seen.items())
+        
+        # Read existing accessions to avoid duplicates
+        existing_accessions = set()
+        if os.path.exists(ref_fasta_path):
+            with open(ref_fasta_path, 'r') as f:
+                for line in f:
+                    if line.startswith('>'):
+                        accession = line[1:].split()[0]  # Get first word after >
+                        existing_accessions.add(accession)
+        
+        # Append only new sequences
+        appended_count = 0
+        with open(ref_fasta_path, 'a') as f:
+            for accession, sequence in deduped_sequences:
+                if accession not in existing_accessions:
+                    f.write(f">{accession}\n{sequence}\n")
+                    appended_count += 1
+        
+        if appended_count > 0:
+            logger.info(f"Appended {appended_count} sequences to reference FASTA: {ref_fasta_path}")
+        else:
+            logger.debug(f"No new sequences to append to {ref_fasta_path}")
+        
+        return appended_count
+        
+    except Exception as e:
+        logger.error(f"Failed to append to reference FASTA: {e}")
+        return 0
+
+
 def create_diamond_database(fasta_path, threads=2):
     # Create output path with .dmnd extension
     diamond_db = fasta_path + ".dmnd"
@@ -506,6 +588,14 @@ def create_dbs():
                 logger.info(f"{dataset_name} sourmash signatures created successfully")
             except Exception as e:
                 logger.error(f"Failed to create sourmash signatures for {dataset_name}: {e}")
+            
+            # Create reference FASTA for minimap2 alignments
+            logger.info(f"Creating reference FASTA for minimap2 ({dataset_name} dataset)...")
+            try:
+                create_reference_fasta_for_minimap2(ship_fasta_path)
+                logger.info(f"{dataset_name} reference FASTA created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create reference FASTA for {dataset_name}: {e}")
 
     # Create captain database
     captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]

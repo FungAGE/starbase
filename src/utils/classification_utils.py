@@ -101,7 +101,7 @@ confidence_icons = {
 
 def assign_accession(
     sequence: str, existing_ships: pd.DataFrame = None, threshold: float = 0.95,
-    precomputed_sig_path: str = None
+    precomputed_sig_path: str = None, precomputed_ref_path: str = None
 ) -> Tuple[str, bool]:
     """Assign an accession to a new sequence.
 
@@ -110,6 +110,7 @@ def assign_accession(
         existing_ships: DataFrame of existing ships (optional, will fetch if None)
         threshold: Similarity threshold for "almost identical" matches
         precomputed_sig_path: Path to pre-computed sourmash signature file (optional, for efficiency)
+        precomputed_ref_path: Path to pre-computed reference FASTA for minimap2 (optional, for efficiency)
 
     Returns:
         Tuple[str, bool]: (accession, needs_review)
@@ -131,6 +132,7 @@ def assign_accession(
         existing_ships=existing_ships,
         min_coverage=0.95,
         min_identity=0.95,
+        precomputed_ref_path=precomputed_ref_path,
     )
     if container_result:
         container_match, is_perfect_match = container_result
@@ -310,6 +312,7 @@ def check_contained_match(
     existing_ships: pd.DataFrame,
     min_coverage: float = 0.95,
     min_identity: float = 0.95,
+    precomputed_ref_path: str = None,
 ) -> Optional[Tuple[str, bool]]:
     """Check if sequence is contained within any existing sequences.
 
@@ -318,6 +321,7 @@ def check_contained_match(
         existing_ships: DataFrame containing existing sequences
         min_coverage: Minimum coverage of query sequence required (default: 0.95)
         min_identity: Minimum sequence identity required (default: 0.95)
+        precomputed_ref_path: Path to pre-created reference FASTA file (optional, for efficiency)
 
     Returns:
         Tuple of (accession_tag, is_perfect_match) of the best containing match,
@@ -347,11 +351,18 @@ def check_contained_match(
 
     # ruff: noqa
     with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as query_file:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta") as ref_file:
-            logger.debug("Writing query sequence to temporary file")
-            query_file.write(f">query\n{sequence}\n")
-            query_file.flush()
+        logger.debug("Writing query sequence to temporary file")
+        query_file.write(f">query\n{sequence}\n")
+        query_file.flush()
 
+        # Use pre-created reference file if available, otherwise create temp file
+        if precomputed_ref_path and os.path.exists(precomputed_ref_path):
+            logger.debug(f"Using pre-computed reference FASTA: {precomputed_ref_path}")
+            ref_file_path = precomputed_ref_path
+            ref_file_context = None
+        else:
+            logger.debug("No pre-computed reference found, creating temporary reference file")
+            ref_file_context = tempfile.NamedTemporaryFile(mode="w", suffix=".fasta", delete=False)
             ref_count = 0
             logger.debug("Writing reference sequences to temporary file")
             for _, row in existing_ships.iterrows():
@@ -360,13 +371,15 @@ def check_contained_match(
                     accession_display = row.get(
                         "accession_display", row.get("accession_tag")
                     )
-                    ref_file.write(f">{accession_display}\n{row['sequence']}\n")
+                    ref_file_context.write(f">{accession_display}\n{row['sequence']}\n")
                     ref_count += 1
-            ref_file.flush()
+            ref_file_context.flush()
+            ref_file_path = ref_file_context.name
             logger.debug(f"Written {ref_count} reference sequences for comparison")
 
+        try:
             logger.debug("Running minimap2 alignment")
-            cmd = f"minimap2 -c --cs -t 1 {ref_file.name} {query_file.name}"
+            cmd = f"minimap2 -c --cs -t 1 {ref_file_path} {query_file.name}"
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
             if result.returncode != 0:
@@ -423,6 +436,15 @@ def check_contained_match(
                     )
 
             logger.debug(f"Processed {alignment_count} alignments from minimap2")
+        
+        finally:
+            # Clean up temporary reference file if we created one
+            if ref_file_context:
+                ref_file_context.close()
+                try:
+                    os.unlink(ref_file_path)
+                except:
+                    pass
 
     # Sort by score descending, then by length descending
     if containing_matches:
