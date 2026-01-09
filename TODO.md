@@ -3,6 +3,8 @@
 - change name? existing tools/databases named "starbase"... one which is mRNA, etc. database
   - "starfleet", "armada"
 - "SSA" why did we change?
+
+## data integrity
 - sequences without accessions? accessions without sequences? check zenodo version, Andres found inconsistencies...
 - wiki table has issues with metadata
   - assembly accessions should not have the zenodo doi in there...
@@ -30,3 +32,20 @@ SSBXXXXXX.X : individual ships
 - submission page
   - instead of a text field for annotation method, have radio buttons, and a custom field
   - discourage people from just submitting raw starfish output
+
+
+
+- handle operations with accession tags, when multiple sequences are returned by the accession tag
+
+- synteny
+  - should viz all sequences, even if they are identical (it's still useful)
+
+- blast
+  - really only care about one representative from each accession
+
+- wiki
+  - it should be clear that the table is displaying a list of accessions
+  - from the table we can get information about the individual ships within that accession
+
+- sourmash signatures should be created at the same time as other databases?
+  - use existing sourmash signatures at the time of similarity comparison, rather than creating it fresh
