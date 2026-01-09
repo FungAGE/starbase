@@ -294,6 +294,12 @@ layout = dmc.Container(
             withBorder=True,
             mb="xl",
         ),
+        # Leaderboard Section
+        create_leaderboard(limit=10, title="🏆 Top Contributors"),
+        dmc.Space(h=20),
+        # Pending Submissions Queue
+        create_submission_queue(max_items=15),
+        dmc.Space(h=20),
         # Modal
         dbc.Modal(
             [
@@ -530,11 +536,6 @@ layout = dmc.Container(
             withBorder=True,
             mb="xl",
         ),
-        # Leaderboard Section
-        create_leaderboard(limit=10, title="🏆 Top Contributors"),
-        dmc.Space(h=20),
-        # Pending Submissions Queue
-        create_submission_queue(max_items=15),
     ],
     style={
         "margin": "0 auto",
