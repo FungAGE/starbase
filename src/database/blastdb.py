@@ -213,6 +213,191 @@ def load_sourmash_signatures(fasta_path):
         return None
 
 
+def append_sourmash_signature(fasta_path, sequence, sequence_name, seq_type="nucl"):
+    """
+    Append a single signature to an existing signature file.
+    
+    This is more efficient than rebuilding the entire signature file
+    when adding individual sequences.
+    
+    Args:
+        fasta_path: Base path to FASTA file (signature is fasta_path + '.sig')
+        sequence: DNA/protein sequence string
+        sequence_name: Name/ID for the sequence (e.g., accession tag)
+        seq_type: 'nucl' or 'prot'
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    sig_path = fasta_path + ".sig"
+    
+    # Set parameters based on sequence type
+    if seq_type == "nucl":
+        k = 21
+        scaled = 1000
+        is_protein = False
+    else:
+        k = 7
+        scaled = 100
+        is_protein = True
+    
+    try:
+        # Create signature for new sequence
+        mh = MinHash(n=0, ksize=k, scaled=scaled, is_protein=is_protein)
+        
+        if is_protein:
+            mh.add_protein(sequence)
+        else:
+            mh.add_sequence(sequence, force=True)
+        
+        new_sig = SourmashSignature(mh, name=sequence_name)
+        
+        # Load existing signatures if file exists
+        existing_signatures = []
+        if os.path.exists(sig_path):
+            try:
+                for sig in load_file_as_signatures(sig_path):
+                    # Skip if this sequence name already exists (update case)
+                    if sig.name != sequence_name:
+                        existing_signatures.append(sig)
+            except Exception as e:
+                logger.warning(f"Could not load existing signatures from {sig_path}: {e}")
+        
+        # Combine existing + new signature
+        all_signatures = existing_signatures + [new_sig]
+        
+        # Save all signatures back to file
+        with open(sig_path, 'w') as f:
+            save_signatures(all_signatures, f)
+        
+        logger.debug(f"Appended signature for {sequence_name} to {sig_path} (total: {len(all_signatures)})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to append signature for {sequence_name}: {e}")
+        return False
+
+
+def append_sourmash_signatures_batch(fasta_path, sequences, seq_type="nucl"):
+    """
+    Append multiple signatures to an existing signature file in one operation.
+    
+    More efficient than calling append_sourmash_signature() repeatedly.
+    
+    Args:
+        fasta_path: Base path to FASTA file (signature is fasta_path + '.sig')
+        sequences: List of (sequence_name, sequence_string) tuples
+        seq_type: 'nucl' or 'prot'
+        
+    Returns:
+        int: Number of signatures successfully appended
+    """
+    sig_path = fasta_path + ".sig"
+    
+    # Set parameters
+    if seq_type == "nucl":
+        k = 21
+        scaled = 1000
+        is_protein = False
+    else:
+        k = 7
+        scaled = 100
+        is_protein = True
+    
+    try:
+        # Create signatures for new sequences
+        new_signatures = []
+        for seq_name, sequence in sequences:
+            mh = MinHash(n=0, ksize=k, scaled=scaled, is_protein=is_protein)
+            
+            if is_protein:
+                mh.add_protein(sequence)
+            else:
+                mh.add_sequence(sequence, force=True)
+            
+            sig = SourmashSignature(mh, name=seq_name)
+            new_signatures.append(sig)
+        
+        # Load existing signatures
+        existing_signatures = []
+        new_seq_names = {name for name, _ in sequences}
+        
+        if os.path.exists(sig_path):
+            try:
+                for sig in load_file_as_signatures(sig_path):
+                    # Skip if updating (new batch contains this name)
+                    if sig.name not in new_seq_names:
+                        existing_signatures.append(sig)
+            except Exception as e:
+                logger.warning(f"Could not load existing signatures: {e}")
+        
+        # Combine and save
+        all_signatures = existing_signatures + new_signatures
+        
+        with open(sig_path, 'w') as f:
+            save_signatures(all_signatures, f)
+        
+        logger.info(f"Appended {len(new_signatures)} signatures to {sig_path} (total: {len(all_signatures)})")
+        return len(new_signatures)
+        
+    except Exception as e:
+        logger.error(f"Failed to append batch signatures: {e}")
+        return 0
+
+
+def update_signature_file_from_database(dataset_name="all", seq_type="nucl"):
+    """
+    Rebuild signature file from current database state.
+    
+    Use this as a fallback if incremental updates fail or to ensure
+    signatures are in sync with the database.
+    
+    Args:
+        dataset_name: 'all' or 'curated'
+        seq_type: 'nucl' or 'prot'
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    from src.database.sql_manager import fetch_ships
+    import tempfile
+    import shutil
+    
+    try:
+        fasta_path = BLAST_DB_PATHS["ship"][dataset_name]["nucl"]
+        
+        # Fetch current ships
+        curated = (dataset_name == "curated")
+        ships = fetch_ships(dereplicate=True, with_sequence=True, curated=curated)
+        
+        if ships.empty:
+            logger.warning(f"No ships found for {dataset_name} dataset")
+            return False
+        
+        # Write current ships to temp FASTA
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.fa', delete=False) as tmp:
+            for _, row in ships.iterrows():
+                accession = row.get('accession_display', row.get('accession_tag'))
+                sequence = row['sequence']
+                if accession and sequence:
+                    tmp.write(f">{accession}\n{sequence}\n")
+            tmp_path = tmp.name
+        
+        # Recreate signatures from temp FASTA
+        create_sourmash_signatures(tmp_path, seq_type=seq_type)
+        
+        # Move temp .sig to actual location
+        shutil.move(tmp_path + '.sig', fasta_path + '.sig')
+        os.unlink(tmp_path)
+        
+        logger.info(f"Rebuilt signature file for {dataset_name} dataset")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to update signature file: {e}")
+        return False
+
+
 def create_diamond_database(fasta_path, threads=2):
     # Create output path with .dmnd extension
     diamond_db = fasta_path + ".dmnd"
