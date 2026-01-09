@@ -262,7 +262,8 @@ layout = dmc.Container(
                     mb="md",
                 ),
                 dmc.Text(
-                    "Each submission is processed by our automated pipeline, then manually reviewed by our curation team. You'll receive a confirmation email once your submission is processed.",
+                    "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
+                    # TODO: "You'll receive a confirmation email once your submission is processed."
                     size="md",
                     c="dimmed",
                     mb="md",
