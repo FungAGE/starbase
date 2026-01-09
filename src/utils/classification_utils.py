@@ -100,7 +100,8 @@ confidence_icons = {
 
 
 def assign_accession(
-    sequence: str, existing_ships: pd.DataFrame = None, threshold: float = 0.95
+    sequence: str, existing_ships: pd.DataFrame = None, threshold: float = 0.95,
+    precomputed_sig_path: str = None
 ) -> Tuple[str, bool]:
     """Assign an accession to a new sequence.
 
@@ -108,6 +109,7 @@ def assign_accession(
         sequence: New sequence to assign accession to
         existing_ships: DataFrame of existing ships (optional, will fetch if None)
         threshold: Similarity threshold for "almost identical" matches
+        precomputed_sig_path: Path to pre-computed sourmash signature file (optional, for efficiency)
 
     Returns:
         Tuple[str, bool]: (accession, needs_review)
@@ -143,7 +145,9 @@ def assign_accession(
             return container_match, True  # Flag for review since it's truncated or imperfect
 
     logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
-    similar_match, similarities = check_similar_match(sequence, existing_ships, threshold)
+    similar_match, similarities = check_similar_match(
+        sequence, existing_ships, threshold, precomputed_sig_path=precomputed_sig_path
+    )
     if similar_match:
         logger.debug(f"Found similar match: {similar_match}")
         return similar_match, True  # Flag for review due to high similarity
@@ -436,23 +440,24 @@ def check_contained_match(
 
 
 def check_similar_match(
-    fasta: str, existing_ships: pd.DataFrame, threshold: float
+    fasta: str, existing_ships: pd.DataFrame, threshold: float, 
+    precomputed_sig_path: str = None
 ) -> Tuple[Optional[str], Any]:
-    """Check for sequences with similarity above threshold using k-mer comparison."""
+    """
+    Check for sequences with similarity above threshold using k-mer comparison.
+    
+    Args:
+        fasta: Query sequence or path to FASTA file
+        existing_ships: DataFrame of existing ships
+        threshold: Similarity threshold
+        precomputed_sig_path: Path to pre-computed signature file for existing ships
+        
+    Returns:
+        Tuple of (match_accession, similarities_dict) or (None, None)
+    """
     logger.debug(f"Starting similarity comparison (threshold={threshold})")
 
-    tmp_fasta_all_ships = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    write_multi_fasta(
-        existing_ships,
-        tmp_fasta_all_ships,
-        sequence_col="sequence",
-        id_col="accession_display"
-        if "accession_display" in existing_ships.columns
-        else "accession_tag",
-    )
-
-    tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-
+    # Handle sequence input
     if os.path.exists(fasta):
         logger.debug(f"Loading sequence from file: {fasta}")
         sequences = load_fasta_to_dict(fasta)
@@ -469,55 +474,56 @@ def check_similar_match(
         logger.error("No sequence provided")
         return None, None
 
-    # Create temporary FASTA with new and existing sequences
-    write_combined_fasta(
-        sequence,
-        existing_ships,
-        fasta_path=tmp_fasta,
-        sequence_col="sequence",
-        id_col="accession_display"
-        if "accession_display" in existing_ships.columns
-        else "accession_tag",
+    # Create temp FASTA with ONLY the query sequence
+    tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+    with open(tmp_query_fasta, 'w') as f:
+        f.write(f">query_sequence\n{sequence}\n")
+    
+    # Try to load pre-computed signatures for existing ships
+    existing_signatures = None
+    if precomputed_sig_path:
+        logger.debug(f"Attempting to load pre-computed signatures from {precomputed_sig_path}")
+        try:
+            from src.database.blastdb import load_sourmash_signatures
+            existing_signatures = load_sourmash_signatures(precomputed_sig_path.replace('.sig', ''))
+            if existing_signatures:
+                logger.info(f"Loaded {len(existing_signatures)} pre-computed signatures")
+        except Exception as e:
+            logger.warning(f"Failed to load pre-computed signatures: {e}, will compute on-the-fly")
+    
+    # If no pre-computed signatures, create them from existing ships
+    if existing_signatures is None:
+        logger.debug("No pre-computed signatures available, creating from existing ships DataFrame")
+        tmp_existing_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        write_multi_fasta(
+            existing_ships,
+            tmp_existing_fasta,
+            sequence_col="sequence",
+            id_col="accession_display" if "accession_display" in existing_ships.columns else "accession_tag",
+        )
+        existing_signatures = sourmash_sketch(tmp_existing_fasta, "nucl")
+        os.unlink(tmp_existing_fasta)
+    
+    # Calculate similarities using pre-computed or newly created signatures
+    similarities = calculate_similarities_with_precomputed(
+        query_fasta=tmp_query_fasta,
+        existing_signatures=existing_signatures,
+        seq_type="nucl"
     )
-    logger.debug(f"Created temporary FASTA file: {tmp_fasta}")
-
-    # Calculate similarities
-    similarities = calculate_similarities(
-        fasta_file=tmp_fasta,
-        seq_type="nucl",
-    )
-
-    # Convert similarities dictionary to a list of triplets for processing
-    similarity_triplets = []
-    query_id = "query_sequence"  # This is the ID used in write_combined_fasta
-
-    # Check if similarities is a dictionary (new format) or a list (old format)
-    if isinstance(similarities, dict):
-        for seq_id1 in similarities:
-            for seq_id2, sim in similarities[seq_id1].items():
-                if seq_id1 == query_id or seq_id2 == query_id:
-                    # The other ID is the match
-                    match_id = seq_id2 if seq_id1 == query_id else seq_id1
-                    logger.debug(f"Similarity to {match_id}: {sim}")
-                    if sim >= threshold:
-                        logger.debug(
-                            f"Found similar match: {match_id} (similarity: {sim})"
-                        )
-                        return match_id, similarities
-    else:
-        # Handle the case where similarities is already a list of triplets
-        for similarity_tuple in similarities:
-            if len(similarity_tuple) == 3:
-                seq_id1, seq_id2, sim = similarity_tuple
-                if seq_id1 == query_id or seq_id2 == query_id:
-                    match_id = seq_id2 if seq_id1 == query_id else seq_id1
-                    logger.debug(f"Similarity to {match_id}: {sim}")
-                    if sim >= threshold:
-                        logger.debug(
-                            f"Found similar match: {match_id} (similarity: {sim})"
-                        )
-                        return match_id, similarities
-
+    
+    # Clean up temp file
+    os.unlink(tmp_query_fasta)
+    
+    # Find matches above threshold
+    query_id = "query_sequence"
+    
+    if isinstance(similarities, dict) and query_id in similarities:
+        for match_id, sim in similarities[query_id].items():
+            logger.debug(f"Similarity to {match_id}: {sim}")
+            if sim >= threshold:
+                logger.debug(f"Found similar match: {match_id} (similarity: {sim})")
+                return match_id, similarities
+    
     logger.debug("No similar matches found above threshold")
     return None, None
 
@@ -1119,6 +1125,86 @@ def calculate_similarities(fasta_file, seq_type="nucl", restricted_comparisons=N
 
     except Exception as e:
         logger.error(f"Error in direct similarity calculation: {e}")
+        return {}
+
+
+def calculate_similarities_with_precomputed(
+    query_fasta, existing_signatures, seq_type="nucl", restricted_comparisons=None
+):
+    """
+    Calculate similarities between query sequences and pre-computed signatures.
+    
+    This is much more efficient than calculate_similarities() when you have
+    pre-computed signatures for existing sequences.
+    
+    Args:
+        query_fasta: Path to FASTA file with query sequence(s)
+        existing_signatures: List of (seq_id, signature) tuples for existing sequences
+        seq_type: 'nucl' or 'prot'
+        restricted_comparisons: Dict of comparisons to skip
+        
+    Returns:
+        Dict of similarities {seq_id1: {seq_id2: similarity}}
+    """
+    logger.debug(f"Calculating similarities with pre-computed signatures")
+    
+    if restricted_comparisons is None:
+        restricted_comparisons = {}
+    
+    try:
+        # Create signatures for query sequences only
+        query_signatures = sourmash_sketch(query_fasta, seq_type)
+        
+        if not query_signatures:
+            logger.error("Failed to create signatures for query")
+            return {}
+        
+        # Combine signatures
+        all_signatures = query_signatures + existing_signatures
+        all_seq_ids = [seq_id for seq_id, _ in all_signatures]
+        
+        logger.debug(f"Comparing {len(query_signatures)} query vs {len(existing_signatures)} existing signatures")
+        
+        # Initialize similarity dictionary
+        similarities = {}
+        for seq_id1 in all_seq_ids:
+            similarities[seq_id1] = {}
+            for seq_id2 in all_seq_ids:
+                if seq_id1 != seq_id2:
+                    similarities[seq_id1][seq_id2] = 0.0
+        
+        # Calculate pairwise similarities
+        observed_comparisons = set()
+        
+        for i, (seq_id1, sig1) in enumerate(all_signatures):
+            for j, (seq_id2, sig2) in enumerate(all_signatures[i + 1:], i + 1):
+                if seq_id1 == seq_id2:
+                    continue
+                
+                # Check if comparison is restricted
+                if ((seq_id1 in restricted_comparisons and 
+                     seq_id2 in restricted_comparisons[seq_id1]) or
+                    (seq_id2 in restricted_comparisons and 
+                     seq_id1 in restricted_comparisons[seq_id2])):
+                    logger.debug(f"Skipping restricted comparison: {seq_id1} vs {seq_id2}")
+                    continue
+                
+                # Calculate Jaccard similarity
+                similarity = sig1.jaccard(sig2)
+                
+                # Store symmetrically
+                seq1, seq2 = sorted([seq_id1, seq_id2])
+                similarities[seq1][seq2] = similarity
+                similarities[seq2][seq1] = similarity
+                
+                observed_comparisons.add((seq1, seq2))
+                observed_comparisons.add((seq2, seq1))
+        
+        logger.debug(f"Calculated {len(observed_comparisons) / 2} pairwise similarities")
+        return similarities
+        
+    except Exception as e:
+        logger.error(f"Error in similarity calculation with pre-computed signatures: {e}")
         return {}
 
 

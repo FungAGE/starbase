@@ -4,6 +4,8 @@ import glob
 import fcntl
 import pandas as pd
 from Bio import SeqIO
+from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_signatures
+import screed
 
 from src.config.cache import cache
 from src.config.settings import BLAST_DB_PATHS
@@ -112,6 +114,105 @@ def blast_db_exists(blastdb):
     return True
 
 
+def create_sourmash_signatures(fasta_path, seq_type="nucl"):
+    """
+    Create sourmash signatures from a FASTA file and save to disk.
+    
+    Args:
+        fasta_path: Path to input FASTA file
+        seq_type: 'nucl' for nucleotide or 'prot' for protein
+        
+    Returns:
+        Path to the created signature file (.sig)
+    """
+    sig_path = fasta_path + ".sig"
+    
+    # Set parameters based on sequence type
+    if seq_type == "nucl":
+        k = 21
+        scaled = 1000
+        is_protein = False
+    else:
+        k = 7
+        scaled = 100
+        is_protein = True
+    
+    logger.debug(f"Creating sourmash signatures for {fasta_path} (type={seq_type})")
+    
+    try:
+        signatures = []
+        seq_count = 0
+        
+        # Read FASTA and create signatures
+        for record in screed.open(fasta_path):
+            mh = MinHash(n=0, ksize=k, scaled=scaled, is_protein=is_protein)
+            
+            # Add sequence data
+            if is_protein:
+                mh.add_protein(record.sequence)
+            else:
+                mh.add_sequence(record.sequence, force=True)
+            
+            # Create signature with sequence name
+            sig = SourmashSignature(mh, name=record.name)
+            signatures.append(sig)
+            seq_count += 1
+        
+        # Save all signatures to file
+        with open(sig_path, 'w') as f:
+            save_signatures(signatures, f)
+        
+        logger.info(f"Created {seq_count} sourmash signatures: {sig_path}")
+        return sig_path
+        
+    except Exception as e:
+        logger.error(f"Failed to create sourmash signatures: {e}")
+        raise
+
+
+def sourmash_sig_exists(fasta_path):
+    """
+    Check if sourmash signature file exists for a given FASTA file.
+    
+    Args:
+        fasta_path: Path to FASTA file
+        
+    Returns:
+        bool: True if .sig file exists
+    """
+    sig_path = fasta_path + ".sig"
+    return os.path.exists(sig_path)
+
+
+def load_sourmash_signatures(fasta_path):
+    """
+    Load pre-computed sourmash signatures from disk.
+    
+    Args:
+        fasta_path: Path to FASTA file (signature file is fasta_path + '.sig')
+        
+    Returns:
+        List of (seq_name, signature) tuples or None if file doesn't exist
+    """
+    sig_path = fasta_path + ".sig"
+    
+    if not os.path.exists(sig_path):
+        logger.warning(f"Signature file not found: {sig_path}")
+        return None
+    
+    try:
+        signatures = []
+        for sig in load_file_as_signatures(sig_path):
+            signatures.append((sig.name, sig))
+        
+        logger.debug(f"Loaded {len(signatures)} signatures from {sig_path}")
+        return signatures
+        
+    except Exception as e:
+        logger.error(f"Failed to load signatures from {sig_path}: {e}")
+        return None
+
+
 def create_diamond_database(fasta_path, threads=2):
     # Create output path with .dmnd extension
     diamond_db = fasta_path + ".dmnd"
@@ -212,6 +313,14 @@ def create_dbs():
             write_fasta(ship_sequences_dict, ship_fasta_path)
             create_blast_database(ship_fasta_path, "nucl")
             logger.info(f"{dataset_name} BLAST database rebuilt successfully")
+            
+            # Create sourmash signatures
+            logger.info(f"Creating sourmash signatures for {dataset_name} dataset...")
+            try:
+                create_sourmash_signatures(ship_fasta_path, seq_type="nucl")
+                logger.info(f"{dataset_name} sourmash signatures created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create sourmash signatures for {dataset_name}: {e}")
 
     # Create captain database
     captain_fasta_path = BLAST_DB_PATHS["gene"]["tyr"]["prot"]
@@ -239,3 +348,11 @@ def create_dbs():
         write_fasta(captain_sequences_dict, captain_fasta_path)
         create_blast_database(captain_fasta_path, "prot")
         create_diamond_database(captain_fasta_path)
+        
+        # Create sourmash signatures for captain sequences
+        logger.info("Creating sourmash signatures for captain sequences...")
+        try:
+            create_sourmash_signatures(captain_fasta_path, seq_type="prot")
+            logger.info("Captain sourmash signatures created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create captain sourmash signatures: {e}")
