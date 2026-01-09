@@ -94,7 +94,7 @@ def driver(chrome_options):
 @pytest.fixture
 def test_meta_data():
     try:
-        meta_df = fetch_meta_data(accession_tags=["SSA000001", "SSA000130"])
+        meta_df = fetch_meta_data(accession_tags=["SSA002851", "SSA002904"])
         if not meta_df.empty:
             return meta_df
     except Exception:
@@ -129,7 +129,7 @@ def test_meta_data():
 @pytest.fixture
 def test_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SSA000001", "SSA000130", "SSA000288"], with_sequence=True)
+        ships_df = fetch_ships(accession_tags=["SSA002851", "SSA002904", "SSA002596"], with_sequence=True)
         if not ships_df.empty:
             return ships_df
     except Exception:
@@ -138,7 +138,7 @@ def test_ships_df():
     
     return pd.DataFrame(
         {
-            "accession_tag": ["SSA000001", "SSA000130", "SSA000288"],
+            "accession_tag": ["SSA002851", "SSA002904", "SSA002596"],
             "sequence": [
                 "ATGCATGCATGC",  # Simple sequence for exact match
                 "ATGCATGCATGCATGC",  # Longer sequence for contained match
@@ -163,7 +163,7 @@ def test_ships_df():
 def test_captains_df():
     try:
         # Try a few different accession tags that are more likely to work
-        for accession in ["SSA000288", "SSA000567", "SSA000342"]:
+        for accession in ["SSA002851", "SSA002904", "SSA002596"]:
             captains_df = fetch_captains(accession_tags=[accession], with_sequence=True)
             if not captains_df.empty:
                 return captains_df
@@ -180,7 +180,7 @@ def test_captains_df():
                 "MALWMRLLPLLALLALWGPDPBBB",  # Different sequence
             ],
             "navis_name": ["Phoenix", "Phoenix", "Galactica"],
-            "accession_tag": ["SSA000288", "SSA000567", "SSA000342"],  # Multiple accession tags
+            "accession_tag": ["SSA002596", "SSA002904", "SSA002851"],  # Multiple accession tags
         }
     )
 
@@ -189,7 +189,7 @@ def test_captains_df():
 def test_sequence():
     # looking for a real sequence from the database
     try:
-        ship_df = fetch_ships(accession_tags=["SSA000130"], with_sequence=True)
+        ship_df = fetch_ships(accession_tags=["SSA002851"], with_sequence=True)
         if not ship_df.empty:
             sequence = ship_df.iloc[0]["sequence"]
             return sequence
@@ -230,7 +230,7 @@ def test_similar_sequence(test_sequence):
 @pytest.fixture
 def test_haplotype_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SSA000130", "SSA001285", "SSA001247"], with_sequence=True)
+        ships_df = fetch_ships(accession_tags=["SSA002851", "SSA002904", "SSA002596"], with_sequence=True)
         if not ships_df.empty:
             return ships_df
     except Exception:
@@ -239,14 +239,14 @@ def test_haplotype_ships_df():
     
     return pd.DataFrame(
         {
-            "accession_tag": ["SSA000130", "SSA001285", "SSA001247"],
-            "accession_display": ["SSA000130.1", "SSA001285.1", "SSA001247.1"],
+            "accession_tag": ["SSA002851", "SSA002904", "SSA002596"],
+            "accession_display": ["SSA002851.1", "SSA002904.1", "SSA002596.1"],
             "sequence": [
                 "ATGCATGCATGCATGCATGC",  # Base sequence
                 "ATGCATGCATGCATGCATGC",  # Identical sequence (should have 1.0 similarity)
                 "ATGCATGCATGCATGCATGT",  # One base different (should have high similarity)
             ],
-            "haplotype_name": ["2", "1", "3"],  # Add haplotype information
+            "haplotype_name": ["2", "var22", "Ph1h1"],  # Add haplotype information
             "captainID": ["captain_130", "captain_1285", "captain_1247"],  # Add captain IDs
             "md5": [
                 generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")),
@@ -265,7 +265,7 @@ def test_haplotype_ships_df():
 def test_haplotype_sequence(test_haplotype_ships_df):
     # return the sequence with the haplotype
     try:
-        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SSA000130
+        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SSA002851
         if sequence is not None:
             return sequence
     except Exception:
@@ -324,8 +324,8 @@ def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
     
     # Fallback to mock similarities data, containing 3 sequences
     return [
-        ("query_sequence", "SSA000130.1", 0.99),
-        ("query_sequence", "SSA001285.1", 0.85),
-        ("query_sequence", "SSA000342.1", 0.85),
-        ("SSA000130.1", "SSA000567.1", 0.98),
+        ("query_sequence", "SSA002851.1", 0.99),
+        ("query_sequence", "SSA002904.1", 0.85),
+        ("query_sequence", "SSA002596.1", 0.85),
+        ("SSA002851.1", "SSA002904.1", 0.98),
     ]
