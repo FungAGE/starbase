@@ -307,6 +307,7 @@ def append_sourmash_signatures_batch(fasta_path, sequences, seq_type="nucl"):
     try:
         # Create signatures for new sequences
         new_signatures = []
+        logger.debug(f"Creating signatures for {len(sequences)} sequences: {[name for name, _ in sequences]}")
         for seq_name, sequence in sequences:
             mh = MinHash(n=0, ksize=k, scaled=scaled, is_protein=is_protein)
             
@@ -320,29 +321,87 @@ def append_sourmash_signatures_batch(fasta_path, sequences, seq_type="nucl"):
         
         # Load existing signatures
         existing_signatures = []
+        replaced_signatures = []
         new_seq_names = {name for name, _ in sequences}
         
+        logger.debug(f"Loading existing signatures from {sig_path}")
+        
+        original_count = 0
         if os.path.exists(sig_path):
             try:
                 for sig in load_file_as_signatures(sig_path):
+                    original_count += 1
                     # Skip if updating (new batch contains this name)
                     if sig.name not in new_seq_names:
                         existing_signatures.append(sig)
+                    else:
+                        replaced_signatures.append(sig.name)
+                logger.debug(f"Loaded {original_count} existing signatures, {len(replaced_signatures)} will be replaced")
             except Exception as e:
                 logger.warning(f"Could not load existing signatures: {e}")
+        else:
+            logger.debug(f"No existing signature file found at {sig_path}")
         
         # Combine and save
         all_signatures = existing_signatures + new_signatures
+        logger.debug(f"Writing {len(all_signatures)} total signatures ({len(existing_signatures)} kept + {len(new_signatures)} new/updated)")
         
         with open(sig_path, 'w') as f:
             save_signatures(all_signatures, f)
         
-        logger.info(f"Appended {len(new_signatures)} signatures to {sig_path} (total: {len(all_signatures)})")
-        return len(new_signatures)
+        # Calculate truly new vs replaced
+        num_replaced = len(replaced_signatures)
+        num_truly_new = len(new_signatures) - num_replaced
+        
+        if num_replaced > 0 and num_truly_new > 0:
+            logger.info(f"Updated {sig_path}: added {num_truly_new} new, replaced {num_replaced} existing (total: {len(all_signatures)})")
+        elif num_replaced > 0:
+            logger.info(f"Updated {sig_path}: replaced {num_replaced} existing signatures (total: {len(all_signatures)})")
+        else:
+            logger.info(f"Appended {num_truly_new} signatures to {sig_path} (total: {len(all_signatures)})")
+        
+        return num_truly_new  # Return only truly new signatures
         
     except Exception as e:
         logger.error(f"Failed to append batch signatures: {e}")
         return 0
+
+
+def check_signature_file_status(fasta_path):
+    """
+    Check the status of a signature file and report statistics.
+    
+    Args:
+        fasta_path: Base path to FASTA file
+        
+    Returns:
+        dict: Statistics about the signature file
+    """
+    sig_path = fasta_path + ".sig"
+    
+    stats = {
+        'exists': False,
+        'num_signatures': 0,
+        'accessions': [],
+        'path': sig_path
+    }
+    
+    if os.path.exists(sig_path):
+        stats['exists'] = True
+        try:
+            from sourmash import load_file_as_signatures
+            for sig in load_file_as_signatures(sig_path):
+                stats['num_signatures'] += 1
+                if sig.name:
+                    stats['accessions'].append(sig.name)
+            logger.info(f"Signature file {sig_path} contains {stats['num_signatures']} signatures")
+        except Exception as e:
+            logger.error(f"Error reading signature file {sig_path}: {e}")
+            stats['error'] = str(e)
+    else:
+        logger.warning(f"Signature file not found: {sig_path}")
+    
+    return stats
 
 
 def update_signature_file_from_database(dataset_name="all", seq_type="nucl"):
@@ -468,10 +527,14 @@ def append_to_reference_fasta(fasta_path, sequences):
                     f.write(f">{accession}\n{sequence}\n")
                     appended_count += 1
         
-        if appended_count > 0:
+        num_skipped = len(deduped_sequences) - appended_count
+        
+        if appended_count > 0 and num_skipped > 0:
+            logger.info(f"Updated {ref_fasta_path}: appended {appended_count} new, skipped {num_skipped} existing")
+        elif appended_count > 0:
             logger.info(f"Appended {appended_count} sequences to reference FASTA: {ref_fasta_path}")
         else:
-            logger.debug(f"No new sequences to append to {ref_fasta_path}")
+            logger.info(f"All {len(deduped_sequences)} sequences already exist in {ref_fasta_path} (skipped)")
         
         return appended_count
         
