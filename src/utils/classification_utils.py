@@ -105,6 +105,12 @@ def assign_accession(
 ) -> Tuple[str, bool]:
     """Assign an accession to a new sequence.
 
+    Workflow:
+        1. Check for exact match using MD5 hash
+        2. Check for contained match using minimap2 alignment
+        3. Check for similar match using sourmash similarity comparison
+        4. If no matches found, assign new accession
+
     Args:
         sequence: New sequence to assign accession to
         existing_ships: DataFrame of existing ships (optional, will fetch if None)
@@ -117,6 +123,8 @@ def assign_accession(
             - accession: assigned accession number
             - needs_review: True if sequence needs manual review
     """
+
+    review_flag = False
 
     logger.debug("Starting accession assignment process")
 
@@ -135,30 +143,35 @@ def assign_accession(
         precomputed_ref_path=precomputed_ref_path,
     )
     if container_result:
-        container_match, is_perfect_match = container_result
+        container_match, is_perfect_match, highly_similar_match = container_result
         logger.debug(f"Found containing match: {container_match} (perfect: {is_perfect_match})")
 
         # If it's a perfect match (coverage=1.0, identity=1.0), treat as exact match
         if is_perfect_match:
-            logger.debug("Perfect match found - treating as exact match")
-            return container_match, False  # No review needed for perfect matches
+            logger.debug("Perfect match found - treating as exact match. Inherit accession from containing match.")
+            review_flag = False  # No review needed for perfect matches
+            accession = container_match  # Inherit accession from containing match
+        elif highly_similar_match:
+            # only check for similar matches if the match is highly similar
+            logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
+            similar_match, similarities = check_similar_match(
+                sequence, existing_ships, threshold, precomputed_sig_path=precomputed_sig_path
+            )
+            if similar_match:
+                logger.debug(f"Found similar match: {similar_match}")
+                accession = similar_match  # Inherit accession from similar match
+                review_flag = False  # No review needed for high similarity
+            else:
+                logger.debug("Highly similar, but not same haplotype - requires review")
+                accession = container_match  # Use the container match
+                review_flag = True  # Flag for review since it's truncated or imperfect
         else:
-            logger.debug("Imperfect match found - requires review")
-            return container_match, True  # Flag for review since it's truncated or imperfect
-
-    logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
-    similar_match, similarities = check_similar_match(
-        sequence, existing_ships, threshold, precomputed_sig_path=precomputed_sig_path
-    )
-    if similar_match:
-        logger.debug(f"Found similar match: {similar_match}")
-        return similar_match, True  # Flag for review due to high similarity
-
-    logger.debug("No matches found, generating new accession...")
-    new_accession = generate_new_accession(existing_ships)
-    logger.debug(f"Generated new accession: {new_accession}")
-    return new_accession, False
-
+            logger.debug("No highly similar matches found - generating new accession...")
+            review_flag = True
+            new_accession = generate_new_accession(existing_ships)
+            logger.debug(f"Generated new accession: {new_accession}")
+            accession = new_accession
+        return accession, review_flag
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     """Generate a new unique accession number."""
@@ -423,17 +436,23 @@ def check_contained_match(
 
                     if not matching_rows.empty:
                         sequence_length = len(matching_rows["sequence"].iloc[0])
-                    # Check if this is a perfect match (coverage=1.0 and identity=1.0)
-                    is_perfect_match = (coverage >= 1.0 and identity >= 1.0)
+                        # Check if this is a perfect match (coverage=1.0 and identity=1.0)
+                        is_perfect_match = (coverage >= 1.0 and identity >= 1.0)
+                        highly_similar_match = (coverage >= 0.9 and identity >= 0.9)
 
-                    containing_matches.append(
-                        (
-                            identity * coverage,  # score for sorting
-                            sequence_length,  # length for tiebreaking
-                            ref_name,
-                            is_perfect_match,  # whether this is a perfect match
+                        containing_matches.append(
+                            (
+                                identity * coverage,  # score for sorting
+                                sequence_length,  # length for tiebreaking
+                                ref_name,
+                                is_perfect_match,  # whether this is a perfect match
+                                highly_similar_match,  # used to decide whether to run the next similarity check
+                            )
                         )
-                    )
+                    else:
+                        logger.warning(
+                            f"Could not find sequence length for ref_name '{ref_name}' in existing_ships, skipping match"
+                        )
 
             logger.debug(f"Processed {alignment_count} alignments from minimap2")
         
@@ -455,7 +474,7 @@ def check_contained_match(
             f"(score: {containing_matches[0][0]:.2f}, length: {containing_matches[0][1]}, "
             f"perfect_match: {containing_matches[0][3]})"
         )
-        return containing_matches[0][2], containing_matches[0][3]  # Return (accession, is_perfect_match)
+        return containing_matches[0][2], containing_matches[0][3], containing_matches[0][4]  # Return (accession, is_perfect_match, highly_similar_match)
 
     logger.debug("No containing matches found")
     return None
@@ -541,7 +560,7 @@ def check_similar_match(
     
     if isinstance(similarities, dict) and query_id in similarities:
         for match_id, sim in similarities[query_id].items():
-            logger.debug(f"Similarity to {match_id}: {sim}")
+            # logger.debug(f"Similarity to {match_id}: {sim}")
             if sim >= threshold:
                 logger.debug(f"Found similar match: {match_id} (similarity: {sim})")
                 return match_id, similarities
@@ -600,7 +619,7 @@ def classify_family(
         input_gene="tyr",
         input_eval=0.01,
         query_fasta=fasta,
-        threads=2,
+        threads=4,
     )
 
     if hmmer_dict is not None:
@@ -1608,10 +1627,13 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                 )
 
                 if result:
-                    match_accession, is_perfect_match = result
+                    match_accession, is_perfect_match, highly_similar_match = result
                     logger.debug(f"Found contained match: {match_accession} (perfect: {is_perfect_match})")
                     workflow_state.stages[stage_id]["progress"] = 30
-                    workflow_state.stages[stage_id]["status"] = "complete"
+
+                    # pipeline should stop if complete, and continue if not
+                    if highly_similar_match or is_perfect_match:
+                        workflow_state.stages[stage_id]["status"] = "complete"
 
                     # Set source to "exact" for perfect matches, "contained" for imperfect matches
                     classification_data.source = "exact" if is_perfect_match else "contained"
@@ -1667,7 +1689,7 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                     meta_dict=meta_dict,
                     pident_thresh=90,
                     input_eval=0.001,
-                    threads=1,
+                    threads=4,
                 )
 
                 if family_dict:
@@ -1730,7 +1752,7 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                     result = classify_navis(
                         fasta=blast_data.fasta_file,
                         existing_captains=captains_df,
-                        threads=1,
+                        threads=4,
                     )
 
                 if result:
