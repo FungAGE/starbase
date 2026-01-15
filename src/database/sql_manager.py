@@ -94,6 +94,12 @@ def fetch_meta_data(curated=False, accession_tags=None):
                        THEN a.accession_tag || '.' || a.version_tag
                        ELSE a.accession_tag
                    END as accession_display,
+                   sa.ship_accession_tag,
+                   CASE
+                       WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                       THEN sa.ship_accession_tag || '.' || sa.version_tag
+                       ELSE sa.ship_accession_tag
+                   END as ship_accession_display,
                    t.taxID, t.strain, t.`order`, t.family, t.name,
                    sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                    f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
@@ -101,6 +107,7 @@ def fetch_meta_data(curated=False, accession_tags=None):
                    s.md5, s.rev_comp_md5, s.sequence_length
             FROM joined_ships j
             LEFT JOIN accessions a ON j.accession_id = a.id
+            LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
             LEFT JOIN taxonomy t ON j.tax_id = t.id
             LEFT JOIN starship_features sf ON a.id = sf.accession_id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -212,6 +219,12 @@ def fetch_ships(
                 THEN a.accession_tag || '.' || a.version_tag
                 ELSE a.accession_tag
             END as accession_display,
+            sa.ship_accession_tag,
+            CASE
+                WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                THEN sa.ship_accession_tag || '.' || sa.version_tag
+                ELSE sa.ship_accession_tag
+            END as ship_accession_display,
             j.curated_status,
             j.starshipID,
             sf.elementBegin, sf.elementEnd, sf.contigID,
@@ -222,6 +235,7 @@ def fetch_ships(
     base_query += """
         FROM joined_ships j
         INNER JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
@@ -257,6 +271,8 @@ def fetch_ships(
             v.accession_tag,
             v.version_tag,
             v.accession_display,
+            v.ship_accession_tag,
+            v.ship_accession_display,
             v.curated_status,
             v.starshipID,
             v.elementBegin,
@@ -287,6 +303,8 @@ def fetch_ships(
             v.accession_tag,
             v.version_tag,
             v.accession_display,
+            v.ship_accession_tag,
+            v.ship_accession_display,
             v.curated_status,
             v.starshipID,
             v.elementBegin,
@@ -356,10 +374,17 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                     THEN a.accession_tag || '.' || a.version_tag
                     ELSE a.accession_tag
                 END as accession_display,
+                sa.ship_accession_tag,
+                CASE
+                    WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                    THEN sa.ship_accession_tag || '.' || sa.version_tag
+                    ELSE sa.ship_accession_tag
+                END as ship_accession_display,
                 f.familyName,
                 t.name
             FROM joined_ships js
             LEFT JOIN accessions a ON js.accession_id = a.id
+            LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
             LEFT JOIN taxonomy t ON js.tax_id = t.id
             LEFT JOIN family_names f ON js.ship_family_id = f.id
             WHERE 1=1
@@ -477,6 +502,12 @@ def fetch_captains(
                 THEN a.accession_tag || '.' || a.version_tag
                 ELSE a.accession_tag
             END as accession_display,
+            sa.ship_accession_tag,
+            CASE
+                WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                THEN sa.ship_accession_tag || '.' || sa.version_tag
+                ELSE sa.ship_accession_tag
+            END as ship_accession_display,
             j.curated_status,
             j.starshipID,
             c.captainID as captain_id,
@@ -486,6 +517,7 @@ def fetch_captains(
             c.captainID
         FROM joined_ships j
         INNER JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
         LEFT JOIN navis_names n ON j.ship_navis_id = n.id
@@ -511,6 +543,8 @@ def fetch_captains(
             v.accession_tag,
             v.version_tag,
             v.accession_display,
+            v.ship_accession_tag,
+            v.ship_accession_display,
             v.curated_status,
             v.starshipID,
             v.captain_id,
@@ -529,6 +563,8 @@ def fetch_captains(
             v.accession_tag,
             v.version_tag,
             v.accession_display,
+            v.ship_accession_tag,
+            v.ship_accession_display,
             v.curated_status,
             v.starshipID,
             v.captainID,
@@ -650,12 +686,19 @@ def get_database_stats():
                     THEN a.accession_tag || '.' || a.version_tag
                     ELSE a.accession_tag
                 END as accession_display,
+                sa.ship_accession_tag,
+                CASE
+                    WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                    THEN sa.ship_accession_tag || '.' || sa.version_tag
+                    ELSE sa.ship_accession_tag
+                END as ship_accession_display,
                 t.taxID, t.strain, t.`order`, t.family, t.name,
                 sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                 f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                 g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
         FROM joined_ships j
         LEFT JOIN accessions a ON j.accession_id = a.id
+        LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN starship_features sf ON a.id = sf.accession_id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
