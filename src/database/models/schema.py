@@ -27,6 +27,17 @@ class Accessions(Base):
     joined_ship = relationship("JoinedShips", back_populates="accession", uselist=False)
 
 
+class ShipAccessions(Base):
+    __tablename__ = "ship_accessions"
+    id = Column(Integer, primary_key=True)
+    ship_accession_tag = Column(String, unique=True, nullable=False)
+    version_tag = Column(Integer, nullable=False, default=1)
+    ship_id = Column(Integer, ForeignKey("ships.id"), unique=True, nullable=False)
+
+    # Relationships
+    ship = relationship("Ships", back_populates="ship_accession")
+
+
 class Ships(Base):
     __tablename__ = "ships"
     id = Column(Integer, primary_key=True)
@@ -39,6 +50,7 @@ class Ships(Base):
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="ships")
+    ship_accession = relationship("ShipAccessions", back_populates="ship", uselist=False)
 
 
 class Captains(Base):
