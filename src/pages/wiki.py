@@ -191,12 +191,19 @@ def load_initial_data():
 
 table_columns = [
     {
-        "name": "Accession",
-        "id": "accession_tag",
+        "name": "Ship Accession (SSB)",
+        "id": "ship_accession_tag",
         "deletable": False,
         "selectable": True,
         "presentation": "markdown",
         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+    },
+    {
+        "name": "Group Accession (SSA)",
+        "id": "accession_tag",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
     },
     {
         "name": "Starship Family",
@@ -1201,11 +1208,11 @@ clientside_callback(
         let accession = null;
 
         // Handle AG Grid cell clicks
-        if (cellClicked && (cellClicked.colId === 'accession_tag' || cellClicked.colId === 'accession_display')) {
+        if (cellClicked && (cellClicked.colId === 'ship_accession_tag' || cellClicked.colId === 'ship_accession_display')) {
             accession = cellClicked.value;
         }
         // Handle DataTable active cell
-        else if (activeCell && (activeCell.column_id === 'accession_tag' || activeCell.column_id === 'accession_display')) {
+        else if (activeCell && (activeCell.column_id === 'ship_accession_tag' || activeCell.column_id === 'ship_accession_display')) {
             const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
             if (tableData && actualRowIdx < tableData.length) {
                 accession = tableData[actualRowIdx][activeCell.column_id];
