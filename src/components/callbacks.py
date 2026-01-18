@@ -9,11 +9,17 @@ import functools
 import traceback
 import pandas as pd
 
-from src.database.sql_manager import fetch_meta_data, get_quality_tags, get_database_version, get_alembic_schema_version
+from src.utils.seq_utils import extract_accession
+from src.database.sql_manager import (
+    fetch_meta_data,
+    get_quality_tags,
+    get_database_version,
+)
 
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
+
 
 def handle_callback_error(callback_func):
     """
@@ -191,9 +197,21 @@ def create_genome_cards(df):
                     dmc.Stack(
                         gap="xs",
                         children=[
-                            dmc.Group([dmc.Text("Genome Source:", fw=700), dmc.Text(genome_source)]),
-                            dmc.Group([dmc.Text("ContigID:", fw=700), dmc.Text(contig_id)]),
-                            dmc.Group([dmc.Text("Element Position:", fw=700), dmc.Text(position)]),
+                            dmc.Group(
+                                [
+                                    dmc.Text("Genome Source:", fw=700),
+                                    dmc.Text(genome_source),
+                                ]
+                            ),
+                            dmc.Group(
+                                [dmc.Text("ContigID:", fw=700), dmc.Text(contig_id)]
+                            ),
+                            dmc.Group(
+                                [
+                                    dmc.Text("Element Position:", fw=700),
+                                    dmc.Text(position),
+                                ]
+                            ),
                             dmc.Group([dmc.Text("Size:", fw=700), dmc.Text(length_bp)]),
                         ],
                     ),
@@ -296,16 +314,16 @@ def curated_switch(text="Only search curated Starships", size="sm"):
 def create_quality_tag_badges(quality_tags):
     """
     Create badge components for quality tags.
-    
+
     Args:
         quality_tags (list): List of tag strings in format "tag_type" or "tag_type:tag_value"
-    
+
     Returns:
         list: List of dmc.Badge components
     """
     if not quality_tags:
         return []
-    
+
     # Define colors for different tag types
     tag_colors = {
         "incomplete": "orange",
@@ -315,9 +333,9 @@ def create_quality_tag_badges(quality_tags):
         "verified": "teal",
         "high_quality": "green",
         "low_quality": "red",
-        "default": "gray"
+        "default": "gray",
     }
-    
+
     badges = []
     for tag in quality_tags:
         # Parse tag_type and tag_value if present
@@ -327,10 +345,10 @@ def create_quality_tag_badges(quality_tags):
         else:
             tag_type = tag
             display_text = tag_type
-        
+
         # Get color for this tag type
         color = tag_colors.get(tag_type.lower(), tag_colors["default"])
-        
+
         badges.append(
             dmc.Badge(
                 display_text,
@@ -339,7 +357,7 @@ def create_quality_tag_badges(quality_tags):
                 size="xs",
             )
         )
-    
+
     return badges
 
 
@@ -347,28 +365,117 @@ def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
     """Create a switch component for toggling dereplicated-only searches."""
     return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True)
 
+
+def create_ship_accession_modal_data(ship_accession_id):
+    """Create structured data for accession modal instead of Dash components."""
+    try:
+        base_accession = extract_accession(ship_accession_id)
+
+        modal_data = fetch_meta_data(accession_tags=[base_accession])
+
+        if modal_data.empty:
+            return {
+                "title": f"Accession: {ship_accession_id}",
+                "error": f"No data found for accession: {ship_accession_id}",
+            }
+
+        # Validate modal_data
+        if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
+            return {
+                "title": f"Accession: {ship_accession_id}",
+                "error": "Invalid modal data received",
+            }
+
+        # Check for required columns
+        required_columns = ["accession_tag", "familyName"]
+        missing_columns = [
+            col for col in required_columns if col not in modal_data.columns
+        ]
+        if missing_columns:
+            return {
+                "title": f"Accession: {ship_accession_id}",
+                "error": f"Missing required columns: {missing_columns}",
+            }
+
+        # Fetch quality tags separately using joined_ship_id
+        joined_ship_id = safe_get_numeric(modal_data, "joined_ship_id")
+        quality_tags = []
+        accepted_quality_tags = [
+            "missing_direct_repeats",
+            "missing_tir",
+            "missing_boundaries",
+            "missing_genome_context",
+            "unannotated",
+            "missing_empty_site",
+        ]
+        if joined_ship_id:
+            try:
+                quality_tags_data = get_quality_tags(joined_ship_id)
+                # Format tags as "tag_type:tag_value" or just "tag_type" if no value
+                for tag in quality_tags_data:
+                    if tag.get("tag_value"):
+                        tag_value = f"{tag['tag_type']}:{tag['tag_value']}"
+                    else:
+                        tag_value = tag["tag_type"]
+                    if tag_value in accepted_quality_tags:
+                        quality_tags.append(tag_value)
+            except Exception as e:
+                logger.warning(
+                    f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}"
+                )
+
+        # Create structured data
+        result = {
+            "title": base_accession,
+            "version_tag": safe_get_value(modal_data, "version_tag"),
+            "familyName": safe_get_value(modal_data, "familyName"),
+            "navis_name": safe_get_value(modal_data, "navis_name"),
+            "haplotype_name": safe_get_value(modal_data, "haplotype_name"),
+            "taxonomic_family": safe_get_value(modal_data, "family"),
+            "order": safe_get_value(modal_data, "order"),
+            "species_name": safe_get_value(modal_data, "name"),
+            "tax_id": safe_get_numeric(modal_data, "taxID"),
+            "assembly_accession": safe_get_value(
+                modal_data, "assembly_accession", default=""
+            ),
+            "genome_source": safe_get_value(modal_data, "genomeSource", default=""),
+            "contig_id": safe_get_value(modal_data, "contigID", default=""),
+            "element_length": safe_get_numeric(modal_data, "elementLength", default=""),
+            "element_position": safe_get_position(
+                modal_data, "elementBegin", "elementEnd"
+            ),
+            "curated_status": safe_get_value(
+                modal_data, "curated_status", default="unknown"
+            ),
+            "quality_tags": quality_tags,
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in create_ship_accession_modal_data: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
+
 def create_accession_modal_data(accession):
     """Create structured data for accession modal instead of Dash components."""
     try:
-        accession = str(accession).strip("[]").split("/")[-1].strip()
-        # strip ">" from the beginning of the accession if present
-        if accession.startswith(">"):
-            accession = accession[1:]
-        base_accession = accession.split(".")[0] if "." in accession else accession
+        base_accession = extract_accession(accession)
 
         modal_data = fetch_meta_data(accession_tags=[base_accession])
 
         if modal_data.empty:
             return {
                 "title": f"Accession: {accession}",
-                "error": f"No data found for accession: {accession}"
+                "error": f"No data found for accession: {accession}",
             }
 
         # Validate modal_data
         if not isinstance(modal_data, pd.DataFrame) or modal_data.empty:
             return {
                 "title": f"Accession: {accession}",
-                "error": "Invalid modal data received"
+                "error": "Invalid modal data received",
             }
 
         # Check for required columns
@@ -379,7 +486,7 @@ def create_accession_modal_data(accession):
         if missing_columns:
             return {
                 "title": f"Accession: {accession}",
-                "error": f"Missing required columns: {missing_columns}"
+                "error": f"Missing required columns: {missing_columns}",
             }
 
         # HACK: applying a fix for extra rows in the starship_features table, only take the first begin/end coordinates for each ship_id/accession_id
@@ -390,7 +497,14 @@ def create_accession_modal_data(accession):
         # Fetch quality tags separately using joined_ship_id
         joined_ship_id = safe_get_numeric(modal_data, "joined_ship_id")
         quality_tags = []
-        accepted_quality_tags = ["missing_direct_repeats","missing_tir","missing_boundaries","missing_genome_context","unannotated","missing_empty_site"]
+        accepted_quality_tags = [
+            "missing_direct_repeats",
+            "missing_tir",
+            "missing_boundaries",
+            "missing_genome_context",
+            "unannotated",
+            "missing_empty_site",
+        ]
         if joined_ship_id:
             try:
                 quality_tags_data = get_quality_tags(joined_ship_id)
@@ -399,30 +513,23 @@ def create_accession_modal_data(accession):
                     if tag.get("tag_value"):
                         tag_value = f"{tag['tag_type']}:{tag['tag_value']}"
                     else:
-                        tag_value = tag['tag_type']
+                        tag_value = tag["tag_type"]
                     if tag_value in accepted_quality_tags:
                         quality_tags.append(tag_value)
             except Exception as e:
-                logger.warning(f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}")
+                logger.warning(
+                    f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}"
+                )
 
-        # Create structured data
+        # TODO: Create more comprehensive structured data
+        # - some output will be the same across all ships within this accession
+        # - some output we will have to aggregate across all ships within this accession
         result = {
             "title": f"Starship Accession: {accession}",
             "familyName": safe_get_value(modal_data, "familyName"),
-            "taxonomic_family": safe_get_value(modal_data, "family"),
             "genomes_present": str(len(modal_data)),
             "navis_name": safe_get_value(modal_data, "navis_name"),
             "haplotype_name": safe_get_value(modal_data, "haplotype_name"),
-            "order": safe_get_value(modal_data, "order"),
-            "species_name": safe_get_value(modal_data, "name"),
-            "tax_id": safe_get_numeric(modal_data, "taxID"),
-            "assembly_accession": safe_get_value(modal_data, "assembly_accession", default=""),
-            "genome_source": safe_get_value(modal_data, "genomeSource", default=""),
-            "contig_id": safe_get_value(modal_data, "contigID", default=""),
-            "element_length": safe_get_numeric(modal_data, "elementLength", default=""),
-            "element_position": safe_get_position(modal_data, "elementBegin", "elementEnd"),
-            "curated_status": safe_get_value(modal_data, "curated_status", default="unknown"),
-            "quality_tags": quality_tags
         }
 
         return result
@@ -432,7 +539,8 @@ def create_accession_modal_data(accession):
         logger.error(traceback.format_exc())
         raise
 
-def create_accession_modal(modal_data):
+
+def create_modal(modal_data):
     accession = modal_data["accession_tag"]
     familyName = modal_data["familyName"]
     genomes_present = modal_data["genomes_present"]
@@ -455,40 +563,41 @@ def create_accession_modal(modal_data):
 
         # Basic ship information section
         ship_info = dmc.Paper(
-                        p="md",
-                        withBorder=True,
-                        children=[
-                            dmc.SimpleGrid(
-                                cols={"base": 1, "sm": 2},
-                                spacing="lg",
-                                children=[
-                                        dmc.Group(
-                                            [
-                                                dmc.Text("Starship Family:", fw=700),
-                                                dmc.Text(familyName),
-                                            ]
-                                        ),
-                                        dmc.Group(
-                                            [
-                                                dmc.Text("Genomes Present:", fw=700),
-                                                dmc.Badge(str(genomes_present), color="blue"),
-                                            ]
-                                        ),
-                                        dmc.Group(
-                                            [
-                                                dmc.Text("Starship Navis:", fw=700),
-                                                dmc.Text(navis_name),
-                                            ]
-                                        ),
-                                        dmc.Group(
-                                            [
-                                                dmc.Text("Starship Haplotype:", fw=700),
-                                                dmc.Text(haplotype_name),
-                                            ]
-                                        ),
-                                    ]
-                                    )
-                        ])
+            p="md",
+            withBorder=True,
+            children=[
+                dmc.SimpleGrid(
+                    cols={"base": 1, "sm": 2},
+                    spacing="lg",
+                    children=[
+                        dmc.Group(
+                            [
+                                dmc.Text("Starship Family:", fw=700),
+                                dmc.Text(familyName),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("Genomes Present:", fw=700),
+                                dmc.Badge(str(genomes_present), color="blue"),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("Starship Navis:", fw=700),
+                                dmc.Text(navis_name),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("Starship Haplotype:", fw=700),
+                                dmc.Text(haplotype_name),
+                            ]
+                        ),
+                    ],
+                )
+            ],
+        )
         modal_data.append(ship_info)
 
         # Add quality tags if present
@@ -499,74 +608,78 @@ def create_accession_modal(modal_data):
                 p="md",
                 withBorder=True,
                 children=[
-                            dmc.Stack([
-                                dmc.Group(
-                                    [
-                                        dmc.Text("Curation Status:", fw=700),
-                                        dmc.Badge(
-                                            curated_status,
-                                            color=badge_color,
-                                        ),
-                                    ]
-                                ),
-                                dmc.Stack([
+                    dmc.Stack(
+                        [
+                            dmc.Group(
+                                [
+                                    dmc.Text("Curation Status:", fw=700),
+                                    dmc.Badge(
+                                        curated_status,
+                                        color=badge_color,
+                                    ),
+                                ]
+                            ),
+                            dmc.Stack(
+                                [
                                     dmc.Text("Quality Tags:", fw=700),
                                     dmc.Flex(quality_tag_badges, wrap="wrap", gap="xs"),
-                                ])
-                            ])
+                                ]
+                            ),
                         ]
+                    )
+                ],
             )
             modal_data.append(curation_info)
-        
+
         # Taxonomy section
         taxonomy_info = dmc.Paper(
-                    p="md",
-                    withBorder=True,
+            p="md",
+            withBorder=True,
+            children=[
+                dmc.SimpleGrid(
+                    cols={"base": 1, "sm": 2},
+                    spacing="lg",
                     children=[
-                        dmc.SimpleGrid(
-                            cols={"base": 1, "sm": 2},
-                            spacing="lg",
-                            children=[
-                                dmc.Group(
-                                    [
-                                        dmc.Text("Order:", fw=700),
-                                        dmc.Text(order),
-                                    ]
-                                ),
-                                dmc.Group(
-                                    [
-                                        dmc.Text("Family:", fw=700),
-                                        dmc.Text(taxonomic_family),
-                                    ]
-                                ),
-                                dmc.Group(
-                                    [
-                                        dmc.Text("Species:", fw=700),
-                                        dmc.Text(species_name),
-                                    ]
-                                ),
-                                dmc.Group(
-                                    [
-                                        dmc.Text("NCBI Taxonomy ID:", fw=700),
-                                        (
-                                            dmc.Anchor(
-                                                tax_id,
-                                                href=(
-                                                    f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
-                                                    if tax_id != "N/A"
-                                                    else "#"
-                                                ),
-                                                target="_blank" if tax_id != "N/A" else None,
-                                            )
+                        dmc.Group(
+                            [
+                                dmc.Text("Order:", fw=700),
+                                dmc.Text(order),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("Family:", fw=700),
+                                dmc.Text(taxonomic_family),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("Species:", fw=700),
+                                dmc.Text(species_name),
+                            ]
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Text("NCBI Taxonomy ID:", fw=700),
+                                (
+                                    dmc.Anchor(
+                                        tax_id,
+                                        href=(
+                                            f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={tax_id}"
                                             if tax_id != "N/A"
-                                            else dmc.Text(tax_id)
+                                            else "#"
                                         ),
-                                    ]
+                                        target="_blank" if tax_id != "N/A" else None,
+                                    )
+                                    if tax_id != "N/A"
+                                    else dmc.Text(tax_id)
                                 ),
-                            ],
+                            ]
                         ),
                     ],
-                )
+                ),
+            ],
+        )
         modal_data.append(taxonomy_info)
 
         # Genome details section
@@ -630,7 +743,7 @@ def create_accession_modal(modal_data):
         return dmc.Stack(modal_data, gap="md"), modal_title
 
     except Exception as e:
-        logger.error(f"Error in create_accession_modal: {str(e)}")
+        logger.error(f"Error in create_modal: {str(e)}")
         logger.error(traceback.format_exc())
         raise
 
@@ -685,10 +798,10 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
                 return (
                     False,  # Don't open the Dash modal
                     no_update,
-                    no_update
+                    no_update,
                 )
 
-            return False, no_update, no_update      
+            return False, no_update, no_update
         except Exception as e:
             logger.error(f"Error in toggle_modal: {str(e)}")
             logger.error(traceback.format_exc())
@@ -774,17 +887,15 @@ def create_feedback_button():
         },
     )
 
+
 def create_database_version_indicator():
     """Create a database version indicator for the bottom-left corner"""
     try:
         db_version = get_database_version()
-        schema_version = get_alembic_schema_version()
         version_text = f"v{db_version}" if db_version != "unknown" else "Unknown"
-        schema_text = f"Schema: {schema_version[:8]}..." if len(str(schema_version)) > 8 else f"Schema: {schema_version}"
     except Exception as e:
         logger.error(f"Error fetching database version: {str(e)}")
         version_text = "Error"
-        schema_text = "Schema: Error"
 
     return dmc.Notification(
         title="Database Version",

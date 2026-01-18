@@ -1,9 +1,9 @@
 from flask import Blueprint, jsonify, request
-import pandas as pd
-import traceback
 from src.config.limiter import limiter
-from src.database.sql_manager import fetch_meta_data, get_quality_tags
-from src.components.callbacks import create_accession_modal_data, safe_get_value, safe_get_numeric, safe_get_position
+from src.components.callbacks import (
+    create_ship_accession_modal_data,
+    create_accession_modal_data,
+)
 
 from src.config.logging import get_logger
 
@@ -24,16 +24,27 @@ def check_blast_limit():
     return jsonify({"allowed": True})
 
 
-@accession_routes.route("/<accession_id>", methods=["GET"])
-def get_accession_details(accession_id):
-    """Get details for a specific accession."""
+@accession_routes.route("/ship_accession_details/<ship_accession_id>", methods=["GET"])
+def get_ship_accession_details(ship_accession_id):
+    """Get details for a specific ship accession."""
     try:
-        # Get the modal data from the callback function
+        modal_data = create_ship_accession_modal_data(ship_accession_id)
+
+        return jsonify(modal_data)
+    except Exception as e:
+        logger.error(f"Error in get_ship_accession_details: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@accession_routes.route("/accession_details/<accession_id>", methods=["GET"])
+def get_accession_details(accession_id):
+    """Get details for a specific ship accession."""
+    try:
         modal_data = create_accession_modal_data(accession_id)
 
         return jsonify(modal_data)
     except Exception as e:
-        logger.error(f"Error in get_accession_details: {str(e)}")
+        logger.error(f"Error in get_ship_accession_details: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -206,18 +217,18 @@ def dash_to_html(component):
         children = component.children if hasattr(component, "children") else ""
         title = component.title if hasattr(component, "title") else ""
         color = component.color if hasattr(component, "color") else "blue"
-        
+
         colors = {
             "red": ("#fef2f2", "#dc2626", "#fecaca"),
             "yellow": ("#fffbeb", "#d97706", "#fed7aa"),
             "blue": ("#f0f9ff", "#0284c7", "#bae6fd"),
         }
         bg_color, text_color, border_color = colors.get(color, colors["blue"])
-        
+
         return f"""
         <div style="background-color:{bg_color}; color:{text_color}; border:1px solid {border_color}; 
                     border-radius:4px; padding:12px 16px; margin-bottom:16px;">
-            {f'<div style="font-weight:600; margin-bottom:8px;">{title}</div>' if title else ''}
+            {f'<div style="font-weight:600; margin-bottom:8px;">{title}</div>' if title else ""}
             <div>{dash_to_html(children)}</div>
         </div>
         """
@@ -227,7 +238,7 @@ def dash_to_html(component):
         children = component.children if hasattr(component, "children") else []
         wrap = component.wrap if hasattr(component, "wrap") else "nowrap"
         gap = component.gap if hasattr(component, "gap") else "8px"
-        
+
         return f"""
         <div style="display:flex; gap:{gap}; flex-wrap:{wrap};">
             {dash_to_html(children)}

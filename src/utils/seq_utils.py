@@ -235,24 +235,16 @@ def translate_seq(seq):
         frames.append(rev)
     return frames
 
-def revcomp(seq: str) -> str:
+
+def revcomp(seq: str | Seq) -> str:
     """
     Reverse complement a sequence. Able to handle both strings and Seq objects.
     """
     if seq is None:
         return None
 
-    # Ensure seq is a string
-    if not isinstance(seq, str):
-        seq = str(seq)
-
-    if type(seq) == str:
-        rv_comp_seq = Seq(seq).reverse_complement()
-    elif type(seq) == Seq:
-        rv_comp_seq = seq.reverse_complement()
-    else:
-        return None
-    return str(rv_comp_seq)
+    seq_obj = Seq(seq) if not isinstance(seq, Seq) else seq
+    return str(seq_obj.reverse_complement())
 
 
 def find_longest_orf(aa_seq, min_length=50):
@@ -697,16 +689,30 @@ def sanitize_header(header: str) -> str:
         header = f">{header}"  # Add exactly one ">" at start
         # Replace non-breaking spaces and remove non-ASCII characters
         header = (
-            header.replace('\xa0', ' ')
-                .replace('\u00A0', ' ')
-                .replace('\u200b', '')  # zero-width space, if present
-                .encode('ascii', errors='ignore')
-                .decode()
+            header.replace("\xa0", " ")
+            .replace("\u00a0", " ")
+            .replace("\u200b", "")  # zero-width space, if present
+            .encode("ascii", errors="ignore")
+            .decode()
         )
     return header
 
+
+def extract_accession(accession: str) -> str:
+    """
+    extract an accession from a fasta header
+    will strip ">" from the beginning of the accession if present
+    """
+    accession = str(accession).strip("[]").split("/")[-1].strip()
+    if accession.startswith(">"):
+        accession = accession[1:]
+    base_accession = accession.split(".")[0] if "." in accession else accession
+    return base_accession
+
+
 def create_ncbi_style_header(row, count=1):
     try:
+
         def safe_get(key):
             """
             Helper function to safely get value from row (handles both dict and Series)
@@ -731,7 +737,7 @@ def create_ncbi_style_header(row, count=1):
 
         clean_contig = clean_contigIDs(safe_get("contigID"))
 
-        # safe get values from row    
+        # safe get values from row
         # Use accession_display if available, otherwise combine accession_tag and version_tag
         accession_display = safe_get("accession_display")
         version_tag = safe_get("version_tag")
@@ -750,35 +756,46 @@ def create_ncbi_style_header(row, count=1):
         # Ensure accession_with_version is never None - provide fallback
         if not accession_with_version:
             starshipID_fallback = starshipID if starshipID else "unknown"
-            accession_with_version = f"unknown_accession [starshipID={starshipID_fallback}]"
+            accession_with_version = (
+                f"unknown_accession [starshipID={starshipID_fallback}]"
+            )
 
         # Collect taxonomic information in a single consolidated field
-        tax_field_mapping = {
-            "organism": "name",
-            "order": "order",
-            "family": "family"
-        }
-        tax_pairs = [f"{key}={safe_get(field)}" for key, field in tax_field_mapping.items() if safe_get(field)]
+        tax_field_mapping = {"organism": "name", "order": "order", "family": "family"}
+        tax_pairs = [
+            f"{key}={safe_get(field)}"
+            for key, field in tax_field_mapping.items()
+            if safe_get(field)
+        ]
         tax_info = f"[taxonomy: {';'.join(tax_pairs)}] " if tax_pairs else ""
-        
+
         assembly = format_field("assembly_accession", "[assembly={}] ")
 
         # Collect starship classification information in a single consolidated field
         starship_classification_field_mapping = {
             "familyName": "familyName",
             "navis_name": "navis_name",
-            "haplotype_name": "haplotype_name"
+            "haplotype_name": "haplotype_name",
         }
-        starship_classification_pairs = [f"{key}={safe_get(field)}" for key, field in starship_classification_field_mapping.items() if safe_get(field)]
-        starship_classification_info = f"[starship_classification: {';'.join(starship_classification_pairs)}] " if starship_classification_pairs else ""
-        
+        starship_classification_pairs = [
+            f"{key}={safe_get(field)}"
+            for key, field in starship_classification_field_mapping.items()
+            if safe_get(field)
+        ]
+        starship_classification_info = (
+            f"[starship_classification: {';'.join(starship_classification_pairs)}] "
+            if starship_classification_pairs
+            else ""
+        )
 
         if (
             clean_contig is not None
             and element_begin is not None
             and element_end is not None
         ):
-            genomic_location = f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
+            genomic_location = (
+                f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
+            )
         else:
             genomic_location = ""
 
@@ -786,15 +803,18 @@ def create_ncbi_style_header(row, count=1):
             # we need a way to tell different sequences apart that have the same accession
             # Handle None starshipID gracefully
             starshipID_str = starshipID if starshipID else "unknown"
-            accession_with_version = accession_with_version + f" [starshipID={starshipID_str}] [n_genomes={count}]"
+            accession_with_version = (
+                accession_with_version
+                + f" [starshipID={starshipID_str}] [n_genomes={count}]"
+            )
 
         header = (
-                f"{accession_with_version} "
-                + tax_info
-                + starship_classification_info
-                + assembly
-                + genomic_location
-            )
+            f"{accession_with_version} "
+            + tax_info
+            + starship_classification_info
+            + assembly
+            + genomic_location
+        )
         sanitized_header = sanitize_header(header)
         return sanitized_header
     except Exception as e:
@@ -817,7 +837,7 @@ def write_temp_fasta(header, sequence):
     else:
         logger.error("Sequence is not a string or Seq object")
         return None
-    
+
     try:
         cleaned_query_seq = SeqRecord(seq_obj, id=header, description="")
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
@@ -841,7 +861,7 @@ def write_fasta(sequences: Dict[str, str], fasta_path: str):
             # Strip any leading ">" to avoid duplication, then add exactly one
             clean_name = name.lstrip(">")
             # Also clean non-ASCII characters that might cause BLAST issues
-            clean_name = clean_name.encode('ascii', errors='ignore').decode()
+            clean_name = clean_name.encode("ascii", errors="ignore").decode()
             fasta_file.write(f">{clean_name}\n{sequence}\n")
 
 
@@ -883,14 +903,16 @@ def write_combined_fasta(
     """
     try:
         # Create a new DataFrame that includes the new sequence
-        new_row = pd.DataFrame({
-            sequence_col: [new_sequence],
-            id_col if id_col else 'index': ['query_sequence']
-        })
-        
+        new_row = pd.DataFrame(
+            {
+                sequence_col: [new_sequence],
+                id_col if id_col else "index": ["query_sequence"],
+            }
+        )
+
         # Combine the new sequence with existing sequences
         combined_sequences = pd.concat([new_row, existing_sequences], ignore_index=True)
-        
+
         # Use write_multi_fasta to write the combined sequences
         write_multi_fasta(combined_sequences, fasta_path, sequence_col, id_col)
 
@@ -933,9 +955,11 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
     logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
     return tmp_fasta_dir
 
+
 def generate_random_sequence(length: int = 1000, seq_type: str = "nucl") -> str:
     """Generate a random sequence of the given length."""
     import random
+
     if seq_type == "nucl":
         return "".join(random.choices("ATGC", k=length))
     elif seq_type == "prot":
