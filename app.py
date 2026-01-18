@@ -35,7 +35,6 @@ server.config.update(
 )
 
 cache.init_app(server)
-cleanup_old_cache()
 limiter.init_app(server)
 register_routes(server, limiter)
 _dash_renderer._set_react_version("18.2.0")

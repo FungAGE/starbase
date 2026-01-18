@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from src.config.database import StarbaseSession, SubmissionsSession, TelemetrySession
+from src.config.database import StarbaseSession, SubmissionSession, TelemetrySession
 
 from src.config.logging import get_logger
 
@@ -24,7 +24,7 @@ def get_starbase_session():
 @contextmanager
 def get_submissions_session():
     """Context manager for submissions database sessions"""
-    session = SubmissionsSession()
+    session = SubmissionSession()
     try:
         yield session
         session.commit()

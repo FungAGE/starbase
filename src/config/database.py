@@ -43,7 +43,7 @@ telemetry_engine = engines["telemetry"]
 
 # Create session factories
 StarbaseSession = sessionmaker(bind=starbase_engine)
-SubmissionsSession = sessionmaker(bind=submissions_engine)
+SubmissionSession = sessionmaker(bind=submissions_engine)
 TelemetrySession = sessionmaker(bind=telemetry_engine)
 
 # Define a common retry decorator for database operations
