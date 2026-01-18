@@ -1,13 +1,6 @@
 import pandas as pd
 from src.config.database import StarbaseSession
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
 from contextlib import contextmanager
-import sqlalchemy.exc
 from sqlalchemy import text
 from src.config.cache import smart_cache
 from src.config.settings import PHYLOGENY_PATHS
@@ -17,47 +10,6 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
-# Define a common retry decorator for database operations
-def db_retry_decorator(additional_retry_exceptions=()):
-    """
-    Create a retry decorator for database operations
-    Args:
-        additional_retry_exceptions: Tuple of additional exceptions to retry on
-    """
-    retry_exceptions = (sqlalchemy.exc.OperationalError,) + additional_retry_exceptions
-
-    return retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(retry_exceptions),
-        before_sleep=lambda retry_state: logger.warning(
-            f"Retrying database operation after error: {retry_state.outcome.exception()}"
-        ),
-    )
-
-
-# Context manager for database sessions with timeout
-@contextmanager
-def db_session_manager():
-    """Context manager for database sessions with timeout"""
-    session = None
-    try:
-        session = StarbaseSession()
-        # SQLite doesn't support SET SESSION, so we'll skip the timeout setting
-        if session.bind.dialect.name != "sqlite":
-            session.execute(text("SET SESSION wait_timeout=30"))  # Only for MySQL
-        yield session
-    except Exception as e:
-        logger.error(f"Database error: {str(e)}")
-        if session:
-            session.rollback()
-        raise
-    finally:
-        if session:
-            session.close()
-
-
-@db_retry_decorator()
 def fetch_meta_data(curated=False, accession_tags=None):
     """
     Fetch metadata from the database with efficient caching.
@@ -143,7 +95,6 @@ def fetch_meta_data(curated=False, accession_tags=None):
     return filtered_df
 
 
-@db_retry_decorator()
 @smart_cache(timeout=None)
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
@@ -189,7 +140,6 @@ def dereplicate_sequences(df):
 
 
 # TODO: figure out a way to handle caching with queries related to this query
-@db_retry_decorator()
 def fetch_ships(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -348,7 +298,6 @@ def fetch_ships(
 
 
 @smart_cache(timeout=None)
-@db_retry_decorator()
 def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     """Fetch ship metadata and filter for those with sequence and GFF data."""
     from src.config.cache import cache
@@ -431,7 +380,6 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     return filtered_df
 
 
-@db_retry_decorator()
 def fetch_accession_ship(accession_tag):
     """Fetch sequence and GFF data for a specific ship."""
     session = StarbaseSession()
@@ -474,7 +422,6 @@ def fetch_accession_ship(accession_tag):
         session.close()
 
 
-@db_retry_decorator()
 def fetch_captains(
     accession_tags=None, curated=False, dereplicate=True, with_sequence=False
 ):
@@ -590,7 +537,6 @@ def fetch_captains(
         session.close()
 
 
-@db_retry_decorator()
 def fetch_captain_tree():
     fallback_tree_path = PHYLOGENY_PATHS["tree"]
 
@@ -598,7 +544,6 @@ def fetch_captain_tree():
         return f.read()
 
 
-@db_retry_decorator()
 def fetch_sf_data():
     sf_data = pd.read_csv(PHYLOGENY_PATHS["clades"], sep="\t")
 
@@ -609,7 +554,6 @@ def fetch_sf_data():
     return sf_data
 
 
-@db_retry_decorator()
 def get_database_version():
     """Get the current database semantic version from the database_versions table."""
     session = StarbaseSession()
@@ -629,7 +573,6 @@ def get_database_version():
         session.close()
 
 
-@db_retry_decorator()
 def set_database_version(semantic_version, description="", created_by="manual"):
     """Manually set a new semantic version for the database."""
     session = StarbaseSession()
@@ -652,7 +595,6 @@ def set_database_version(semantic_version, description="", created_by="manual"):
         session.close()
 
 
-@db_retry_decorator()
 def get_alembic_schema_version():
     """Get the current Alembic schema version (for schema tracking)."""
     try:
@@ -669,7 +611,6 @@ def get_alembic_schema_version():
         return "unknown"
 
 
-@db_retry_decorator()
 @smart_cache(timeout=None)
 def get_database_stats():
     """Get statistics about the Starship database."""
