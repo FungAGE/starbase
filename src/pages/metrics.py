@@ -1,7 +1,7 @@
 import dash
 from dash import dcc, html, callback, Input, Output, no_update
 import dash_mantine_components as dmc
-from src.telemetry.utils import get_telemetry_data
+from src.telemetry.utils import get_telemetry_visualizations
 from src.config.logging import get_logger
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
@@ -15,14 +15,13 @@ logger = get_logger(__name__)
 
 def get_metrics_layout():
     try:
-        telemetry_data = get_telemetry_data()
-        if telemetry_data is None:
-            telemetry_data = {"unique_users": 0, "total_requests": 0}
+        telemetry_visualizations = get_telemetry_visualizations()
+        if telemetry_visualizations is None:
+            telemetry_visualizations = {"unique_users": 0, "total_requests": 0}
 
-        # Use the figures directly from get_telemetry_data
-        time_series_fig = telemetry_data.get("time_series", go.Figure())
-        endpoints_fig = telemetry_data.get("endpoints", go.Figure())
-        map_fig = telemetry_data.get("map", go.Figure())
+        time_series_fig = telemetry_visualizations.get("time_series", go.Figure())
+        endpoints_fig = telemetry_visualizations.get("endpoints", go.Figure())
+        map_fig = telemetry_visualizations.get("map", go.Figure())
 
         layout = dmc.Container(
             [
@@ -67,7 +66,7 @@ def get_metrics_layout():
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
-                                                                    f"{telemetry_data['unique_users']:,}",
+                                                                    f"{telemetry_visualizations['unique_users']:,}",
                                                                     size="xl",
                                                                     fw="bold",
                                                                 ),
@@ -101,7 +100,7 @@ def get_metrics_layout():
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
-                                                                    f"{telemetry_data['total_requests']:,}",
+                                                                    f"{telemetry_visualizations['total_requests']:,}",
                                                                     size="xl",
                                                                     fw="bold",
                                                                 ),
@@ -135,7 +134,7 @@ def get_metrics_layout():
                                                         dmc.Stack(
                                                             [
                                                                 dmc.Text(
-                                                                    f"{len(set(loc.get('country', 'Unknown') for loc in telemetry_data.get('locations', []) if loc.get('country') and loc.get('country') != 'Unknown'))}",
+                                                                    f"{len(set(loc.get('country', 'Unknown') for loc in telemetry_visualizations.get('locations', []) if loc.get('country') and loc.get('country') != 'Unknown'))}",
                                                                     size="xl",
                                                                     fw="bold",
                                                                 ),
@@ -380,12 +379,11 @@ layout = html.Div(id="metrics-content")
 )
 def refresh_telemetry(_, __, date_range):
     try:
-        telemetry_data = get_telemetry_data()
+        telemetry_visualizations = get_telemetry_visualizations()
 
-        # Use the modern figures directly from get_telemetry_data
-        time_series_fig = telemetry_data.get("time_series", go.Figure())
-        endpoints_fig = telemetry_data.get("endpoints", go.Figure())
-        map_fig = telemetry_data.get("map", go.Figure())
+        time_series_fig = telemetry_visualizations.get("time_series", go.Figure())
+        endpoints_fig = telemetry_visualizations.get("endpoints", go.Figure())
+        map_fig = telemetry_visualizations.get("map", go.Figure())
 
         return time_series_fig, endpoints_fig, map_fig
     except Exception as e:
