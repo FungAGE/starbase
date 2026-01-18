@@ -1,4 +1,3 @@
-import os
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -8,6 +7,7 @@ import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, _dash_renderer
 
+from src.config.settings import IS_DEV
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button, create_database_version_indicator
 from src.config.cache import cache, cleanup_old_cache
@@ -20,10 +20,6 @@ from src.telemetry.tasks import log_request_task
 from src.config.celery_config import run_task
 
 logger = get_logger(__name__)
-
-# Get the environment
-ENV = os.getenv("ENVIRONMENT", "development")
-IS_DEV = ENV.lower() == "development"
 
 server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
@@ -87,7 +83,7 @@ app = Dash(
 )
 
 # Enable dev tools after initialization (only for local development)
-if os.environ.get("DEV_MODE"):
+if IS_DEV:
     app.enable_dev_tools(
         dev_tools_props_check=True,
         dev_tools_ui=True,

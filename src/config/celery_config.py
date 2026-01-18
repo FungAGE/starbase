@@ -1,9 +1,7 @@
 import os
 import logging
 
-# Determine environment
-ENV = os.getenv("ENVIRONMENT", "development")
-IS_DEV = ENV.lower() == "development"
+from src.config.settings import IS_DEV
 
 # Check if Celery should be enabled (default to False for single-pod deployments)
 CELERY_ENABLED = os.getenv("CELERY_ENABLED", "false").lower() == "true"

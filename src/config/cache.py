@@ -1,7 +1,7 @@
 from flask_caching import Cache
 import os
 import time
-from src.config.settings import PROJECT_ROOT
+from src.config.settings import PROJECT_ROOT, IS_DEV
 from src.config.logging import get_logger
 from functools import wraps
 import pandas as pd
@@ -118,9 +118,8 @@ def smart_cache(timeout=3600, unless=None):
         def wrapper(*args, **kwargs):
             if unless and unless(*args, **kwargs):
                 return f(*args, **kwargs)
-            env = os.getenv("ENVIRONMENT", "development")
             actual_timeout = timeout
-            if env == "development" and timeout is None:
+            if IS_DEV and timeout is None:
                 actual_timeout = 300
 
             cache_key = f"{f.__name__}:{cache_key_builder(*args, **kwargs)}"

@@ -1,12 +1,7 @@
-from src.config.settings import DB_PATHS
+from src.config.settings import DB_PATHS, IS_DEV
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
-import os
-
-# Get the environment
-ENV = os.getenv("ENVIRONMENT", "development")
-IS_DEV = ENV.lower() == "development"
 
 DATABASE_URLS = {
     "starbase": f"sqlite:///{DB_PATHS['starbase']}",

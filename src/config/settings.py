@@ -1,5 +1,8 @@
 import os
 
+# Development mode
+IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
+
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
