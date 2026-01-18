@@ -2,6 +2,18 @@ from src.config.settings import DB_PATHS, IS_DEV
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
+import sqlalchemy.exc
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
 
 DATABASE_URLS = {
     "starbase": f"sqlite:///{DB_PATHS['starbase']}",
@@ -45,3 +57,21 @@ telemetry_engine = engines["telemetry"]
 StarbaseSession = sessionmaker(bind=starbase_engine)
 SubmissionsSession = sessionmaker(bind=submissions_engine)
 TelemetrySession = sessionmaker(bind=telemetry_engine)
+
+# Define a common retry decorator for database operations
+def db_retry_decorator(additional_retry_exceptions=()):
+    """
+    Create a retry decorator for database operations
+    Args:
+        additional_retry_exceptions: Tuple of additional exceptions to retry on
+    """
+    retry_exceptions = (sqlalchemy.exc.OperationalError,) + additional_retry_exceptions
+
+    return retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(retry_exceptions),
+        before_sleep=lambda retry_state: logger.warning(
+            f"Retrying database operation after error: {retry_state.outcome.exception()}"
+        ),
+    )
