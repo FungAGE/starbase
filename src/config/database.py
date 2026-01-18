@@ -63,3 +63,29 @@ def db_retry_decorator(additional_retry_exceptions=()):
             f"Retrying database operation after error: {retry_state.outcome.exception()}"
         ),
     )
+
+
+def check_database_connection(database_name="starbase"):
+    """Verify the submissions database is accessible and properly configured."""
+    from sqlalchemy import text
+    from src.database.sql_engine import get_starbase_session, get_submissions_session, get_telemetry_session
+
+    try:
+        if database_name == "starbase":
+            with get_starbase_session() as session:
+                result = session.execute(text("SELECT COUNT(*) FROM joined_ships")).scalar()
+                logger.info(f"Starbase database check passed. Current ships: {result}")
+                return True
+        elif database_name == "submissions":
+            with get_submissions_session() as session:
+                result = session.execute(text("SELECT COUNT(*) FROM submissions")).scalar()
+                logger.info(f"Submissions database check passed. Current submissions: {result}")
+                return True
+        elif database_name == "telemetry":
+            with get_telemetry_session() as session:
+                result = session.execute(text("SELECT COUNT(*) FROM telemetry")).scalar()
+                logger.info(f"Telemetry database check passed. Current telemetry: {result}")
+                return True
+    except Exception as e:
+        logger.error(f"Database check failed: {str(e)}")
+        return False

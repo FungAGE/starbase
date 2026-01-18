@@ -152,18 +152,6 @@ def log_request_info():
         logger.error(f"Error logging telemetry: {str(e)}")
 
 
-def check_submissions_db():
-    """Verify the submissions database is accessible and properly configured."""
-    try:
-        session = SubmissionsSession()
-        result = session.execute(text("SELECT COUNT(*) FROM submissions")).scalar()
-        logger.info(f"Submissions database check passed. Current submissions: {result}")
-        return True
-    except Exception as e:
-        logger.error(f"Submissions database check failed: {str(e)}")
-        return False
-
-
 def component_to_dict(component):
     """Convert a Dash component to a dictionary format."""
     if isinstance(component, (str, int, float)):
