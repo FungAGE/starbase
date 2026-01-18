@@ -253,14 +253,8 @@ def get_private_ip_filter_sql():
     """.strip()
 
 
-
-
-
-
 def get_telemetry_data():
     """Fetch telemetry data from the database."""
-    # Define valid pages as a comma-separated string of quoted values
-    valid_endpoints = "', '".join(PAGE_MAPPING)
     
     # Get reusable IP filter
     ip_filter = get_private_ip_filter_sql()
@@ -279,7 +273,7 @@ def get_telemetry_data():
             time_series_query = f"""
             SELECT DATE(timestamp) as date, COUNT(DISTINCT ip_address) as count 
             FROM request_logs 
-            WHERE endpoint IN ({valid_endpoints})
+            WHERE endpoint IN ({PAGE_MAPPING})
             AND {ip_filter}
             GROUP BY DATE(timestamp) 
             ORDER BY date
@@ -290,7 +284,7 @@ def get_telemetry_data():
             endpoints_query = f"""
             SELECT endpoint, COUNT(DISTINCT ip_address) as count 
             FROM request_logs 
-            WHERE endpoint IN ({valid_endpoints})
+            WHERE endpoint IN ({PAGE_MAPPING})
             AND {ip_filter}
             GROUP BY endpoint 
             ORDER BY count DESC

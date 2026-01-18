@@ -108,7 +108,7 @@ SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 
 # Define valid pages
-PAGE_MAPPING = {
+PAGES = {
     HOME_URL,
     WIKI_URL,
     BLAST_URL,
@@ -117,6 +117,9 @@ PAGE_MAPPING = {
     SUBMIT_URL,
     METRICS_URL,
 }
+
+PAGE_MAPPING = ",".join(PAGES)
+
 
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
