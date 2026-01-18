@@ -573,20 +573,30 @@ def set_database_version(semantic_version, description="", created_by="manual"):
 
 
 def get_alembic_schema_version():
-    """Get the current Alembic schema version (for schema tracking)."""
+    """
+    Get the current Alembic schema version (for schema tracking).
+    - Try to get single revision first
+    - If multiple heads exist, get all heads
+    - If no heads exist, return "unknown"
+    """
     try:
         from alembic.migration import MigrationContext
 
         with get_starbase_session() as session:
             conn = session.connection()
             context = MigrationContext.configure(conn)
-            current_rev = context.get_current_revision()
-
-        return current_rev if current_rev else "unknown"
+            
+            try:
+                current_rev = context.get_current_revision()
+                return current_rev if current_rev else "unknown"
+            except Exception:
+                heads = context.get_current_heads()
+                if heads:
+                    return ", ".join(heads) if len(heads) > 1 else heads[0]
+                return "unknown"
     except Exception as e:
         logger.error(f"Error fetching Alembic schema version: {str(e)}")
         return "unknown"
-
 
 @smart_cache(timeout=None)
 def get_database_stats():
