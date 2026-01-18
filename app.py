@@ -1,7 +1,6 @@
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
-from sqlalchemy import text
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
@@ -9,7 +8,7 @@ from dash import Dash, html, dcc, _dash_renderer
 
 from src.config.settings import IS_DEV
 from src.components import navmenu
-from src.components.callbacks import create_feedback_button, create_database_version_indicator
+from src.components.ui import create_feedback_button, create_database_version_indicator
 from src.config.cache import cache, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
@@ -64,7 +63,7 @@ external_scripts = [
     "/assets/js/clustermap.min.js",
     "/assets/js/synteny.js",
     "/assets/js/universal-modal.js",
-    "/assets/js/blaster.min.woaln.js"
+    "/assets/js/blaster.min.woaln.js",
 ]
 
 app = Dash(
@@ -146,6 +145,7 @@ def log_request_hook():
         run_task(log_request_task, client_ip, request.path)
     except Exception as e:
         logger.error(f"Error logging telemetry: {str(e)}")
+
 
 app.layout = serve_app_layout
 

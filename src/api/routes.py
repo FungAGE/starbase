@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from src.config.limiter import limiter
-from src.components.callbacks import (
+from src.components.data import (
     create_ship_accession_modal_data,
     create_accession_modal_data,
 )

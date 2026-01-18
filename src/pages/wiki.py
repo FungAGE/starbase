@@ -28,7 +28,7 @@ from src.components.tables import (
 )
 from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
-from src.components.callbacks import (
+from src.components.ui import (
     curated_switch,
     dereplicated_switch,
 )
