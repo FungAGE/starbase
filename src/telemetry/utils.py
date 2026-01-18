@@ -362,33 +362,6 @@ def is_development_ip(ip_address):
     return any(ip_address.startswith(prefix) for prefix in local_prefixes)
 
 
-def log_request(ip_address, endpoint, session):
-    """Log request details to telemetry database."""
-    if is_development_ip(ip_address):
-        logger.debug(f"Skipping telemetry for development IP: {ip_address}")
-        return
-
-    # Only log valid endpoints
-    if endpoint not in page_mapping:
-        logger.debug(f"Skipping telemetry for non-mapped endpoint: {endpoint}")
-        return
-
-    try:
-        query = """
-        INSERT INTO request_logs (ip_address, endpoint, timestamp)
-        VALUES (:ip, :endpoint, :timestamp)
-        """
-        session.execute(
-            text(query),
-            {"ip": ip_address, "endpoint": endpoint, "timestamp": datetime.now()},
-        )
-        session.commit()
-        logger.debug(f"Logged request from {ip_address} to {endpoint}")
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error logging request: {str(e)}")
-
-
 def fetch_telemetry_data():
     """Fetch telemetry data from the database."""
 

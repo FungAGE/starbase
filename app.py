@@ -137,10 +137,8 @@ def serve_app_layout():
 
 
 @app.server.before_request
-def log_request_info():
-    """Log incoming requests to the telemetry database.
-    Skip static files, Dash internal endpoints, and reload hash.
-    """
+def log_request_hook():
+    """Log incoming requests via Celery/direct call."""
     try:
         if request.path.startswith(("/static/", "/_dash-", "/_reload-hash")):
             return
@@ -148,28 +146,6 @@ def log_request_info():
         run_task(log_request_task, client_ip, request.path)
     except Exception as e:
         logger.error(f"Error logging telemetry: {str(e)}")
-
-
-def component_to_dict(component):
-    """Convert a Dash component to a dictionary format."""
-    if isinstance(component, (str, int, float)):
-        return str(component)
-    elif isinstance(component, (list, tuple)):
-        return [component_to_dict(c) for c in component]
-    elif hasattr(component, "children"):
-        result = {
-            "type": component.__class__.__name__,
-            "children": component_to_dict(component.children)
-            if component.children is not None
-            else None,
-        }
-        if hasattr(component, "style") and component.style:
-            result["style"] = component.style
-        if hasattr(component, "className") and component.className:
-            result["className"] = component.className
-        return result
-    return None
-
 
 app.layout = serve_app_layout
 
