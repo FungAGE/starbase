@@ -16,8 +16,8 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy import text
-from src.config.database import StarbaseSession
 from src.config.logging import get_logger
+from src.database.sql_engine import get_starbase_session
 
 logger = get_logger(__name__)
 
@@ -49,79 +49,77 @@ def generate_ssb_accessions(dry_run=False):
     Args:
         dry_run (bool): If True, don't actually insert into database, just show what would happen
     """
-    session = StarbaseSession()
+    with get_starbase_session() as session:
     
-    try:
-        # Get all ships that don't have a ship_accession yet
-        ships_without_ssb = session.execute(
-            text("""
-            SELECT s.id, s.md5, s.sequence_length, a.accession_tag as ssa_accession
-            FROM ships s
-            LEFT JOIN ship_accessions sa ON sa.ship_id = s.id
-            LEFT JOIN accessions a ON a.id = s.accession_id
-            WHERE sa.id IS NULL
-            ORDER BY s.id
-            """)
-        ).fetchall()
-        
-        total_ships = len(ships_without_ssb)
-        logger.info(f"Found {total_ships} ships without SSB accessions")
-        
-        if total_ships == 0:
-            logger.info("All ships already have SSB accessions!")
-            return
-        
-        # Get the starting SSB number
-        next_ssb_number = get_next_ssb_number(session)
-        logger.info(f"Starting from SSB{next_ssb_number:07d}")
-        
-        # Generate SSB accessions
-        inserted_count = 0
-        for ship_id, md5, seq_length, ssa_accession in ships_without_ssb:
-            ssb_tag = f"SSB{next_ssb_number:07d}"
+        try:
+            # Get all ships that don't have a ship_accession yet
+            ships_without_ssb = session.execute(
+                text("""
+                SELECT s.id, s.md5, s.sequence_length, a.accession_tag as ssa_accession
+                FROM ships s
+                LEFT JOIN ship_accessions sa ON sa.ship_id = s.id
+                LEFT JOIN accessions a ON a.id = s.accession_id
+                WHERE sa.id IS NULL
+                ORDER BY s.id
+                """)
+            ).fetchall()
             
-            if dry_run:
-                logger.info(
-                    f"[DRY RUN] Would create: {ssb_tag} for ship_id={ship_id}, "
-                    f"SSA={ssa_accession}, md5={md5[:8]}..., length={seq_length}"
-                )
+            total_ships = len(ships_without_ssb)
+            logger.info(f"Found {total_ships} ships without SSB accessions")
+            
+            if total_ships == 0:
+                logger.info("All ships already have SSB accessions!")
+                return
+            
+            # Get the starting SSB number
+            next_ssb_number = get_next_ssb_number(session)
+            logger.info(f"Starting from SSB{next_ssb_number:07d}")
+            
+            # Generate SSB accessions
+            inserted_count = 0
+            for ship_id, md5, seq_length, ssa_accession in ships_without_ssb:
+                ssb_tag = f"SSB{next_ssb_number:07d}"
+                
+                if dry_run:
+                    logger.info(
+                        f"[DRY RUN] Would create: {ssb_tag} for ship_id={ship_id}, "
+                        f"SSA={ssa_accession}, md5={md5[:8]}..., length={seq_length}"
+                    )
+                else:
+                    # Insert the new ship_accession
+                    session.execute(
+                        text("""
+                        INSERT INTO ship_accessions (ship_accession_tag, version_tag, ship_id)
+                        VALUES (:tag, :version, :ship_id)
+                        """),
+                        {"tag": ssb_tag, "version": 1, "ship_id": ship_id}
+                    )
+                    
+                    if inserted_count % 100 == 0:
+                        logger.info(f"Created {inserted_count}/{total_ships} SSB accessions...")
+                        session.commit()  # Commit in batches
+                    
+                    inserted_count += 1
+                
+                next_ssb_number += 1
+            
+            if not dry_run:
+                session.commit()
+                logger.info(f"Successfully created {inserted_count} SSB accessions")
             else:
-                # Insert the new ship_accession
-                session.execute(
-                    text("""
-                    INSERT INTO ship_accessions (ship_accession_tag, version_tag, ship_id)
-                    VALUES (:tag, :version, :ship_id)
-                    """),
-                    {"tag": ssb_tag, "version": 1, "ship_id": ship_id}
-                )
-                
-                if inserted_count % 100 == 0:
-                    logger.info(f"Created {inserted_count}/{total_ships} SSB accessions...")
-                    session.commit()  # Commit in batches
-                
-                inserted_count += 1
+                logger.info(f"[DRY RUN] Would have created {total_ships} SSB accessions")
             
-            next_ssb_number += 1
-        
-        if not dry_run:
-            session.commit()
-            logger.info(f"Successfully created {inserted_count} SSB accessions")
-        else:
-            logger.info(f"[DRY RUN] Would have created {total_ships} SSB accessions")
-        
-        # Display summary statistics
-        if not dry_run:
-            total_ssb = session.execute(
-                text("SELECT COUNT(*) FROM ship_accessions")
-            ).fetchone()[0]
-            logger.info(f"Total SSB accessions in database: {total_ssb}")
-        
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error generating SSB accessions: {str(e)}")
-        raise
-    finally:
-        session.close()
+            # Display summary statistics
+            if not dry_run:
+                total_ssb = session.execute(
+                    text("SELECT COUNT(*) FROM ship_accessions")
+                ).fetchone()[0]
+                logger.info(f"Total SSB accessions in database: {total_ssb}")
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error generating SSB accessions: {str(e)}")
+            raise
 
 
 def main():

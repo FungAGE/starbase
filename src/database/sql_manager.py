@@ -1,6 +1,5 @@
 import pandas as pd
-from src.config.database import StarbaseSession
-from contextlib import contextmanager
+from src.database.sql_engine import get_starbase_session
 from sqlalchemy import text
 from src.config.cache import smart_cache
 from src.config.settings import PHYLOGENY_PATHS
@@ -28,69 +27,66 @@ def fetch_meta_data(curated=False, accession_tags=None):
     # Always cache the full dataset with a fixed key
     cache_key = "fetch_meta_data:full_dataset"
 
-    # Try to get cached full dataset
-    full_df = cache.get(cache_key)
-    if full_df is not None:
-        if isinstance(full_df, dict) and "pandas_df" in full_df:
-            full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
-    else:
-        # Fetch and cache the full dataset
-        session = StarbaseSession()
+    with get_starbase_session() as session:
         try:
-            meta_query = """
-            SELECT j.curated_status, j.starshipID,
-                   a.accession_tag, a.version_tag,
-                   j.ship_id, j.id as joined_ship_id,
-                   CASE
-                       WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
-                       THEN a.accession_tag || '.' || a.version_tag
-                       ELSE a.accession_tag
-                   END as accession_display,
-                   sa.ship_accession_tag,
-                   CASE
-                       WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
-                       THEN sa.ship_accession_tag || '.' || sa.version_tag
-                       ELSE sa.ship_accession_tag
-                   END as ship_accession_display,
-                   t.taxID, t.strain, t.`order`, t.family, t.name,
-                   sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
-                   f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
-                   g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                   s.md5, s.rev_comp_md5, s.sequence_length
-            FROM joined_ships j
-            LEFT JOIN accessions a ON j.accession_id = a.id
-            LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
-            LEFT JOIN taxonomy t ON j.tax_id = t.id
-            LEFT JOIN starship_features sf ON a.id = sf.accession_id
-            LEFT JOIN family_names f ON j.ship_family_id = f.id
-            LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-            LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-            LEFT JOIN genomes g ON j.genome_id = g.id
-            LEFT JOIN ships s ON s.id = j.ship_id
-            WHERE j.accession_id IS NOT NULL
-            """
+            # Try to get cached full dataset
+            full_df = cache.get(cache_key)
+            if full_df is not None:
+                if isinstance(full_df, dict) and "pandas_df" in full_df:
+                    full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
+            else:
+                meta_query = """
+                SELECT j.curated_status, j.starshipID,
+                    a.accession_tag, a.version_tag,
+                    j.ship_id, j.id as joined_ship_id,
+                    CASE
+                        WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
+                        THEN a.accession_tag || '.' || a.version_tag
+                        ELSE a.accession_tag
+                    END as accession_display,
+                    sa.ship_accession_tag,
+                    CASE
+                        WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                        THEN sa.ship_accession_tag || '.' || sa.version_tag
+                        ELSE sa.ship_accession_tag
+                    END as ship_accession_display,
+                    t.taxID, t.strain, t.`order`, t.family, t.name,
+                    sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
+                    f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+                    g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
+                    s.md5, s.rev_comp_md5, s.sequence_length
+                FROM joined_ships j
+                LEFT JOIN accessions a ON j.accession_id = a.id
+                LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
+                LEFT JOIN taxonomy t ON j.tax_id = t.id
+                LEFT JOIN starship_features sf ON a.id = sf.accession_id
+                LEFT JOIN family_names f ON j.ship_family_id = f.id
+                LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+                LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
+                LEFT JOIN genomes g ON j.genome_id = g.id
+                LEFT JOIN ships s ON s.id = j.ship_id
+                WHERE j.accession_id IS NOT NULL
+                """
 
-            full_df = pd.read_sql_query(meta_query, session.bind)
-            # Cache as dictionary for DataFrame serialization
-            cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
+                full_df = pd.read_sql_query(meta_query, session.bind)
+                # Cache as dictionary for DataFrame serialization
+                cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
 
         except Exception as e:
             logger.error(f"Error fetching meta data: {str(e)}")
             raise
-        finally:
-            session.close()
 
-    # Apply filters in memory
-    filtered_df = full_df.copy()
+        # Apply filters in memory
+        filtered_df = full_df.copy()
 
-    if curated:
-        filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
+        if curated:
+            filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
 
-    if accession_tags:
-        if isinstance(accession_tags, list):
-            filtered_df = filtered_df[filtered_df["accession_tag"].isin(accession_tags)]
-        else:
-            filtered_df = filtered_df[filtered_df["accession_tag"] == accession_tags]
+        if accession_tags:
+            if isinstance(accession_tags, list):
+                filtered_df = filtered_df[filtered_df["accession_tag"].isin(accession_tags)]
+            else:
+                filtered_df = filtered_df[filtered_df["accession_tag"] == accession_tags]
 
     return filtered_df
 
@@ -98,24 +94,21 @@ def fetch_meta_data(curated=False, accession_tags=None):
 @smart_cache(timeout=None)
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
-    session = StarbaseSession()
-
-    paper_query = """
-    SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, 
-           p.shortCitation, f.familyName, f.type_element_reference
-    FROM papers p
-    LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
-    """
-    try:
-        paper_df = pd.read_sql_query(paper_query, session.bind)
-        if paper_df.empty:
-            logger.warning("Fetched paper DataFrame is empty.")
-        return paper_df
-    except Exception as e:
-        logger.error(f"Error fetching paper data: {str(e)}")
-        raise
-    finally:
-        session.close()
+    with get_starbase_session() as session:
+        try:
+            paper_query = """
+            SELECT p.Title, p.Author, p.PublicationYear, p.DOI, p.Url, 
+                   p.shortCitation, f.familyName, f.type_element_reference
+            FROM papers p
+            LEFT JOIN family_names f ON p.shortCitation = f.type_element_reference
+            """
+            paper_df = pd.read_sql_query(paper_query, session.bind)
+            if paper_df.empty:
+                logger.warning("Fetched paper DataFrame is empty.")
+            return paper_df 
+        except Exception as e:
+            logger.error(f"Error fetching paper data: {str(e)}")
+            raise
 
 
 def dereplicate_sequences(df):
@@ -156,145 +149,142 @@ def fetch_ships(
     """
     import re
 
-    session = StarbaseSession()
+    with get_starbase_session() as session:
 
-    base_query = """
-    WITH valid_ships AS (
-        SELECT DISTINCT 
-            a.id as accession_id, 
-            a.accession_tag, a.version_tag,
-            j.ship_id,
-            CASE 
-                WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
-                THEN a.accession_tag || '.' || a.version_tag
-                ELSE a.accession_tag
-            END as accession_display,
-            sa.ship_accession_tag,
-            CASE
-                WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
-                THEN sa.ship_accession_tag || '.' || sa.version_tag
-                ELSE sa.ship_accession_tag
-            END as ship_accession_display,
-            j.curated_status,
-            j.starshipID,
-            sf.elementBegin, sf.elementEnd, sf.contigID,
-            t.name, t.family, t.`order`,
-            f.familyName, n.navis_name, h.haplotype_name,
-            g.assembly_accession, c.captainID"""
+        base_query = """
+        WITH valid_ships AS (
+            SELECT DISTINCT 
+                a.id as accession_id, 
+                a.accession_tag, a.version_tag,
+                j.ship_id,
+                CASE 
+                    WHEN a.version_tag IS NOT NULL AND a.version_tag != '' 
+                    THEN a.accession_tag || '.' || a.version_tag
+                    ELSE a.accession_tag
+                END as accession_display,
+                sa.ship_accession_tag,
+                CASE
+                    WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                    THEN sa.ship_accession_tag || '.' || sa.version_tag
+                    ELSE sa.ship_accession_tag
+                END as ship_accession_display,
+                j.curated_status,
+                j.starshipID,
+                sf.elementBegin, sf.elementEnd, sf.contigID,
+                t.name, t.family, t.`order`,
+                f.familyName, n.navis_name, h.haplotype_name,
+                g.assembly_accession, c.captainID"""
 
-    base_query += """
-        FROM joined_ships j
-        INNER JOIN accessions a ON j.accession_id = a.id
-        LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
-        LEFT JOIN taxonomy t ON j.tax_id = t.id
-        LEFT JOIN family_names f ON j.ship_family_id = f.id
-        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-        LEFT JOIN genomes g ON j.genome_id = g.id
-        LEFT JOIN starship_features sf ON a.id = sf.accession_id
-        LEFT JOIN captains c ON j.captain_id = c.id
-        WHERE 1=1
-    """
-
-    query = base_query
-
-    use_accessions = []
-    if accession_tags:
-        for accession in accession_tags:
-            if re.match("\..*", accession):
-                use_accessions.append(re.sub(pattern="\..*", repl="", string=accession))
-            else:
-                use_accessions.append(accession)
-
-        query += " AND a.accession_tag IN ({})".format(
-            ",".join(f"'{tag}'" for tag in accession_tags)
-        )
-    if curated:
-        query += " AND j.curated_status = 'curated'"
-
-    if with_sequence:
-        query += """
-        )
-        SELECT 
-            v.ship_id,
-            v.accession_id,
-            v.accession_tag,
-            v.version_tag,
-            v.accession_display,
-            v.ship_accession_tag,
-            v.ship_accession_display,
-            v.curated_status,
-            v.starshipID,
-            v.elementBegin,
-            v.elementEnd,
-            v.contigID,
-            v.name,
-            v.family,
-            v.`order`,
-            v.familyName,
-            v.navis_name,
-            v.haplotype_name,
-            v.assembly_accession,
-            s.sequence,
-            s.md5,
-            s.rev_comp_md5,
-            v.captainID
-        FROM valid_ships v
-        LEFT JOIN ships s ON s.id = v.ship_id
-        WHERE s.sequence IS NOT NULL"""
-
-        query += """
-        """
-    else:
-        query += """
-        )
-        SELECT 
-            v.accession_id,
-            v.accession_tag,
-            v.version_tag,
-            v.accession_display,
-            v.ship_accession_tag,
-            v.ship_accession_display,
-            v.curated_status,
-            v.starshipID,
-            v.elementBegin,
-            v.elementEnd,
-            v.contigID,
-            v.name,
-            v.family,
-            v.`order`,
-            v.familyName,
-            v.navis_name,
-            v.haplotype_name,
-            v.assembly_accession,
-            v.captainID
-        FROM valid_ships v"""
-
-        query += """
+        base_query += """
+            FROM joined_ships j
+            INNER JOIN accessions a ON j.accession_id = a.id
+            LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
+            LEFT JOIN taxonomy t ON j.tax_id = t.id
+            LEFT JOIN family_names f ON j.ship_family_id = f.id
+            LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+            LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
+            LEFT JOIN genomes g ON j.genome_id = g.id
+            LEFT JOIN starship_features sf ON a.id = sf.accession_id
+            LEFT JOIN captains c ON j.captain_id = c.id
+            WHERE 1=1
         """
 
-    try:
-        df = pd.read_sql_query(query, session.bind)
+        query = base_query
 
-        if df.empty:
-            logger.warning("Fetched ships DataFrame is empty.")
-            return df
+        use_accessions = []
+        if accession_tags:
+            for accession in accession_tags:
+                if re.match("\..*", accession):
+                    use_accessions.append(re.sub(pattern="\..*", repl="", string=accession))
+                else:
+                    use_accessions.append(accession)
 
-        # Apply MD5-based deduplication if sequences are available and deduplication is requested
-        if (
-            with_sequence
-            and dereplicate
-            and "md5" in df.columns
-            and "rev_comp_md5" in df.columns
-        ):
-            df = dereplicate_sequences(df)
+            query += " AND a.accession_tag IN ({})".format(
+                ",".join(f"'{tag}'" for tag in accession_tags)
+            )
+        if curated:
+            query += " AND j.curated_status = 'curated'"
 
+        if with_sequence:
+            query += """
+            )
+            SELECT 
+                v.ship_id,
+                v.accession_id,
+                v.accession_tag,
+                v.version_tag,
+                v.accession_display,
+                v.ship_accession_tag,
+                v.ship_accession_display,
+                v.curated_status,
+                v.starshipID,
+                v.elementBegin,
+                v.elementEnd,
+                v.contigID,
+                v.name,
+                v.family,
+                v.`order`,
+                v.familyName,
+                v.navis_name,
+                v.haplotype_name,
+                v.assembly_accession,
+                s.sequence,
+                s.md5,
+                s.rev_comp_md5,
+                v.captainID
+            FROM valid_ships v
+            LEFT JOIN ships s ON s.id = v.ship_id
+            WHERE s.sequence IS NOT NULL"""
+
+            query += """
+            """
+        else:
+            query += """
+            )
+            SELECT 
+                v.accession_id,
+                v.accession_tag,
+                v.version_tag,
+                v.accession_display,
+                v.ship_accession_tag,
+                v.ship_accession_display,
+                v.curated_status,
+                v.starshipID,
+                v.elementBegin,
+                v.elementEnd,
+                v.contigID,
+                v.name,
+                v.family,
+                v.`order`,
+                v.familyName,
+                v.navis_name,
+                v.haplotype_name,
+                v.assembly_accession,
+                v.captainID
+            FROM valid_ships v"""
+
+            query += """
+            """
+
+        try:
+            df = pd.read_sql_query(query, session.bind)
+
+            if df.empty:
+                logger.warning("Fetched ships DataFrame is empty.")
+
+            if (
+                with_sequence
+                and dereplicate
+                and "md5" in df.columns
+                and "rev_comp_md5" in df.columns
+            ):
+                # Apply MD5-based deduplication if sequences are available and deduplication is requested
+                df = dereplicate_sequences(df)
+
+        except Exception as e:
+            logger.error(f"Error fetching ships data: {str(e)}")
+            raise
         return df
-    except Exception as e:
-        logger.error(f"Error fetching ships data: {str(e)}")
-        raise
-    finally:
-        session.close()
 
 
 @smart_cache(timeout=None)
@@ -305,84 +295,78 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
     cache_key = "fetch_ship_table:full_dataset"
 
     full_df = cache.get(cache_key)
-    if full_df is not None:
-        if isinstance(full_df, dict) and "pandas_df" in full_df:
-            full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
-    else:
-        session = StarbaseSession()
+    with get_starbase_session() as session:
+        if full_df is not None:
+            if isinstance(full_df, dict) and "pandas_df" in full_df:
+                full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
+        else:
 
-        try:
-            query = """
-            SELECT DISTINCT
-                js.ship_id,
-                js.source,
-                js.curated_status,
-                a.accession_tag, a.version_tag,
-                CASE
-                    WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
-                    THEN a.accession_tag || '.' || a.version_tag
-                    ELSE a.accession_tag
-                END as accession_display,
-                sa.ship_accession_tag,
-                CASE
-                    WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
-                    THEN sa.ship_accession_tag || '.' || sa.version_tag
-                    ELSE sa.ship_accession_tag
-                END as ship_accession_display,
-                f.familyName,
-                t.name
-            FROM joined_ships js
-            LEFT JOIN accessions a ON js.accession_id = a.id
-            LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
-            LEFT JOIN taxonomy t ON js.tax_id = t.id
-            LEFT JOIN family_names f ON js.ship_family_id = f.id
-            WHERE 1=1
-            """
+            try:
+                query = """
+                SELECT DISTINCT
+                    js.ship_id,
+                    js.source,
+                    js.curated_status,
+                    a.accession_tag, a.version_tag,
+                    CASE
+                        WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
+                        THEN a.accession_tag || '.' || a.version_tag
+                        ELSE a.accession_tag
+                    END as accession_display,
+                    sa.ship_accession_tag,
+                    CASE
+                        WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                        THEN sa.ship_accession_tag || '.' || sa.version_tag
+                        ELSE sa.ship_accession_tag
+                    END as ship_accession_display,
+                    f.familyName,
+                    t.name
+                FROM joined_ships js
+                LEFT JOIN accessions a ON js.accession_id = a.id
+                LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
+                LEFT JOIN taxonomy t ON js.tax_id = t.id
+                LEFT JOIN family_names f ON js.ship_family_id = f.id
+                WHERE 1=1
+                """
 
-            full_df = pd.read_sql_query(query, session.bind)
-            cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
+                full_df = pd.read_sql_query(query, session.bind)
+                cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
 
-        except Exception as e:
-            logger.error(f"Error fetching ship table data: {str(e)}")
-            raise
-        finally:
-            session.close()
+            except Exception as e:
+                logger.error(f"Error fetching ship table data: {str(e)}")
+                raise
 
-    filtered_df = full_df.copy()
+        filtered_df = full_df.copy()
 
-    if with_sequence:
-        filtered_df = filtered_df[filtered_df["ship_id"].notna()]
+        if with_sequence:
+            filtered_df = filtered_df[filtered_df["ship_id"].notna()]
 
-    if with_gff_entries:
-        # generate a list of ship_ids that have GFF entries, using a separate query
-        session = StarbaseSession()
-        try:
-            gff_query = """
-            SELECT DISTINCT g.ship_id
-            FROM gff g
-            WHERE g.ship_id IS NOT NULL AND g.ship_id != ''
-            """
-            gff_df = pd.read_sql_query(gff_query, session.bind)
-            gff_ship_ids = gff_df["ship_id"].dropna().tolist()
-            filtered_df = filtered_df[filtered_df["ship_id"].isin(gff_ship_ids)]
-        except Exception as e:
-            logger.error(f"Error fetching GFF data for filtering: {str(e)}")
-            # If GFF query fails, return empty dataframe to ensure no entries without GFF data are shown
-            filtered_df = filtered_df.iloc[0:0]
-        finally:
-            session.close()
+        if with_gff_entries:
+            # generate a list of ship_ids that have GFF entries, using a separate query
+            try:
+                gff_query = """
+                SELECT DISTINCT g.ship_id
+                FROM gff g
+                WHERE g.ship_id IS NOT NULL AND g.ship_id != ''
+                """
+                gff_df = pd.read_sql_query(gff_query, session.bind)
+                gff_ship_ids = gff_df["ship_id"].dropna().tolist()
+                filtered_df = filtered_df[filtered_df["ship_id"].isin(gff_ship_ids)]
+            except Exception as e:
+                logger.error(f"Error fetching GFF data for filtering: {str(e)}")
+                # If GFF query fails, return empty dataframe to ensure no entries without GFF data are shown
+                filtered_df = filtered_df.iloc[0:0]
 
-    if curated:
-        filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
+        if curated:
+            filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
 
-    filtered_df = filtered_df.sort_values(by="familyName")
+        filtered_df = filtered_df.sort_values(by="familyName")
 
     return filtered_df
 
 
 def fetch_accession_ship(accession_tag):
     """Fetch sequence and GFF data for a specific ship."""
-    session = StarbaseSession()
 
     sequence_query = """
     SELECT s.sequence
@@ -400,26 +384,25 @@ def fetch_accession_ship(accession_tag):
     WHERE a.accession_tag = :accession_tag AND g.source IS NOT NULL
     """
 
-    try:
-        sequence_df = pd.read_sql_query(
-            sequence_query, session.bind, params={"accession_tag": accession_tag}
-        )
-        if sequence_df.empty:
-            logger.warning(f"No sequence data found for accession: {accession_tag}")
-            sequence_df = None
-        gff_df = pd.read_sql_query(
-            gff_query, session.bind, params={"accession_tag": accession_tag}
-        )
-        if gff_df.empty:
-            logger.warning(f"No GFF data found for accession: {accession_tag}")
-            gff_df = None
+    with get_starbase_session() as session:
+        try:
+            sequence_df = pd.read_sql_query(
+                sequence_query, session.bind, params={"accession_tag": accession_tag}
+            )
+            if sequence_df.empty:
+                logger.warning(f"No sequence data found for accession: {accession_tag}")
+                sequence_df = None
+            gff_df = pd.read_sql_query(
+                gff_query, session.bind, params={"accession_tag": accession_tag}
+            )
+            if gff_df.empty:
+                logger.warning(f"No GFF data found for accession: {accession_tag}")
+                gff_df = None
 
-        return {"sequence": sequence_df, "gff": gff_df}
-    except Exception as e:
-        logger.error(f"Error fetching sequence data for {accession_tag}: {str(e)}")
-        raise
-    finally:
-        session.close()
+            return {"sequence": sequence_df, "gff": gff_df}
+        except Exception as e:
+            logger.error(f"Error fetching sequence data for {accession_tag}: {str(e)}")
+            raise
 
 
 def fetch_captains(
@@ -436,7 +419,6 @@ def fetch_captains(
     Returns:
         pd.DataFrame: DataFrame containing captain data
     """
-    session = StarbaseSession()
 
     query = """
     WITH valid_captains AS (
@@ -521,20 +503,19 @@ def fetch_captains(
         FROM valid_captains v
         """
 
-    try:
-        df = pd.read_sql_query(query, session.bind)
+    with get_starbase_session() as session:
+        try:
+            df = pd.read_sql_query(query, session.bind)
 
-        if dereplicate:
-            df = df.drop_duplicates(subset="accession_tag")
+            if dereplicate:
+                df = df.drop_duplicates(subset="accession_tag")
 
-        if df.empty:
-            logger.warning("Fetched captains DataFrame is empty.")
-        return df
-    except Exception as e:
-        logger.error(f"Error fetching captains data: {str(e)}")
-        raise
-    finally:
-        session.close()
+            if df.empty:
+                logger.warning("Fetched captains DataFrame is empty.")
+            return df
+        except Exception as e:
+            logger.error(f"Error fetching captains data: {str(e)}")
+            raise
 
 
 def fetch_captain_tree():
@@ -556,43 +537,39 @@ def fetch_sf_data():
 
 def get_database_version():
     """Get the current database semantic version from the database_versions table."""
-    session = StarbaseSession()
-    try:
-        result = session.execute(
-            text("""
-            SELECT semantic_version FROM database_versions
-            ORDER BY created_at DESC LIMIT 1
-        """)
-        ).fetchone()
+    with get_starbase_session() as session:
+        try:
+            result = session.execute(
+                text("""
+                SELECT semantic_version FROM database_versions
+                ORDER BY created_at DESC LIMIT 1
+            """)
+            ).fetchone()
 
-        return result[0] if result else "unknown"
-    except Exception as e:
-        logger.error(f"Error fetching database version: {str(e)}")
-        return "unknown"
-    finally:
-        session.close()
+            return result[0] if result else "unknown"
+        except Exception as e:
+            logger.error(f"Error fetching database version: {str(e)}")
+            return "unknown"
 
 
 def set_database_version(semantic_version, description="", created_by="manual"):
     """Manually set a new semantic version for the database."""
-    session = StarbaseSession()
-    try:
-        session.execute(
-            text("""
-            INSERT INTO database_versions (semantic_version, description, created_by)
-            VALUES (:version, :desc, :creator)
-        """),
-            {"version": semantic_version, "desc": description, "creator": created_by},
-        )
-        session.commit()
-        logger.info(f"Database version manually set to {semantic_version}")
-        return True
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error setting database version: {str(e)}")
-        raise
-    finally:
-        session.close()
+    with get_starbase_session() as session:
+        try:
+            session.execute(
+                text("""
+                INSERT INTO database_versions (semantic_version, description, created_by)
+                VALUES (:version, :desc, :creator)
+            """),
+                {"version": semantic_version, "desc": description, "creator": created_by},
+            )
+            session.commit()
+            logger.info(f"Database version manually set to {semantic_version}")
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error setting database version: {str(e)}")
+            raise
 
 
 def get_alembic_schema_version():
@@ -600,7 +577,7 @@ def get_alembic_schema_version():
     try:
         from alembic.migration import MigrationContext
 
-        with StarbaseSession() as session:
+        with get_starbase_session() as session:
             conn = session.connection()
             context = MigrationContext.configure(conn)
             current_rev = context.get_current_revision()
@@ -614,72 +591,69 @@ def get_alembic_schema_version():
 @smart_cache(timeout=None)
 def get_database_stats():
     """Get statistics about the Starship database."""
-    session = StarbaseSession()
-    try:
-        # new sql query for stats
-        # stats metdata
-        stats_metadata_query = """
-        SELECT j.curated_status, j.starshipID,
-                a.accession_tag, a.version_tag,
-                j.ship_id, j.id as joined_ship_id,
-                CASE
-                    WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
-                    THEN a.accession_tag || '.' || a.version_tag
-                    ELSE a.accession_tag
-                END as accession_display,
-                sa.ship_accession_tag,
-                CASE
-                    WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
-                    THEN sa.ship_accession_tag || '.' || sa.version_tag
-                    ELSE sa.ship_accession_tag
-                END as ship_accession_display,
-                t.taxID, t.strain, t.`order`, t.family, t.name,
-                sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
-                f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
-                g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
-        FROM joined_ships j
-        LEFT JOIN accessions a ON j.accession_id = a.id
-        LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
-        LEFT JOIN taxonomy t ON j.tax_id = t.id
-        LEFT JOIN starship_features sf ON a.id = sf.accession_id
-        LEFT JOIN family_names f ON j.ship_family_id = f.id
-        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-        LEFT JOIN genomes g ON j.genome_id = g.id
-        LEFT JOIN ships s ON s.id = j.ship_id
-        """
-        stats_df = pd.read_sql_query(stats_metadata_query, session.bind)
 
-        # total numer of ships (regardless of duplicates or sequencing similarity)
-        total_count = len(stats_df)
-        # total number of unique sequences (by md5 or rev_comp_md5)
-        unique_sequences_df = stats_df[["md5", "rev_comp_md5"]].drop_duplicates()
-        unique_sequences_count = len(unique_sequences_df)
+    stats_metadata_query = """
+    SELECT j.curated_status, j.starshipID,
+            a.accession_tag, a.version_tag,
+            j.ship_id, j.id as joined_ship_id,
+            CASE
+                WHEN a.version_tag IS NOT NULL AND a.version_tag != ''
+                THEN a.accession_tag || '.' || a.version_tag
+                ELSE a.accession_tag
+            END as accession_display,
+            sa.ship_accession_tag,
+            CASE
+                WHEN sa.version_tag IS NOT NULL AND sa.version_tag != ''
+                THEN sa.ship_accession_tag || '.' || sa.version_tag
+                ELSE sa.ship_accession_tag
+            END as ship_accession_display,
+            t.taxID, t.strain, t.`order`, t.family, t.name,
+            sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
+            f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
+    FROM joined_ships j
+    LEFT JOIN accessions a ON j.accession_id = a.id
+    LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
+    LEFT JOIN taxonomy t ON j.tax_id = t.id
+    LEFT JOIN starship_features sf ON a.id = sf.accession_id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+    LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
+    LEFT JOIN genomes g ON j.genome_id = g.id
+    LEFT JOIN ships s ON s.id = j.ship_id
+    """
+    with get_starbase_session() as session:
+        try:
+            stats_df = pd.read_sql_query(stats_metadata_query, session.bind)
 
-        curated_count = len(stats_df[stats_df["curated_status"] == "curated"])
-        uncurated_count = total_count - curated_count
-        species_count = len(stats_df["name"].unique())
-        family_count = len(
-            stats_df["familyName"]
-            .dropna()
-            .loc[~stats_df["familyName"].isin(["NA", "None", None, "NULL"])]
-            .unique()
-        )
+            # total numer of ships (regardless of duplicates or sequencing similarity)
+            total_count = len(stats_df)
+            # total number of unique sequences (by md5 or rev_comp_md5)
+            unique_sequences_df = stats_df[["md5", "rev_comp_md5"]].drop_duplicates()
+            unique_sequences_count = len(unique_sequences_df)
 
-        stats = {
-            "total_starships": total_count,
-            "unique_sequences": unique_sequences_count,
-            "curated_starships": curated_count,
-            "uncurated_starships": uncurated_count,
-            "species_count": species_count,
-            "family_count": family_count,
-        }
-        return stats
-    except Exception as e:
-        logger.error(f"Error fetching database stats: {str(e)}")
-        raise
-    finally:
-        session.close()
+            curated_count = len(stats_df[stats_df["curated_status"] == "curated"])
+            uncurated_count = total_count - curated_count
+            species_count = len(stats_df["name"].unique())
+            family_count = len(
+                stats_df["familyName"]
+                .dropna()
+                .loc[~stats_df["familyName"].isin(["NA", "None", None, "NULL"])]
+                .unique()
+            )
+
+            stats = {
+                "total_starships": total_count,
+                "unique_sequences": unique_sequences_count,
+                "curated_starships": curated_count,
+                "uncurated_starships": uncurated_count,
+                "species_count": species_count,
+                "family_count": family_count,
+            }
+            return stats
+        except Exception as e:
+            logger.error(f"Error fetching database stats: {str(e)}")
+            raise
 
 
 def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto"):
@@ -702,43 +676,40 @@ def add_quality_tag(joined_ship_id, tag_type, tag_value=None, created_by="auto")
     from src.database.models.schema import ShipQualityTags
     from datetime import datetime
 
-    session = StarbaseSession()
-    try:
-        # Check if tag already exists (unique constraint on joined_ship_id + tag_type)
-        existing_tag = (
-            session.query(ShipQualityTags)
-            .filter_by(joined_ship_id=joined_ship_id, tag_type=tag_type)
-            .first()
-        )
+    with get_starbase_session() as session:
+        try:
+            # Check if tag already exists (unique constraint on joined_ship_id + tag_type)
+            existing_tag = (
+                session.query(ShipQualityTags)
+                .filter_by(joined_ship_id=joined_ship_id, tag_type=tag_type)
+                .first()
+            )
 
-        if existing_tag:
-            # Update the tag value if provided
-            if tag_value is not None:
-                existing_tag.tag_value = tag_value
-                existing_tag.created_by = created_by
-                session.commit()
-            logger.info(f"Updated existing tag {tag_type} for ship {joined_ship_id}")
-            return existing_tag.id
+            if existing_tag:
+                # Update the tag value if provided
+                if tag_value is not None:
+                    existing_tag.tag_value = tag_value
+                    existing_tag.created_by = created_by
+                    session.commit()
+                logger.info(f"Updated existing tag {tag_type} for ship {joined_ship_id}")
+                return existing_tag.id
 
-        # Create new tag
-        new_tag = ShipQualityTags(
-            joined_ship_id=joined_ship_id,
-            tag_type=tag_type,
-            tag_value=tag_value,
-            created_at=datetime.now(),
-            created_by=created_by,
-        )
-        session.add(new_tag)
-        session.commit()
-        logger.info(f"Added tag {tag_type} to ship {joined_ship_id}")
-        return new_tag.id
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error adding quality tag: {str(e)}")
-        raise
-    finally:
-        session.close()
-
+            # Create new tag
+            new_tag = ShipQualityTags(
+                joined_ship_id=joined_ship_id,
+                tag_type=tag_type,
+                tag_value=tag_value,
+                created_at=datetime.now(),
+                created_by=created_by,
+            )
+            session.add(new_tag)
+            session.commit()
+            logger.info(f"Added tag {tag_type} to ship {joined_ship_id}")
+            return new_tag.id
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error adding quality tag: {str(e)}")
+            raise
 
 def remove_quality_tag(joined_ship_id, tag_type):
     """
@@ -753,28 +724,26 @@ def remove_quality_tag(joined_ship_id, tag_type):
     """
     from src.database.models.schema import ShipQualityTags
 
-    session = StarbaseSession()
-    try:
-        tag = (
-            session.query(ShipQualityTags)
-            .filter_by(joined_ship_id=joined_ship_id, tag_type=tag_type)
-            .first()
-        )
+    with get_starbase_session() as session:
+        try:
+            tag = (
+                session.query(ShipQualityTags)
+                .filter_by(joined_ship_id=joined_ship_id, tag_type=tag_type)
+                .first()
+            )
 
-        if tag:
-            session.delete(tag)
-            session.commit()
-            logger.info(f"Removed tag {tag_type} from ship {joined_ship_id}")
-            return True
-        else:
-            logger.warning(f"Tag {tag_type} not found for ship {joined_ship_id}")
-            return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error removing quality tag: {str(e)}")
-        raise
-    finally:
-        session.close()
+            if tag:
+                session.delete(tag)
+                session.commit()
+                logger.info(f"Removed tag {tag_type} from ship {joined_ship_id}")
+                return True
+            else:
+                logger.warning(f"Tag {tag_type} not found for ship {joined_ship_id}")
+                return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error removing quality tag: {str(e)}")
+            raise
 
 
 def get_quality_tags(joined_ship_id):
@@ -789,25 +758,23 @@ def get_quality_tags(joined_ship_id):
     """
     from src.database.models.schema import ShipQualityTags
 
-    session = StarbaseSession()
-    try:
-        tags = (
-            session.query(ShipQualityTags)
-            .filter_by(joined_ship_id=joined_ship_id)
-            .all()
-        )
+    with get_starbase_session() as session:
+        try:
+            tags = (
+                session.query(ShipQualityTags)
+                .filter_by(joined_ship_id=joined_ship_id)
+                .all()
+            )
 
-        return [
-            {
-                "tag_type": tag.tag_type,
-                "tag_value": tag.tag_value,
-                "created_at": tag.created_at,
-                "created_by": tag.created_by,
-            }
-            for tag in tags
-        ]
-    except Exception as e:
-        logger.error(f"Error fetching quality tags: {str(e)}")
-        raise
-    finally:
-        session.close()
+            return [
+                {
+                    "tag_type": tag.tag_type,
+                    "tag_value": tag.tag_value,
+                    "created_at": tag.created_at,
+                    "created_by": tag.created_by,
+                }
+                for tag in tags
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching quality tags: {str(e)}")
+            raise

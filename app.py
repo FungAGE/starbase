@@ -11,7 +11,6 @@ from src.config.settings import IS_DEV
 from src.components import navmenu
 from src.components.callbacks import create_feedback_button, create_database_version_indicator
 from src.config.cache import cache, cleanup_old_cache
-from src.config.database import SubmissionsSession
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
