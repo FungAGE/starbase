@@ -21,7 +21,7 @@ from dash.exceptions import PreventUpdate
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 from sqlalchemy import text
-from src.config.database import TelemetrySession
+from src.database.sql_engine import get_telemetry_session
 
 from src.config.logging import get_logger
 
@@ -72,15 +72,13 @@ class LocationInfo:
 
 def initialize_ip_locations_table():
     """Create the ip_locations table if it doesn't exist."""
-    session = TelemetrySession()
-    try:
-        session.execute(text(IP_LOCATIONS_TABLE_SQL))
-        session.commit()
-    except Exception as e:
-        logger.error(f"Error creating ip_locations table: {str(e)}")
-        session.rollback()
-    finally:
-        session.close()
+    with get_telemetry_session() as session:
+        try:
+            session.execute(text(IP_LOCATIONS_TABLE_SQL))
+            session.commit()
+        except Exception as e:
+            logger.error(f"Error creating ip_locations table: {str(e)}")
+            session.rollback()
 
 
 class GeolocatorService:
@@ -215,78 +213,76 @@ def update_ip_locations(api_key=None):
     Update locations for any new IPs in request_logs that aren't in ip_locations.
     This should be run periodically (e.g., hourly) rather than on every app launch.
     """
-    session = TelemetrySession()
     geolocator = GeolocatorService()
 
-    try:
-        # Find IPs that haven't been looked up yet
-        query = """
-        SELECT DISTINCT r.ip_address 
-        FROM request_logs r 
-        LEFT JOIN ip_locations i ON r.ip_address = i.ip_address 
-        WHERE i.ip_address IS NULL 
-        OR (i.lookup_attempted = FALSE AND i.last_updated < datetime('now', '-7 days'))
-        """
-        new_ips = session.execute(text(query)).fetchall()
+    with get_telemetry_session() as session:
+        try:
+            # Find IPs that haven't been looked up yet
+            query = """
+            SELECT DISTINCT r.ip_address 
+            FROM request_logs r 
+            LEFT JOIN ip_locations i ON r.ip_address = i.ip_address 
+            WHERE i.ip_address IS NULL 
+            OR (i.lookup_attempted = FALSE AND i.last_updated < datetime('now', '-7 days'))
+            """
+            new_ips = session.execute(text(query)).fetchall()
 
-        for (ip,) in new_ips:
-            # Skip private IPs entirely
-            if geolocator.is_private_ip(ip):
-                logger.debug(f"Skipping private IP: {ip}")
-                continue
-
-            try:
-                # Get location data
-                location = geolocator.get_location(ip, api_key)
-
-                # Skip if we got an empty location
-                if location.lat == 0 and location.lon == 0:
-                    logger.debug(f"Skipping IP with no location data: {ip}")
+            for (ip,) in new_ips:
+                # Skip private IPs entirely
+                if geolocator.is_private_ip(ip):
+                    logger.debug(f"Skipping private IP: {ip}")
                     continue
 
-                # Insert or update the location data
-                upsert_query = """
-                INSERT INTO ip_locations (
-                    ip_address, latitude, longitude, city, country, 
-                    last_updated, lookup_attempted
-                ) VALUES (
-                    :ip, :lat, :lon, :city, :country, 
-                    :timestamp, TRUE
-                )
-                ON CONFLICT(ip_address) DO UPDATE SET
-                    latitude = :lat,
-                    longitude = :lon,
-                    city = :city,
-                    country = :country,
-                    last_updated = :timestamp,
-                    lookup_attempted = TRUE
-                """
+                try:
+                    # Get location data
+                    location = geolocator.get_location(ip, api_key)
 
-                session.execute(
-                    text(upsert_query),
-                    {
-                        "ip": location.ip,
-                        "lat": location.lat,
-                        "lon": location.lon,
-                        "city": location.city or "Unknown",
-                        "country": location.country or "Unknown",
-                        "timestamp": datetime.now(),
-                    },
-                )
+                    # Skip if we got an empty location
+                    if location.lat == 0 and location.lon == 0:
+                        logger.debug(f"Skipping IP with no location data: {ip}")
+                        continue
 
-                session.commit()
+                    # Insert or update the location data
+                    upsert_query = """
+                    INSERT INTO ip_locations (
+                        ip_address, latitude, longitude, city, country, 
+                        last_updated, lookup_attempted
+                    ) VALUES (
+                        :ip, :lat, :lon, :city, :country, 
+                        :timestamp, TRUE
+                    )
+                    ON CONFLICT(ip_address) DO UPDATE SET
+                        latitude = :lat,
+                        longitude = :lon,
+                        city = :city,
+                        country = :country,
+                        last_updated = :timestamp,
+                        lookup_attempted = TRUE
+                    """
 
-            except Exception as e:
-                logger.error(f"Error updating location for IP {ip}: {str(e)}")
-                session.rollback()
+                    session.execute(
+                        text(upsert_query),
+                        {
+                            "ip": location.ip,
+                            "lat": location.lat,
+                            "lon": location.lon,
+                            "city": location.city or "Unknown",
+                            "country": location.country or "Unknown",
+                            "timestamp": datetime.now(),
+                        },
+                    )
 
-        return {"status": "success", "ips_processed": len(new_ips)}
+                    session.commit()
 
-    except Exception as e:
-        logger.error(f"Error in update_ip_locations: {str(e)}")
-        return {"status": "error", "error": str(e)}
-    finally:
-        session.close()
+                except Exception as e:
+                    logger.error(f"Error updating location for IP {ip}: {str(e)}")
+                    session.rollback()
+
+            return {"status": "success", "ips_processed": len(new_ips)}
+
+        except Exception as e:
+            logger.error(f"Error in update_ip_locations: {str(e)}")
+            return {"status": "error", "error": str(e)}
 
 
 def get_ip_locations():
@@ -294,33 +290,31 @@ def get_ip_locations():
     Get cached location data from the ip_locations table.
     This is now a fast database query instead of making API calls.
     """
-    session = TelemetrySession()
-    try:
-        # Only get locations that were successfully looked up
-        query = """
-        SELECT ip_address, latitude, longitude, city, country
-        FROM ip_locations
-        WHERE lookup_attempted = TRUE
-        AND latitude != 0 AND longitude != 0
-        """
-        results = session.execute(text(query)).fetchall()
+    with get_telemetry_session() as session:
+        try:
+            # Only get locations that were successfully looked up
+            query = """
+            SELECT ip_address, latitude, longitude, city, country
+            FROM ip_locations
+            WHERE lookup_attempted = TRUE
+            AND latitude != 0 AND longitude != 0
+            """
+            results = session.execute(text(query)).fetchall()
 
-        return [
-            {
-                "ip": row[0],
-                "lat": row[1],
-                "lon": row[2],
-                "city": row[3] or "Unknown",
-                "country": row[4] or "Unknown",
-            }
-            for row in results
-        ]
+            return [
+                {
+                    "ip": row[0],
+                    "lat": row[1],
+                    "lon": row[2],
+                    "city": row[3] or "Unknown",
+                    "country": row[4] or "Unknown",
+                }
+                for row in results
+            ]
 
-    except Exception as e:
-        logger.error(f"Error fetching IP locations: {str(e)}")
-        return []
-    finally:
-        session.close()
+        except Exception as e:
+            logger.error(f"Error fetching IP locations: {str(e)}")
+            return []
 
 
 def get_client_ip():
@@ -368,7 +362,7 @@ def is_development_ip(ip_address):
     return any(ip_address.startswith(prefix) for prefix in local_prefixes)
 
 
-def log_request(ip_address, endpoint):
+def log_request(ip_address, endpoint, session):
     """Log request details to telemetry database."""
     if is_development_ip(ip_address):
         logger.debug(f"Skipping telemetry for development IP: {ip_address}")
@@ -379,7 +373,6 @@ def log_request(ip_address, endpoint):
         logger.debug(f"Skipping telemetry for non-mapped endpoint: {endpoint}")
         return
 
-    session = TelemetrySession()
     try:
         query = """
         INSERT INTO request_logs (ip_address, endpoint, timestamp)
@@ -394,111 +387,105 @@ def log_request(ip_address, endpoint):
     except Exception as e:
         session.rollback()
         logger.error(f"Error logging request: {str(e)}")
-    finally:
-        session.close()
 
 
 def fetch_telemetry_data():
     """Fetch telemetry data from the database."""
-    session = TelemetrySession()
 
     # Define valid pages as a comma-separated string of quoted values
     valid_endpoints = "'/','/download','/pgv','/submit','/blast','/wiki','/metrics','/starfish','/about'"
 
-    try:
-        # Get unique users count, excluding private IPs
-        unique_users_query = """
-        SELECT COUNT(DISTINCT r.ip_address) as count 
-        FROM request_logs r
-        WHERE r.ip_address NOT LIKE '192.168.%'
-        AND r.ip_address NOT LIKE '10.%'
-        AND r.ip_address NOT LIKE '172.1_%'
-        AND r.ip_address NOT LIKE '172.2_%'
-        AND r.ip_address NOT LIKE '172.3_%'
-        AND r.ip_address != '127.0.0.1'
-        AND r.ip_address != 'localhost'
-        AND r.ip_address != '::1'
-        """
-        unique_users = session.execute(text(unique_users_query)).scalar() or 0
+    with get_telemetry_session() as session:
+        try:
+            # Get unique users count, excluding private IPs
+            unique_users_query = """
+            SELECT COUNT(DISTINCT r.ip_address) as count 
+            FROM request_logs r
+            WHERE r.ip_address NOT LIKE '192.168.%'
+            AND r.ip_address NOT LIKE '10.%'
+            AND r.ip_address NOT LIKE '172.1_%'
+            AND r.ip_address NOT LIKE '172.2_%'
+            AND r.ip_address NOT LIKE '172.3_%'
+            AND r.ip_address != '127.0.0.1'
+            AND r.ip_address != 'localhost'
+            AND r.ip_address != '::1'
+            """
+            unique_users = session.execute(text(unique_users_query)).scalar() or 0
 
-        # Get time series data for unique daily visitors
-        time_series_query = f"""
-        SELECT DATE(timestamp) as date, COUNT(DISTINCT ip_address) as count 
-        FROM request_logs 
-        WHERE endpoint IN ({valid_endpoints})
-        AND ip_address NOT LIKE '192.168.%'
-        AND ip_address NOT LIKE '10.%'
-        AND ip_address NOT LIKE '172.1_%'
-        AND ip_address NOT LIKE '172.2_%'
-        AND ip_address NOT LIKE '172.3_%'
-        AND ip_address != '127.0.0.1'
-        AND ip_address != 'localhost'
-        AND ip_address != '::1'
-        GROUP BY DATE(timestamp) 
-        ORDER BY date
-        """
-        time_series_data = session.execute(text(time_series_query)).fetchall()
+            # Get time series data for unique daily visitors
+            time_series_query = f"""
+            SELECT DATE(timestamp) as date, COUNT(DISTINCT ip_address) as count 
+            FROM request_logs 
+            WHERE endpoint IN ({valid_endpoints})
+            AND ip_address NOT LIKE '192.168.%'
+            AND ip_address NOT LIKE '10.%'
+            AND ip_address NOT LIKE '172.1_%'
+            AND ip_address NOT LIKE '172.2_%'
+            AND ip_address NOT LIKE '172.3_%'
+            AND ip_address != '127.0.0.1'
+            AND ip_address != 'localhost'
+            AND ip_address != '::1'
+            GROUP BY DATE(timestamp) 
+            ORDER BY date
+            """
+            time_series_data = session.execute(text(time_series_query)).fetchall()
 
-        # Get unique visitors per endpoint
-        endpoints_query = f"""
-        SELECT endpoint, COUNT(DISTINCT ip_address) as count 
-        FROM request_logs 
-        WHERE endpoint IN ({valid_endpoints})
-        AND ip_address NOT LIKE '192.168.%'
-        AND ip_address NOT LIKE '10.%'
-        AND ip_address NOT LIKE '172.1_%'
-        AND ip_address NOT LIKE '172.2_%'
-        AND ip_address NOT LIKE '172.3_%'
-        AND ip_address != '127.0.0.1'
-        AND ip_address != 'localhost'
-        AND ip_address != '::1'
-        GROUP BY endpoint 
-        ORDER BY count DESC
-        """
-        endpoints_data = session.execute(text(endpoints_query)).fetchall()
+            # Get unique visitors per endpoint
+            endpoints_query = f"""
+            SELECT endpoint, COUNT(DISTINCT ip_address) as count 
+            FROM request_logs 
+            WHERE endpoint IN ({valid_endpoints})
+            AND ip_address NOT LIKE '192.168.%'
+            AND ip_address NOT LIKE '10.%'
+            AND ip_address NOT LIKE '172.1_%'
+            AND ip_address NOT LIKE '172.2_%'
+            AND ip_address NOT LIKE '172.3_%'
+            AND ip_address != '127.0.0.1'
+            AND ip_address != 'localhost'
+            AND ip_address != '::1'
+            GROUP BY endpoint 
+            ORDER BY count DESC
+            """
+            endpoints_data = session.execute(text(endpoints_query)).fetchall()
 
-        return {
-            "unique_users": unique_users,
-            "time_series_data": time_series_data,
-            "endpoints_data": endpoints_data,
-        }
+            return {
+                "unique_users": unique_users,
+                "time_series_data": time_series_data,
+                "endpoints_data": endpoints_data,
+            }
 
-    except Exception as e:
-        logger.error(f"Error fetching telemetry data: {str(e)}")
-        return None
-    finally:
-        session.close()
+        except Exception as e:
+            logger.error(f"Error fetching telemetry data: {str(e)}")
+            return None
 
 
 def get_cached_locations():
     """Get locations from the ip_locations table."""
-    session = TelemetrySession()
-    try:
-        # Only get successfully looked up locations
-        query = """
-        SELECT ip_address, latitude, longitude, city, country
-        FROM ip_locations
-        WHERE lookup_attempted = TRUE
-        AND latitude != 0 AND longitude != 0
-        """
-        results = session.execute(text(query)).fetchall()
+    with get_telemetry_session() as session:
+        try:
+            # Only get successfully looked up locations
+            query = """
+            SELECT ip_address, latitude, longitude, city, country
+            FROM ip_locations
+            WHERE lookup_attempted = TRUE
+            AND latitude != 0 AND longitude != 0
+            """
+            results = session.execute(text(query)).fetchall()
 
-        return [
-            {
-                "ip": row[0],
-                "lat": row[1],
-                "lon": row[2],
-                "city": row[3] or "Unknown",
-                "country": row[4] or "Unknown",
-            }
-            for row in results
-        ]
+            return [
+                {
+                    "ip": row[0],
+                    "lat": row[1],
+                    "lon": row[2],
+                    "city": row[3] or "Unknown",
+                    "country": row[4] or "Unknown",
+                }
+                for row in results
+            ]
 
-    except Exception as e:
-        logger.error(f"Error fetching cached locations: {str(e)}")
-        return []
-    finally:
-        session.close()
+        except Exception as e:
+            logger.error(f"Error fetching cached locations: {str(e)}")
+            return []
 
 
 def create_modern_time_series_figure(time_series_data):
@@ -807,27 +794,25 @@ def analyze_telemetry() -> Dict[str, Any]:
 
 def count_blast_submissions(ip_address, hours=1):
     """Count BLAST submissions from an IP address in the last N hours."""
-    session = TelemetrySession()
-    try:
-        query = """
-        SELECT COUNT(*) as count 
-        FROM request_logs 
-        WHERE ip_address = :ip 
-        AND endpoint = '/api/blast-submit'
-        AND datetime(timestamp) >= datetime('now', :hours_ago)
-        """
-        result = (
-            session.execute(
-                text(query), {"ip": ip_address, "hours_ago": f"-{hours} hours"}
-            ).scalar()
-            or 0
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Error counting BLAST submissions: {str(e)}")
-        return 0
-    finally:
-        session.close()
+    with get_telemetry_session() as session:
+        try:
+            query = """
+            SELECT COUNT(*) as count 
+            FROM request_logs 
+            WHERE ip_address = :ip 
+            AND endpoint = '/api/blast-submit'
+            AND datetime(timestamp) >= datetime('now', :hours_ago)
+            """
+            result = (
+                session.execute(
+                    text(query), {"ip": ip_address, "hours_ago": f"-{hours} hours"}
+                ).scalar()
+                or 0
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Error counting BLAST submissions: {str(e)}")
+            return 0
 
 
 def get_blast_limit_info(ip_address):

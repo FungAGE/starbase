@@ -19,7 +19,7 @@ def _log_request_impl(ip_address, endpoint):
     Logs request details to telemetry database.
     """
     from src.telemetry.utils import is_development_ip, page_mapping
-    from src.config.database import TelemetrySession
+    from src.database.sql_engine import get_telemetry_session
     from sqlalchemy import text
     
     try:
@@ -33,8 +33,7 @@ def _log_request_impl(ip_address, endpoint):
             logger.debug(f"Skipping telemetry for non-mapped endpoint: {endpoint}")
             return
         
-        session = TelemetrySession()
-        try:
+        with get_telemetry_session() as session:
             # Check if this IP+endpoint was logged in the last hour
             check_query = """
             SELECT COUNT(*) FROM request_logs
@@ -59,8 +58,6 @@ def _log_request_impl(ip_address, endpoint):
                 )
                 session.commit()
                 logger.debug(f"Logged request from {ip_address} to {endpoint}")
-        finally:
-            session.close()
             
     except Exception as e:
         logger.error(f"Error in log_request_task: {str(e)}")

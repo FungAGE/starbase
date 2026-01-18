@@ -5,7 +5,6 @@ Contains all Flask routes related to telemetry.
 
 from flask import Blueprint, jsonify
 from sqlalchemy import text
-from src.config.database import TelemetrySession
 from src.config.settings import IPSTACK_API_KEY
 from src.config.cache import cache
 from src.telemetry.utils import log_request, update_ip_locations
@@ -20,17 +19,16 @@ telemetry_routes = Blueprint("telemetry", __name__, url_prefix="/api/telemetry")
 @telemetry_routes.route("/health", methods=["GET"])
 def health():
     """Check telemetry system health."""
-    try:
-        session = TelemetrySession()
-        test_ip = "127.0.0.1"
-        test_endpoint = "/"
-        log_request(test_ip, test_endpoint)
-        result = session.execute(text("SELECT COUNT(*) FROM request_logs")).scalar()
-        return jsonify({"status": "healthy", "record_count": result}), 200
-    except Exception as e:
-        return jsonify({"status": "unhealthy", "error": str(e)}), 503
-    finally:
-        session.close()
+    from src.database.sql_engine import get_telemetry_session
+    with get_telemetry_session() as session:
+        try:
+            test_ip = "127.0.0.1"
+            test_endpoint = "/"
+            log_request(test_ip, test_endpoint, session)
+            result = session.execute(text("SELECT COUNT(*) FROM request_logs")).scalar()
+            return jsonify({"status": "healthy", "record_count": result}), 200
+        except Exception as e:
+            return jsonify({"status": "unhealthy", "error": str(e)}), 503
 
 
 @telemetry_routes.route("/refresh", methods=["POST"])
