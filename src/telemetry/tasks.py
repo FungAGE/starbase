@@ -5,10 +5,8 @@ Contains tasks related to telemetry (formerly Celery tasks).
 
 import requests
 from datetime import datetime
-from src.config.settings import IPSTACK_API_KEY
-from src.telemetry.utils import update_ip_locations as _update_ip_locations
 from src.config.logging import get_logger
-from src.config.celery_config import celery, CELERY_AVAILABLE
+from src.config.celery_config import run_task
 
 logger = get_logger(__name__)
 
@@ -18,7 +16,8 @@ def _log_request_impl(ip_address, endpoint):
     Implementation of log request task.
     Logs request details to telemetry database.
     """
-    from src.telemetry.utils import is_development_ip, page_mapping
+    from src.telemetry.utils import is_development_ip
+    from src.config.settings import PAGE_MAPPING
     from src.database.sql_engine import get_telemetry_session
     from sqlalchemy import text
     
@@ -29,7 +28,7 @@ def _log_request_impl(ip_address, endpoint):
             return
         
         # Only log valid endpoints
-        if endpoint not in page_mapping:
+        if endpoint not in PAGE_MAPPING:
             logger.debug(f"Skipping telemetry for non-mapped endpoint: {endpoint}")
             return
         
@@ -63,41 +62,74 @@ def _log_request_impl(ip_address, endpoint):
         logger.error(f"Error in log_request_task: {str(e)}")
         raise
 
-
 def _update_ip_locations_impl(api_key=None):
-    """
-    Implementation of update IP locations task.
-    Update locations for any new IPs in request_logs that aren't in ip_locations.
-    """
-    try:
-        if api_key is None:
-            api_key = IPSTACK_API_KEY
-        result = _update_ip_locations(api_key)
-        logger.info("IP locations updated successfully")
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"Error updating IP locations: {str(e)}")
-        return {"status": "error", "error": str(e)}
+    """Update IP geolocation data"""
 
+    from sqlalchemy import text
+    from src.config.settings import IPSTACK_API_KEY
+    from src.telemetry.utils import GeolocatorService
+    from src.database.sql_engine import get_telemetry_session
+    
+    if api_key is None:
+        api_key = IPSTACK_API_KEY
+        
+    geolocator = GeolocatorService()
+    
+    # Find IPs that need lookup
+    query = """
+    SELECT DISTINCT r.ip_address 
+    FROM request_logs r 
+    LEFT JOIN ip_locations i ON r.ip_address = i.ip_address 
+    WHERE i.ip_address IS NULL 
+    """
+    # Insert or update the location data
+    upsert_query = """
+    INSERT INTO ip_locations (
+        ip_address, latitude, longitude, city, country, 
+        last_updated, lookup_attempted
+    ) VALUES (
+        :ip, :lat, :lon, :city, :country, 
+        :timestamp, TRUE
+    )
+    ON CONFLICT(ip_address) DO UPDATE SET
+        latitude = :lat,
+        longitude = :lon,
+        city = :city,
+        country = :country,
+        last_updated = :timestamp,
+        lookup_attempted = TRUE
+    """
 
-def _refresh_telemetry_impl():
-    """
-    Implementation of refresh telemetry task.
-    Refresh telemetry data (formerly a Celery task).
-    """
-    try:
-        response = requests.post("http://localhost:8000/api/telemetry/refresh", timeout=30)
-        logger.info(f"Telemetry refresh completed with status: {response.status_code}")
-        return {"status": "success", "response": response.status_code}
-    except requests.exceptions.Timeout:
-        logger.error("Telemetry refresh timed out")
-        return {"status": "error", "error": "Request timeout"}
-    except requests.exceptions.ConnectionError:
-        logger.error("Telemetry refresh connection error")
-        return {"status": "error", "error": "Connection error"}
-    except Exception as e:
-        logger.error(f"Error refreshing telemetry: {str(e)}")
-        return {"status": "error", "error": str(e)}
+    with get_telemetry_session() as session:
+        try:
+            new_ips = session.execute(text(query)).fetchall()
+            
+            for (ip,) in new_ips:
+                if geolocator.is_private_ip(ip):
+                    continue
+                    
+                location = geolocator.get_location(ip, api_key)
+                if location.lat == 0 and location.lon == 0:
+                    continue
+
+                session.execute(
+                    text(upsert_query),
+                    {
+                        "ip": location.ip,
+                        "lat": location.lat,
+                        "lon": location.lon,
+                        "city": location.city or "Unknown",
+                        "country": location.country or "Unknown",
+                        "timestamp": datetime.now(),
+                    },
+                )
+
+                session.commit()
+        except Exception as e:
+            logger.error(f"Error updating location for IP {ip}: {str(e)}")
+            session.rollback()
+
+    return {"status": "success", "ips_processed": len(new_ips)}
 
 
 def _check_cache_status_impl():
@@ -127,46 +159,8 @@ def _check_cache_status_impl():
         logger.error(f"Error checking cache status: {str(e)}")
         return {"status": "error", "error": str(e)}
 
-
-# Create task wrappers - either Celery tasks or plain functions
-if CELERY_AVAILABLE and celery:
-    # Wrap with Celery decorators
-    @celery.task(name="src.telemetry.tasks.log_request", 
-                 ignore_result=True, 
-                 max_retries=3,
-                 rate_limit='100/m')
-    def log_request_task(ip_address, endpoint):
-        """Celery task wrapper for log_request"""
-        return _log_request_impl(ip_address, endpoint)
-
-    @celery.task(name="src.telemetry.tasks.update_ip_locations")
-    def update_ip_locations(api_key=None):
-        """Celery task wrapper for update_ip_locations"""
-        return _update_ip_locations_impl(api_key)
-
-    @celery.task(name="src.telemetry.tasks.refresh_telemetry")
-    def refresh_telemetry():
-        """Celery task wrapper for refresh_telemetry"""
-        return _refresh_telemetry_impl()
-
-    @celery.task(name="src.telemetry.tasks.check_cache_status")
-    def check_cache_status():
-        """Celery task wrapper for check_cache_status"""
-        return _check_cache_status_impl()
-else:
-    # Create plain function aliases
-    def log_request_task(ip_address, endpoint):
-        """Direct function call (no Celery)"""
-        return _log_request_impl(ip_address, endpoint)
-
-    def update_ip_locations(api_key=None):
-        """Direct function call (no Celery)"""
-        return _update_ip_locations_impl(api_key)
-
-    def refresh_telemetry():
-        """Direct function call (no Celery)"""
-        return _refresh_telemetry_impl()
-
-    def check_cache_status():
-        """Direct function call (no Celery)"""
-        return _check_cache_status_impl()
+def log_request_task(ip_address, endpoint):
+    return run_task(_log_request_impl, ip_address, endpoint)
+    
+def update_ip_locations_task():
+    return run_task(_update_ip_locations_impl)

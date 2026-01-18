@@ -1,7 +1,7 @@
 import dash
 from dash import dcc, html, callback, Input, Output, no_update
 import dash_mantine_components as dmc
-from src.telemetry.utils import analyze_telemetry
+from src.telemetry.utils import get_telemetry_data
 from src.config.logging import get_logger
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
@@ -15,11 +15,11 @@ logger = get_logger(__name__)
 
 def get_metrics_layout():
     try:
-        telemetry_data = analyze_telemetry()
+        telemetry_data = get_telemetry_data()
         if telemetry_data is None:
             telemetry_data = {"unique_users": 0, "total_requests": 0}
 
-        # Use the figures directly from analyze_telemetry
+        # Use the figures directly from get_telemetry_data
         time_series_fig = telemetry_data.get("time_series", go.Figure())
         endpoints_fig = telemetry_data.get("endpoints", go.Figure())
         map_fig = telemetry_data.get("map", go.Figure())
@@ -380,9 +380,9 @@ layout = html.Div(id="metrics-content")
 )
 def refresh_telemetry(_, __, date_range):
     try:
-        telemetry_data = analyze_telemetry()
+        telemetry_data = get_telemetry_data()
 
-        # Use the modern figures directly from analyze_telemetry
+        # Use the modern figures directly from get_telemetry_data
         time_series_fig = telemetry_data.get("time_series", go.Figure())
         endpoints_fig = telemetry_data.get("endpoints", go.Figure())
         map_fig = telemetry_data.get("map", go.Figure())

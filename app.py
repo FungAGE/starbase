@@ -14,8 +14,8 @@ from src.config.cache import cache, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
-from src.telemetry.utils import get_client_ip, update_ip_locations
-from src.telemetry.tasks import log_request_task
+from src.telemetry.utils import get_client_ip
+from src.telemetry.tasks import log_request_task, update_ip_locations_task
 from src.config.celery_config import run_task
 
 logger = get_logger(__name__)
@@ -101,7 +101,7 @@ def initialize_app():
 
         create_database_indexes()
         cleanup_old_cache()
-        update_ip_locations()
+        update_ip_locations_task()
 
         try:
             logger.info("Rebuilding BLAST databases on startup...")

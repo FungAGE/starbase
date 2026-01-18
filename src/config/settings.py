@@ -107,6 +107,17 @@ SYNTENY_URL = os.getenv("SYNTENY_URL", "/synteny")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 
+# Define valid pages
+PAGE_MAPPING = {
+    HOME_URL,
+    WIKI_URL,
+    BLAST_URL,
+    ABOUT_URL,
+    SYNTENY_URL,
+    SUBMIT_URL,
+    METRICS_URL,
+}
+
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
 MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")

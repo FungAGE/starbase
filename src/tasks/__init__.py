@@ -4,7 +4,6 @@ import json
 from typing import Dict, Any
 
 from src.config.cache import cache, cleanup_old_cache
-from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
 from src.config.logging import get_logger
@@ -28,8 +27,9 @@ __all__ = [
 # Implementation functions
 def _refresh_telemetry_impl(ipstack_api_key):
     """Implementation of refresh telemetry task"""
+    from src.telemetry.tasks import update_ip_locations_task
     try:
-        update_ip_locations(ipstack_api_key)
+        update_ip_locations_task()
         cache.delete("telemetry_data")
         return {"status": "success"}
     except Exception as e:

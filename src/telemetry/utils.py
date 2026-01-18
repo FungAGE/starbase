@@ -5,24 +5,21 @@ Contains core telemetry functions used throughout the application.
 
 from pathlib import Path
 from dotenv import load_dotenv
-from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional
 from dataclasses import dataclass
-import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from flask import request
 import time
 import requests
 from functools import lru_cache
 import ipaddress
-from functools import wraps
-from dash.exceptions import PreventUpdate
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 from sqlalchemy import text
+from src.config.settings import PAGE_MAPPING
+from typing import Dict, Any
 from src.database.sql_engine import get_telemetry_session
-
+from src.telemetry.visualize import create_time_series_figure, create_endpoints_figure, create_map_figure
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,32 +27,6 @@ logger = get_logger(__name__)
 # Load environment variables from .env file
 env_path = Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
-
-# Define valid pages
-page_mapping = {
-    "/": "Home",
-    "/download": "Download",
-    "/pgv": "PGV",
-    "/submit": "Submit",
-    "/blast": "BLAST",
-    "/wiki": "Wiki",
-    "/metrics": "Metrics",
-    "/starfish": "Starfish",
-    "/about": "About",
-}
-
-IP_LOCATIONS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS ip_locations (
-    ip_address TEXT PRIMARY KEY,
-    latitude REAL,
-    longitude REAL,
-    city TEXT,
-    country TEXT,
-    last_updated TIMESTAMP,
-    lookup_attempted BOOLEAN DEFAULT FALSE
-)
-"""
-
 
 @dataclass
 class LocationInfo:
@@ -72,6 +43,18 @@ class LocationInfo:
 
 def initialize_ip_locations_table():
     """Create the ip_locations table if it doesn't exist."""
+
+    IP_LOCATIONS_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS ip_locations (
+        ip_address TEXT PRIMARY KEY,
+        latitude REAL,
+        longitude REAL,
+        city TEXT,
+        country TEXT,
+        last_updated TIMESTAMP,
+        lookup_attempted BOOLEAN DEFAULT FALSE
+    )
+    """
     with get_telemetry_session() as session:
         try:
             session.execute(text(IP_LOCATIONS_TABLE_SQL))
@@ -208,115 +191,6 @@ class GeolocatorService:
         return LocationInfo.create_empty(ip)
 
 
-def update_ip_locations(api_key=None):
-    """
-    Update locations for any new IPs in request_logs that aren't in ip_locations.
-    This should be run periodically (e.g., hourly) rather than on every app launch.
-    """
-    geolocator = GeolocatorService()
-
-    with get_telemetry_session() as session:
-        try:
-            # Find IPs that haven't been looked up yet
-            query = """
-            SELECT DISTINCT r.ip_address 
-            FROM request_logs r 
-            LEFT JOIN ip_locations i ON r.ip_address = i.ip_address 
-            WHERE i.ip_address IS NULL 
-            OR (i.lookup_attempted = FALSE AND i.last_updated < datetime('now', '-7 days'))
-            """
-            new_ips = session.execute(text(query)).fetchall()
-
-            for (ip,) in new_ips:
-                # Skip private IPs entirely
-                if geolocator.is_private_ip(ip):
-                    logger.debug(f"Skipping private IP: {ip}")
-                    continue
-
-                try:
-                    # Get location data
-                    location = geolocator.get_location(ip, api_key)
-
-                    # Skip if we got an empty location
-                    if location.lat == 0 and location.lon == 0:
-                        logger.debug(f"Skipping IP with no location data: {ip}")
-                        continue
-
-                    # Insert or update the location data
-                    upsert_query = """
-                    INSERT INTO ip_locations (
-                        ip_address, latitude, longitude, city, country, 
-                        last_updated, lookup_attempted
-                    ) VALUES (
-                        :ip, :lat, :lon, :city, :country, 
-                        :timestamp, TRUE
-                    )
-                    ON CONFLICT(ip_address) DO UPDATE SET
-                        latitude = :lat,
-                        longitude = :lon,
-                        city = :city,
-                        country = :country,
-                        last_updated = :timestamp,
-                        lookup_attempted = TRUE
-                    """
-
-                    session.execute(
-                        text(upsert_query),
-                        {
-                            "ip": location.ip,
-                            "lat": location.lat,
-                            "lon": location.lon,
-                            "city": location.city or "Unknown",
-                            "country": location.country or "Unknown",
-                            "timestamp": datetime.now(),
-                        },
-                    )
-
-                    session.commit()
-
-                except Exception as e:
-                    logger.error(f"Error updating location for IP {ip}: {str(e)}")
-                    session.rollback()
-
-            return {"status": "success", "ips_processed": len(new_ips)}
-
-        except Exception as e:
-            logger.error(f"Error in update_ip_locations: {str(e)}")
-            return {"status": "error", "error": str(e)}
-
-
-def get_ip_locations():
-    """
-    Get cached location data from the ip_locations table.
-    This is now a fast database query instead of making API calls.
-    """
-    with get_telemetry_session() as session:
-        try:
-            # Only get locations that were successfully looked up
-            query = """
-            SELECT ip_address, latitude, longitude, city, country
-            FROM ip_locations
-            WHERE lookup_attempted = TRUE
-            AND latitude != 0 AND longitude != 0
-            """
-            results = session.execute(text(query)).fetchall()
-
-            return [
-                {
-                    "ip": row[0],
-                    "lat": row[1],
-                    "lon": row[2],
-                    "city": row[3] or "Unknown",
-                    "country": row[4] or "Unknown",
-                }
-                for row in results
-            ]
-
-        except Exception as e:
-            logger.error(f"Error fetching IP locations: {str(e)}")
-            return []
-
-
 def get_client_ip():
     """Get the client's IP address from the request."""
     if request.headers.get("X-Forwarded-For"):
@@ -362,26 +236,42 @@ def is_development_ip(ip_address):
     return any(ip_address.startswith(prefix) for prefix in local_prefixes)
 
 
-def fetch_telemetry_data():
-    """Fetch telemetry data from the database."""
+def get_private_ip_filter_sql():
+    """
+    Returns SQL WHERE clause conditions to filter out private/development IPs.
+    Use this in queries to exclude local network traffic.
+    """
+    return """
+        ip_address NOT LIKE '192.168.%'
+        AND ip_address NOT LIKE '10.%'
+        AND ip_address NOT LIKE '172.1_%'
+        AND ip_address NOT LIKE '172.2_%'
+        AND ip_address NOT LIKE '172.3_%'
+        AND ip_address != '127.0.0.1'
+        AND ip_address != 'localhost'
+        AND ip_address != '::1'
+    """.strip()
 
+
+
+
+
+
+def get_telemetry_data():
+    """Fetch telemetry data from the database."""
     # Define valid pages as a comma-separated string of quoted values
-    valid_endpoints = "'/','/download','/pgv','/submit','/blast','/wiki','/metrics','/starfish','/about'"
+    valid_endpoints = "', '".join(PAGE_MAPPING)
+    
+    # Get reusable IP filter
+    ip_filter = get_private_ip_filter_sql()
 
     with get_telemetry_session() as session:
         try:
             # Get unique users count, excluding private IPs
-            unique_users_query = """
+            unique_users_query = f"""
             SELECT COUNT(DISTINCT r.ip_address) as count 
             FROM request_logs r
-            WHERE r.ip_address NOT LIKE '192.168.%'
-            AND r.ip_address NOT LIKE '10.%'
-            AND r.ip_address NOT LIKE '172.1_%'
-            AND r.ip_address NOT LIKE '172.2_%'
-            AND r.ip_address NOT LIKE '172.3_%'
-            AND r.ip_address != '127.0.0.1'
-            AND r.ip_address != 'localhost'
-            AND r.ip_address != '::1'
+            WHERE {ip_filter}
             """
             unique_users = session.execute(text(unique_users_query)).scalar() or 0
 
@@ -390,14 +280,7 @@ def fetch_telemetry_data():
             SELECT DATE(timestamp) as date, COUNT(DISTINCT ip_address) as count 
             FROM request_logs 
             WHERE endpoint IN ({valid_endpoints})
-            AND ip_address NOT LIKE '192.168.%'
-            AND ip_address NOT LIKE '10.%'
-            AND ip_address NOT LIKE '172.1_%'
-            AND ip_address NOT LIKE '172.2_%'
-            AND ip_address NOT LIKE '172.3_%'
-            AND ip_address != '127.0.0.1'
-            AND ip_address != 'localhost'
-            AND ip_address != '::1'
+            AND {ip_filter}
             GROUP BY DATE(timestamp) 
             ORDER BY date
             """
@@ -408,14 +291,7 @@ def fetch_telemetry_data():
             SELECT endpoint, COUNT(DISTINCT ip_address) as count 
             FROM request_logs 
             WHERE endpoint IN ({valid_endpoints})
-            AND ip_address NOT LIKE '192.168.%'
-            AND ip_address NOT LIKE '10.%'
-            AND ip_address NOT LIKE '172.1_%'
-            AND ip_address NOT LIKE '172.2_%'
-            AND ip_address NOT LIKE '172.3_%'
-            AND ip_address != '127.0.0.1'
-            AND ip_address != 'localhost'
-            AND ip_address != '::1'
+            AND {ip_filter}
             GROUP BY endpoint 
             ORDER BY count DESC
             """
@@ -432,7 +308,7 @@ def fetch_telemetry_data():
             return None
 
 
-def get_cached_locations():
+def get_ip_locations():
     """Get locations from the ip_locations table."""
     with get_telemetry_session() as session:
         try:
@@ -461,310 +337,6 @@ def get_cached_locations():
             return []
 
 
-def create_modern_time_series_figure(time_series_data):
-    """Create a modern time series visualization with better styling."""
-    if time_series_data:
-        df = pd.DataFrame(time_series_data, columns=["date", "count"])
-        df["date"] = pd.to_datetime(df["date"])
-
-        # Calculate moving average for trend
-        df["moving_avg"] = df["count"].rolling(window=3, center=True).mean()
-
-        fig = go.Figure()
-
-        # Add main line with gradient
-        fig.add_trace(
-            go.Scatter(
-                x=df["date"],
-                y=df["count"],
-                mode="lines+markers",
-                name="Daily Visitors",
-                line=dict(color="#6366f1", width=3, shape="spline"),
-                marker=dict(size=8, color="#6366f1", line=dict(width=2, color="white")),
-                fill="tonexty",
-                fillcolor="rgba(99, 102, 241, 0.1)",
-            )
-        )
-
-        # Add trend line
-        fig.add_trace(
-            go.Scatter(
-                x=df["date"],
-                y=df["moving_avg"],
-                mode="lines",
-                name="Trend (3-day avg)",
-                line=dict(color="#ef4444", width=2, dash="dash"),
-                opacity=0.7,
-            )
-        )
-
-        # Calculate growth rate
-        if len(df) > 1:
-            current = df["count"].iloc[-1]
-            previous = df["count"].iloc[-2]
-            growth_rate = ((current - previous) / previous * 100) if previous > 0 else 0
-            growth_text = (
-                f"📈 +{growth_rate:.1f}%"
-                if growth_rate > 0
-                else f"📉 {growth_rate:.1f}%"
-            )
-        else:
-            growth_text = "📊 New data"
-
-        fig.update_layout(
-            title=dict(
-                text=f"Visitor Trends {growth_text}",
-                x=0.5,
-                font=dict(size=18, color="#1f2937"),
-            ),
-            xaxis=dict(
-                title="Date",
-                showgrid=True,
-                gridcolor="rgba(0,0,0,0.05)",
-                zeroline=False,
-                tickformat="%b %d",
-            ),
-            yaxis=dict(
-                title="Unique Visitors",
-                showgrid=True,
-                gridcolor="rgba(0,0,0,0.05)",
-                zeroline=False,
-            ),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            height=400,
-            margin=dict(l=50, r=20, t=60, b=50),
-            hovermode="x unified",
-            hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter"),
-            showlegend=True,
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-            ),
-        )
-
-        # Focus on last 14 days
-        if not df.empty:
-            end_date = df["date"].max()
-            start_date = end_date - pd.Timedelta(days=14)
-            fig.update_layout(xaxis_range=[start_date, end_date])
-
-    else:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No visitor data available",
-            xaxis_title="Date",
-            yaxis_title="Unique Visitors",
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            height=400,
-        )
-
-    return fig
-
-
-def create_modern_endpoints_figure(endpoints_data):
-    """Create a modern horizontal bar chart for page visits."""
-    # Define page mapping locally
-    page_mapping = {
-        "/": "Home",
-        "/download": "Download",
-        "/pgv": "PGV",
-        "/submit": "Submit",
-        "/blast": "BLAST",
-        "/wiki": "Wiki",
-        "/metrics": "Metrics",
-        "/starfish": "Starfish",
-        "/about": "About",
-    }
-
-    if endpoints_data:
-        filtered_data = [
-            (page_mapping.get(row[0], row[0]), row[1])
-            for row in endpoints_data
-            if row[0] in page_mapping
-        ]
-
-        if filtered_data:
-            endpoints = [row[0] for row in filtered_data]
-            counts = [row[1] for row in filtered_data]
-
-            # Create color gradient
-            colors = px.colors.qualitative.Set3[: len(endpoints)]
-
-            fig = go.Figure(
-                go.Bar(
-                    y=endpoints,
-                    x=counts,
-                    orientation="h",
-                    marker=dict(color=colors, line=dict(color="white", width=1)),
-                    text=counts,
-                    textposition="auto",
-                    texttemplate="%{text}",
-                    textfont=dict(color="white", size=12),
-                )
-            )
-
-            fig.update_layout(
-                title=dict(
-                    text="Page Popularity", x=0.5, font=dict(size=18, color="#1f2937")
-                ),
-                xaxis=dict(
-                    title="Unique Visitors",
-                    showgrid=True,
-                    gridcolor="rgba(0,0,0,0.05)",
-                    zeroline=False,
-                ),
-                yaxis=dict(showgrid=False, zeroline=False),
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                height=400,
-                margin=dict(l=50, r=20, t=60, b=50),
-                bargap=0.3,
-                showlegend=False,
-            )
-
-        else:
-            fig = go.Figure()
-            fig.update_layout(
-                title="No page visit data available",
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                height=400,
-            )
-    else:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No page visit data available",
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            height=400,
-        )
-
-    return fig
-
-
-def create_modern_map_figure(locations):
-    """Create a modern map visualization."""
-    fig = go.Figure()
-
-    fig.update_layout(
-        mapbox=dict(
-            style="carto-positron",
-            zoom=1,
-            center=dict(lat=20, lon=0),
-        ),
-        margin={"r": 0, "t": 30, "l": 0, "b": 0},
-        height=400,
-        title=dict(
-            text="Global Visitor Distribution",
-            x=0.5,
-            font=dict(size=18, color="#1f2937"),
-        ),
-        paper_bgcolor="white",
-    )
-
-    if locations and len(locations) > 0:
-        df = pd.DataFrame(locations)
-
-        # Count visitors per location
-        location_counts = (
-            df.groupby(["lat", "lon", "city", "country"])
-            .size()
-            .reset_index(name="visits")
-        )
-
-        # Create size gradient
-        min_visits = location_counts["visits"].min()
-        max_visits = location_counts["visits"].max()
-        location_counts["marker_size"] = 8 + (
-            location_counts["visits"] - min_visits
-        ) * (25 / (max_visits - min_visits if max_visits > min_visits else 1))
-
-        fig.add_trace(
-            go.Scattermapbox(
-                lat=location_counts["lat"],
-                lon=location_counts["lon"],
-                mode="markers",
-                marker=dict(
-                    size=location_counts["marker_size"],
-                    color=location_counts["visits"],
-                    colorscale="Viridis",
-                    opacity=0.8,
-                    sizemode="diameter",
-                    colorbar=dict(title="Visits", x=0.95, len=0.8),
-                ),
-                text=location_counts.apply(
-                    lambda row: f"<b>{row['city']}, {row['country']}</b><br>👥 {int(row['visits'])} visitors",
-                    axis=1,
-                ),
-                hoverinfo="text",
-                hovertemplate="%{text}<extra></extra>",
-            )
-        )
-
-        # Adjust center and zoom
-        center_lat = location_counts["lat"].mean()
-        center_lon = location_counts["lon"].mean()
-        fig.update_layout(
-            mapbox=dict(center=dict(lat=center_lat, lon=center_lon), zoom=1.5)
-        )
-
-    return fig
-
-
-def analyze_telemetry() -> Dict[str, Any]:
-    """Analyze telemetry data and create visualizations."""
-    try:
-        # Fetch basic telemetry data
-        data = fetch_telemetry_data()
-        if data is None:
-            return {
-                "unique_users": 0,
-                "total_requests": 0,
-                "time_series": go.Figure(),
-                "endpoints": go.Figure(),
-                "map": go.Figure(),
-                "locations": [],
-            }
-
-        # Create modern visualizations
-        time_series_fig = create_modern_time_series_figure(data["time_series_data"])
-
-        # Create endpoints visualization
-        endpoints_fig = create_modern_endpoints_figure(data["endpoints_data"])
-
-        # Get cached locations and create map
-        locations = get_cached_locations()
-        map_fig = create_modern_map_figure(locations)
-
-        # Calculate total requests
-        total_requests = (
-            sum(row[1] for row in data["endpoints_data"] if row[0] in page_mapping)
-            if data["endpoints_data"]
-            else 0
-        )
-
-        return {
-            "unique_users": data["unique_users"],
-            "total_requests": total_requests,
-            "time_series": time_series_fig,
-            "endpoints": endpoints_fig,
-            "map": map_fig,
-            "locations": locations,
-        }
-
-    except Exception as e:
-        logger.error(f"Error in analyze_telemetry: {str(e)}")
-        return {
-            "unique_users": 0,
-            "total_requests": 0,
-            "time_series": go.Figure(),
-            "endpoints": go.Figure(),
-            "map": go.Figure(),
-            "locations": [],
-        }
-
-
 def count_blast_submissions(ip_address, hours=1):
     """Count BLAST submissions from an IP address in the last N hours."""
     with get_telemetry_session() as session:
@@ -788,6 +360,63 @@ def count_blast_submissions(ip_address, hours=1):
             return 0
 
 
+    return fig
+
+
+def get_telemetry_visualizations() -> Dict[str, Any]:
+    """Analyze telemetry data and create visualizations."""
+    try:
+        # Fetch basic telemetry data
+        telemetry_data = get_telemetry_data()
+        if telemetry_data is None:
+            return {
+                "unique_users": 0,
+                "total_requests": 0,
+                "time_series": go.Figure(),
+                "endpoints": go.Figure(),
+                "map": go.Figure(),
+                "locations": [],
+            }
+
+        # Create modern visualizations
+        time_series_fig = create_time_series_figure(telemetry_data["time_series_data"])
+
+        # Create endpoints visualization
+        endpoints_fig = create_endpoints_figure(telemetry_data["endpoints_data"])
+
+        # Get cached locations and create map
+        locations = get_ip_locations()
+        map_fig = create_map_figure(locations)
+
+        # Calculate total requests
+        total_requests = (
+            sum(row[1] for row in telemetry_data["endpoints_data"] if row[0] in PAGE_MAPPING)
+            if telemetry_data["endpoints_data"]
+            else 0
+        )
+
+        return {
+            "unique_users": telemetry_data["unique_users"],
+            "total_requests": total_requests,
+            "time_series": time_series_fig,
+            "endpoints": endpoints_fig,
+            "map": map_fig,
+            "locations": locations,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in analyze_telemetry: {str(e)}")
+        return {
+            "unique_users": 0,
+            "total_requests": 0,
+            "time_series": go.Figure(),
+            "endpoints": go.Figure(),
+            "map": go.Figure(),
+            "locations": [],
+        }
+
+
+
 def get_blast_limit_info(ip_address):
     """Get rate limit info for an IP address."""
     try:
@@ -799,37 +428,3 @@ def get_blast_limit_info(ip_address):
         logger.error(f"Error getting BLAST limit info: {str(e)}")
         return {"remaining": 0, "limit": 10, "submissions": 10}
 
-
-def blast_limit_decorator(f):
-    """Decorator to limit BLAST operations per user"""
-
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        try:
-            client_ip = get_client_ip()
-
-            # Skip rate limiting for development IPs
-            if is_development_ip(client_ip):
-                return f(*args, **kwargs)
-
-            # Only check limits for BLAST-related endpoints
-            if request.path == "/api/blast-submit":
-                limit_info = get_blast_limit_info(client_ip)
-
-                if limit_info["remaining"] <= 0:
-                    logger.warning(f"BLAST limit exceeded for IP: {client_ip}")
-                    raise PreventUpdate("Hourly BLAST limit exceeded")
-
-                # Log the BLAST request
-                logger.debug(f"BLAST submission from IP: {client_ip}")
-                log_request(client_ip, "/api/blast-submit")
-
-            return f(*args, **kwargs)
-
-        except PreventUpdate:
-            raise
-        except Exception as e:
-            logger.error(f"Error in blast_limit_decorator: {str(e)}")
-            raise
-
-    return wrapped
