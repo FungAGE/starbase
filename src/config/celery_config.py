@@ -108,27 +108,6 @@ if CELERY_AVAILABLE and celery:
     # This ensures tasks are properly registered
     celery.autodiscover_tasks(["src.tasks", "src.telemetry"])
 
-    # Explicitly import task modules to ensure registration
-    try:
-        import src.tasks
-        import src.telemetry.tasks
-        print("Task modules imported successfully")
-    except ImportError as e:
-        print(f"Warning: Could not import task modules: {e}")
-
-    # Import tasks after celery app is created to avoid circular imports
-    def _import_tasks():
-        """Import tasks to ensure they're registered with Celery."""
-        try:
-            import src.tasks
-            import src.telemetry.tasks
-            print("Task modules imported successfully")
-        except ImportError as e:
-            print(f"Warning: Could not import task modules: {e}")
-
-    # Import tasks
-    _import_tasks()
-
     # Final adjustment to ensure loggers are properly set
     # This needs to run after autodiscover_tasks
     if not IS_DEV:
@@ -149,7 +128,7 @@ def run_task(task_func, *args, **kwargs):
     
     For single-pod deployments, set CELERY_ENABLED=false to run tasks directly.
     For distributed deployments with Redis, set CELERY_ENABLED=true.
-    
+    If Celery fails, log error and run directly as fallback
     Args:
         task_func: The Celery task function to run
         *args: Positional arguments to pass to the task
@@ -162,12 +141,8 @@ def run_task(task_func, *args, **kwargs):
         try:
             return task_func.apply_async(args=args, kwargs=kwargs)
         except Exception as e:
-            # If Celery fails, log error and run directly as fallback
             logger = logging.getLogger(__name__)
             logger.warning(f"Celery task failed, running directly: {str(e)}")
-            # Run the actual function (not the task wrapper)
             return task_func(*args, **kwargs)
     else:
-        # Run task directly (synchronously)
-        # For telemetry tasks, this is fine as they're fast
         return task_func(*args, **kwargs)
