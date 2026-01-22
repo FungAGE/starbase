@@ -7,20 +7,23 @@ from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
 
 import datetime
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Optional
 from src.utils.seq_utils import parse_fasta, parse_gff
 
 from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
-from src.components.callbacks import create_file_upload
-from src.utils.classification_utils import assign_accession
-from src.database.sql_manager import fetch_ships
+from src.components.ui import create_file_upload
 
 from src.config.logging import get_logger
 from src.config.cache import cache
 from src.config.celery_config import run_task
 from src.tasks import process_submission_task
+from src.utils.web_submission_adapter import (
+    validate_submission_data,
+    ValidationError as WebValidationError,
+)
+
 import uuid
 import json
 
@@ -29,7 +32,10 @@ logger = get_logger(__name__)
 
 class SubmissionError(Exception):
     """Base exception for submission-related errors."""
-    def __init__(self, message: str, error_type: str = "general", user_message: str = None):
+
+    def __init__(
+        self, message: str, error_type: str = "general", user_message: str = None
+    ):
         self.message = message
         self.error_type = error_type
         self.user_message = user_message or message
@@ -38,6 +44,7 @@ class SubmissionError(Exception):
 
 class ValidationError(SubmissionError):
     """Exception for validation errors."""
+
     def __init__(self, message: str, field: str = None):
         super().__init__(message, "validation", message)
         self.field = field
@@ -45,6 +52,7 @@ class ValidationError(SubmissionError):
 
 class ProcessingError(SubmissionError):
     """Exception for processing errors."""
+
     def __init__(self, message: str, stage: str = None):
         super().__init__(message, "processing", message)
         self.stage = stage
@@ -52,8 +60,11 @@ class ProcessingError(SubmissionError):
 
 class DatabaseError(SubmissionError):
     """Exception for database errors."""
+
     def __init__(self, message: str, operation: str = None):
-        super().__init__(message, "database", "A database error occurred. Please try again.")
+        super().__init__(
+            message, "database", "A database error occurred. Please try again."
+        )
         self.operation = operation
 
 
@@ -72,44 +83,63 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
     if isinstance(error, ValidationError):
         return {
             "modal_open": False,
-            "message": html.Div([
-                html.H4("Validation Error", className="text-warning"),
-                html.P(str(error.user_message), className="text-muted")
-            ]),
-            "loading": False
+            "message": html.Div(
+                [
+                    html.H4("Validation Error", className="text-warning"),
+                    html.P(str(error.user_message), className="text-muted"),
+                ]
+            ),
+            "loading": False,
         }
     elif isinstance(error, ProcessingError):
         return {
             "modal_open": False,
-            "message": html.Div([
-                html.H4("Processing Error", className="text-danger"),
-                html.P(str(error.user_message), className="text-muted")
-            ]),
-            "loading": False
+            "message": html.Div(
+                [
+                    html.H4("Processing Error", className="text-danger"),
+                    html.P(str(error.user_message), className="text-muted"),
+                ]
+            ),
+            "loading": False,
         }
     elif isinstance(error, DatabaseError):
         return {
             "modal_open": False,
-            "message": html.Div([
-                html.H4("Database Error", className="text-danger"),
-                html.P(str(error.user_message), className="text-muted"),
-                html.P("If this persists, please contact support.", className="text-muted small")
-            ]),
-            "loading": False
+            "message": html.Div(
+                [
+                    html.H4("Database Error", className="text-danger"),
+                    html.P(str(error.user_message), className="text-muted"),
+                    html.P(
+                        "If this persists, please contact support.",
+                        className="text-muted small",
+                    ),
+                ]
+            ),
+            "loading": False,
         }
     else:
         return {
             "modal_open": False,
-            "message": html.Div([
-                html.H4("Unexpected Error", className="text-danger"),
-                html.P("An unexpected error occurred. Please try again.", className="text-muted"),
-                html.P("If this persists, please contact support.", className="text-muted small")
-            ]),
-            "loading": False
+            "message": html.Div(
+                [
+                    html.H4("Unexpected Error", className="text-danger"),
+                    html.P(
+                        "An unexpected error occurred. Please try again.",
+                        className="text-muted",
+                    ),
+                    html.P(
+                        "If this persists, please contact support.",
+                        className="text-muted small",
+                    ),
+                ]
+            ),
+            "loading": False,
         }
 
 
-def create_submission_status(submission_id: str, initial_status: str = "queued") -> None:
+def create_submission_status(
+    submission_id: str, initial_status: str = "queued"
+) -> None:
     """
     Create a new submission status entry.
 
@@ -124,13 +154,20 @@ def create_submission_status(submission_id: str, initial_status: str = "queued")
         "updated_at": datetime.datetime.now().isoformat(),
         "progress": 0,
         "message": "Submission queued for processing",
-        "result": None
+        "result": None,
     }
-    cache.set(f"submission:{submission_id}", json.dumps(status_data), timeout=3600)  # 1 hour timeout
+    cache.set(
+        f"submission:{submission_id}", json.dumps(status_data), timeout=3600
+    )  # 1 hour timeout
 
 
-def update_submission_status(submission_id: str, status: str, progress: int = None,
-                           message: str = None, result: Dict = None) -> None:
+def update_submission_status(
+    submission_id: str,
+    status: str,
+    progress: int = None,
+    message: str = None,
+    result: Dict = None,
+) -> None:
     """
     Update submission status.
 
@@ -153,10 +190,9 @@ def update_submission_status(submission_id: str, status: str, progress: int = No
         status_data = {}
 
     # Update fields
-    status_data.update({
-        "status": status,
-        "updated_at": datetime.datetime.now().isoformat()
-    })
+    status_data.update(
+        {"status": status, "updated_at": datetime.datetime.now().isoformat()}
+    )
 
     if progress is not None:
         status_data["progress"] = progress
@@ -556,17 +592,6 @@ def create_fasta_display(records, filename):
     )
 
 
-# Import shared utilities
-from src.database.cleanup.utils.submission_utils import (
-    validate_submission_data,
-    process_submission_data,
-    perform_database_insertion,
-    parse_fasta_sequences
-)
-
-
-
-
 @callback(
     [
         Output("submit-modal", "is_open"),
@@ -632,10 +657,19 @@ def submit_ship(
 
     try:
         # Step 1: Validate input data (quick validation)
+        # This must pass before we proceed with submission
+        # If validation fails, validate_submission_data will raise ValidationError
         logger.debug("Validating submission data")
-        validated_data = validate_submission_data(
-            seq_contents, seq_filename, uploader, evidence,
-            genus, species, hostchr, shipstart, shipend
+        _ = validate_submission_data(
+            seq_contents,
+            seq_filename,
+            uploader,
+            evidence,
+            genus,
+            species,
+            hostchr,
+            shipstart,
+            shipend,
         )
 
         # Step 2: Create submission data package
@@ -669,12 +703,12 @@ def submit_ship(
         task_result = run_task(process_submission_task, submission_data, submission_id)
 
         # Store task ID for status checking
-        if hasattr(task_result, 'id'):
+        if hasattr(task_result, "id"):
             update_submission_status(
                 submission_id,
                 "processing",
                 progress=10,
-                message="Submission is being processed..."
+                message="Submission is being processed...",
             )
             cache.set(f"task:{submission_id}", task_result.id, timeout=3600)
         else:
@@ -684,43 +718,85 @@ def submit_ship(
                 "completed" if task_result.get("success") else "failed",
                 progress=100,
                 message=task_result.get("message", "Processing complete"),
-                result=task_result
+                result=task_result,
             )
 
         # Step 6: Show immediate feedback with submission ID
         modal = not is_open if not close_modal else False
-        if hasattr(task_result, 'id'):
+        if hasattr(task_result, "id"):
             # Async processing
-            message = html.Div([
-                html.H4("Submission Queued!", className="mb-3"),
-                dmc.Text("Your submission is being processed in the background.", className="text-muted"),
-                dmc.Text(f"Submission ID: {submission_id}", className="text-muted"),
-                html.Br(),
-                dmc.Text("You can close this dialog. Processing will continue.", className="text-muted small"),
-                html.Br(),
-                dmc.Text("Check the status below to see when processing is complete.", className="text-muted small"),
-            ])
+            message = html.Div(
+                [
+                    html.H4("Submission Queued!", className="mb-3"),
+                    dmc.Text(
+                        "Your submission is being processed in the background.",
+                        className="text-muted",
+                    ),
+                    dmc.Text(f"Submission ID: {submission_id}", className="text-muted"),
+                    html.Br(),
+                    dmc.Text(
+                        "You can close this dialog. Processing will continue.",
+                        className="text-muted small",
+                    ),
+                    html.Br(),
+                    dmc.Text(
+                        "Check the status below to see when processing is complete.",
+                        className="text-muted small",
+                    ),
+                ]
+            )
         else:
             # Sync processing completed
             if task_result.get("success"):
-                message = html.Div([
-                    html.H4("Successfully submitted!", className="mb-3"),
-                    dmc.Text(f"Assigned accession: {task_result['accession']}", className="text-muted"),
-                    dmc.Text(
-                        f"Review status: {'Needs review' if task_result['needs_review'] else 'Auto-approved'}",
-                        className="text-muted",
-                    ),
-                    dmc.Text(f"Filename: {task_result['filename']}", className="text-muted"),
-                    dmc.Text(f"Uploaded by: {task_result['uploader']}", className="text-muted"),
-                ])
+                message = html.Div(
+                    [
+                        html.H4("Successfully submitted!", className="mb-3"),
+                        dmc.Text(
+                            f"Assigned accession: {task_result['accession']}",
+                            className="text-muted",
+                        ),
+                        dmc.Text(
+                            f"Review status: {'Needs review' if task_result['needs_review'] else 'Auto-approved'}",
+                            className="text-muted",
+                        ),
+                        dmc.Text(
+                            f"Filename: {task_result['filename']}",
+                            className="text-muted",
+                        ),
+                        dmc.Text(
+                            f"Uploaded by: {task_result['uploader']}",
+                            className="text-muted",
+                        ),
+                    ]
+                )
             else:
-                message = html.Div([
-                    html.H4("Submission Failed", className="text-danger mb-3"),
-                    dmc.Text(task_result.get("user_message", "An error occurred"), className="text-muted"),
-                ])
+                message = html.Div(
+                    [
+                        html.H4("Submission Failed", className="text-danger mb-3"),
+                        dmc.Text(
+                            task_result.get("user_message", "An error occurred"),
+                            className="text-muted",
+                        ),
+                    ]
+                )
 
         loading = False
         return modal, message, loading
+
+    except WebValidationError as e:
+        # Handle validation errors from web_submission_adapter
+        # Convert to our ValidationError for consistent handling
+        validation_error = ValidationError(
+            str(e.message) if hasattr(e, "message") else str(e),
+            getattr(e, "field", None),
+        )
+        error_response = handle_submission_error(validation_error)
+        loading = False
+        return (
+            error_response["modal_open"],
+            error_response["message"],
+            error_response["loading"],
+        )
 
     except SubmissionError as e:
         # Handle our custom submission errors
@@ -728,7 +804,7 @@ def submit_ship(
         return (
             error_response["modal_open"],
             error_response["message"],
-            error_response["loading"]
+            error_response["loading"],
         )
 
     except Exception as e:
@@ -738,7 +814,7 @@ def submit_ship(
         return (
             error_response["modal_open"],
             error_response["message"],
-            error_response["loading"]
+            error_response["loading"],
         )
 
 
@@ -819,16 +895,18 @@ def check_submission_status(n_clicks, submission_id):
         "processing": "yellow",
         "completed": "green",
         "failed": "red",
-        "unknown": "gray"
+        "unknown": "gray",
     }
 
     color = status_colors.get(status, "gray")
 
     status_display = [
-        dmc.Group([
-            dmc.Text("Status:", fw=700),
-            dmc.Badge(status.upper(), color=color, variant="light")
-        ]),
+        dmc.Group(
+            [
+                dmc.Text("Status:", fw=700),
+                dmc.Badge(status.upper(), color=color, variant="light"),
+            ]
+        ),
         dmc.Progress(value=progress, color=color, size="lg"),
         dmc.Text(f"Progress: {progress}%", size="sm", c="dimmed"),
         dmc.Text(message, size="sm"),
@@ -847,22 +925,29 @@ def check_submission_status(n_clicks, submission_id):
     # Show result if completed
     result = status_data.get("result")
     if result and status == "completed" and result.get("success"):
-        status_display.extend([
-            dmc.Divider(),
-            dmc.Text("Result:", fw=700),
-            dmc.Text(f"Accession: {result.get('accession', 'N/A')}", size="sm"),
-            dmc.Text(f"Review needed: {'Yes' if result.get('needs_review') else 'No'}", size="sm"),
-            dmc.Text(f"Filename: {result.get('filename', 'N/A')}", size="sm"),
-        ])
+        status_display.extend(
+            [
+                dmc.Divider(),
+                dmc.Text("Result:", fw=700),
+                dmc.Text(f"Accession: {result.get('accession', 'N/A')}", size="sm"),
+                dmc.Text(
+                    f"Review needed: {'Yes' if result.get('needs_review') else 'No'}",
+                    size="sm",
+                ),
+                dmc.Text(f"Filename: {result.get('filename', 'N/A')}", size="sm"),
+            ]
+        )
     elif result and status == "failed":
-        status_display.extend([
-            dmc.Divider(),
-            dmc.Alert(
-                result.get("user_message", "Processing failed"),
-                title="Error",
-                color="red",
-                variant="light",
-            )
-        ])
+        status_display.extend(
+            [
+                dmc.Divider(),
+                dmc.Alert(
+                    result.get("user_message", "Processing failed"),
+                    title="Error",
+                    color="red",
+                    variant="light",
+                ),
+            ]
+        )
 
     return dmc.Stack(status_display, gap="xs")
