@@ -20,18 +20,18 @@ def _log_request_impl(ip_address, endpoint):
     from src.config.settings import PAGE_MAPPING
     from src.database.sql_engine import get_telemetry_session
     from sqlalchemy import text
-    
+
     try:
         # Skip development IPs
         if is_development_ip(ip_address):
             logger.debug(f"Skipping telemetry for development IP: {ip_address}")
             return
-        
+
         # Only log valid endpoints
         if endpoint not in PAGE_MAPPING:
             logger.debug(f"Skipping telemetry for non-mapped endpoint: {endpoint}")
             return
-        
+
         with get_telemetry_session() as session:
             # Check if this IP+endpoint was logged in the last hour
             check_query = """
@@ -40,11 +40,13 @@ def _log_request_impl(ip_address, endpoint):
             AND endpoint = :endpoint
             AND datetime(timestamp) >= datetime('now', '-1 hour')
             """
-            recent_count = session.execute(
-                text(check_query),
-                {"ip": ip_address, "endpoint": endpoint}
-            ).scalar() or 0
-            
+            recent_count = (
+                session.execute(
+                    text(check_query), {"ip": ip_address, "endpoint": endpoint}
+                ).scalar()
+                or 0
+            )
+
             # Only log if not already logged in the last hour
             if recent_count == 0:
                 insert_query = """
@@ -53,14 +55,19 @@ def _log_request_impl(ip_address, endpoint):
                 """
                 session.execute(
                     text(insert_query),
-                    {"ip": ip_address, "endpoint": endpoint, "timestamp": datetime.now()},
+                    {
+                        "ip": ip_address,
+                        "endpoint": endpoint,
+                        "timestamp": datetime.now(),
+                    },
                 )
                 session.commit()
                 logger.debug(f"Logged request from {ip_address} to {endpoint}")
-            
+
     except Exception as e:
         logger.error(f"Error in log_request_task: {str(e)}")
         raise
+
 
 def _update_ip_locations_impl(api_key=None):
     """Update IP geolocation data"""
@@ -69,12 +76,12 @@ def _update_ip_locations_impl(api_key=None):
     from src.config.settings import IPSTACK_API_KEY
     from src.telemetry.utils import GeolocatorService
     from src.database.sql_engine import get_telemetry_session
-    
+
     if api_key is None:
         api_key = IPSTACK_API_KEY
-        
+
     geolocator = GeolocatorService()
-    
+
     # Find IPs that need lookup
     query = """
     SELECT DISTINCT r.ip_address 
@@ -101,13 +108,15 @@ def _update_ip_locations_impl(api_key=None):
     """
 
     with get_telemetry_session() as session:
+        ip = None
+        new_ips = []
         try:
             new_ips = session.execute(text(query)).fetchall()
-            
+
             for (ip,) in new_ips:
                 if geolocator.is_private_ip(ip):
                     continue
-                    
+
                 location = geolocator.get_location(ip, api_key)
                 if location.lat == 0 and location.lon == 0:
                     continue
@@ -126,7 +135,8 @@ def _update_ip_locations_impl(api_key=None):
 
                 session.commit()
         except Exception as e:
-            logger.error(f"Error updating location for IP {ip}: {str(e)}")
+            ip_msg = f" for IP {ip}" if ip else ""
+            logger.error(f"Error updating location{ip_msg}: {str(e)}")
             session.rollback()
 
     return {"status": "success", "ips_processed": len(new_ips)}
@@ -139,14 +149,20 @@ def _check_cache_status_impl():
     """
     try:
         # First check if cache is healthy
-        status_response = requests.get("http://localhost:8000/api/cache/status", timeout=10)
+        status_response = requests.get(
+            "http://localhost:8000/api/cache/status", timeout=10
+        )
         if status_response.status_code != 200:
             # Cache needs refresh
             logger.info("Cache status unhealthy, refreshing...")
-            refresh_response = requests.post("http://localhost:8000/api/cache/refresh", timeout=30)
-            logger.info(f"Cache refresh completed with status: {refresh_response.status_code}")
+            refresh_response = requests.post(
+                "http://localhost:8000/api/cache/refresh", timeout=30
+            )
+            logger.info(
+                f"Cache refresh completed with status: {refresh_response.status_code}"
+            )
             return {"status": "refreshed", "response": refresh_response.status_code}
-        
+
         logger.info("Cache status healthy")
         return {"status": "healthy"}
     except requests.exceptions.Timeout:
@@ -159,8 +175,10 @@ def _check_cache_status_impl():
         logger.error(f"Error checking cache status: {str(e)}")
         return {"status": "error", "error": str(e)}
 
+
 def log_request_task(ip_address, endpoint):
     return run_task(_log_request_impl, ip_address, endpoint)
-    
+
+
 def update_ip_locations_task():
     return run_task(_update_ip_locations_impl)
