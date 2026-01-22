@@ -21,7 +21,7 @@ from src.config.celery_config import run_task
 from src.tasks import process_submission_task
 from src.utils.web_submission_adapter import (
     validate_submission_data,
-    ValidationError as WebValidationError,
+    WebValidationError,
 )
 
 import uuid

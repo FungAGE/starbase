@@ -28,7 +28,7 @@ from src.utils.submission_utils import (
 logger = get_logger(__name__)
 
 
-class ValidationError(Exception):
+class WebValidationError(Exception):
     """Web-friendly validation error."""
 
     def __init__(self, message: str, field: str = None):
@@ -49,7 +49,7 @@ def parse_fasta_sequences(contents: str, filename: str) -> Dict[str, str]:
         Dict mapping sequence IDs to sequences
 
     Raises:
-        ValidationError: If FASTA parsing fails
+        WebValidationError: If FASTA parsing fails
     """
     try:
         # Decode base64 content
@@ -64,7 +64,7 @@ def parse_fasta_sequences(contents: str, filename: str) -> Dict[str, str]:
             sequences[record.id] = str(record.seq)
 
         if not sequences:
-            raise ValidationError(
+            raise WebValidationError(
                 "No valid sequences found in FASTA file", "fasta_file"
             )
 
@@ -73,7 +73,7 @@ def parse_fasta_sequences(contents: str, filename: str) -> Dict[str, str]:
 
     except Exception as e:
         logger.error(f"Error parsing FASTA: {str(e)}")
-        raise ValidationError(f"Failed to parse FASTA file: {str(e)}", "fasta_file")
+        raise WebValidationError(f"Failed to parse FASTA file: {str(e)}", "fasta_file")
 
 
 def validate_submission_data(
@@ -105,7 +105,7 @@ def validate_submission_data(
         Dict with validated data
 
     Raises:
-        ValidationError: If validation fails
+        WebValidationError: If validation fails
     """
     errors = []
 
@@ -130,7 +130,7 @@ def validate_submission_data(
         errors.append("End coordinate is required")
 
     if errors:
-        raise ValidationError("; ".join(errors))
+        raise WebValidationError("; ".join(errors))
 
     # Validate coordinates
     if shipstart <= 0:
@@ -141,7 +141,7 @@ def validate_submission_data(
         errors.append("Start and end coordinates cannot be the same")
 
     if errors:
-        raise ValidationError("; ".join(errors))
+        raise WebValidationError("; ".join(errors))
 
     # Parse FASTA
     try:
@@ -156,10 +156,10 @@ def validate_submission_data(
         # Get first sequence
         seq_id, sequence = next(iter(sequences.items()))
 
-    except ValidationError:
+    except WebValidationError:
         raise
     except Exception as e:
-        raise ValidationError(f"Error processing FASTA file: {str(e)}", "fasta_file")
+        raise WebValidationError(f"Error processing FASTA file: {str(e)}", "fasta_file")
 
     # Return validated data
     return {
@@ -235,7 +235,7 @@ def process_submission_data(
     is_valid, validation_errors = validate_submission(processed_data)
 
     if not is_valid:
-        raise ValidationError("; ".join(validation_errors))
+        raise WebValidationError("; ".join(validation_errors))
 
     return processed_data
 
@@ -261,7 +261,7 @@ def perform_database_insertion(
         Dict with insertion results
 
     Raises:
-        ValidationError: If insertion fails
+        WebValidationError: If insertion fails
     """
     try:
         # Check for duplicates
@@ -270,7 +270,7 @@ def perform_database_insertion(
         if duplicate_info and duplicate_info.is_duplicate:
             if not duplicate_info.different_taxon:
                 # Exact duplicate in same taxon
-                raise ValidationError(
+                raise WebValidationError(
                     f"This sequence already exists in the database "
                     f"(Accession: {duplicate_info.existing_accession}). "
                     f"Duplicate submissions from the same organism are not allowed.",
@@ -299,7 +299,7 @@ def perform_database_insertion(
 
         if not result["success"]:
             error_msg = "; ".join(result.get("errors", ["Unknown error"]))
-            raise ValidationError(f"Database insertion failed: {error_msg}")
+            raise WebValidationError(f"Database insertion failed: {error_msg}")
 
         # Determine if needs review
         needs_review = processed_data.get("curated_status") == "needs_review"
@@ -314,11 +314,11 @@ def perform_database_insertion(
             "warnings": result.get("warnings", []),
         }
 
-    except ValidationError:
+    except WebValidationError:
         raise
     except Exception as e:
         logger.error(f"Database insertion error: {str(e)}", exc_info=True)
-        raise ValidationError(f"Failed to insert into database: {str(e)}")
+        raise WebValidationError(f"Failed to insert into database: {str(e)}")
 
 
 def _parse_gff_contents(anno_contents: str, anno_filename: str) -> list:
