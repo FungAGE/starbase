@@ -128,8 +128,22 @@ def serve_app_layout():
                 dcc.Location(id="url", refresh=False),
                 navmenu.navmenu(),
                 html.Div(dash.page_container),
-                create_feedback_button(),
-                create_database_version_indicator(),
+                html.Div(
+                    [
+                        create_feedback_button(),
+                        create_database_version_indicator(),
+                    ],
+                    style={
+                        "position": "fixed",
+                        "top": "50%",
+                        "right": "20px",
+                        "transform": "translateY(-50%)",
+                        "zIndex": "1000",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "gap": "10px",
+                    }
+                ),
             ]
         )
     )
