@@ -9,7 +9,7 @@ from Bio.SeqUtils import nt_search
 from Bio import SeqIO
 from dash import html
 import dash_mantine_components as dmc
-from typing import Dict
+from typing import Dict, Union
 import os
 from src.config.logging import get_logger
 
@@ -236,7 +236,7 @@ def translate_seq(seq):
     return frames
 
 
-def revcomp(seq: str | Seq) -> str:
+def revcomp(seq: Union[str, Seq]) -> str:
     """
     Reverse complement a sequence. Able to handle both strings and Seq objects.
     """
