@@ -76,11 +76,17 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
             accession = None
             if f"{table_id}.cellClicked" in triggered_id and cell_clicked:
                 # AG Grid format - handle both accession_tag and accession_display
-                if cell_clicked["colId"] in ["accession_tag", "accession_display"]:
+                if cell_clicked["colId"] in [
+                    "ship_accession_tag",
+                    "ship_accession_display",
+                ]:
                     accession = str(cell_clicked["value"])
             elif f"{table_id}.active_cell" in triggered_id and active_cell:
                 # Dash DataTable format - handle both accession_tag and accession_display
-                if active_cell["column_id"] in ["accession_tag", "accession_display"]:
+                if active_cell["column_id"] in [
+                    "ship_accession_tag",
+                    "ship_accession_display",
+                ]:
                     # Calculate the actual row index based on pagination
                     actual_row_idx = (page_current or 0) * page_size + active_cell[
                         "row"

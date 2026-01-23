@@ -94,7 +94,7 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             }
 
             # Add special styling for accession_tag and ship_accession_tag
-            if col["field"] in ["accession_tag", "ship_accession_tag"]:
+            if col["field"] in ["ship_accession_tag", "ship_accession_display"]:
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
@@ -105,7 +105,8 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             grid_columns.append(col_def)
     else:
         grid_columns = [
-            {"field": col} for col in display_df.columns 
+            {"field": col}
+            for col in display_df.columns
             if col not in ["accession_display", "ship_accession_display"]
         ]
 
@@ -203,7 +204,9 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 )
 
             # Add special styling for accession_tag and ship_accession_tag
-            if col.get("id") in ["accession_tag", "ship_accession_tag"] or col.get("field") in ["accession_tag", "ship_accession_tag"]:
+            if col.get("id") in ["accession_tag", "ship_accession_tag"] or col.get(
+                "field"
+            ) in ["accession_tag", "ship_accession_tag"]:
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
@@ -301,7 +304,7 @@ def make_paper_table():
                 if pd.notnull(row["DOI"]) and row["DOI"]
                 else ""
             )
-            
+
             # Cell styles with truncation
             title_style = {
                 "padding": "12px",
@@ -310,7 +313,7 @@ def make_paper_table():
                 "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap",
             }
-            
+
             author_style = {
                 "padding": "12px",
                 "maxWidth": "250px",
@@ -318,19 +321,19 @@ def make_paper_table():
                 "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap",
             }
-            
+
             year_style = {
                 "textAlign": "center",
                 "padding": "12px",
                 "whiteSpace": "nowrap",
             }
-            
+
             doi_style = {
                 "textAlign": "center",
                 "padding": "12px",
                 "whiteSpace": "nowrap",
             }
-            
+
             rows.append(
                 html.Tr(
                     [
@@ -347,7 +350,7 @@ def make_paper_table():
                         ),
                         html.Td(doi_cell, style=doi_style),
                     ],
-                    style={"borderBottom": "1px solid #dee2e6"}
+                    style={"borderBottom": "1px solid #dee2e6"},
                 )
             )
 
@@ -356,19 +359,37 @@ def make_paper_table():
         dmc.Table(
             [
                 html.Thead(
-                    html.Tr([
-                        html.Th("Title", style={"minWidth": "200px"}),
-                        html.Th("Year", style={"textAlign": "center", "minWidth": "80px"}),
-                        html.Th("Authors", style={"minWidth": "150px"}),
-                        html.Th("DOI", style={"textAlign": "center", "minWidth": "120px"}),
-                    ]),
-                    style={"borderBottom": "1px solid #dee2e6"}
+                    html.Tr(
+                        [
+                            html.Th("Title", style={"minWidth": "200px"}),
+                            html.Th(
+                                "Year",
+                                style={"textAlign": "center", "minWidth": "80px"},
+                            ),
+                            html.Th("Authors", style={"minWidth": "150px"}),
+                            html.Th(
+                                "DOI",
+                                style={"textAlign": "center", "minWidth": "120px"},
+                            ),
+                        ]
+                    ),
+                    style={"borderBottom": "1px solid #dee2e6"},
                 ),
-                html.Tbody(rows if rows else [
-                    html.Tr([
-                        html.Td("No publications found", colSpan=4, style={"textAlign": "center", "color": "#868e96"})
-                    ])
-                ]),
+                html.Tbody(
+                    rows
+                    if rows
+                    else [
+                        html.Tr(
+                            [
+                                html.Td(
+                                    "No publications found",
+                                    colSpan=4,
+                                    style={"textAlign": "center", "color": "#868e96"},
+                                )
+                            ]
+                        )
+                    ]
+                ),
             ],
             striped=True,
             highlightOnHover=True,
@@ -379,8 +400,9 @@ def make_paper_table():
         style={
             "width": "100%",
             "overflowX": "auto",
-        }
+        },
     )
+
 
 def make_dl_table(df, id, table_columns):
     """
@@ -390,7 +412,7 @@ def make_dl_table(df, id, table_columns):
         df (pd.DataFrame): Ship data to display
         id (str): Unique identifier for the table
         table_columns (list): Column definitions
-    """      # Ensure we have a valid data structure
+    """  # Ensure we have a valid data structure
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):
@@ -415,7 +437,12 @@ def make_dl_table(df, id, table_columns):
         }
 
         # Add checkbox and special styling to accession columns
-        if col["id"] in ["accession_tag", "accession_display", "ship_accession_tag", "ship_accession_display"]:
+        if col["id"] in [
+            "accession_tag",
+            "accession_display",
+            "ship_accession_tag",
+            "ship_accession_display",
+        ]:
             col_def.update(
                 {
                     "checkboxSelection": True,

@@ -739,16 +739,13 @@ def create_ncbi_style_header(row, count=1):
 
         # safe get values from row
         # Use accession_display if available, otherwise combine accession_tag and version_tag
-        accession_display = safe_get("accession_display")
-        version_tag = safe_get("version_tag")
-        accession_tag = safe_get("accession_tag")
+        accession_tag = safe_get("ship_accession_tag")
+        version_tag = safe_get("ship_version_tag")
         starshipID = safe_get("starshipID")
         element_begin = safe_get("elementBegin")
         element_end = safe_get("elementEnd")
 
-        if accession_display:
-            accession_with_version = accession_display
-        elif version_tag and version_tag != "":
+        if accession_tag and version_tag and version_tag != "":
             accession_with_version = f"{accession_tag}.{version_tag}"
         else:
             accession_with_version = accession_tag

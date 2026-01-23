@@ -2,7 +2,6 @@ import pytest
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from flask import jsonify
 
 from flask import Flask
 from src.config.cache import cache
@@ -21,6 +20,7 @@ from src.database.models.schema import Base
 from src.database.sql_manager import fetch_ships, fetch_meta_data, fetch_captains
 from src.utils.seq_utils import clean_sequence
 from src.utils.classification_utils import generate_md5_hash
+
 
 @pytest.fixture(scope="session")
 def test_client():
@@ -90,7 +90,6 @@ def driver(chrome_options):
     driver.quit()
 
 
-
 @pytest.fixture
 def test_meta_data():
     try:
@@ -99,8 +98,7 @@ def test_meta_data():
             return meta_df
     except Exception:
         pass
-    
-    
+
     return pd.DataFrame(
         {
             "accession_tag": ["ABC123", "DEF456"],
@@ -124,18 +122,19 @@ def test_meta_data():
     )
 
 
-
-
 @pytest.fixture
 def test_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SSA002851", "SSA002904", "SSA002596"], with_sequence=True)
+        ships_df = fetch_ships(
+            accessions=["SSA002851", "SSA002904", "SSA002596"],
+            accession_mode="SSA",
+            with_sequence=True,
+        )
         if not ships_df.empty:
             return ships_df
     except Exception:
         pass
-    
-    
+
     return pd.DataFrame(
         {
             "accession_tag": ["SSA002851", "SSA002904", "SSA002596"],
@@ -145,16 +144,15 @@ def test_ships_df():
                 "ATGCATGCATTT",  # Similar sequence for similarity match
             ],
             "md5": [
-                
                 generate_md5_hash(clean_sequence("ATGCATGCATGC")),
-                generate_md5_hash(clean_sequence("ATGCATGCATGCATGC")), 
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGC")),
                 generate_md5_hash(clean_sequence("ATGCATGCATTT")),
             ],
             "rev_comp_md5": [
                 generate_md5_hash(clean_sequence("GCATGCATGCAT")),
                 generate_md5_hash(clean_sequence("GCATGCATGCATGCAT")),
                 generate_md5_hash(clean_sequence("AAATGCATGCAT")),
-            ]
+            ],
         }
     )
 
@@ -164,12 +162,14 @@ def test_captains_df():
     try:
         # Try a few different accession tags that are more likely to work
         for accession in ["SSA002851", "SSA002904", "SSA002596"]:
-            captains_df = fetch_captains(accession_tags=[accession], with_sequence=True)
+            captains_df = fetch_captains(
+                accessions=[accession], accession_mode="SSA", with_sequence=True
+            )
             if not captains_df.empty:
                 return captains_df
     except Exception:
         pass
-    
+
     # Fallback to mock data if real data isn't available
     return pd.DataFrame(
         {
@@ -180,7 +180,11 @@ def test_captains_df():
                 "MALWMRLLPLLALLALWGPDPBBB",  # Different sequence
             ],
             "navis_name": ["Phoenix", "Phoenix", "Galactica"],
-            "accession_tag": ["SSA002596", "SSA002904", "SSA002851"],  # Multiple accession tags
+            "accession_tag": [
+                "SSA002596",
+                "SSA002904",
+                "SSA002851",
+            ],  # Multiple accession tags
         }
     )
 
@@ -189,13 +193,16 @@ def test_captains_df():
 def test_sequence():
     # looking for a real sequence from the database
     try:
-        ship_df = fetch_ships(accession_tags=["SSA002851"], with_sequence=True)
+        ship_df = fetch_ships(
+            accessions=["SSA002851"], accession_mode="SSA", with_sequence=True
+        )
         if not ship_df.empty:
             sequence = ship_df.iloc[0]["sequence"]
             return sequence
     except Exception:
         pass
     return "ATGCATGCATGC"  # Mock sequence
+
 
 @pytest.fixture
 def test_sequence_revcomp(test_sequence):
@@ -208,14 +215,18 @@ def test_sequence_revcomp(test_sequence):
         pass
     return "GCATGCATGCAT"  # Mock sequence
 
+
 @pytest.fixture
 def test_contained_sequence(test_sequence):
     try:
         # return a contained subsequence of the real sequence
-        return test_sequence[50:-50]  # Take from position 50 to 50 positions from the end
+        return test_sequence[
+            50:-50
+        ]  # Take from position 50 to 50 positions from the end
     except Exception:
         pass
     return "ATGCATGC"  # Mock sequence
+
 
 @pytest.fixture
 def test_similar_sequence(test_sequence):
@@ -226,17 +237,21 @@ def test_similar_sequence(test_sequence):
         pass
     return "ATGCATGCAA"  # Mock sequence
 
+
 # separate test fixtures for haplotype matching
 @pytest.fixture
 def test_haplotype_ships_df():
     try:
-        ships_df = fetch_ships(accession_tags=["SSA002851", "SSA002904", "SSA002596"], with_sequence=True)
+        ships_df = fetch_ships(
+            accessions=["SSA002851", "SSA002904", "SSA002596"],
+            accession_mode="SSA",
+            with_sequence=True,
+        )
         if not ships_df.empty:
             return ships_df
     except Exception:
         pass
-    
-    
+
     return pd.DataFrame(
         {
             "accession_tag": ["SSA002851", "SSA002904", "SSA002596"],
@@ -247,30 +262,36 @@ def test_haplotype_ships_df():
                 "ATGCATGCATGCATGCATGT",  # One base different (should have high similarity)
             ],
             "haplotype_name": ["2", "var22", "Ph1h1"],  # Add haplotype information
-            "captainID": ["captain_130", "captain_1285", "captain_1247"],  # Add captain IDs
+            "captainID": [
+                "captain_130",
+                "captain_1285",
+                "captain_1247",
+            ],  # Add captain IDs
             "md5": [
                 generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")),
-                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")), 
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")),
                 generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGT")),
             ],
             "rev_comp_md5": [
                 generate_md5_hash(clean_sequence("GCATGCATGCATGCATGCAT")),
                 generate_md5_hash(clean_sequence("GCATGCATGCATGCATGCAT")),
                 generate_md5_hash(clean_sequence("ACATGCATGCATGCATGCAT")),
-            ]
+            ],
         }
     )
+
 
 @pytest.fixture
 def test_haplotype_sequence(test_haplotype_ships_df):
     # return the sequence with the haplotype
     try:
-        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SSA002851
+        sequence = test_haplotype_ships_df.iloc[0]["sequence"]  # SSA002851
         if sequence is not None:
             return sequence
     except Exception:
         pass
     return "ATGCATGCATGC"  # Mock sequence
+
 
 @pytest.fixture
 def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
@@ -278,25 +299,31 @@ def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
     try:
         import tempfile
         from src.utils.classification_utils import calculate_similarities
-        from src.utils.seq_utils import write_multi_fasta, write_temp_fasta
+        from src.utils.seq_utils import write_multi_fasta
         import pandas as pd
-        
+
         # Create a combined DataFrame that includes both the query sequence and existing ships
         # Add the query sequence as a new row
-        query_row = pd.DataFrame({
-            "accession_display": ["query_sequence"],
-            "sequence": [test_haplotype_sequence]
-        })
-        
+        query_row = pd.DataFrame(
+            {
+                "accession_display": ["query_sequence"],
+                "sequence": [test_haplotype_sequence],
+            }
+        )
+
         # Combine with existing ships
         if "accession_display" in test_haplotype_ships_df.columns:
-            combined_df = pd.concat([query_row, test_haplotype_ships_df], ignore_index=True)
+            combined_df = pd.concat(
+                [query_row, test_haplotype_ships_df], ignore_index=True
+            )
         else:
             # If no accession_display, create it from accession_tag
             ships_with_display = test_haplotype_ships_df.copy()
-            ships_with_display["accession_display"] = ships_with_display["accession_tag"]
+            ships_with_display["accession_display"] = ships_with_display[
+                "accession_tag"
+            ]
             combined_df = pd.concat([query_row, ships_with_display], ignore_index=True)
-        
+
         tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
         write_multi_fasta(
             combined_df,
@@ -310,18 +337,18 @@ def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
             fasta_file=tmp_fasta,
             seq_type="nucl",
         )
-        
+
         # Convert nested dictionary to list of tuples format
         similarities_list = []
         for seq_id1, inner_dict in similarities_dict.items():
             for seq_id2, similarity in inner_dict.items():
                 if seq_id1 != seq_id2:  # Skip self-comparisons
                     similarities_list.append((seq_id1, seq_id2, similarity))
-        
+
         return similarities_list
     except Exception:
         pass
-    
+
     # Fallback to mock similarities data, containing 3 sequences
     return [
         ("query_sequence", "SSA002851.1", 0.99),

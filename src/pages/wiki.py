@@ -1051,7 +1051,8 @@ def generate_download_helper(rows, curated, dereplicate):
             for row in rows
         ]
         dl_df = fetch_ships(
-            accession_tags=accessions,
+            accessions=accessions,
+            accession_mode="USS",
             curated=curated,
             dereplicate=dereplicate,
             with_sequence=True,
