@@ -10,8 +10,6 @@ import screed
 from sourmash import (
     SourmashSignature,
     MinHash,
-    save_signatures,
-    load_file_as_signatures,
 )
 
 from src.config.logging import get_logger
@@ -19,14 +17,13 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 from src.utils.seq_utils import (
-    write_combined_fasta,
     write_multi_fasta,
     create_tmp_fasta_dir,
     load_fasta_to_dict,
     clean_sequence,
     revcomp,
 )
-from src.database.sql_manager import fetch_ships
+
 from Bio import SeqIO
 from Bio.Seq import Seq
 import networkx as nx
@@ -100,8 +97,11 @@ confidence_icons = {
 
 
 def assign_accession(
-    sequence: str, existing_ships: pd.DataFrame = None, threshold: float = 0.95,
-    precomputed_sig_path: str = None, precomputed_ref_path: str = None
+    sequence: str,
+    existing_ships: pd.DataFrame = None,
+    threshold: float = 0.95,
+    precomputed_sig_path: str = None,
+    precomputed_ref_path: str = None,
 ) -> Tuple[str, bool]:
     """Assign an accession to a new sequence.
 
@@ -144,18 +144,27 @@ def assign_accession(
     )
     if container_result:
         container_match, is_perfect_match, highly_similar_match = container_result
-        logger.debug(f"Found containing match: {container_match} (perfect: {is_perfect_match})")
+        logger.debug(
+            f"Found containing match: {container_match} (perfect: {is_perfect_match})"
+        )
 
         # If it's a perfect match (coverage=1.0, identity=1.0), treat as exact match
         if is_perfect_match:
-            logger.debug("Perfect match found - treating as exact match. Inherit accession from containing match.")
+            logger.debug(
+                "Perfect match found - treating as exact match. Inherit accession from containing match."
+            )
             review_flag = False  # No review needed for perfect matches
             accession = container_match  # Inherit accession from containing match
         elif highly_similar_match:
             # only check for similar matches if the match is highly similar
-            logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
+            logger.debug(
+                f"Step 3: Checking for similar matches (threshold={threshold})..."
+            )
             similar_match, similarities = check_similar_match(
-                sequence, existing_ships, threshold, precomputed_sig_path=precomputed_sig_path
+                sequence,
+                existing_ships,
+                threshold,
+                precomputed_sig_path=precomputed_sig_path,
             )
             if similar_match:
                 logger.debug(f"Found similar match: {similar_match}")
@@ -166,12 +175,15 @@ def assign_accession(
                 accession = container_match  # Use the container match
                 review_flag = True  # Flag for review since it's truncated or imperfect
         else:
-            logger.debug("No highly similar matches found - generating new accession...")
+            logger.debug(
+                "No highly similar matches found - generating new accession..."
+            )
             review_flag = True
             new_accession = generate_new_accession(existing_ships)
             logger.debug(f"Generated new accession: {new_accession}")
             accession = new_accession
         return accession, review_flag
+
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     """Generate a new unique accession number."""
@@ -184,7 +196,9 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
 
     # Check if we have existing accessions
     if not existing_nums:
-        logger.info("No existing SSA accessions found - starting fresh accession numbering from 1")
+        logger.info(
+            "No existing SSA accessions found - starting fresh accession numbering from 1"
+        )
         next_num = 1
         logger.debug(f"Assigning new accession number: SSA{next_num:06d}")
     else:
@@ -272,7 +286,7 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
     stored_md5_count = 0
     stored_rev_comp_count = 0
     calculated_md5_count = 0
-    
+
     for _, row in existing_ships.iterrows():
         # Use accession_display if available, otherwise fall back to accession_tag
         accession_display = row.get("accession_display", row.get("accession_tag"))
@@ -285,8 +299,12 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
             existing_hashes[row["rev_comp_md5"]] = accession_display
             stored_rev_comp_count += 1
         # Calculate MD5 on the fly for sequences without stored MD5 (both md5 and rev_comp_md5 are None)
-        if (row.get("md5") is None and row.get("rev_comp_md5") is None and 
-            row.get("sequence") is not None and accession_display is not None):
+        if (
+            row.get("md5") is None
+            and row.get("rev_comp_md5") is None
+            and row.get("sequence") is not None
+            and accession_display is not None
+        ):
             # Calculate MD5 on the fly for sequences without stored MD5
             clean_seq = clean_sequence(row["sequence"])
             if clean_seq:
@@ -299,8 +317,10 @@ def check_exact_match(fasta: str, existing_ships: pd.DataFrame) -> Optional[str]
                 if calculated_md5_revcomp:
                     existing_hashes[calculated_md5_revcomp] = accession_display
                     calculated_md5_count += 1
-    
-    logger.debug(f"MD5 hash sources: stored={stored_md5_count}, stored_rev_comp={stored_rev_comp_count}, calculated={calculated_md5_count}")
+
+    logger.debug(
+        f"MD5 hash sources: stored={stored_md5_count}, stored_rev_comp={stored_rev_comp_count}, calculated={calculated_md5_count}"
+    )
 
     logger.debug(f"Found {len(existing_hashes)} existing MD5 hashes in database")
     if sequences_without_md5:
@@ -374,8 +394,12 @@ def check_contained_match(
             ref_file_path = precomputed_ref_path
             ref_file_context = None
         else:
-            logger.debug("No pre-computed reference found, creating temporary reference file")
-            ref_file_context = tempfile.NamedTemporaryFile(mode="w", suffix=".fasta", delete=False)
+            logger.debug(
+                "No pre-computed reference found, creating temporary reference file"
+            )
+            ref_file_context = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".fasta", delete=False
+            )
             ref_count = 0
             logger.debug("Writing reference sequences to temporary file")
             for _, row in existing_ships.iterrows():
@@ -437,8 +461,8 @@ def check_contained_match(
                     if not matching_rows.empty:
                         sequence_length = len(matching_rows["sequence"].iloc[0])
                         # Check if this is a perfect match (coverage=1.0 and identity=1.0)
-                        is_perfect_match = (coverage >= 1.0 and identity >= 1.0)
-                        highly_similar_match = (coverage >= 0.9 and identity >= 0.9)
+                        is_perfect_match = coverage >= 1.0 and identity >= 1.0
+                        highly_similar_match = coverage >= 0.9 and identity >= 0.9
 
                         containing_matches.append(
                             (
@@ -455,7 +479,7 @@ def check_contained_match(
                         )
 
             logger.debug(f"Processed {alignment_count} alignments from minimap2")
-        
+
         finally:
             # Clean up temporary reference file if we created one
             if ref_file_context:
@@ -474,25 +498,31 @@ def check_contained_match(
             f"(score: {containing_matches[0][0]:.2f}, length: {containing_matches[0][1]}, "
             f"perfect_match: {containing_matches[0][3]})"
         )
-        return containing_matches[0][2], containing_matches[0][3], containing_matches[0][4]  # Return (accession, is_perfect_match, highly_similar_match)
+        return (
+            containing_matches[0][2],
+            containing_matches[0][3],
+            containing_matches[0][4],
+        )  # Return (accession, is_perfect_match, highly_similar_match)
 
     logger.debug("No containing matches found")
     return None
 
 
 def check_similar_match(
-    fasta: str, existing_ships: pd.DataFrame, threshold: float, 
-    precomputed_sig_path: str = None
+    fasta: str,
+    existing_ships: pd.DataFrame,
+    threshold: float,
+    precomputed_sig_path: str = None,
 ) -> Tuple[Optional[str], Any]:
     """
     Check for sequences with similarity above threshold using k-mer comparison.
-    
+
     Args:
         fasta: Query sequence or path to FASTA file
         existing_ships: DataFrame of existing ships
         threshold: Similarity threshold
         precomputed_sig_path: Path to pre-computed signature file for existing ships
-        
+
     Returns:
         Tuple of (match_accession, similarities_dict) or (None, None)
     """
@@ -517,54 +547,69 @@ def check_similar_match(
 
     # Create temp FASTA with ONLY the query sequence
     tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-    with open(tmp_query_fasta, 'w') as f:
+    with open(tmp_query_fasta, "w") as f:
         f.write(f">query_sequence\n{sequence}\n")
-    
+
     # Try to load pre-computed signatures for existing ships
     existing_signatures = None
     if precomputed_sig_path:
-        logger.debug(f"Attempting to load pre-computed signatures from {precomputed_sig_path}")
+        logger.debug(
+            f"Attempting to load pre-computed signatures from {precomputed_sig_path}"
+        )
         try:
             from src.database.blastdb import load_sourmash_signatures
-            existing_signatures = load_sourmash_signatures(precomputed_sig_path.replace('.sig', ''))
+
+            existing_signatures = load_sourmash_signatures(
+                precomputed_sig_path.replace(".sig", "")
+            )
             if existing_signatures:
-                logger.info(f"Loaded {len(existing_signatures)} pre-computed signatures")
+                logger.info(
+                    f"Loaded {len(existing_signatures)} pre-computed signatures"
+                )
         except Exception as e:
-            logger.warning(f"Failed to load pre-computed signatures: {e}, will compute on-the-fly")
-    
+            logger.warning(
+                f"Failed to load pre-computed signatures: {e}, will compute on-the-fly"
+            )
+
     # If no pre-computed signatures, create them from existing ships
     if existing_signatures is None:
-        logger.debug("No pre-computed signatures available, creating from existing ships DataFrame")
-        tmp_existing_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
+        logger.debug(
+            "No pre-computed signatures available, creating from existing ships DataFrame"
+        )
+        tmp_existing_fasta = tempfile.NamedTemporaryFile(
+            suffix=".fa", delete=False
+        ).name
         write_multi_fasta(
             existing_ships,
             tmp_existing_fasta,
             sequence_col="sequence",
-            id_col="accession_display" if "accession_display" in existing_ships.columns else "accession_tag",
+            id_col="accession_display"
+            if "accession_display" in existing_ships.columns
+            else "accession_tag",
         )
         existing_signatures = sourmash_sketch(tmp_existing_fasta, "nucl")
         os.unlink(tmp_existing_fasta)
-    
+
     # Calculate similarities using pre-computed or newly created signatures
     similarities = calculate_similarities_with_precomputed(
         query_fasta=tmp_query_fasta,
         existing_signatures=existing_signatures,
-        seq_type="nucl"
+        seq_type="nucl",
     )
-    
+
     # Clean up temp file
     os.unlink(tmp_query_fasta)
-    
+
     # Find matches above threshold
     query_id = "query_sequence"
-    
+
     if isinstance(similarities, dict) and query_id in similarities:
         for match_id, sim in similarities[query_id].items():
             # logger.debug(f"Similarity to {match_id}: {sim}")
             if sim >= threshold:
                 logger.debug(f"Found similar match: {match_id} (similarity: {sim})")
                 return match_id, similarities
-    
+
     logger.debug("No similar matches found above threshold")
     return None, None
 
@@ -808,7 +853,7 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 "confidence": 0,
                 "note": "No similarity data available for clustering",
             }
-        
+
         try:
             groups = cluster_sequences(similarities, threshold=0.95)
             logger.debug(f"Clustered sequences into {len(groups)} groups")
@@ -861,7 +906,6 @@ def classify_haplotype(fasta, existing_ships, navis=None, similarities=None):
                 filtered_ships["accession_tag"].isin(ship_ids)
             ]
             ship_haplotypes = matching_ships["haplotype_name"]
-        
 
         if ship_haplotypes.empty:
             logger.warning("No haplotype information for clustered ships")
@@ -1174,38 +1218,40 @@ def calculate_similarities_with_precomputed(
 ):
     """
     Calculate similarities between query sequences and pre-computed signatures.
-    
+
     This is much more efficient than calculate_similarities() when you have
     pre-computed signatures for existing sequences.
-    
+
     Args:
         query_fasta: Path to FASTA file with query sequence(s)
         existing_signatures: List of (seq_id, signature) tuples for existing sequences
         seq_type: 'nucl' or 'prot'
         restricted_comparisons: Dict of comparisons to skip
-        
+
     Returns:
         Dict of similarities {seq_id1: {seq_id2: similarity}}
     """
     logger.debug(f"Calculating similarities with pre-computed signatures")
-    
+
     if restricted_comparisons is None:
         restricted_comparisons = {}
-    
+
     try:
         # Create signatures for query sequences only
         query_signatures = sourmash_sketch(query_fasta, seq_type)
-        
+
         if not query_signatures:
             logger.error("Failed to create signatures for query")
             return {}
-        
+
         # Combine signatures
         all_signatures = query_signatures + existing_signatures
         all_seq_ids = [seq_id for seq_id, _ in all_signatures]
-        
-        logger.debug(f"Comparing {len(query_signatures)} query vs {len(existing_signatures)} existing signatures")
-        
+
+        logger.debug(
+            f"Comparing {len(query_signatures)} query vs {len(existing_signatures)} existing signatures"
+        )
+
         # Initialize similarity dictionary
         similarities = {}
         for seq_id1 in all_seq_ids:
@@ -1213,39 +1259,48 @@ def calculate_similarities_with_precomputed(
             for seq_id2 in all_seq_ids:
                 if seq_id1 != seq_id2:
                     similarities[seq_id1][seq_id2] = 0.0
-        
+
         # Calculate pairwise similarities
         observed_comparisons = set()
-        
+
         for i, (seq_id1, sig1) in enumerate(all_signatures):
-            for j, (seq_id2, sig2) in enumerate(all_signatures[i + 1:], i + 1):
+            for j, (seq_id2, sig2) in enumerate(all_signatures[i + 1 :], i + 1):
                 if seq_id1 == seq_id2:
                     continue
-                
+
                 # Check if comparison is restricted
-                if ((seq_id1 in restricted_comparisons and 
-                     seq_id2 in restricted_comparisons[seq_id1]) or
-                    (seq_id2 in restricted_comparisons and 
-                     seq_id1 in restricted_comparisons[seq_id2])):
-                    logger.debug(f"Skipping restricted comparison: {seq_id1} vs {seq_id2}")
+                if (
+                    seq_id1 in restricted_comparisons
+                    and seq_id2 in restricted_comparisons[seq_id1]
+                ) or (
+                    seq_id2 in restricted_comparisons
+                    and seq_id1 in restricted_comparisons[seq_id2]
+                ):
+                    logger.debug(
+                        f"Skipping restricted comparison: {seq_id1} vs {seq_id2}"
+                    )
                     continue
-                
+
                 # Calculate Jaccard similarity
                 similarity = sig1.jaccard(sig2)
-                
+
                 # Store symmetrically
                 seq1, seq2 = sorted([seq_id1, seq_id2])
                 similarities[seq1][seq2] = similarity
                 similarities[seq2][seq1] = similarity
-                
+
                 observed_comparisons.add((seq1, seq2))
                 observed_comparisons.add((seq2, seq1))
-        
-        logger.debug(f"Calculated {len(observed_comparisons) / 2} pairwise similarities")
+
+        logger.debug(
+            f"Calculated {len(observed_comparisons) / 2} pairwise similarities"
+        )
         return similarities
-        
+
     except Exception as e:
-        logger.error(f"Error in similarity calculation with pre-computed signatures: {e}")
+        logger.error(
+            f"Error in similarity calculation with pre-computed signatures: {e}"
+        )
         return {}
 
 
@@ -1430,9 +1485,10 @@ def write_cluster_files(groups, node_data, edge_data, output_prefix):
         for (node1, node2), weight in sorted(edge_data.items()):
             f.write(f"{node1}\t{node2}\t{weight:.3f}\n")
 
+
 def metaeuk_createdb(query_fasta):
     """Run MetaEuk createdb for reference database."""
-    
+
     tmp_dir = tempfile.mkdtemp()
     try:
         cmd = [
@@ -1448,13 +1504,14 @@ def metaeuk_createdb(query_fasta):
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
 
+
 def metaeuk_easy_predict(query_fasta, threads=20):
     """Run MetaEuk easy-predict for de novo annotation.
 
     Args:
         query_fasta: Path to input FASTA file
         threads: Number of threads to use
-    
+
     Returns:
         Tuple of (codon_fasta_path, fasta_path, gff_path) or (None, None, None) on error
     """
@@ -1465,11 +1522,11 @@ def metaeuk_easy_predict(query_fasta, threads=20):
 
     if not isinstance(query_fasta, str) or query_fasta == "" or query_fasta is None:
         logger.warning("query_fasta should be a path to a fasta file")
-        return None, None, None  
+        return None, None, None
 
     ref_db = None
     ref_db_tmp_dir = None
-    
+
     try:
         ref_db, ref_db_tmp_dir = metaeuk_createdb(query_fasta)
     except Exception as e:
@@ -1480,7 +1537,7 @@ def metaeuk_easy_predict(query_fasta, threads=20):
         with tempfile.TemporaryDirectory() as output_dir:
             # Output prefix for MetaEuk files
             output_prefix = os.path.join(output_dir, "prediction")
-            
+
             # Run MetaEuk with explicit paths
             cmd = [
                 "metaeuk",
@@ -1520,15 +1577,17 @@ def metaeuk_easy_predict(query_fasta, threads=20):
                 logger.error(f"Expected output files not created: {missing_files}")
                 logger.error(f"MetaEuk stdout: {result.stdout}")
                 logger.error(f"MetaEuk stderr: {result.stderr}")
-                raise FileNotFoundError(f"Expected output files not created: {missing_files}")
+                raise FileNotFoundError(
+                    f"Expected output files not created: {missing_files}"
+                )
 
             # Copy files to a permanent location outside the temp directory
             permanent_dir = tempfile.mkdtemp(prefix="metaeuk_output_")
-            
+
             permanent_codon = os.path.join(permanent_dir, "prediction.codon.fas")
-            permanent_fasta = os.path.join(permanent_dir, "prediction.fas") 
+            permanent_fasta = os.path.join(permanent_dir, "prediction.fas")
             permanent_gff = os.path.join(permanent_dir, "prediction.gff")
-            
+
             shutil.copy2(codon_fasta, permanent_codon)
             shutil.copy2(fasta, permanent_fasta)
             shutil.copy2(gff, permanent_gff)
@@ -1550,10 +1609,12 @@ def metaeuk_easy_predict(query_fasta, threads=20):
             shutil.rmtree(ref_db_tmp_dir, ignore_errors=True)
 
 
-def run_classification_workflow(workflow_state, blast_data, classification_data, meta_dict=None):
+def run_classification_workflow(
+    workflow_state, blast_data, classification_data, meta_dict=None
+):
     """Run the classification workflow and return results."""
     import pandas as pd
-    
+
     # Initialize similarities to None to avoid NameError in haplotype stage
     similarities = None
 
@@ -1608,8 +1669,10 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                     classification_data.source = "exact"
                     classification_data.closest_match = result
                     classification_data.confidence = "High"
-                    classification_data.match_details = f"Exact sequence match to {result}"
-                    
+                    classification_data.match_details = (
+                        f"Exact sequence match to {result}"
+                    )
+
                     workflow_state.set_classification(classification_data)
                     workflow_state.complete = True
                     logger.debug(
@@ -1628,7 +1691,9 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
 
                 if result:
                     match_accession, is_perfect_match, highly_similar_match = result
-                    logger.debug(f"Found contained match: {match_accession} (perfect: {is_perfect_match})")
+                    logger.debug(
+                        f"Found contained match: {match_accession} (perfect: {is_perfect_match})"
+                    )
                     workflow_state.stages[stage_id]["progress"] = 30
 
                     # pipeline should stop if complete, and continue if not
@@ -1636,17 +1701,25 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                         workflow_state.stages[stage_id]["status"] = "complete"
 
                     # Set source to "exact" for perfect matches, "contained" for imperfect matches
-                    classification_data.source = "exact" if is_perfect_match else "contained"
+                    classification_data.source = (
+                        "exact" if is_perfect_match else "contained"
+                    )
                     classification_data.closest_match = match_accession
-                    classification_data.confidence = "High" if is_perfect_match else "Medium"
+                    classification_data.confidence = (
+                        "High" if is_perfect_match else "Medium"
+                    )
 
                     # Update workflow state to reflect the correct stage
                     workflow_state.match_stage = classification_data.source
                     if is_perfect_match:
-                        classification_data.match_details = f"Exact sequence match to {match_accession}"
+                        classification_data.match_details = (
+                            f"Exact sequence match to {match_accession}"
+                        )
                     else:
-                        classification_data.match_details = f"Query sequence contained within {match_accession}"
-                    
+                        classification_data.match_details = (
+                            f"Query sequence contained within {match_accession}"
+                        )
+
                     workflow_state.set_classification(classification_data)
                     workflow_state.complete = True
                     logger.debug(
@@ -1666,12 +1739,12 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                     logger.debug(f"Found similar match: {result}")
                     workflow_state.stages[stage_id]["progress"] = 50
                     workflow_state.stages[stage_id]["status"] = "complete"
-                    
+
                     classification_data.source = "similar"
                     classification_data.closest_match = result
                     classification_data.confidence = "High"
                     classification_data.match_details = f"High similarity to {result}"
-                    
+
                     workflow_state.set_classification(classification_data)
                     workflow_state.complete = True
                     # Don't store similarities in workflow_state to avoid serialization issues
@@ -1708,11 +1781,11 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                         and isinstance(family_dict[0], dict)
                         and "family" in family_dict[0]
                     ):
-                        family=family_dict[0]["family"]
+                        family = family_dict[0]["family"]
                     elif isinstance(family_dict, dict) and "family" in family_dict:
                         family = family_dict["family"]
                     else:
-                        family = family_dict   
+                        family = family_dict
 
                     classification_data.source = "family"
                     classification_data.family = family
@@ -1724,9 +1797,7 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                         logger.debug("Family matched but with 0 hits (unusual state)")
 
                     workflow_state.set_classification(classification_data)
-                    logger.debug(
-                        f"Family classification result: {classification_data}"
-                    )
+                    logger.debug(f"Family classification result: {classification_data}")
                     return workflow_state
                 else:
                     # Handle the case where no HMMER hits were found
@@ -1828,9 +1899,7 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                 except Exception as e:
                     logger.error(f"Error in haplotype classification: {e}")
                     workflow_state.stages[stage_id]["status"] = "error"
-                    workflow_state.error = (
-                        f"Haplotype classification error: {str(e)}"
-                    )
+                    workflow_state.error = f"Haplotype classification error: {str(e)}"
 
             # Mark this stage as complete
             workflow_state.stages[stage_id]["progress"] = 100
@@ -1880,10 +1949,16 @@ def run_classification_workflow(workflow_state, blast_data, classification_data,
                                 workflow_state.match_stage = "blast_hit"
                                 classification_data.source = "blast_hit"
                                 classification_data.family = top_family
-                                classification_data.closest_match=hit_IDs
-                                classification_data.match_details=f"BLAST hit with {top_pident:.1f}% identity (length {top_aln_length}bp, E-value: {top_evalue})"
-                                classification_data.confidence="High" if top_pident >= 90 and top_aln_length > 1000 else "Medium" if top_pident >= 70 else "Low"
-                                
+                                classification_data.closest_match = hit_IDs
+                                classification_data.match_details = f"BLAST hit with {top_pident:.1f}% identity (length {top_aln_length}bp, E-value: {top_evalue})"
+                                classification_data.confidence = (
+                                    "High"
+                                    if top_pident >= 90 and top_aln_length > 1000
+                                    else "Medium"
+                                    if top_pident >= 70
+                                    else "Low"
+                                )
+
                                 workflow_state.set_classification(classification_data)
                                 logger.debug(
                                     f"Found BLAST-based classification: {top_family}"
@@ -1918,7 +1993,7 @@ def create_classification_card(classification_data):
     from dash_iconify import DashIconify
     import dash_mantine_components as dmc
     from src.config.logging import get_logger
-    
+
     logger = get_logger(__name__)
 
     if not classification_data:
@@ -1935,12 +2010,16 @@ def create_classification_card(classification_data):
     closest_match = classification_data.get("closest_match")
     match_details = classification_data.get("match_details")
     confidence = classification_data.get("confidence")
-    
-    logger.debug(f"Extracted values - source: {source}, family: {family}, navis: {navis}, haplotype: {haplotype}, confidence: {confidence}")
-    
+
+    logger.debug(
+        f"Extracted values - source: {source}, family: {family}, navis: {navis}, haplotype: {haplotype}, confidence: {confidence}"
+    )
+
     # Check if this is an empty classification (all important fields are None)
     if not any([source, family, navis, haplotype, closest_match, confidence]):
-        logger.debug("Classification data is empty (all fields are None), returning None")
+        logger.debug(
+            "Classification data is empty (all fields are None), returning None"
+        )
         return None
 
     source_color = source_colors.get(source, "gray")
@@ -1982,8 +2061,14 @@ def create_classification_card(classification_data):
             closest_match_text = f"Exact match to {closest_match}"
         elif source == "contained":
             # Check if this is a perfect match (High confidence + perfect match in details)
-            if (confidence == "High" and match_details and
-                ("perfect match" in match_details.lower() or "perfect" in match_details.lower())):
+            if (
+                confidence == "High"
+                and match_details
+                and (
+                    "perfect match" in match_details.lower()
+                    or "perfect" in match_details.lower()
+                )
+            ):
                 closest_match_text = f"Perfect match to {closest_match}"
             else:
                 closest_match_text = f"Contained in {closest_match}"
@@ -2090,16 +2175,16 @@ def create_classification_output(workflow_state=None, classification_data=None):
         else:
             # Classification data exists but is empty - treat as no classification
             classification_data = None
-    
+
     # No valid classification data - check workflow state
     # Handle workflow_state as either object or dictionary
     workflow_complete = False
     if workflow_state:
-        if hasattr(workflow_state, 'complete'):
+        if hasattr(workflow_state, "complete"):
             workflow_complete = workflow_state.complete
         elif isinstance(workflow_state, dict):
-            workflow_complete = workflow_state.get('complete', False)
-        
+            workflow_complete = workflow_state.get("complete", False)
+
     # Check if workflow is still running
     if workflow_state and not workflow_complete:
         # Calculate progress from workflow state
@@ -2108,11 +2193,11 @@ def create_classification_output(workflow_state=None, classification_data=None):
 
         # Get current stage index
         current_stage_idx = None
-        if hasattr(workflow_state, 'current_stage_idx'):
+        if hasattr(workflow_state, "current_stage_idx"):
             current_stage_idx = workflow_state.current_stage_idx
         elif isinstance(workflow_state, dict):
-            current_stage_idx = workflow_state.get('current_stage_idx')
-                
+            current_stage_idx = workflow_state.get("current_stage_idx")
+
         if current_stage_idx is not None:
             try:
                 stage_idx = int(current_stage_idx)
@@ -2121,12 +2206,12 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 # Get current stage progress
                 current_stage = None
                 stages_dict = None
-                if hasattr(workflow_state, 'current_stage'):
+                if hasattr(workflow_state, "current_stage"):
                     current_stage = workflow_state.current_stage
                     stages_dict = workflow_state.stages
                 elif isinstance(workflow_state, dict):
-                    current_stage = workflow_state.get('current_stage')
-                    stages_dict = workflow_state.get('stages', {})
+                    current_stage = workflow_state.get("current_stage")
+                    stages_dict = workflow_state.get("stages", {})
 
                 if current_stage and current_stage in stages_dict:
                     stage_data = stages_dict[current_stage]
@@ -2140,8 +2225,7 @@ def create_classification_output(workflow_state=None, classification_data=None):
 
                 # Calculate overall progress
                 progress = int(
-                    (stage_idx / total_stages) * 100
-                    + (stage_progress / total_stages)
+                    (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
                 )
                 progress = max(0, min(100, progress))
                 # get stage label from WORKFLOW_STAGES
@@ -2169,34 +2253,34 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 dmc.Stack(
                     [
                         dmc.Group(
-                                [
-                                    dmc.Loader(size="sm", color="blue"),
-                                    dmc.Text(
-                                        "Classification In Progress",
-                                        size="lg",
-                                        fw=500,
-                                        c="blue",
-                                    ),
-                                ],
-                                gap="md",
-                                align="center",
-                            ),
-                            dmc.Progress(
-                                value=progress,
-                                color="blue",
-                                size="lg",
-                                animated=True,
-                                striped=True,
-                                style={"width": "100%"},
-                            ),
-                            dmc.Text(
-                                current_stage_text, size="sm", c="dimmed", ta="center"
-                            ),
-                        ],
-                        gap="sm",
-                    ),
-                ]
-            )
+                            [
+                                dmc.Loader(size="sm", color="blue"),
+                                dmc.Text(
+                                    "Classification In Progress",
+                                    size="lg",
+                                    fw=500,
+                                    c="blue",
+                                ),
+                            ],
+                            gap="md",
+                            align="center",
+                        ),
+                        dmc.Progress(
+                            value=progress,
+                            color="blue",
+                            size="lg",
+                            animated=True,
+                            striped=True,
+                            style={"width": "100%"},
+                        ),
+                        dmc.Text(
+                            current_stage_text, size="sm", c="dimmed", ta="center"
+                        ),
+                    ],
+                    gap="sm",
+                ),
+            ]
+        )
     else:
         # Workflow is complete but no classification available
         return html.Div(
@@ -2208,5 +2292,5 @@ def create_classification_output(workflow_state=None, classification_data=None):
                     color="yellow",
                     variant="light",
                 ),
-                ]
-            )
+            ]
+        )
