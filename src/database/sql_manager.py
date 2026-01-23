@@ -11,10 +11,14 @@ logger = get_logger(__name__)
 
 def _add_display_fields(df):
     """Add accession_display and ship_accession_display fields to DataFrame."""
+    # if the field already contains a version tag (ends with a period and a number), don't add it again
     df = df.copy()
+
     df["accession_display"] = df.apply(
         lambda row: f"{row['accession_tag']}.{row['version_tag']}"
         if pd.notna(row["version_tag"]) and str(row["version_tag"]).strip() != ""
+        and not str(row["version_tag"]).strip().endswith(".")
+        and not str(row["version_tag"]).strip().endswith(".")
         else row["accession_tag"],
         axis=1,
     )
@@ -23,14 +27,26 @@ def _add_display_fields(df):
         if pd.notna(row["ship_accession_tag"])
         and pd.notna(row["version_tag"])
         and str(row["version_tag"]).strip() != ""
+        and not str(row["version_tag"]).strip().endswith(".")
+        and not str(row["version_tag"]).strip().endswith(".")
         else row["ship_accession_tag"],
         axis=1,
     )
     return df
 
+def _get_accession_mode(accessions):
+    # the set of accessions should all start with either "SSA" or all start with "SSB"
+    if accessions:
+        if all(accession.startswith("SSA") for accession in accessions):
+            accession_mode = "SSA"
+        elif all(accession.startswith("SSB") for accession in accessions):
+            accession_mode = "SSB"
+        return accession_mode
+    return None
+
 
 def fetch_meta_data(
-    curated=False, accessions=None, accession_mode="USS", accession_tags=None
+    curated=False, accessions=None
 ):
     """
     Fetch metadata from the database with efficient caching.
@@ -48,12 +64,10 @@ def fetch_meta_data(
     """
     from src.config.cache import cache
 
-    # Backward compatibility: support old parameter name
-    if accession_tags is not None and accessions is None:
-        accessions = accession_tags
-
     # Always cache the full dataset with a fixed key
     cache_key = "fetch_meta_data:full_dataset"
+
+    accession_mode = _get_accession_mode(accessions)
 
     with get_starbase_session() as session:
         try:
@@ -69,8 +83,6 @@ def fetch_meta_data(
                     j.ship_id, j.id as joined_ship_id,
                     sa.ship_accession_tag,
                     sa.version_tag,
-                    -- Unified sequence accession (USS) - prioritizes SSB, falls back to SSA
-                    COALESCE(sa.ship_accession_tag, a.accession_tag) as unique_sequence_accession,
                     t.taxID, t.strain, t.`order`, t.family, t.name,
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
@@ -97,10 +109,8 @@ def fetch_meta_data(
             logger.error(f"Error fetching meta data: {str(e)}")
             raise
 
-        # Create display fields in Python for better maintainability
         full_df = _add_display_fields(full_df)
 
-        # Apply filters in memory
         filtered_df = full_df.copy()
 
         if curated:
@@ -113,12 +123,7 @@ def fetch_meta_data(
                 else:
                     formatted_values.append(f"'{tag}'")
 
-            if accession_mode == "USS":
-                # Use unified sequence accession - matches either SSA or SSB
-                filtered_df = filtered_df[
-                    filtered_df["unique_sequence_accession"].isin(formatted_values)
-                ]
-            elif accession_mode == "SSA":
+            if accession_mode == "SSA":
                 filtered_df = filtered_df[
                     filtered_df["accession_tag"].isin(formatted_values)
                 ]
@@ -176,7 +181,6 @@ def dereplicate_sequences(df):
 # TODO: figure out a way to handle caching with queries related to this query
 def fetch_ships(
     accessions=None,
-    accession_mode="USS",
     curated=False,
     dereplicate=True,
     with_sequence=False,
@@ -192,6 +196,7 @@ def fetch_ships(
     Returns:
         pd.DataFrame: DataFrame containing ship data
     """
+    accession_mode = _get_accession_mode(accessions)
 
     with get_starbase_session() as session:
         base_query = """
@@ -207,9 +212,7 @@ def fetch_ships(
                 sf.elementBegin, sf.elementEnd, sf.contigID,
                 t.name, t.family, t.`order`,
                 f.familyName, n.navis_name, h.haplotype_name,
-                g.assembly_accession, c.captainID,
-                -- Unified sequence accession (USS) - prioritizes SSB, falls back to SSA
-                COALESCE(sa.ship_accession_tag, a.accession_tag) as unique_sequence_accession"""
+                g.assembly_accession, c.captainID"""
 
         base_query += """
             FROM joined_ships j
@@ -230,16 +233,8 @@ def fetch_ships(
         if accessions:
             # Format the values as accession_tag.version_tag if version_tag is present, else accession_tag only
             formatted_values = []
-            for tag in accessions:
-                if "." in tag:
-                    formatted_values.append(f"'{tag}'")
-                else:
-                    formatted_values.append(f"'{tag}'")
 
-            if accession_mode == "USS":
-                # Use unified sequence accession - matches either SSA or SSB with version handling
-                query += f" AND (COALESCE(sa.ship_accession_tag, a.accession_tag) IN ({','.join(formatted_values)}))"
-            elif accession_mode == "SSA":
+            if accession_mode == "SSA":
                 accession_column = "a.accession_tag"
                 version_column = "a.version_tag"
                 query += " AND ({} IS NOT NULL AND {} != '' AND ({}.version_tag || '.' || {}) IN ({}))".format(
@@ -272,10 +267,7 @@ def fetch_ships(
                 v.accession_id,
                 v.accession_tag,
                 v.version_tag,
-                v.accession_display,
                 v.ship_accession_tag,
-                v.ship_accession_display,
-                v.unique_sequence_accession,
                 v.curated_status,
                 v.starshipID,
                 v.elementBegin,
@@ -305,10 +297,7 @@ def fetch_ships(
                 v.accession_id,
                 v.accession_tag,
                 v.version_tag,
-                v.accession_display,
                 v.ship_accession_tag,
-                v.ship_accession_display,
-                v.unique_sequence_accession,
                 v.curated_status,
                 v.starshipID,
                 v.elementBegin,
@@ -530,9 +519,7 @@ def fetch_captains(
             v.id,
             v.accession_tag,
             v.version_tag,
-            v.accession_display,
             v.ship_accession_tag,
-            v.ship_accession_display,
             v.curated_status,
             v.starshipID,
             v.captain_id,
@@ -550,9 +537,7 @@ def fetch_captains(
             v.id,
             v.accession_tag,
             v.version_tag,
-            v.accession_display,
             v.ship_accession_tag,
-            v.ship_accession_display,
             v.curated_status,
             v.starshipID,
             v.captainID,

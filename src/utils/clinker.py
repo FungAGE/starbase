@@ -72,11 +72,11 @@ def extract_stable_gene_name(gene, original_gff_data=None):
     # Last resort: Use a stable coordinate-based identifier
     return f"gene_{gene.get('start', 0)}_{gene.get('end', 0)}"
 
-def create_temp_gbk_from_gff(accession_tag, temp_dir):
+def create_temp_gbk_from_gff(accession, temp_dir):
     """Create a temporary GenBank file from GFF data in the database"""
     try:
-        base_accession = accession_tag.split('.')[0] if '.' in accession_tag else accession_tag
-        logger.info(f"Looking up base accession: {base_accession} for display accession: {accession_tag}")
+        base_accession = accession.split('.')[0] if '.' in accession else accession
+        logger.info(f"Looking up base accession: {base_accession} for display accession: {accession}")
         
         ship_data = fetch_accession_ship(base_accession)
         
@@ -86,7 +86,7 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
         
         # Extract sequence string from DataFrame and save to temporary FASTA file
         sequence = ship_data["sequence"]["sequence"].iloc[0]            
-        fasta_file = temp_dir / f"{accession_tag}.fasta"
+        fasta_file = temp_dir / f"{accession}.fasta"
         with open(fasta_file, "w") as f:
             f.write(f">{base_accession}\n{sequence}\n")
 
@@ -94,7 +94,7 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
         gff_columns = ['seqid', 'source', 'type', 'start', 'end', 'score', 'strand', 'phase', 'attributes']
 
         # Create temporary GFF file with proper GFF format and add seqid column (use base accession as seqid for GFF format to match FASTA)
-        gff_file = temp_dir / f"{accession_tag}.gff"
+        gff_file = temp_dir / f"{accession}.gff"
         gff_df = ship_data["gff"].copy()        
         gff_df['seqid'] = base_accession
         
@@ -107,19 +107,19 @@ def create_temp_gbk_from_gff(accession_tag, temp_dir):
         gff_df = gff_df[gff_columns]
 
         # Cache the original GFF data for stable gene name extraction
-        gff_data_cache[accession_tag] = gff_df.copy()
+        gff_data_cache[accession] = gff_df.copy()
 
         gff_df.to_csv(gff_file, sep="\t", index=False, header=False)
 
         # Convert GFF to GenBank
-        gbk_file = temp_dir / f"{accession_tag}.gbk"
+        gbk_file = temp_dir / f"{accession}.gbk"
         gff2gb(str(gff_file), str(fasta_file), str(gbk_file))
 
-        logger.info(f"Successfully created GenBank file for {accession_tag}")
+        logger.info(f"Successfully created GenBank file for {accession}")
         return str(gbk_file)
         
     except Exception as e:
-        logger.error(f"Error creating GenBank file for {accession_tag}: {str(e)}")
+        logger.error(f"Error creating GenBank file for {accession}: {str(e)}")
         return None
 
 def process_local_files(gff_paths, fasta_paths):
@@ -160,34 +160,34 @@ def process_local_files(gff_paths, fasta_paths):
         logger.error(f"Error in process_local_files: {str(e)}", exc_info=True)
         return None
 
-def process_gbk_files(gbk_files, accession_tags=None):
+def process_gbk_files(gbk_files, accessions=None):
     """Process GenBank files directly, with a limit of 4 files.
-    If accession_tags are provided, generate GenBank files on-the-fly from GFF data.
+    If accessions are provided, generate GenBank files on-the-fly from GFF data.
     
     Args:
         gbk_files: List of GenBank file paths or directory path
-        accession_tags: List of accession tags to generate GenBank files from GFF data
+        accessions: List of accessions to generate GenBank files from GFF data
     """
     try:
         gbk_file_paths = []
         
         # Track accession tags for each file
-        accession_tag_map = {}  # filename -> accession_tag
+        accession_map = {}  # filename -> accession
 
-        # If accession_tags are provided, generate GenBank files on-the-fly
-        if accession_tags:
-            logger.info(f"Generating GenBank files for {len(accession_tags)} accession tags")
+        # If accessions are provided, generate GenBank files on-the-fly
+        if accessions:
+            logger.info(f"Generating GenBank files for {len(accessions)} accessions")
 
             # Create temporary directory for generated files
             temp_dir = Path(tempfile.mkdtemp())
 
-            for accession_tag in accession_tags:
-                gbk_file = create_temp_gbk_from_gff(accession_tag, temp_dir)
+            for accession in accessions:
+                gbk_file = create_temp_gbk_from_gff(accession, temp_dir)
                 if gbk_file:
                     gbk_file_paths.append(gbk_file)
-                    accession_tag_map[gbk_file] = accession_tag
+                    accession_map[gbk_file] = accession
                 else:
-                    logger.warning(f"Failed to generate GenBank file for {accession_tag}")
+                    logger.warning(f"Failed to generate GenBank file for {accession}")
         else:
             # Handle both directory path and list of files
             if isinstance(gbk_files, (str, Path)):
@@ -225,8 +225,8 @@ def process_gbk_files(gbk_files, accession_tags=None):
             for i, cluster in enumerate(globaligner.clusters):
                 # Try to find which file this cluster came from
                 cluster_file = getattr(cluster, '_source_file', None)
-                if cluster_file and cluster_file in accession_tag_map:
-                    cluster._accession_tag = accession_tag_map[cluster_file]
+                if cluster_file and cluster_file in accession_map:
+                    cluster._accession = accession_map[cluster_file]
 
             return globaligner
         except Exception as e:
@@ -259,7 +259,7 @@ def create_clustermap_data(globaligner, use_file_order=False):
             "uid": cluster['uid'],
             "name": cluster['name'],
             "loci": [],
-            "_accession_tag": getattr(cluster, '_accession_tag', '')  # Pass through accession tag
+            "_accession": getattr(cluster, '_accession', '')  # Pass through accession
         }
         
         # Process loci
@@ -270,19 +270,19 @@ def create_clustermap_data(globaligner, use_file_order=False):
                 "start": locus['start'],
                 "end": locus['end'],
                 "genes": [],
-                "_accession_tag": cluster.get('_accession_tag', '')  # Pass through accession tag
+                "_accession": cluster.get('_accession', '')  # Pass through accession
             }
             
             # Process genes
             for gene in locus['genes']:
                 # Try to get original GFF data for this gene
                 original_gff = None
-                if locus.get('_accession_tag') and locus['_accession_tag'] in gff_data_cache:
+                if locus.get('_accession') and locus['_accession'] in gff_data_cache:
                     # Match gene by coordinates or other stable identifier
                     original_gff = find_matching_gff_entry({
                         'start': gene.get('start'),
                         'end': gene.get('end')
-                    }, gff_data_cache[locus['_accession_tag']])
+                    }, gff_data_cache[locus['_accession']])
 
                 # Use stable name extraction
                 name = extract_stable_gene_name(gene, original_gff)
