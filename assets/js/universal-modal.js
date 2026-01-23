@@ -5,7 +5,6 @@ class UniversalModal {
     constructor() {
         this.modal = null;
         this.isInitialized = false;
-        this.init();
     }
 
     init() {
@@ -281,7 +280,9 @@ class UniversalModal {
     }
 
     show(title, content) {
-        if (!this.isInitialized) this.init();
+        if (!this.isInitialized) {
+            this.init();
+        }
 
         document.getElementById('universal-modal-title').innerHTML = title;
         document.getElementById('universal-modal-content').innerHTML = content;
@@ -466,32 +467,38 @@ class UniversalModal {
     }
 }
 
-// Global instance
-const universalModal = new UniversalModal();
-
-// Global function for easy access
-function showUniversalModal(title, content) {
-    universalModal.show(title, content);
+// Global instance - only create if not already exists
+if (typeof window.universalModal === 'undefined') {
+    window.universalModal = new UniversalModal();
 }
 
-// Function to show accession modal with data fetching
-async function showAccessionModal(accessionId) {
-    try {
-        const response = await fetch(`/api/accession/${accessionId}`);
-        const data = await response.json();
+// Global function for easy access - only create if not already exists
+if (typeof window.showUniversalModal === 'undefined') {
+    window.showUniversalModal = function(title, content) {
+        window.universalModal.show(title, content);
+    };
+}
 
-        if (data.error) {
-            showUniversalModal('Error', UniversalModal.renderAccessionModal(data));
-            return;
+// Function to show accession modal with data fetching - only create if not already exists
+if (typeof window.showAccessionModal === 'undefined') {
+    window.showAccessionModal = async function(accessionId) {
+        try {
+            const response = await fetch(`/api/accession/ship_accession_details/${accessionId}`);
+            const data = await response.json();
+
+            if (data.error) {
+                window.showUniversalModal('Error', UniversalModal.renderAccessionModal(data));
+                return;
+            }
+
+            const title = data.title || `Starship Accession: ${accessionId}`;
+            const content = UniversalModal.renderAccessionModal(data);
+            window.showUniversalModal(title, content);
+        } catch (error) {
+            console.error('Error fetching accession details:', error);
+            window.showUniversalModal('Error', UniversalModal.renderAccessionModal({
+                error: `Error loading details for ${accessionId}. Details: ${error.message}`
+            }));
         }
-
-        const title = data.title || `Starship Accession: ${accessionId}`;
-        const content = UniversalModal.renderAccessionModal(data);
-        showUniversalModal(title, content);
-    } catch (error) {
-        console.error('Error fetching accession details:', error);
-        showUniversalModal('Error', UniversalModal.renderAccessionModal({
-            error: `Error loading details for ${accessionId}. Details: ${error.message}`
-        }));
-    }
+    };
 }
