@@ -9,23 +9,77 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _format_version(version):
+    """Format version tag to avoid trailing .0 for whole numbers."""
+    if pd.isna(version):
+        return None
+    try:
+        # Try to convert to float first to handle string numbers
+        version_float = float(version)
+        # If it's a whole number, return as int string, otherwise return as is
+        if version_float.is_integer():
+            return str(int(version_float))
+        return str(version_float)
+    except (ValueError, TypeError):
+        # If conversion fails, return as string
+        return str(version).strip()
+
+
+def _make_accession_display(accession, version):
+    """Create display string for accession with version."""
+    # Check both values are not null, and accession doesn't already have a dot-version
+    if (
+        pd.notna(accession)
+        and str(accession).strip() != ""
+        and pd.notna(version)
+        and str(version).strip() != ""
+        and "." not in str(accession)
+    ):
+        formatted_version = _format_version(version)
+        if formatted_version:
+            return f"{accession}.{formatted_version}"
+    # If accession_tag already has a version or version_tag is missing, just use as is
+    if pd.notna(accession) and str(accession).strip() != "":
+        return str(accession)
+    return ""
+
+
 def _add_display_fields(df):
-    """Add accession_display and ship_accession_display fields to DataFrame."""
+    """
+    Add accession_display and ship_accession_display fields to DataFrame.
+    - Ensure 'accession_tag' and 'version_tag' entries are valid (not NA/empty/None)
+    - Ensure 'accession_tag' does NOT already have a version tag appended with a dot
+    - Only assign 'accession_display' if it does not already exist and has no version tag
+    - In other words, don't overwrite if 'accession_display' is already non-null
+    """
     df = df.copy()
-    df["accession_display"] = df.apply(
-        lambda row: f"{row['accession_tag']}.{row['version_tag']}"
-        if pd.notna(row["version_tag"]) and str(row["version_tag"]).strip() != ""
-        else row["accession_tag"],
-        axis=1,
-    )
-    df["ship_accession_display"] = df.apply(
-        lambda row: f"{row['ship_accession_tag']}.{row['version_tag']}"
-        if pd.notna(row["ship_accession_tag"])
-        and pd.notna(row["version_tag"])
-        and str(row["version_tag"]).strip() != ""
-        else row["ship_accession_tag"],
-        axis=1,
-    )
+    if "accession_display" not in df.columns or df["accession_display"].isna().all():
+        df["accession_display"] = df.apply(
+            lambda row: _make_accession_display(
+                row["accession_tag"], row["version_tag"]
+            ),
+            axis=1,
+        )
+    if (
+        "ship_accession_display" not in df.columns
+        or df["ship_accession_display"].isna().all()
+    ):
+        # Use ship_version_tag if available, otherwise fall back to version_tag
+        if "ship_version_tag" in df.columns:
+            df["ship_accession_display"] = df.apply(
+                lambda row: _make_accession_display(
+                    row["ship_accession_tag"], row["ship_version_tag"]
+                ),
+                axis=1,
+            )
+        else:
+            df["ship_accession_display"] = df.apply(
+                lambda row: _make_accession_display(
+                    row["ship_accession_tag"], row["version_tag"]
+                ),
+                axis=1,
+            )
+
     return df
 
 
@@ -68,7 +122,7 @@ def fetch_meta_data(
                     a.accession_tag, a.version_tag,
                     j.ship_id, j.id as joined_ship_id,
                     sa.ship_accession_tag,
-                    sa.version_tag,
+                    sa.version_tag as ship_version_tag,
                     -- Unified sequence accession (USS) - prioritizes SSB, falls back to SSA
                     COALESCE(sa.ship_accession_tag, a.accession_tag) as unique_sequence_accession,
                     t.taxID, t.strain, t.`order`, t.family, t.name,
@@ -201,7 +255,7 @@ def fetch_ships(
                 a.accession_tag, a.version_tag,
                 j.ship_id,
                 sa.ship_accession_tag,
-                sa.version_tag,
+                sa.version_tag as ship_version_tag,
                 j.curated_status,
                 j.starshipID,
                 sf.elementBegin, sf.elementEnd, sf.contigID,
@@ -372,7 +426,7 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                     js.curated_status,
                     a.accession_tag, a.version_tag,
                     sa.ship_accession_tag,
-                    sa.version_tag,
+                    sa.version_tag as ship_version_tag,
                     f.familyName,
                     t.name
                 FROM joined_ships js
@@ -495,7 +549,7 @@ def fetch_captains(
             a.accession_tag,
             a.version_tag,
             sa.ship_accession_tag,
-            sa.version_tag,
+            sa.version_tag as ship_version_tag,
             j.curated_status,
             j.starshipID,
             c.captainID as captain_id,
@@ -674,7 +728,7 @@ def get_database_stats():
             a.accession_tag, a.version_tag,
             j.ship_id, j.id as joined_ship_id,
             sa.ship_accession_tag,
-            sa.version_tag,
+            sa.version_tag as ship_version_tag,
             t.taxID, t.strain, t.`order`, t.family, t.name,
             sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
             f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
