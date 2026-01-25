@@ -73,11 +73,6 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
 
     # If we have display columns, use them for display but keep original tags for functionality
     display_df = df.copy() if isinstance(df, pd.DataFrame) else df
-    if isinstance(df, pd.DataFrame):
-        if "accession_display" in df.columns:
-            display_df["accession_tag"] = display_df["accession_display"]
-        if "ship_accession_display" in df.columns:
-            display_df["ship_accession_tag"] = display_df["ship_accession_display"]
 
     # Create column definitions
     if columns:
@@ -416,13 +411,7 @@ def make_dl_table(df, id, table_columns):
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):
-        # If we have display columns, use them for display but keep original tags for functionality
-        display_df = df.copy()
-        if "accession_display" in df.columns:
-            display_df["accession_tag"] = display_df["accession_display"]
-        if "ship_accession_display" in df.columns:
-            display_df["ship_accession_tag"] = display_df["ship_accession_display"]
-        row_data = display_df.to_dict("records")
+        row_data = df.to_dict("records")
     else:
         row_data = df  # Assume it's already in records format
 
@@ -438,8 +427,6 @@ def make_dl_table(df, id, table_columns):
 
         # Add checkbox and special styling to accession columns
         if col["id"] in [
-            "accession_tag",
-            "accession_display",
             "ship_accession_tag",
             "ship_accession_display",
         ]:

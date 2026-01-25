@@ -192,7 +192,7 @@ def load_initial_data():
 table_columns = [
     {
         "name": "Ship Accession (SSB)",
-        "id": "ship_accession_tag",
+        "id": "ship_accession_display",
         "deletable": False,
         "selectable": True,
         "presentation": "markdown",
@@ -200,7 +200,7 @@ table_columns = [
     },
     {
         "name": "Group Accession (SSA)",
-        "id": "accession_tag",
+        "id": "accession_display",
         "deletable": False,
         "selectable": False,
         "presentation": "markdown",
