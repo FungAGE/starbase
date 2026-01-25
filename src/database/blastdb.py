@@ -625,13 +625,15 @@ def create_dbs():
             )
 
             if ship_sequences.empty:
-                logger.warning(f"No sequences found for {dataset_name} dataset")
+                logger.error(f"No sequences found for {dataset_name} dataset")
                 continue
 
             ship_metadata = fetch_meta_data(
-                accessions=ship_sequences["ship_accession_tag"].tolist(),
-                accession_mode="SSB",
+                accessions=ship_sequences["ship_accession_tag"].tolist()
             )
+            if ship_metadata.empty:
+                logger.error(f"No metadata found for {dataset_name} dataset")
+                continue
 
             ship_sequences_dict = {}
 
@@ -668,7 +670,6 @@ def create_dbs():
                         if header:
                             ship_sequences_dict[header] = sequence
 
-            # rebuild BLAST database everytime?
             logger.info(f"Rebuilding {dataset_name} BLAST database...")
             write_fasta(ship_sequences_dict, ship_fasta_path)
             create_blast_database(ship_fasta_path, "nucl")

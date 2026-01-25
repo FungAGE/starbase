@@ -3,37 +3,41 @@ from unittest.mock import patch
 
 
 def test_get_ship_accession_details(test_client):
-    """Test the /api/accession/<ship_accession_id> route."""
-    ship_accession_id = "ABC123"
+    """Test the /api/ship_accession_details/<ship_accession_id> route."""
+    ship_accession_id = "SSA002851"
 
-    with patch("src.api.routes.create_modal") as mock_create_modal:
-        mock_create_modal.return_value = ("bla", "test")
+    with patch("src.api.routes.create_ship_accession_modal_data") as mock_create_modal_data:
+        mock_modal_data = {
+            "title": ship_accession_id,
+            "familyName": "TestFamily",
+            "curated_status": "curated"
+        }
+        mock_create_modal_data.return_value = mock_modal_data
 
         response = test_client.get(f"/api/ship_accession_details/{ship_accession_id}")
-    assert response.status_code == 200
-    assert response.json == {
-        "content": "bla",
-        "title": "ABC123",
-    }
-    mock_create_modal.assert_called_once_with(ship_accession_id)
+
+        assert response.status_code == 200
+        assert response.json == mock_modal_data
+        mock_create_modal_data.assert_called_once_with(ship_accession_id)
 
 
 def test_get_accession_details(test_client):
-    """Test the /api/accession/<accession_id> route."""
-    accession_id = "ABC123"
+    """Test the /api/accession_details/<accession_id> route."""
+    accession_id = "SSA002851"
 
-    with patch("src.api.routes.create_modal") as mock_create_modal:
-        mock_create_modal.return_value = ("bla", "test")
+    with patch("src.api.routes.create_accession_modal_data") as mock_create_modal_data:
+        mock_modal_data = {
+            "title": f"Starship Accession: {accession_id}",
+            "familyName": "TestFamily",
+            "genomes_present": "1"
+        }
+        mock_create_modal_data.return_value = mock_modal_data
 
         response = test_client.get(f"/api/accession_details/{accession_id}")
 
         assert response.status_code == 200
-        assert response.json == {
-            "content": "bla",
-            "title": "ABC123",
-        }
-
-        mock_create_modal.assert_called_once_with(accession_id)
+        assert response.json == mock_modal_data
+        mock_create_modal_data.assert_called_once_with(accession_id)
 
 
 @pytest.mark.parametrize("endpoint", ["/api/blast/blast-submit", "/api/cache/refresh"])

@@ -74,7 +74,7 @@ def create_ship_accession_modal_data(ship_accession_id):
     try:
         base_accession = extract_accession(ship_accession_id)
 
-        modal_data = fetch_meta_data(accession_tags=[base_accession])
+        modal_data = fetch_meta_data(accessions=[base_accession])
 
         if modal_data.empty:
             return {
@@ -166,7 +166,7 @@ def create_accession_modal_data(accession):
     try:
         base_accession = extract_accession(accession)
 
-        modal_data = fetch_meta_data(accession_tags=[base_accession])
+        modal_data = fetch_meta_data(accessions=[base_accession])
 
         if modal_data.empty:
             return {
