@@ -7,7 +7,11 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from src.components.tables import make_paper_table
-from src.database.sql_manager import get_database_stats, get_database_version, get_alembic_schema_version
+from src.database.sql_manager import (
+    get_database_stats,
+    get_database_version,
+    get_alembic_schema_version,
+)
 
 from src.config.logging import get_logger
 
@@ -286,20 +290,49 @@ accession_card = dmc.Paper(
             order=2,
             mb="md",
         ),
+        dmc.Alert(
+            "The abbriviations at the beginning of accession tags (i.e. 'SSA') will be renamed soon!",
+            color="yellow",
+            radius="md",
+            mb="md",
+        ),
         dmc.Text(
             [
                 "To maintain data integrity, we employ an accessioning framework within ",
-                html.Span("starbase", className="logo-text"),
+                html.Span(
+                    "starbase", className="logo-text", style={"fontWeight": "bold"}
+                ),
                 ". ",
-                html.Span("starbase", className="logo-text"),
-                " Ship Accessions (abbreviated as SSA) are similar to NCBI assembly accessions, and consists of a unique six-digit numerical identifier. SSAs  provide a system for standardized nomenclature for ",
-                html.Span("Starship", style={"fontStyle": "italic"}),
-                " identification. Each SSA represents a single or multiple ",
-                html.Span("Starship", style={"fontStyle": "italic"}),
-                " sequences which may be identical, nested, or highly similar to another sequence within ",
-                html.Span("starbase", className="logo-text"),
+                html.Span(
+                    "starbase", className="logo-text", style={"fontWeight": "bold"}
+                ),
+                " similar to NCBI-styled accessions. These accessions consist of a ",
+                html.Span(
+                    "unique six-digit numerical identifier",
+                    style={"fontWeight": "bold"},
+                ),
+                " and provide a standardized nomenclature for keeping track of ",
+                html.Span("Starships", style={"fontStyle": "italic"}),
+                ". Accessions may represent 1) a ",
+                html.Span("group", style={"fontWeight": "bold"}),
+                " of highly similar Starship(s), that may be present in ",
+                html.Span("multiple", style={"fontWeight": "bold"}),
+                " different genomes or 2) a ",
+                html.Span("single sequence", style={"fontWeight": "bold"}),
+                " representing a Starship at a ",
+                html.Span("single location", style={"fontWeight": "bold"}),
+                " in a ",
+                html.Span("single genome", style={"fontWeight": "bold"}),
+                ".",
             ],
             c="dimmed",
+        ),
+        dmc.Space(h=20),
+        dmc.Alert(
+            "The first type of accession is abbreviated as SSA and the second type is abbreviated as SSB.",
+            color="blue",
+            radius="md",
+            mb="md",
         ),
         dmc.Space(h=20),
         dmc.Image(
@@ -365,7 +398,9 @@ db_version_card = dmc.Paper(
                     align="center",
                 ),
                 dmc.Text(
-                    get_alembic_schema_version()[:8] + "..." if len(get_alembic_schema_version()) > 8 else get_alembic_schema_version(),
+                    get_alembic_schema_version()[:8] + "..."
+                    if len(get_alembic_schema_version()) > 8
+                    else get_alembic_schema_version(),
                     size="sm",
                     c="dimmed",
                     style={"fontFamily": "monospace"},
@@ -390,10 +425,7 @@ def create_hero_section():
             dmc.Space(h=40),
             dmc.Grid(
                 [
-                    dmc.GridCol(
-                        starship_card,
-                        span={"base": 12, "md": 12}
-                    ),
+                    dmc.GridCol(starship_card, span={"base": 12, "md": 12}),
                 ],
                 gutter="xl",
                 align="stretch",
@@ -743,14 +775,14 @@ layout = dmc.MantineProvider(
         dmc.Space(h=40),
         create_publications_section(),
     ],
-        theme={
-            "colorScheme": "light",
-            "primaryColor": "indigo",
-            "components": {
-                "Container": {"defaultProps": {"size": "xl"}},
-                "Title": {"defaultProps": {"color": "indigo"}},
-            },
+    theme={
+        "colorScheme": "light",
+        "primaryColor": "indigo",
+        "components": {
+            "Container": {"defaultProps": {"size": "xl"}},
+            "Title": {"defaultProps": {"color": "indigo"}},
         },
+    },
 )
 
 
