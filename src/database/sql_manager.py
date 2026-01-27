@@ -695,32 +695,28 @@ def get_database_stats():
     """Get statistics about the Starship database."""
 
     stats_metadata_query = """
-    SELECT j.curated_status, j.starshipID,
-            j.ship_id, j.id as joined_ship_id,
+    SELECT j.curated_status,
+            j.ship_id,
             sa.ship_accession_tag,
-            sa.version_tag as ship_version_tag,
-            t.taxID, t.strain, t.`order`, t.family, t.name,
-            sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
-            f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
-            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5,
-            a.accession_tag, a.version_tag
+            t.name,
+            s.md5, s.rev_comp_md5
     FROM joined_ships j
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
-    LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
-    LEFT JOIN family_names f ON j.ship_family_id = f.id
-    LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-    LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-    LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN ships s ON s.id = j.ship_id
-    LEFT JOIN accessions a ON j.accession_id = a.id
     """
     with get_starbase_session() as session:
         try:
             stats_df = pd.read_sql_query(stats_metadata_query, session.bind)
 
             # total numer of ships (regardless of duplicates or sequencing similarity)
-            total_count = len(stats_df)
+            total_count = len(
+                stats_df["ship_accession_tag"]
+                .dropna()
+                .loc[~stats_df["ship_accession_tag"].isin(["NA", "None", None, "NULL"])]
+                .unique()
+            )
+
             # total number of unique sequences (by md5 or rev_comp_md5)
             unique_sequences_df = stats_df[["md5", "rev_comp_md5"]].drop_duplicates()
             unique_sequences_count = len(unique_sequences_df)
@@ -728,12 +724,14 @@ def get_database_stats():
             curated_count = len(stats_df[stats_df["curated_status"] == "curated"])
             uncurated_count = total_count - curated_count
             species_count = len(stats_df["name"].unique())
-            family_count = len(
-                stats_df["familyName"]
-                .dropna()
-                .loc[~stats_df["familyName"].isin(["NA", "None", None, "NULL"])]
-                .unique()
-            )
+
+            # count from table "family_names"
+            family_query = """
+            SELECT DISTINCT familyName
+            FROM family_names
+            """
+            family_df = pd.read_sql_query(family_query, session.bind)
+            family_count = len(family_df["familyName"].unique())
 
             stats = {
                 "total_starships": total_count,
