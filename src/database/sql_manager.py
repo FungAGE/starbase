@@ -128,7 +128,6 @@ def fetch_meta_data(curated=False, accessions=None):
             else:
                 meta_query = """
                 SELECT j.curated_status, j.starshipID,
-                    a.accession_tag, a.version_tag,
                     j.ship_id, j.id as joined_ship_id,
                     sa.ship_accession_tag,
                     sa.version_tag,
@@ -137,17 +136,17 @@ def fetch_meta_data(curated=False, accessions=None):
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
                     s.md5, s.rev_comp_md5, s.sequence_length
+                    a.accession_tag, a.version_tag,
                 FROM joined_ships j
-                LEFT JOIN accessions a ON j.accession_id = a.id
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
                 LEFT JOIN taxonomy t ON j.tax_id = t.id
-                LEFT JOIN starship_features sf ON a.id = sf.accession_id
+                LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
                 LEFT JOIN family_names f ON j.ship_family_id = f.id
                 LEFT JOIN navis_names n ON j.ship_navis_id = n.id
                 LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
                 LEFT JOIN genomes g ON j.genome_id = g.id
                 LEFT JOIN ships s ON s.id = j.ship_id
-                WHERE j.accession_id IS NOT NULL
+                LEFT JOIN accessions a ON j.accession_id = a.id
                 """
 
                 full_df = pd.read_sql_query(meta_query, session.bind)
@@ -248,8 +247,6 @@ def fetch_ships(
         base_query = """
         WITH valid_ships AS (
             SELECT DISTINCT
-                a.id as accession_id,
-                a.accession_tag, a.version_tag,
                 j.ship_id,
                 sa.ship_accession_tag,
                 sa.version_tag as ship_version_tag,
@@ -258,19 +255,21 @@ def fetch_ships(
                 sf.elementBegin, sf.elementEnd, sf.contigID,
                 t.name, t.family, t.`order`,
                 f.familyName, n.navis_name, h.haplotype_name,
-                g.assembly_accession, c.captainID"""
+                g.assembly_accession, c.captainID,
+                a.accession_tag, a.version_tag
+                """
 
         base_query += """
             FROM joined_ships j
-            INNER JOIN accessions a ON j.accession_id = a.id
             LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
             LEFT JOIN taxonomy t ON j.tax_id = t.id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
             LEFT JOIN navis_names n ON j.ship_navis_id = n.id
             LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
             LEFT JOIN genomes g ON j.genome_id = g.id
-            LEFT JOIN starship_features sf ON a.id = sf.accession_id
+            LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
             LEFT JOIN captains c ON j.captain_id = c.id
+            LEFT JOIN accessions a ON j.accession_id = a.id
             WHERE 1=1
         """
 
@@ -310,7 +309,6 @@ def fetch_ships(
             )
             SELECT
                 v.ship_id,
-                v.accession_id,
                 v.accession_tag,
                 v.version_tag,
                 v.ship_accession_tag,
@@ -340,7 +338,6 @@ def fetch_ships(
             query += """
             )
             SELECT
-                v.accession_id,
                 v.accession_tag,
                 v.version_tag,
                 v.ship_accession_tag,
@@ -405,16 +402,16 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                     js.ship_id,
                     js.source,
                     js.curated_status,
-                    a.accession_tag, a.version_tag,
                     sa.ship_accession_tag,
                     sa.version_tag as ship_version_tag,
                     f.familyName,
-                    t.name
+                    t.name,
+                    a.accession_tag, a.version_tag,
                 FROM joined_ships js
-                LEFT JOIN accessions a ON js.accession_id = a.id
                 LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
                 LEFT JOIN taxonomy t ON js.tax_id = t.id
                 LEFT JOIN family_names f ON js.ship_family_id = f.id
+                LEFT JOIN accessions a ON js.accession_id = a.id
                 WHERE 1=1
                 """
 
@@ -526,9 +523,6 @@ def fetch_captains(
     query = """
     WITH valid_captains AS (
         SELECT DISTINCT
-            a.id,
-            a.accession_tag,
-            a.version_tag,
             sa.ship_accession_tag,
             sa.version_tag as ship_version_tag,
             j.curated_status,
@@ -537,9 +531,10 @@ def fetch_captains(
             c."sequence",
             n.navis_name,
             h.haplotype_name,
-            c.captainID
+            c.captainID,
+            a.accession_tag,
+            a.version_tag,
         FROM joined_ships j
-        INNER JOIN accessions a ON j.accession_id = a.id
         LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
         LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -547,7 +542,8 @@ def fetch_captains(
         LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
         LEFT JOIN genomes g ON j.genome_id = g.id
         LEFT JOIN captains c ON j.captain_id = c.id
-        LEFT JOIN starship_features sf ON a.id = sf.accession_id
+        LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
+        LEFT JOIN accessions a ON j.accession_id = a.id
         WHERE 1=1
     """
 
@@ -562,7 +558,6 @@ def fetch_captains(
         query += """
         )
         SELECT
-            v.id,
             v.accession_tag,
             v.version_tag,
             v.ship_accession_tag,
@@ -580,7 +575,6 @@ def fetch_captains(
         query += """
         )
         SELECT 
-            v.id,
             v.accession_tag,
             v.version_tag,
             v.ship_accession_tag,
@@ -702,7 +696,6 @@ def get_database_stats():
 
     stats_metadata_query = """
     SELECT j.curated_status, j.starshipID,
-            a.accession_tag, a.version_tag,
             j.ship_id, j.id as joined_ship_id,
             sa.ship_accession_tag,
             sa.version_tag as ship_version_tag,
@@ -710,16 +703,17 @@ def get_database_stats():
             sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
             f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
             g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
+            a.accession_tag, a.version_tag,
     FROM joined_ships j
-    LEFT JOIN accessions a ON j.accession_id = a.id
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
-    LEFT JOIN starship_features sf ON a.id = sf.accession_id
+    LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
     LEFT JOIN family_names f ON j.ship_family_id = f.id
     LEFT JOIN navis_names n ON j.ship_navis_id = n.id
     LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
     LEFT JOIN genomes g ON j.genome_id = g.id
     LEFT JOIN ships s ON s.id = j.ship_id
+    LEFT JOIN accessions a ON j.accession_id = a.id
     """
     with get_starbase_session() as session:
         try:
