@@ -89,17 +89,6 @@ def create_ship_accession_modal_data(ship_accession_id):
                 "error": "Invalid modal data received",
             }
 
-        # Check for required columns
-        required_columns = ["accession_tag", "familyName"]
-        missing_columns = [
-            col for col in required_columns if col not in modal_data.columns
-        ]
-        if missing_columns:
-            return {
-                "title": f"Accession: {ship_accession_id}",
-                "error": f"Missing required columns: {missing_columns}",
-            }
-
         # Fetch quality tags separately using joined_ship_id
         joined_ship_id = safe_get_numeric(modal_data, "joined_ship_id")
         quality_tags = []
