@@ -473,8 +473,8 @@ def load_meta_data(url):
 
 
 # Callback to load paper data
-@handle_callback_error
 @callback(Output("paper-data", "data"), Input("url", "href"))
+@handle_callback_error
 def load_paper_data(url):
     if url:
         try:
