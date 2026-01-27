@@ -135,8 +135,8 @@ def fetch_meta_data(curated=False, accessions=None):
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                    s.md5, s.rev_comp_md5, s.sequence_length
-                    a.accession_tag, a.version_tag,
+                    s.md5, s.rev_comp_md5, s.sequence_length,
+                    a.accession_tag, a.version_tag
                 FROM joined_ships j
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
                 LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -406,7 +406,7 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                     sa.version_tag as ship_version_tag,
                     f.familyName,
                     t.name,
-                    a.accession_tag, a.version_tag,
+                    a.accession_tag, a.version_tag
                 FROM joined_ships js
                 LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
                 LEFT JOIN taxonomy t ON js.tax_id = t.id
@@ -533,7 +533,7 @@ def fetch_captains(
             h.haplotype_name,
             c.captainID,
             a.accession_tag,
-            a.version_tag,
+            a.version_tag
         FROM joined_ships j
         LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -702,8 +702,8 @@ def get_database_stats():
             t.taxID, t.strain, t.`order`, t.family, t.name,
             sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
             f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
-            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5
-            a.accession_tag, a.version_tag,
+            g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession, s.md5, s.rev_comp_md5,
+            a.accession_tag, a.version_tag
     FROM joined_ships j
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
