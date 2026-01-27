@@ -483,7 +483,7 @@ if (typeof window.showUniversalModal === 'undefined') {
 if (typeof window.showAccessionModal === 'undefined') {
     window.showAccessionModal = async function(accessionId) {
         try {
-            const response = await fetch(`/api/accession/ship_accession_details/${accessionId}`);
+            const response = await fetch(`/api/accession/accession_details/${accessionId}`);
             const data = await response.json();
 
             if (data.error) {

@@ -24,28 +24,21 @@ def check_blast_limit():
     return jsonify({"allowed": True})
 
 
-@accession_routes.route("/ship_accession_details/<ship_accession_id>", methods=["GET"])
-def get_ship_accession_details(ship_accession_id):
-    """Get details for a specific ship accession."""
-    try:
-        modal_data = create_ship_accession_modal_data(ship_accession_id)
-
-        return jsonify(modal_data)
-    except Exception as e:
-        logger.error(f"Error in get_ship_accession_details: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-
 @accession_routes.route("/accession_details/<accession_id>", methods=["GET"])
 def get_accession_details(accession_id):
     """Get details for a specific ship accession."""
     try:
-        modal_data = create_accession_modal_data(accession_id)
-
-        return jsonify(modal_data)
+        if accession_id.startswith("SSA"):
+            modal_data = create_accession_modal_data(accession_id)
+        if accession_id.startswith("SSB"):
+            modal_data = create_ship_accession_modal_data(accession_id)
+        else:
+            modal_data = {"error": "Invalid accession ID"}
     except Exception as e:
-        logger.error(f"Error in get_ship_accession_details: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error in get_accession_details: {str(e)}")
+        modal_data = {"error": str(e)}
+
+    return jsonify(modal_data)
 
 
 @error_handlers.app_errorhandler(500)
