@@ -137,7 +137,7 @@ def create_ship_accession_modal_data(ship_accession_id):
                 modal_data, "elementBegin", "elementEnd"
             ),
             "curated_status": safe_get_value(
-                modal_data, "curated_status", default="unknown"
+                modal_data, "curated_status", default="uncurated"
             ),
             "quality_tags": quality_tags,
         }
