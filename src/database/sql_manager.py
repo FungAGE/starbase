@@ -95,6 +95,8 @@ def _get_accession_mode(accessions):
 
 
 def fetch_meta_data(curated=False, accessions=None):
+    if isinstance(accessions, str):
+        accessions = [accessions]
     """
     Fetch metadata from the database with efficient caching.
 
@@ -165,10 +167,7 @@ def fetch_meta_data(curated=False, accessions=None):
         if accessions:
             formatted_values = []
             for tag in accessions:
-                if "." in tag:
-                    formatted_values.append(f"'{tag}'")
-                else:
-                    formatted_values.append(f"'{tag}'")
+                formatted_values.append(str(tag).strip("'\""))
 
             if accession_mode == "SSA":
                 filtered_df = filtered_df[
