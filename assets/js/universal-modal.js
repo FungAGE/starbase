@@ -22,28 +22,34 @@ class UniversalModal {
                 height: 100%;
                 background-color: rgba(0,0,0,0.5);
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                overflow-x: hidden;
             ">
                 <div style="
                     background-color: white;
                     margin: 2% auto;
                     padding: 0;
                     border-radius: 8px;
-                    width: 90%;
+                    width: 100%;
                     max-width: 800px;
                     max-height: 90vh;
                     overflow-y: auto;
+                    overflow-x: hidden;
                     box-shadow: 0 10px 25px rgba(0,0,0,0.2);
                     position: relative;
+                    box-sizing: border-box;
                 ">
                     <div style="
                         position: sticky;
                         top: 0;
                         background: white;
                         padding: 20px;
-                        margin: -20px -20px 20px -20px;
+                        margin: 0;
                         border-bottom: 1px solid #dee2e6;
                         z-index: 1;
                         border-radius: 8px 8px 0 0;
+                        box-sizing: border-box;
+                        width: 100%;
+                        overflow: hidden;
                     ">
                         <span id="universal-modal-close" style="
                             color: #868e96;
@@ -53,7 +59,8 @@ class UniversalModal {
                             cursor: pointer;
                             transition: color 0.2s;
                             padding: 10px;
-                            margin: -10px -10px -10px 10px;
+                            margin: -10px 0 -10px 10px;
+                            box-sizing: border-box;
                         ">&times;</span>
                         <h2 id="universal-modal-title" style="
                             margin: 0 0 8px 0;
@@ -72,6 +79,8 @@ class UniversalModal {
                         color: #212529;
                         line-height: 1.6;
                         width: 100%;
+                        box-sizing: border-box;
+                        overflow-x: hidden;
                     "></div>
                 </div>
             </div>
@@ -89,6 +98,13 @@ class UniversalModal {
             }
         };
 
+        this.escKeyHandler = (e) => {
+            if (e.key === 'Escape' && this.modal.style.display === 'block') {
+                this.close();
+            }
+        };
+        document.addEventListener('keydown', this.escKeyHandler);
+
         // Add CSS styles
         const style = document.createElement('style');
         style.textContent = `
@@ -97,8 +113,9 @@ class UniversalModal {
             }
 
             #universal-modal-content {
-                max-width: 900px;
+                max-width: 100%;
                 margin: 0 auto;
+                overflow-x: hidden;
             }
 
             #universal-modal-title {
@@ -112,8 +129,10 @@ class UniversalModal {
                 gap: 20px;
                 align-items: center;
                 width: 100%;
+                max-width: 100%;
                 box-sizing: border-box;
                 padding: 0 20px;
+                overflow-x: hidden;
             }
 
             .modal-section {
@@ -125,7 +144,9 @@ class UniversalModal {
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
                 transition: box-shadow 0.2s ease;
                 width: 100%;
+                max-width: 100%;
                 box-sizing: border-box;
+                overflow-x: hidden;
             }
 
             .modal-section:hover {
@@ -174,6 +195,10 @@ class UniversalModal {
                 border: 1px solid #f1f3f5;
                 transition: all 0.2s ease;
                 min-height: 48px;
+                width: 100%;
+                max-width: 100%;
+                box-sizing: border-box;
+                overflow-x: hidden;
             }
 
             .modal-row:hover {
@@ -198,6 +223,8 @@ class UniversalModal {
                 text-align: center;
                 flex: 1;
                 word-break: break-word;
+                overflow-wrap: break-word;
+                min-width: 0;
             }
 
             .modal-badge {
