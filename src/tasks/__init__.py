@@ -1,9 +1,9 @@
 import tempfile
 import os
 import json
+from typing import Dict, Any
 
 from src.config.cache import cache, cleanup_old_cache
-from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
 from src.config.logging import get_logger
@@ -20,14 +20,17 @@ __all__ = [
     "run_multi_pgv_task",
     "run_single_pgv_task",
     "run_classification_workflow_task",
+    "process_submission_task",
 ]
 
 
 # Implementation functions
 def _refresh_telemetry_impl(ipstack_api_key):
     """Implementation of refresh telemetry task"""
+    from src.telemetry.tasks import update_ip_locations_task
+
     try:
-        update_ip_locations(ipstack_api_key)
+        update_ip_locations_task()
         cache.delete("telemetry_data")
         return {"status": "success"}
     except Exception as e:
@@ -47,6 +50,7 @@ def _cleanup_cache_impl():
 
 # Create task wrappers or plain functions depending on Celery availability
 if CELERY_AVAILABLE and celery:
+
     @celery.task(name="refresh_telemetry_task")
     def refresh_telemetry_task(ipstack_api_key):
         """Task to refresh telemetry data (Celery task)"""
@@ -57,6 +61,7 @@ if CELERY_AVAILABLE and celery:
         """Task to clean up cache files (Celery task)"""
         return _cleanup_cache_impl()
 else:
+
     def refresh_telemetry_task(ipstack_api_key):
         """Task to refresh telemetry data (direct call)"""
         return _refresh_telemetry_impl(ipstack_api_key)
@@ -66,7 +71,9 @@ else:
         return _cleanup_cache_impl()
 
 
-def _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold=0.01, curated=None):
+def _run_blast_search_impl(
+    query_header, query_seq, query_type, eval_threshold=0.01, curated=None
+):
     """Implementation of BLAST search task"""
     # Write sequence to temporary FASTA file
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
@@ -107,24 +114,32 @@ def _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold=0
 
 
 if CELERY_AVAILABLE and celery:
+
     @celery.task(name="run_blast_search", bind=True, max_retries=3, retry_backoff=True)
     def run_blast_search_task(
         self, query_header, query_seq, query_type, eval_threshold=0.01, curated=None
     ):
         """Celery task to run BLAST search"""
         try:
-            return _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold, curated)
+            return _run_blast_search_impl(
+                query_header, query_seq, query_type, eval_threshold, curated
+            )
         except Exception as e:
             logger.error(f"BLAST search failed: {str(e)}")
             # Retry the task if it's a transient error
             if self.request.retries < self.max_retries:
-                raise self.retry(countdown=60 * (2 ** self.request.retries))
+                raise self.retry(countdown=60 * (2**self.request.retries))
             return None
 else:
-    def run_blast_search_task(query_header, query_seq, query_type, eval_threshold=0.01, curated=None):
+
+    def run_blast_search_task(
+        query_header, query_seq, query_type, eval_threshold=0.01, curated=None
+    ):
         """Direct BLAST search (no Celery)"""
         try:
-            return _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold, curated)
+            return _run_blast_search_impl(
+                query_header, query_seq, query_type, eval_threshold, curated
+            )
         except Exception as e:
             logger.error(f"BLAST search failed: {str(e)}")
             return None
@@ -164,22 +179,30 @@ def _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold=0
 
 
 if CELERY_AVAILABLE and celery:
+
     @celery.task(name="run_hmmer_search", bind=True, max_retries=3, retry_backoff=True)
-    def run_hmmer_search_task(self, query_header, query_seq, query_type, eval_threshold=0.01):
+    def run_hmmer_search_task(
+        self, query_header, query_seq, query_type, eval_threshold=0.01
+    ):
         """Celery task to run HMMER search"""
         try:
-            return _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold)
+            return _run_hmmer_search_impl(
+                query_header, query_seq, query_type, eval_threshold
+            )
         except Exception as e:
             logger.error(f"HMMER search failed: {str(e)}")
             # Retry the task if it's a transient error
             if self.request.retries < self.max_retries:
-                raise self.retry(countdown=60 * (2 ** self.request.retries))
+                raise self.retry(countdown=60 * (2**self.request.retries))
             return None
 else:
+
     def run_hmmer_search_task(query_header, query_seq, query_type, eval_threshold=0.01):
         """Direct HMMER search (no Celery)"""
         try:
-            return _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold)
+            return _run_hmmer_search_impl(
+                query_header, query_seq, query_type, eval_threshold
+            )
         except Exception as e:
             logger.error(f"HMMER search failed: {str(e)}")
             return None
@@ -188,7 +211,9 @@ else:
 if CELERY_AVAILABLE and celery:
 
     @celery.task(name="run_classification_workflow_task", bind=True)
-    def run_classification_workflow_task(self, workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+    def run_classification_workflow_task(
+        self, workflow_state, blast_data=None, classification_data=None, meta_dict=None
+    ):
         """
         Run the main classification workflow.
         This workflow runs the following tasks sequentially:
@@ -205,9 +230,14 @@ if CELERY_AVAILABLE and celery:
             classification_data_dict: ClassificationData object or dictionary
             meta_dict: MetaData object or dictionary
         """
-        return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+        return _run_classification_workflow_internal(
+            workflow_state, blast_data, classification_data, meta_dict
+        )
 else:
-    def run_classification_workflow_task(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+
+    def run_classification_workflow_task(
+        workflow_state, blast_data=None, classification_data=None, meta_dict=None
+    ):
         """
         Run the main classification workflow directly (no Celery).
         This workflow runs the following tasks sequentially:
@@ -224,18 +254,26 @@ else:
             classification_data_dict: ClassificationData object or dictionary
             meta_dict: MetaData object or dictionary
         """
-        return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+        return _run_classification_workflow_internal(
+            workflow_state, blast_data, classification_data, meta_dict
+        )
 
 
-def run_classification_workflow_sync(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+def run_classification_workflow_sync(
+    workflow_state, blast_data=None, classification_data=None, meta_dict=None
+):
     """
     Synchronous version of the classification workflow for direct calls.
     This is the same as the Celery task but without the task decorator.
     """
-    return _run_classification_workflow_internal(workflow_state, blast_data, classification_data, meta_dict)
+    return _run_classification_workflow_internal(
+        workflow_state, blast_data, classification_data, meta_dict
+    )
 
 
-def _run_classification_workflow_internal(workflow_state, blast_data=None, classification_data=None, meta_dict=None):
+def _run_classification_workflow_internal(
+    workflow_state, blast_data=None, classification_data=None, meta_dict=None
+):
     """
     Internal implementation of the classification workflow.
     """
@@ -244,13 +282,27 @@ def _run_classification_workflow_internal(workflow_state, blast_data=None, class
     try:
         # Convert dictionaries to objects for the workflow function
         from src.utils.blast_data import WorkflowState, BlastData, ClassificationData
-        
-        workflow_state_obj = WorkflowState.from_dict(workflow_state) if isinstance(workflow_state, dict) else workflow_state
-        blast_data_obj = BlastData.from_dict(blast_data) if isinstance(blast_data, dict) else blast_data
-        classification_data_obj = ClassificationData.from_dict(classification_data) if isinstance(classification_data, dict) and classification_data else ClassificationData()
-        
+
+        workflow_state_obj = (
+            WorkflowState.from_dict(workflow_state)
+            if isinstance(workflow_state, dict)
+            else workflow_state
+        )
+        blast_data_obj = (
+            BlastData.from_dict(blast_data)
+            if isinstance(blast_data, dict)
+            else blast_data
+        )
+        classification_data_obj = (
+            ClassificationData.from_dict(classification_data)
+            if isinstance(classification_data, dict) and classification_data
+            else ClassificationData()
+        )
+
         # Run the sequential workflow
-        result = run_classification_workflow(workflow_state_obj, blast_data_obj, classification_data_obj, meta_dict)
+        result = run_classification_workflow(
+            workflow_state_obj, blast_data_obj, classification_data_obj, meta_dict
+        )
 
         # If result is None or empty, return a default error state
         if result is None:
@@ -274,7 +326,7 @@ def _run_classification_workflow_internal(workflow_state, blast_data=None, class
         # Ensure result is a dictionary
         if not isinstance(result, dict):
             # Convert WorkflowState object to dictionary if needed
-            if hasattr(result, 'to_dict'):
+            if hasattr(result, "to_dict"):
                 result = result.to_dict()
                 logger.debug("Converted WorkflowState object to dictionary")
             else:
@@ -338,3 +390,198 @@ def _run_classification_workflow_internal(workflow_state, blast_data=None, class
             "class_dict": {},
             "task_id": "",
         }
+
+
+def _process_submission_impl(
+    submission_data: Dict[str, Any], submission_id: str = None
+) -> Dict[str, Any]:
+    """
+    Implementation of submission processing task.
+
+    Args:
+        submission_data: Dict containing all submission data
+        submission_id: Optional submission ID for status tracking
+
+    Returns:
+        Dict with processing results
+    """
+    try:
+        from src.utils.web_submission_adapter import (
+            validate_submission_data,
+            process_submission_data,
+            perform_database_insertion,
+        )
+        from src.pages.submit import update_submission_status
+
+        logger.info(
+            f"Starting submission processing for file: {submission_data.get('seq_filename', 'unknown')}"
+        )
+
+        # Update status if we have a submission ID
+        if submission_id:
+            update_submission_status(
+                submission_id, "processing", 25, "Validating submission data..."
+            )
+
+        # Step 1: Validate input data
+        logger.debug("Validating submission data")
+        validated_data = validate_submission_data(
+            submission_data["seq_contents"],
+            submission_data["seq_filename"],
+            submission_data["uploader"],
+            submission_data["evidence"],
+            submission_data["genus"],
+            submission_data["species"],
+            submission_data["hostchr"],
+            submission_data["shipstart"],
+            submission_data["shipend"],
+        )
+        validated_data["comment"] = submission_data.get("comment", "")
+
+        if submission_id:
+            update_submission_status(
+                submission_id, "processing", 50, "Processing sequence data..."
+            )
+
+        # Step 2: Process the data
+        logger.debug("Processing submission data")
+        processed_data = process_submission_data(
+            validated_data, submission_data["strand_radio"]
+        )
+
+        if submission_id:
+            update_submission_status(
+                submission_id, "processing", 75, "Inserting into database..."
+            )
+
+        # Step 3: Insert into database
+        logger.debug("Inserting submission into database")
+        result = perform_database_insertion(
+            processed_data,
+            submission_data.get("anno_contents"),
+            submission_data.get("anno_filename"),
+            submission_data.get("anno_date"),
+            submission_data.get("seq_date"),
+        )
+
+        logger.info(
+            f"Successfully processed submission for {result['filename']} with accession {result['accession']}"
+        )
+
+        final_result = {
+            "success": True,
+            "accession": result["accession"],
+            "needs_review": result["needs_review"],
+            "filename": result["filename"],
+            "uploader": result["uploader"],
+            "message": "Submission processed successfully",
+            "status": "completed",
+        }
+
+        if submission_id:
+            update_submission_status(
+                submission_id,
+                "completed",
+                100,
+                "Submission completed successfully",
+                final_result,
+            )
+
+        return final_result
+
+    except Exception as e:
+        logger.error(f"Submission processing failed: {str(e)}")
+        logger.exception("Full traceback:")
+
+        # Determine error type for user-friendly message
+        if "ValidationError" in str(type(e)):
+            error_type = "validation"
+            user_message = str(e)
+        elif "ProcessingError" in str(type(e)):
+            error_type = "processing"
+            user_message = str(e)
+        elif "DatabaseError" in str(type(e)):
+            error_type = "database"
+            user_message = "A database error occurred. Please try again."
+        else:
+            error_type = "general"
+            user_message = "An unexpected error occurred. Please try again."
+
+        error_result = {
+            "success": False,
+            "error": str(e),
+            "error_type": error_type,
+            "user_message": user_message,
+            "status": "failed",
+        }
+
+        if submission_id:
+            update_submission_status(
+                submission_id, "failed", 100, user_message, error_result
+            )
+
+        return error_result
+
+
+if CELERY_AVAILABLE and celery:
+
+    @celery.task(
+        name="process_submission_task", bind=True, max_retries=2, retry_backoff=True
+    )
+    def process_submission_task(
+        self, submission_data: Dict[str, Any], submission_id: str = None
+    ) -> Dict[str, Any]:
+        """Celery task to process submission asynchronously"""
+        try:
+            return _process_submission_impl(submission_data, submission_id)
+        except Exception as e:
+            logger.error(f"Submission task failed: {str(e)}")
+            # Retry on transient errors
+            if self.request.retries < self.max_retries:
+                raise self.retry(countdown=30 * (2**self.request.retries))
+            error_result = {
+                "success": False,
+                "error": f"Task failed after retries: {str(e)}",
+                "error_type": "general",
+                "user_message": "Processing failed. Please contact support if this persists.",
+                "status": "failed",
+            }
+            if submission_id:
+                from src.pages.submit import update_submission_status
+
+                update_submission_status(
+                    submission_id,
+                    "failed",
+                    100,
+                    error_result["user_message"],
+                    error_result,
+                )
+            return error_result
+else:
+
+    def process_submission_task(
+        submission_data: Dict[str, Any], submission_id: str = None
+    ) -> Dict[str, Any]:
+        """Direct submission processing (no Celery)"""
+        try:
+            return _process_submission_impl(submission_data, submission_id)
+        except Exception as e:
+            logger.error(f"Submission processing failed: {str(e)}")
+            error_result = {
+                "success": False,
+                "error": str(e),
+                "error_type": "general",
+                "user_message": "An unexpected error occurred. Please try again.",
+                "status": "failed",
+            }
+            if submission_id:
+                from src.pages.submit import update_submission_status
+
+                update_submission_status(
+                    submission_id,
+                    "failed",
+                    100,
+                    error_result["user_message"],
+                    error_result,
+                )
+            return error_result

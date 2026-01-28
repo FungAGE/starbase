@@ -1,29 +1,23 @@
-import os
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
-from sqlalchemy import text
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, _dash_renderer
 
+from src.config.settings import IS_DEV
 from src.components import navmenu
-from src.components.callbacks import create_feedback_button, create_database_version_indicator
+from src.components.ui import create_feedback_button, create_database_version_indicator
 from src.config.cache import cache, cleanup_old_cache
-from src.config.database import SubmissionsSession
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
-from src.telemetry.utils import get_client_ip, update_ip_locations
-from src.telemetry.tasks import log_request_task
+from src.telemetry.utils import get_client_ip
+from src.telemetry.tasks import log_request_task, update_ip_locations_task
 from src.config.celery_config import run_task
 
 logger = get_logger(__name__)
-
-# Get the environment
-ENV = os.getenv("ENVIRONMENT", "development")
-IS_DEV = ENV.lower() == "development"
 
 server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
@@ -40,7 +34,6 @@ server.config.update(
 )
 
 cache.init_app(server)
-cleanup_old_cache()
 limiter.init_app(server)
 register_routes(server, limiter)
 _dash_renderer._set_react_version("18.2.0")
@@ -70,7 +63,7 @@ external_scripts = [
     "/assets/js/clustermap.min.js",
     "/assets/js/synteny.js",
     "/assets/js/universal-modal.js",
-    "/assets/js/blaster.min.woaln.js"
+    "/assets/js/blaster.min.woaln.js",
 ]
 
 app = Dash(
@@ -87,7 +80,7 @@ app = Dash(
 )
 
 # Enable dev tools after initialization (only for local development)
-if os.environ.get("DEV_MODE"):
+if IS_DEV:
     app.enable_dev_tools(
         dev_tools_props_check=True,
         dev_tools_ui=True,
@@ -107,7 +100,7 @@ def initialize_app():
 
         create_database_indexes()
         cleanup_old_cache()
-        update_ip_locations()
+        update_ip_locations_task()
 
         try:
             logger.info("Rebuilding BLAST databases on startup...")
@@ -135,18 +128,30 @@ def serve_app_layout():
                 dcc.Location(id="url", refresh=False),
                 navmenu.navmenu(),
                 html.Div(dash.page_container),
-                create_feedback_button(),
-                create_database_version_indicator(),
+                html.Div(
+                    [
+                        create_feedback_button(),
+                        create_database_version_indicator(),
+                    ],
+                    style={
+                        "position": "fixed",
+                        "top": "50%",
+                        "right": "20px",
+                        "transform": "translateY(-50%)",
+                        "zIndex": "1000",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "gap": "10px",
+                    }
+                ),
             ]
         )
     )
 
 
 @app.server.before_request
-def log_request_info():
-    """Log incoming requests to the telemetry database.
-    Skip static files, Dash internal endpoints, and reload hash.
-    """
+def log_request_hook():
+    """Log incoming requests via Celery/direct call."""
     try:
         if request.path.startswith(("/static/", "/_dash-", "/_reload-hash")):
             return
@@ -154,39 +159,6 @@ def log_request_info():
         run_task(log_request_task, client_ip, request.path)
     except Exception as e:
         logger.error(f"Error logging telemetry: {str(e)}")
-
-
-def check_submissions_db():
-    """Verify the submissions database is accessible and properly configured."""
-    try:
-        session = SubmissionsSession()
-        result = session.execute(text("SELECT COUNT(*) FROM submissions")).scalar()
-        logger.info(f"Submissions database check passed. Current submissions: {result}")
-        return True
-    except Exception as e:
-        logger.error(f"Submissions database check failed: {str(e)}")
-        return False
-
-
-def component_to_dict(component):
-    """Convert a Dash component to a dictionary format."""
-    if isinstance(component, (str, int, float)):
-        return str(component)
-    elif isinstance(component, (list, tuple)):
-        return [component_to_dict(c) for c in component]
-    elif hasattr(component, "children"):
-        result = {
-            "type": component.__class__.__name__,
-            "children": component_to_dict(component.children)
-            if component.children is not None
-            else None,
-        }
-        if hasattr(component, "style") and component.style:
-            result["style"] = component.style
-        if hasattr(component, "className") and component.className:
-            result["className"] = component.className
-        return result
-    return None
 
 
 app.layout = serve_app_layout

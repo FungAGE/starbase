@@ -1,5 +1,8 @@
 import os
 
+# Development mode
+IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
+
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
@@ -103,6 +106,20 @@ ABOUT_URL = os.getenv("ABOUT_URL", "/about")
 SYNTENY_URL = os.getenv("SYNTENY_URL", "/synteny")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
+
+# Define valid pages
+PAGES = {
+    HOME_URL,
+    WIKI_URL,
+    BLAST_URL,
+    ABOUT_URL,
+    SYNTENY_URL,
+    SUBMIT_URL,
+    METRICS_URL,
+}
+
+PAGE_MAPPING = ",".join(PAGES)
+
 
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")

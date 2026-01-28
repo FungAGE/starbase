@@ -1,7 +1,7 @@
 from flask_caching import Cache
 import os
 import time
-from src.config.settings import PROJECT_ROOT
+from src.config.settings import PROJECT_ROOT, IS_DEV
 from src.config.logging import get_logger
 from functools import wraps
 import pandas as pd
@@ -31,8 +31,11 @@ cache = Cache(
 def cleanup_old_cache(max_age_days=None):
     """Optional cache cleanup for persistent database data.
 
-    Since our cached data is persistent with database versions and remains
-    stable once generated at startup, cleanup is primarily for disk space management.
+    Cached data is persistent with each database version. Generate cached objects once at startup. Cleanup is primarily for disk space management.
+    - Collect all cache files with their metadata
+    - Remove files older than max_age_days if specified
+    - If over size limit, remove oldest files until under limit
+
 
     Args:
         max_age_days: If provided, remove files older than this many days.
@@ -47,7 +50,6 @@ def cleanup_old_cache(max_age_days=None):
         current_time = time.time()
         cache_files = []
 
-        # Collect all cache files with their metadata
         for filepath in Path(cache_dir).rglob("*"):
             if filepath.is_file() and filepath.suffix not in [
                 ".lock"
@@ -62,7 +64,6 @@ def cleanup_old_cache(max_age_days=None):
                 except OSError:
                     continue
 
-        # Remove files older than max_age_days if specified
         if max_age_days is not None:
             for filepath, size, _, age_days in cache_files[
                 :
@@ -78,7 +79,6 @@ def cleanup_old_cache(max_age_days=None):
                     except OSError:
                         continue
 
-        # If we're over size limit, remove oldest files until under limit
         if total_size > MAX_CACHE_SIZE:
             # Sort by modification time (oldest first)
             cache_files.sort(key=lambda x: x[2])
@@ -118,9 +118,8 @@ def smart_cache(timeout=3600, unless=None):
         def wrapper(*args, **kwargs):
             if unless and unless(*args, **kwargs):
                 return f(*args, **kwargs)
-            env = os.getenv("ENVIRONMENT", "development")
             actual_timeout = timeout
-            if env == "development" and timeout is None:
+            if IS_DEV and timeout is None:
                 actual_timeout = 300
 
             cache_key = f"{f.__name__}:{cache_key_builder(*args, **kwargs)}"

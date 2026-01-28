@@ -2,7 +2,6 @@ import pytest
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from flask import jsonify
 
 from flask import Flask
 from src.config.cache import cache
@@ -21,6 +20,7 @@ from src.database.models.schema import Base
 from src.database.sql_manager import fetch_ships, fetch_meta_data, fetch_captains
 from src.utils.seq_utils import clean_sequence
 from src.utils.classification_utils import generate_md5_hash
+
 
 @pytest.fixture(scope="session")
 def test_client():
@@ -90,87 +90,136 @@ def driver(chrome_options):
     driver.quit()
 
 
+@pytest.fixture
+def single_accession_meta_data():
+    return {
+        "curated_status": "curated",
+        "starshipID": "Prometheus_Ssp_2",
+        "ship_id": 331,
+        "joined_ship_id": 599,
+        "ship_accession_tag": "SSB0000313",
+        "version_tag": 1,
+        "taxID": 2044277,
+        "strain": "SCSIO F190",
+        "order": "Onygenales",
+        "family": None,
+        "name": "Spiromastix sp. SCSIO F190",
+        "elementLength": None,
+        "upDR": None,
+        "downDR": None,
+        "contigID": None,
+        "captainID": None,
+        "elementBegin": None,
+        "elementEnd": None,
+        "familyName": "Prometheus",
+        "type_element_reference": "Urquhart et al., unpublished",
+        "navis_name": "Prometheus",
+        "haplotype_name": "2",
+        "ome": None,
+        "version": None,
+        "genomeSource": None,
+        "citation": None,
+        "assembly_accession": None,
+        "md5": "23cde5cdde7fa335c9cad900c1275ddd",
+        "rev_comp_md5": "cdcbf2c7875f729700851711baa9222f",
+        "sequence_length": 108263,
+    }
 
 @pytest.fixture
-def test_meta_data():
-    try:
-        meta_df = fetch_meta_data(accession_tags=["SSA000001", "SSA000130"])
-        if not meta_df.empty:
-            return meta_df
-    except Exception:
-        pass
-    
-    
-    return pd.DataFrame(
-        {
-            "accession_tag": ["ABC123", "DEF456"],
-            "starshipID": ["123", "456"],
-            "curated_status": ["curated", "uncurated"],
-            "familyName": ["Family1", "Family2"],
-            "navis_name": ["Navis1", "Navis2"],
-            "haplotype_name": ["Haplo1", "Haplo2"],
-            "order": ["Order1", "Order2"],
-            "family": ["Family1", "Family2"],
-            "name": ["Species1", "Species2"],
-            "strain": ["Strain1", "Strain2"],
-            "taxID": [12345, 67890],
-            "assembly_accession": ["GCA_000001", "GCA_000002"],
-            "genomeSource": ["Source1", "Source2"],
-            "contigID": ["Contig1", "Contig2"],
-            "elementBegin": [100, 200],
-            "elementEnd": [500, 600],
-            "size": [400, 400],
-        }
-    )
-
-
-
+def multiple_accession_meta_data():
+    return {
+        "curated_status": [None,"curated"],
+        "starshipID": ["fususs2_s06540","08-36-03-25_s00073"],
+        "ship_id": [630,754],
+        "joined_ship_id": [418,754],
+        "ship_accession_tag": ["SSB0000566","SSB0000676"],
+        "version_tag": [1,1],
+        "taxID": [None,746128],
+        "strain": [None,"Aspergillus fumigatus"],
+        "order": ["Hypocreales","Eurotiales"],
+        "family": ["Nectriaceae","Aspergillaceae"],
+        "name": ["Fusarium ussurianum","Aspergillus fumigatus"],
+        "elementLength": [None,None],
+        "upDR": [None,None],
+        "downDR": [None,None],
+        "contigID": [None,None],
+        "captainID": [None,None],
+        "elementBegin": [None,None],
+        "elementEnd": [None,None],
+        "familyName": ["Arwing","Prometheus"],
+        "type_element_reference": ["Gluck-Thaler et al., 2022","Urquhart et al., unpublished"],
+        "navis_name": [None,"navis06"],
+        "haplotype_name": [None,"var03"],
+        "ome": ["fususs2","08-36-03-25"],
+        "version": [None,None],
+        "genomeSource": ["ncbi",None],
+        "citation": [None,"10.1128/mBio.00536-15"],
+        "assembly_accession": ["GCA_017656605.1","10.5281/zenodo.5775265"],
+        "md5": ["743b3591a2a317d9780ca4eced108b60","d598a244e33d2131699489fdaac7f701"],
+        "rev_comp_md5": ["a76457e834456d250e42cc33edcf81ca","aaa598945706fbe41f4312397492a637"],
+        "sequence_length": [18485,76116],
+    }
 
 @pytest.fixture
-def test_ships_df():
-    try:
-        ships_df = fetch_ships(accession_tags=["SSA000001", "SSA000130", "SSA000288"], with_sequence=True)
-        if not ships_df.empty:
-            return ships_df
-    except Exception:
-        pass
-    
-    
+def single_accession_multiple_ships_meta_data():
+    return {
+        "curated_status": [None,"curated","curated","auto_created","auto_created","uncurated","uncurated","uncurated","uncurated"],
+        "starshipID": ["aspfum6_s01218","CEA10-lr_s00107","CM2733_s04518","aspfum137_e02579","CEA10_s00026","fillin_00420","fillin_00678","fillin_00711","fillin_00765"],
+        "ship_id": [189,2556,2134,1529,2098,3131,3324,3355,3391],
+        "joined_ship_id": [130,768,769,8057,8529,9376,9569,9600,9636],
+        "ship_accession_tag": ["SSB0000182","SSB0002279","SSB0001884","SSB0001361","SSB0001848","SSB0002716","SSB0002909","SSB0002940","SSB0002976"],
+        "version_tag": [1,1,1,1,1,1,1,1,1],
+        "taxID": [None,746128,746128,None,9606,None,None,None,None],
+        "strain": ["A1163",None,None,None,"CEA10",None,None,None,None],
+        "order": ["Eurotiales","Eurotiales","Eurotiales",None,"Eurotiales",None,None,None,None],
+        "family": ["Aspergillaceae","Aspergillaceae","Aspergillaceae",None,"Aspergillaceae",None,None,None,None],
+        "name": ["Aspergillus fumigatus","Aspergillus fumigatus","Aspergillus fumigatus",None,"Aspergillus fumigatus CEA10",None,None,None,None],
+        "elementLength": [None,None,None,None,None,None,None,None,None],
+        "upDR": [None,None,None,None,None,None,None,None,None],
+        "downDR": [None,None,None,None,None,None,None,None,None],
+        "contigID": [None,None,None,None,None,None,None,None,None],
+        "captainID": [None,None,None,None,None,None,None,None,None],
+        "elementBegin": [None,None,None,None,None,None,None,None,None],
+        "elementEnd": [None,None,None,None,None,None,None,None,None],
+        "familyName": ["Prometheus","Prometheus","Prometheus",None,None,None,None,None,None],
+        "type_element_reference": ["Urquhart et al., unpublished","Urquhart et al., unpublished","Urquhart et al., unpublished",None,None,None,None,None,None],
+        "navis_name": [None,"navis06","navis06",None,None,None,None,None,None],
+        "haplotype_name": [None,"var41","var41",None,None,None,None,None,None],
+        "ome": ["aspfum6","CEA10","CM2733","aspfum137","CEA10",None,None,None,None],
+        "version": ["04-08-2014 0:00",None,None,None,None,None,None,None,None],
+        "genomeSource": ["ncbi",None,None,None,None,None,None,None,None],
+        "citation": ["26-06-2007","10.1038/s41467-022-32924-7","10.3390/genes9070363","10.1038/s41564-021-00993-x","10.1038/s41467-022-32924-7",None,None,None,None],
+        "assembly_accession": ["Kaspfum6","GCA_051225625.1","10.5281/zenodo.5775265","GCA_020501425.1","GCA_051225625.1",None,None,None,None],
+        "md5": ["946152598b782419263f931fdc45a122","630b72bd313d36fabbb5a5dbcf415294","c9db7e93d7312d58292748f190c0c755","4dcdf281a059e4c5fff9303d0c729448","4da37e0160b91c2ed64f9c1fb4e3abf1","653c75e2e04a6082bba2b40097c85013","548042213935d8b3e81911fc8a4c2588","935fcdf406abeef437621e49e22a36b2","b9c75132f0f6cb2747eae2152b203b80"],
+        "rev_comp_md5": ["5c923204abff36a5d07dde528ec09d3a","c2e2176b5c36f1b85bf2de0060628e23","4545f5f0908dc79ec22c4054572f04f1","907a3b26480c1b8d958879a960ba8d47","93584cb7b38ef0a3c182df19c676cf84","df08149df7535e84e319a24dcdec85e3","b127083b8eb439e67b95509d54af4bc0","f2bcf5bfaf437ab6592c572c930512f0","8d328163b67dd708dcd2b2ad6a54d98e"],
+        "sequence_length": [92517,93334,93249,92294,92365,92453,92518,92525,92525],
+    }
+
+@pytest.fixture
+def test_haplotype_ships_df():
     return pd.DataFrame(
         {
-            "accession_tag": ["SSA000001", "SSA000130", "SSA000288"],
+            "accession_tag": ["SSA002851", "SSA002904", "SSA002596"],
             "sequence": [
                 "ATGCATGCATGC",  # Simple sequence for exact match
                 "ATGCATGCATGCATGC",  # Longer sequence for contained match
                 "ATGCATGCATTT",  # Similar sequence for similarity match
             ],
             "md5": [
-                
                 generate_md5_hash(clean_sequence("ATGCATGCATGC")),
-                generate_md5_hash(clean_sequence("ATGCATGCATGCATGC")), 
+                generate_md5_hash(clean_sequence("ATGCATGCATGCATGC")),
                 generate_md5_hash(clean_sequence("ATGCATGCATTT")),
             ],
             "rev_comp_md5": [
                 generate_md5_hash(clean_sequence("GCATGCATGCAT")),
                 generate_md5_hash(clean_sequence("GCATGCATGCATGCAT")),
                 generate_md5_hash(clean_sequence("AAATGCATGCAT")),
-            ]
+            ],
         }
     )
 
-
-@pytest.fixture()
+@pytest.fixture
 def test_captains_df():
-    try:
-        # Try a few different accession tags that are more likely to work
-        for accession in ["SSA000288", "SSA000567", "SSA000342"]:
-            captains_df = fetch_captains(accession_tags=[accession], with_sequence=True)
-            if not captains_df.empty:
-                return captains_df
-    except Exception:
-        pass
-    
-    # Fallback to mock data if real data isn't available
     return pd.DataFrame(
         {
             "captainID": ["Phoenix", "Enterprise", "Voyager"],
@@ -180,152 +229,10 @@ def test_captains_df():
                 "MALWMRLLPLLALLALWGPDPBBB",  # Different sequence
             ],
             "navis_name": ["Phoenix", "Phoenix", "Galactica"],
-            "accession_tag": ["SSA000288", "SSA000567", "SSA000342"],  # Multiple accession tags
+            "accession_tag": [
+                "SSA002596",
+                "SSA002904",
+                "SSA002851",
+            ],  # Multiple accession tags
         }
     )
-
-
-@pytest.fixture
-def test_sequence():
-    # looking for a real sequence from the database
-    try:
-        ship_df = fetch_ships(accession_tags=["SSA000130"], with_sequence=True)
-        if not ship_df.empty:
-            sequence = ship_df.iloc[0]["sequence"]
-            return sequence
-    except Exception:
-        pass
-    return "ATGCATGCATGC"  # Mock sequence
-
-@pytest.fixture
-def test_sequence_revcomp(test_sequence):
-    try:
-        # return the reverse complement of the real sequence
-        complement = str.maketrans("ATGC", "TACG")
-        revcomp = test_sequence.translate(complement)[::-1]
-        return revcomp
-    except Exception:
-        pass
-    return "GCATGCATGCAT"  # Mock sequence
-
-@pytest.fixture
-def test_contained_sequence(test_sequence):
-    try:
-        # return a contained subsequence of the real sequence
-        return test_sequence[50:-50]  # Take from position 50 to 50 positions from the end
-    except Exception:
-        pass
-    return "ATGCATGC"  # Mock sequence
-
-@pytest.fixture
-def test_similar_sequence(test_sequence):
-    # introduce a small mutation to create a similar sequence
-    try:
-        return test_sequence[:10] + "A" + test_sequence[11:]  # Change one base
-    except Exception:
-        pass
-    return "ATGCATGCAA"  # Mock sequence
-
-# separate test fixtures for haplotype matching
-@pytest.fixture
-def test_haplotype_ships_df():
-    try:
-        ships_df = fetch_ships(accession_tags=["SSA000130", "SSA001285", "SSA001247"], with_sequence=True)
-        if not ships_df.empty:
-            return ships_df
-    except Exception:
-        pass
-    
-    
-    return pd.DataFrame(
-        {
-            "accession_tag": ["SSA000130", "SSA001285", "SSA001247"],
-            "accession_display": ["SSA000130.1", "SSA001285.1", "SSA001247.1"],
-            "sequence": [
-                "ATGCATGCATGCATGCATGC",  # Base sequence
-                "ATGCATGCATGCATGCATGC",  # Identical sequence (should have 1.0 similarity)
-                "ATGCATGCATGCATGCATGT",  # One base different (should have high similarity)
-            ],
-            "haplotype_name": ["2", "1", "3"],  # Add haplotype information
-            "captainID": ["captain_130", "captain_1285", "captain_1247"],  # Add captain IDs
-            "md5": [
-                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")),
-                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGC")), 
-                generate_md5_hash(clean_sequence("ATGCATGCATGCATGCATGT")),
-            ],
-            "rev_comp_md5": [
-                generate_md5_hash(clean_sequence("GCATGCATGCATGCATGCAT")),
-                generate_md5_hash(clean_sequence("GCATGCATGCATGCATGCAT")),
-                generate_md5_hash(clean_sequence("ACATGCATGCATGCATGCAT")),
-            ]
-        }
-    )
-
-@pytest.fixture
-def test_haplotype_sequence(test_haplotype_ships_df):
-    # return the sequence with the haplotype
-    try:
-        sequence = test_haplotype_ships_df.iloc[0]["sequence"] # SSA000130
-        if sequence is not None:
-            return sequence
-    except Exception:
-        pass
-    return "ATGCATGCATGC"  # Mock sequence
-
-@pytest.fixture
-def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):
-    """Generate similarities data using check_similar_match."""
-    try:
-        import tempfile
-        from src.utils.classification_utils import calculate_similarities
-        from src.utils.seq_utils import write_multi_fasta, write_temp_fasta
-        import pandas as pd
-        
-        # Create a combined DataFrame that includes both the query sequence and existing ships
-        # Add the query sequence as a new row
-        query_row = pd.DataFrame({
-            "accession_display": ["query_sequence"],
-            "sequence": [test_haplotype_sequence]
-        })
-        
-        # Combine with existing ships
-        if "accession_display" in test_haplotype_ships_df.columns:
-            combined_df = pd.concat([query_row, test_haplotype_ships_df], ignore_index=True)
-        else:
-            # If no accession_display, create it from accession_tag
-            ships_with_display = test_haplotype_ships_df.copy()
-            ships_with_display["accession_display"] = ships_with_display["accession_tag"]
-            combined_df = pd.concat([query_row, ships_with_display], ignore_index=True)
-        
-        tmp_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
-        write_multi_fasta(
-            combined_df,
-            tmp_fasta,
-            sequence_col="sequence",
-            id_col="accession_display",
-        )
-
-        # calculate_similarities returns a nested dictionary, but cluster_sequences expects a list of tuples
-        similarities_dict = calculate_similarities(
-            fasta_file=tmp_fasta,
-            seq_type="nucl",
-        )
-        
-        # Convert nested dictionary to list of tuples format
-        similarities_list = []
-        for seq_id1, inner_dict in similarities_dict.items():
-            for seq_id2, similarity in inner_dict.items():
-                if seq_id1 != seq_id2:  # Skip self-comparisons
-                    similarities_list.append((seq_id1, seq_id2, similarity))
-        
-        return similarities_list
-    except Exception:
-        pass
-    
-    # Fallback to mock similarities data, containing 3 sequences
-    return [
-        ("query_sequence", "SSA000130.1", 0.99),
-        ("query_sequence", "SSA001285.1", 0.85),
-        ("query_sequence", "SSA000342.1", 0.85),
-        ("SSA000130.1", "SSA000567.1", 0.98),
-    ]

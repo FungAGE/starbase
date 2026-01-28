@@ -28,7 +28,7 @@ from src.components.tables import (
 )
 from src.utils.plot_utils import make_logo, create_sunburst_plot
 from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
-from src.components.callbacks import (
+from src.components.ui import (
     curated_switch,
     dereplicated_switch,
 )
@@ -191,12 +191,19 @@ def load_initial_data():
 
 table_columns = [
     {
-        "name": "Accession",
-        "id": "accession_tag",
+        "name": "Ship Accession (SSB)",
+        "id": "ship_accession_display",
         "deletable": False,
         "selectable": True,
         "presentation": "markdown",
         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+    },
+    {
+        "name": "Group Accession (SSA)",
+        "id": "accession_display",
+        "deletable": False,
+        "selectable": False,
+        "presentation": "markdown",
     },
     {
         "name": "Starship Family",
@@ -466,8 +473,8 @@ def load_meta_data(url):
 
 
 # Callback to load paper data
-@handle_callback_error
 @callback(Output("paper-data", "data"), Input("url", "href"))
+@handle_callback_error
 def load_paper_data(url):
     if url:
         try:
@@ -1044,7 +1051,7 @@ def generate_download_helper(rows, curated, dereplicate):
             for row in rows
         ]
         dl_df = fetch_ships(
-            accession_tags=accessions,
+            accessions=accessions,
             curated=curated,
             dereplicate=dereplicate,
             with_sequence=True,
@@ -1201,11 +1208,11 @@ clientside_callback(
         let accession = null;
 
         // Handle AG Grid cell clicks
-        if (cellClicked && (cellClicked.colId === 'accession_tag' || cellClicked.colId === 'accession_display')) {
+        if (cellClicked && (cellClicked.colId === 'ship_accession_tag' || cellClicked.colId === 'ship_accession_display')) {
             accession = cellClicked.value;
         }
         // Handle DataTable active cell
-        else if (activeCell && (activeCell.column_id === 'accession_tag' || activeCell.column_id === 'accession_display')) {
+        else if (activeCell && (activeCell.column_id === 'ship_accession_tag' || activeCell.column_id === 'ship_accession_display')) {
             const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
             if (tableData && actualRowIdx < tableData.length) {
                 accession = tableData[actualRowIdx][activeCell.column_id];

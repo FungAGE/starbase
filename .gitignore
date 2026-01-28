@@ -192,3 +192,5 @@ tests/test_data/real_*
 # Keep small test files tracked
 !tests/test_data/small_*
 !tests/test_data/mock_*
+
+.agent-docs/

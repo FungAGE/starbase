@@ -18,14 +18,14 @@ def test_exact_match(test_ships_df, test_sequence, test_sequence_revcomp):
 
     result = check_exact_match(fasta=test_sequence_fasta, existing_ships=test_ships_df)
     result_revcomp = check_exact_match(fasta=test_sequence_revcomp_fasta, existing_ships=test_ships_df)
-    assert result == "SSA000130.1"  # Updated to match actual database data with version
-    assert result_revcomp == "SSA000130.1"  # Updated to match actual database data with version
+    assert result == "SSA002851.1"  # Updated to match actual database data with version
+    assert result_revcomp == "SSA002851.1"  # Updated to match actual database data with version
 
 def test_contained_match(test_ships_df, test_contained_sequence):
     """Test contained sequence matching."""
-    # Test contained match - should return SSA000130 as it's longer
+    # Test contained match - should return SSA002851 as it's longer
     result = check_contained_match(test_contained_sequence, test_ships_df)
-    assert result == "SSA000130.1"  # Now matches the longer sequence
+    assert result == "SSA002851.1"  # Now matches the longer sequence
 
 def test_similar_match(
     test_ships_df, test_similar_sequence
@@ -33,7 +33,7 @@ def test_similar_match(
     """Test similar sequence matching using k-mer comparison."""
     # Test similar match
     result, similarities = check_similar_match(test_similar_sequence, test_ships_df, threshold=0.8)
-    assert result == "SSA000130.1"
+    assert result == "SSA002851.1"
 
 
 def test_family_match(test_ships_df, test_sequence):
@@ -43,7 +43,7 @@ def test_family_match(test_ships_df, test_sequence):
 
 def test_navis_match(test_captains_df):
     """Test navis matching using hmmer."""
-    sequence = test_captains_df.iloc[0]["sequence"] # SSA000288
+    sequence = test_captains_df.iloc[0]["sequence"]
     # write to temp fasta with the correct header that classify_navis expects
     tmp_fasta = write_temp_fasta(header="query_sequence", sequence=sequence)
     navis_result = classify_navis(fasta=tmp_fasta, existing_captains=test_captains_df)
@@ -69,7 +69,7 @@ def test_assign_accession_exact_match(test_ships_df, test_sequence):
     accession, needs_review = assign_accession(
         test_sequence, existing_ships=test_ships_df
     )
-    assert accession == "SSA000130.1"
+    assert accession == "SSA002851.1"
     assert needs_review is False
 
 
@@ -78,7 +78,7 @@ def test_assign_accession_contained_match(test_ships_df, test_contained_sequence
     accession, needs_review = assign_accession(
         test_contained_sequence, existing_ships=test_ships_df
     )
-    assert accession == "SSA000130.1"
+    assert accession == "SSA002851.1"
     assert needs_review is True
 
 def test_assign_accession_similar_match(
@@ -88,7 +88,7 @@ def test_assign_accession_similar_match(
     accession, needs_review = assign_accession(
         test_similar_sequence, existing_ships=test_ships_df, threshold=0.8
     )
-    assert accession == "SSA000130.1"
+    assert accession == "SSA002851.1"
     assert needs_review is True
 
 

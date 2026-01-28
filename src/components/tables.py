@@ -71,13 +71,8 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         else:
             df = pd.DataFrame()
 
-    # If we have accession_display column, use it for display but keep accession_tag for functionality
-    if isinstance(df, pd.DataFrame) and "accession_display" in df.columns:
-        # Create a display copy where accession_tag is replaced with accession_display
-        display_df = df.copy()
-        display_df["accession_tag"] = display_df["accession_display"]
-    else:
-        display_df = df
+    # If we have display columns, use them for display but keep original tags for functionality
+    display_df = df.copy() if isinstance(df, pd.DataFrame) else df
 
     # Create column definitions
     if columns:
@@ -93,8 +88,8 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 "flex": 1,
             }
 
-            # Add special styling for accession_tag
-            if col["field"] == "accession_tag":
+            # Add special styling for accession_tag and ship_accession_tag
+            if col["field"] in ["ship_accession_tag", "ship_accession_display"]:
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
@@ -105,7 +100,9 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             grid_columns.append(col_def)
     else:
         grid_columns = [
-            {"field": col} for col in display_df.columns if col != "accession_display"
+            {"field": col}
+            for col in display_df.columns
+            if col not in ["accession_display", "ship_accession_display"]
         ]
 
     # Simplified stable grid options
@@ -167,13 +164,13 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
         else:
             df = pd.DataFrame()
 
-    # If we have accession_display column, use it for display but keep accession_tag for functionality
-    if isinstance(df, pd.DataFrame) and "accession_display" in df.columns:
-        # Create a display copy where accession_tag is replaced with accession_display
-        display_df = df.copy()
-        display_df["accession_tag"] = display_df["accession_display"]
-    else:
-        display_df = df
+    # If we have display columns, use them for display but keep original tags for functionality
+    display_df = df.copy() if isinstance(df, pd.DataFrame) else df
+    if isinstance(df, pd.DataFrame):
+        if "accession_display" in df.columns:
+            display_df["accession_tag"] = display_df["accession_display"]
+        if "ship_accession_display" in df.columns:
+            display_df["ship_accession_tag"] = display_df["ship_accession_display"]
 
     # Convert column format to AG Grid format
     if columns:
@@ -201,8 +198,10 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                     }
                 )
 
-            # Add special styling for accession_tag
-            if col.get("id") == "accession_tag" or col.get("field") == "accession_tag":
+            # Add special styling for accession_tag and ship_accession_tag
+            if col.get("id") in ["accession_tag", "ship_accession_tag"] or col.get(
+                "field"
+            ) in ["accession_tag", "ship_accession_tag"]:
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
@@ -218,7 +217,7 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 "sortable": True,
             }
             for col in display_df.columns
-            if col != "accession_display"
+            if col not in ["accession_display", "ship_accession_display"]
         ]
 
     # Simplified grid options
@@ -300,7 +299,7 @@ def make_paper_table():
                 if pd.notnull(row["DOI"]) and row["DOI"]
                 else ""
             )
-            
+
             # Cell styles with truncation
             title_style = {
                 "padding": "12px",
@@ -309,7 +308,7 @@ def make_paper_table():
                 "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap",
             }
-            
+
             author_style = {
                 "padding": "12px",
                 "maxWidth": "250px",
@@ -317,19 +316,19 @@ def make_paper_table():
                 "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap",
             }
-            
+
             year_style = {
                 "textAlign": "center",
                 "padding": "12px",
                 "whiteSpace": "nowrap",
             }
-            
+
             doi_style = {
                 "textAlign": "center",
                 "padding": "12px",
                 "whiteSpace": "nowrap",
             }
-            
+
             rows.append(
                 html.Tr(
                     [
@@ -346,7 +345,7 @@ def make_paper_table():
                         ),
                         html.Td(doi_cell, style=doi_style),
                     ],
-                    style={"borderBottom": "1px solid #dee2e6"}
+                    style={"borderBottom": "1px solid #dee2e6"},
                 )
             )
 
@@ -355,19 +354,37 @@ def make_paper_table():
         dmc.Table(
             [
                 html.Thead(
-                    html.Tr([
-                        html.Th("Title", style={"minWidth": "200px"}),
-                        html.Th("Year", style={"textAlign": "center", "minWidth": "80px"}),
-                        html.Th("Authors", style={"minWidth": "150px"}),
-                        html.Th("DOI", style={"textAlign": "center", "minWidth": "120px"}),
-                    ]),
-                    style={"borderBottom": "1px solid #dee2e6"}
+                    html.Tr(
+                        [
+                            html.Th("Title", style={"minWidth": "200px"}),
+                            html.Th(
+                                "Year",
+                                style={"textAlign": "center", "minWidth": "80px"},
+                            ),
+                            html.Th("Authors", style={"minWidth": "150px"}),
+                            html.Th(
+                                "DOI",
+                                style={"textAlign": "center", "minWidth": "120px"},
+                            ),
+                        ]
+                    ),
+                    style={"borderBottom": "1px solid #dee2e6"},
                 ),
-                html.Tbody(rows if rows else [
-                    html.Tr([
-                        html.Td("No publications found", colSpan=4, style={"textAlign": "center", "color": "#868e96"})
-                    ])
-                ]),
+                html.Tbody(
+                    rows
+                    if rows
+                    else [
+                        html.Tr(
+                            [
+                                html.Td(
+                                    "No publications found",
+                                    colSpan=4,
+                                    style={"textAlign": "center", "color": "#868e96"},
+                                )
+                            ]
+                        )
+                    ]
+                ),
             ],
             striped=True,
             highlightOnHover=True,
@@ -378,8 +395,9 @@ def make_paper_table():
         style={
             "width": "100%",
             "overflowX": "auto",
-        }
+        },
     )
+
 
 def make_dl_table(df, id, table_columns):
     """
@@ -393,13 +411,7 @@ def make_dl_table(df, id, table_columns):
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):
-        # If we have accession_display column, use it for display but keep accession_tag for functionality
-        if "accession_display" in df.columns:
-            display_df = df.copy()
-            display_df["accession_tag"] = display_df["accession_display"]
-            row_data = display_df.to_dict("records")
-        else:
-            row_data = df.to_dict("records")
+        row_data = df.to_dict("records")
     else:
         row_data = df  # Assume it's already in records format
 
@@ -414,7 +426,10 @@ def make_dl_table(df, id, table_columns):
         }
 
         # Add checkbox and special styling to accession columns
-        if col["id"] in ["accession_tag", "accession_display"]:
+        if col["id"] in [
+            "ship_accession_tag",
+            "ship_accession_display",
+        ]:
             col_def.update(
                 {
                     "checkboxSelection": True,

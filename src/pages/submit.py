@@ -7,18 +7,223 @@ from dash.dependencies import Output, Input, State
 from dash import dcc, html, callback
 
 import datetime
+from typing import Dict, Any, Optional
 from src.utils.seq_utils import parse_fasta, parse_gff
 
 from src.database.sql_engine import get_submissions_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
-from src.components.callbacks import create_file_upload
-from src.utils.classification_utils import assign_accession
-from src.database.sql_manager import fetch_ships
+from src.components.ui import create_file_upload
 
 from src.config.logging import get_logger
+from src.config.cache import cache
+from src.config.celery_config import run_task
+from src.tasks import process_submission_task
+from src.utils.web_submission_adapter import (
+    validate_submission_data,
+    WebValidationError,
+)
+
+import uuid
+import json
 
 logger = get_logger(__name__)
+
+
+class SubmissionError(Exception):
+    """Base exception for submission-related errors."""
+
+    def __init__(
+        self, message: str, error_type: str = "general", user_message: str = None
+    ):
+        self.message = message
+        self.error_type = error_type
+        self.user_message = user_message or message
+        super().__init__(self.message)
+
+
+class ValidationError(SubmissionError):
+    """Exception for validation errors."""
+
+    def __init__(self, message: str, field: str = None):
+        super().__init__(message, "validation", message)
+        self.field = field
+
+
+class ProcessingError(SubmissionError):
+    """Exception for processing errors."""
+
+    def __init__(self, message: str, stage: str = None):
+        super().__init__(message, "processing", message)
+        self.stage = stage
+
+
+class DatabaseError(SubmissionError):
+    """Exception for database errors."""
+
+    def __init__(self, message: str, operation: str = None):
+        super().__init__(
+            message, "database", "A database error occurred. Please try again."
+        )
+        self.operation = operation
+
+
+def handle_submission_error(error: Exception) -> Dict[str, Any]:
+    """
+    Handle submission errors and return appropriate response.
+
+    Args:
+        error: The exception that occurred
+
+    Returns:
+        Dict containing modal state, message, and loading status
+    """
+    logger.error(f"Submission error: {str(error)}", exc_info=True)
+
+    if isinstance(error, ValidationError):
+        return {
+            "modal_open": False,
+            "message": html.Div(
+                [
+                    html.H4("Validation Error", className="text-warning"),
+                    html.P(str(error.user_message), className="text-muted"),
+                ]
+            ),
+            "loading": False,
+        }
+    elif isinstance(error, ProcessingError):
+        return {
+            "modal_open": False,
+            "message": html.Div(
+                [
+                    html.H4("Processing Error", className="text-danger"),
+                    html.P(str(error.user_message), className="text-muted"),
+                ]
+            ),
+            "loading": False,
+        }
+    elif isinstance(error, DatabaseError):
+        return {
+            "modal_open": False,
+            "message": html.Div(
+                [
+                    html.H4("Database Error", className="text-danger"),
+                    html.P(str(error.user_message), className="text-muted"),
+                    html.P(
+                        "If this persists, please contact support.",
+                        className="text-muted small",
+                    ),
+                ]
+            ),
+            "loading": False,
+        }
+    else:
+        return {
+            "modal_open": False,
+            "message": html.Div(
+                [
+                    html.H4("Unexpected Error", className="text-danger"),
+                    html.P(
+                        "An unexpected error occurred. Please try again.",
+                        className="text-muted",
+                    ),
+                    html.P(
+                        "If this persists, please contact support.",
+                        className="text-muted small",
+                    ),
+                ]
+            ),
+            "loading": False,
+        }
+
+
+def create_submission_status(
+    submission_id: str, initial_status: str = "queued"
+) -> None:
+    """
+    Create a new submission status entry.
+
+    Args:
+        submission_id: Unique submission identifier
+        initial_status: Initial status ("queued", "processing", etc.)
+    """
+    status_data = {
+        "submission_id": submission_id,
+        "status": initial_status,
+        "created_at": datetime.datetime.now().isoformat(),
+        "updated_at": datetime.datetime.now().isoformat(),
+        "progress": 0,
+        "message": "Submission queued for processing",
+        "result": None,
+    }
+    cache.set(
+        f"submission:{submission_id}", json.dumps(status_data), timeout=3600
+    )  # 1 hour timeout
+
+
+def update_submission_status(
+    submission_id: str,
+    status: str,
+    progress: int = None,
+    message: str = None,
+    result: Dict = None,
+) -> None:
+    """
+    Update submission status.
+
+    Args:
+        submission_id: Unique submission identifier
+        status: New status
+        progress: Progress percentage (0-100)
+        message: Status message
+        result: Final result data
+    """
+    cache_key = f"submission:{submission_id}"
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        try:
+            status_data = json.loads(cached_data)
+        except json.JSONDecodeError:
+            status_data = {}
+    else:
+        status_data = {}
+
+    # Update fields
+    status_data.update(
+        {"status": status, "updated_at": datetime.datetime.now().isoformat()}
+    )
+
+    if progress is not None:
+        status_data["progress"] = progress
+
+    if message is not None:
+        status_data["message"] = message
+
+    if result is not None:
+        status_data["result"] = result
+
+    cache.set(cache_key, json.dumps(status_data), timeout=3600)
+
+
+def get_submission_status(submission_id: str) -> Optional[Dict]:
+    """
+    Get submission status.
+
+    Args:
+        submission_id: Unique submission identifier
+
+    Returns:
+        Status dict or None if not found
+    """
+    cached_data = cache.get(f"submission:{submission_id}")
+    if cached_data:
+        try:
+            return json.loads(cached_data)
+        except json.JSONDecodeError:
+            return None
+    return None
+
 
 dash.register_page(__name__)
 
@@ -224,25 +429,46 @@ layout = dmc.Container(
             radius="md",
             withBorder=True,
         ),
+        # Submission Status Section
+        dmc.Paper(
+            children=[
+                dmc.Title("Submission Status", order=3, mb="md"),
+                dmc.Stack(
+                    [
+                        dmc.TextInput(
+                            id="status-submission-id",
+                            label="Check Submission Status",
+                            placeholder="Enter submission ID",
+                            description="Enter the submission ID to check processing status",
+                        ),
+                        dmc.Button(
+                            "Check Status",
+                            id="check-status-btn",
+                            variant="light",
+                            size="sm",
+                        ),
+                        html.Div(id="status-display", className="mt-3"),
+                    ],
+                    gap="sm",
+                ),
+            ],
+            p="xl",
+            radius="md",
+            withBorder=True,
+            mb="xl",
+        ),
         # Modal
         dbc.Modal(
             [
                 dbc.ModalHeader(
-                    dbc.ModalTitle("Submission Success", className="text-success"),
+                    dbc.ModalTitle("Submission Status", className="text-info"),
                     close_button=True,
                 ),
                 dbc.ModalBody(
                     [
                         html.Div(
                             [
-                                html.I(
-                                    className="fas fa-check-circle text-success fa-3x mb-3"
-                                ),
                                 html.Div(id="output-data-upload", className="mt-3"),
-                                dmc.Text(
-                                    "Your Starship has been successfully added to the database.",
-                                    className="text-muted mt-2",
-                                ),
                             ],
                             className="text-center",
                         )
@@ -413,46 +639,30 @@ def submit_ship(
     close_modal,
     is_open,
 ):
+    """
+    Main submission callback with asynchronous processing.
+
+    This function validates input, starts an async task, and provides immediate feedback.
+    Users can check progress via submission status.
+    """
     modal = is_open
     message = ""
     loading = False
-    accession = None
-    needs_review = True
 
-    if n_clicks and n_clicks > 0:
-        loading = True
-        if strand_radio == 1:
-            shipstrand = "+"
-        else:
-            shipstrand = "-"
-        if not seq_contents:
-            return (
-                modal,
-                "No fasta file uploaded",
-                loading,
-            )  # Return the error message if no file
-        else:
-            # Decode sequence content
-            content_type, content_string = seq_contents.split(",")
-            seq_decoded = base64.b64decode(content_string).decode("utf-8")
+    # Only process if submit button was clicked
+    if not n_clicks or n_clicks <= 0:
+        return modal, message, loading
 
-            # Parse FASTA to get sequence
-            # Assuming single sequence in FASTA
-            sequence = parse_fasta(seq_decoded, seq_filename)[0]["sequence"]
+    loading = True
 
-            # Get existing ships for comparison
-            existing_ships = fetch_ships(curated=True, with_sequence=True)
-
-            # Assign accession and check if review needed
-            accession, needs_review = assign_accession(sequence, existing_ships)
-
-        insert_submission(
+    try:
+        # Step 1: Validate input data (quick validation)
+        # This must pass before we proceed with submission
+        # If validation fails, validate_submission_data will raise ValidationError
+        logger.debug("Validating submission data")
+        _ = validate_submission_data(
             seq_contents,
             seq_filename,
-            seq_date,
-            anno_contents,
-            anno_filename,
-            anno_date,
             uploader,
             evidence,
             genus,
@@ -460,29 +670,152 @@ def submit_ship(
             hostchr,
             shipstart,
             shipend,
-            shipstrand,
-            comment,
-            accession=accession,
-            needs_review=needs_review,
         )
 
+        # Step 2: Create submission data package
+        submission_data = {
+            "seq_contents": seq_contents,
+            "seq_filename": seq_filename,
+            "seq_date": seq_date,
+            "anno_contents": anno_contents,
+            "anno_filename": anno_filename,
+            "anno_date": anno_date,
+            "uploader": uploader,
+            "evidence": evidence,
+            "genus": genus,
+            "species": species,
+            "hostchr": hostchr,
+            "shipstart": shipstart,
+            "shipend": shipend,
+            "strand_radio": strand_radio,
+            "comment": comment or "",
+        }
+
+        # Step 3: Generate unique submission ID
+        submission_id = str(uuid.uuid4())
+        logger.info(f"Created submission {submission_id} for file {seq_filename}")
+
+        # Step 4: Create initial status
+        create_submission_status(submission_id, "queued")
+
+        # Step 5: Start async processing task
+        logger.debug(f"Starting async submission processing for {submission_id}")
+        task_result = run_task(process_submission_task, submission_data, submission_id)
+
+        # Store task ID for status checking
+        if hasattr(task_result, "id"):
+            update_submission_status(
+                submission_id,
+                "processing",
+                progress=10,
+                message="Submission is being processed...",
+            )
+            cache.set(f"task:{submission_id}", task_result.id, timeout=3600)
+        else:
+            # Task ran synchronously (no Celery)
+            update_submission_status(
+                submission_id,
+                "completed" if task_result.get("success") else "failed",
+                progress=100,
+                message=task_result.get("message", "Processing complete"),
+                result=task_result,
+            )
+
+        # Step 6: Show immediate feedback with submission ID
         modal = not is_open if not close_modal else False
-        message = html.Div(
-            [
-                html.H4("Successfully submitted!", className="mb-3"),
-                dmc.Text(f"Assigned accession: {accession}", className="text-muted"),
-                dmc.Text(
-                    f"Review status: {'Needs review' if needs_review else 'Auto-approved'}",
-                    className="text-muted",
-                ),
-                dmc.Text(f"Filename: {seq_filename}", className="text-muted"),
-                dmc.Text(f"Uploaded by: {uploader}", className="text-muted"),
-            ]
-        )
+        if hasattr(task_result, "id"):
+            # Async processing
+            message = html.Div(
+                [
+                    html.H4("Submission Queued!", className="mb-3"),
+                    dmc.Text(
+                        "Your submission is being processed in the background.",
+                        className="text-muted",
+                    ),
+                    dmc.Text(f"Submission ID: {submission_id}", className="text-muted"),
+                    html.Br(),
+                    dmc.Text(
+                        "You can close this dialog. Processing will continue.",
+                        className="text-muted small",
+                    ),
+                    html.Br(),
+                    dmc.Text(
+                        "Check the status below to see when processing is complete.",
+                        className="text-muted small",
+                    ),
+                ]
+            )
+        else:
+            # Sync processing completed
+            if task_result.get("success"):
+                message = html.Div(
+                    [
+                        html.H4("Successfully submitted!", className="mb-3"),
+                        dmc.Text(
+                            f"Assigned accession: {task_result['accession']}",
+                            className="text-muted",
+                        ),
+                        dmc.Text(
+                            f"Review status: {'Needs review' if task_result['needs_review'] else 'Auto-approved'}",
+                            className="text-muted",
+                        ),
+                        dmc.Text(
+                            f"Filename: {task_result['filename']}",
+                            className="text-muted",
+                        ),
+                        dmc.Text(
+                            f"Uploaded by: {task_result['uploader']}",
+                            className="text-muted",
+                        ),
+                    ]
+                )
+            else:
+                message = html.Div(
+                    [
+                        html.H4("Submission Failed", className="text-danger mb-3"),
+                        dmc.Text(
+                            task_result.get("user_message", "An error occurred"),
+                            className="text-muted",
+                        ),
+                    ]
+                )
 
         loading = False
+        return modal, message, loading
 
-    return modal, message, loading
+    except WebValidationError as e:
+        # Handle validation errors from web_submission_adapter
+        # Convert to our ValidationError for consistent handling
+        validation_error = ValidationError(
+            str(e.message) if hasattr(e, "message") else str(e),
+            getattr(e, "field", None),
+        )
+        error_response = handle_submission_error(validation_error)
+        loading = False
+        return (
+            error_response["modal_open"],
+            error_response["message"],
+            error_response["loading"],
+        )
+
+    except SubmissionError as e:
+        # Handle our custom submission errors
+        error_response = handle_submission_error(e)
+        return (
+            error_response["modal_open"],
+            error_response["message"],
+            error_response["loading"],
+        )
+
+    except Exception as e:
+        # Handle unexpected errors
+        logger.error(f"Unexpected error in submit_ship: {str(e)}", exc_info=True)
+        error_response = handle_submission_error(e)
+        return (
+            error_response["modal_open"],
+            error_response["message"],
+            error_response["loading"],
+        )
 
 
 @callback(
@@ -526,3 +859,95 @@ def update_gff_details(anno_contents, anno_filename):
         except Exception as e:
             logger.error(e)
             return html.Div(["There was an error processing this file."])
+
+
+@callback(
+    Output("status-display", "children"),
+    Input("check-status-btn", "n_clicks"),
+    State("status-submission-id", "value"),
+    prevent_initial_call=True,
+)
+def check_submission_status(n_clicks, submission_id):
+    """Check and display submission status."""
+    if not n_clicks or not submission_id or not submission_id.strip():
+        return html.Div("Please enter a submission ID", className="text-muted")
+
+    submission_id = submission_id.strip()
+    status_data = get_submission_status(submission_id)
+
+    if not status_data:
+        return dmc.Alert(
+            "Submission not found or expired. Submission status is only available for 1 hour after submission.",
+            title="Status Not Found",
+            color="orange",
+            variant="light",
+        )
+
+    status = status_data.get("status", "unknown")
+    progress = status_data.get("progress", 0)
+    message = status_data.get("message", "")
+    created_at = status_data.get("created_at", "")
+    updated_at = status_data.get("updated_at", "")
+
+    # Status color mapping
+    status_colors = {
+        "queued": "blue",
+        "processing": "yellow",
+        "completed": "green",
+        "failed": "red",
+        "unknown": "gray",
+    }
+
+    color = status_colors.get(status, "gray")
+
+    status_display = [
+        dmc.Group(
+            [
+                dmc.Text("Status:", fw=700),
+                dmc.Badge(status.upper(), color=color, variant="light"),
+            ]
+        ),
+        dmc.Progress(value=progress, color=color, size="lg"),
+        dmc.Text(f"Progress: {progress}%", size="sm", c="dimmed"),
+        dmc.Text(message, size="sm"),
+    ]
+
+    if created_at:
+        status_display.append(
+            dmc.Text(f"Submitted: {created_at}", size="xs", c="dimmed")
+        )
+
+    if updated_at and updated_at != created_at:
+        status_display.append(
+            dmc.Text(f"Last updated: {updated_at}", size="xs", c="dimmed")
+        )
+
+    # Show result if completed
+    result = status_data.get("result")
+    if result and status == "completed" and result.get("success"):
+        status_display.extend(
+            [
+                dmc.Divider(),
+                dmc.Text("Result:", fw=700),
+                dmc.Text(f"Accession: {result.get('accession', 'N/A')}", size="sm"),
+                dmc.Text(
+                    f"Review needed: {'Yes' if result.get('needs_review') else 'No'}",
+                    size="sm",
+                ),
+                dmc.Text(f"Filename: {result.get('filename', 'N/A')}", size="sm"),
+            ]
+        )
+    elif result and status == "failed":
+        status_display.extend(
+            [
+                dmc.Divider(),
+                dmc.Alert(
+                    result.get("user_message", "Processing failed"),
+                    title="Error",
+                    color="red",
+                    variant="light",
+                ),
+            ]
+        )
+
+    return dmc.Stack(status_display, gap="xs")

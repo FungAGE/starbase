@@ -1,8 +1,8 @@
-import os
 from flask import request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+from src.config.settings import IS_DEV
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,8 +19,8 @@ limiter = Limiter(
 @limiter.request_filter
 def exclude_dev_endpoints():
     """Exclude Dash development endpoints from rate limiting in development mode only."""
-    # Only bypass rate limits for dev endpoints if DEV_MODE is enabled
-    if os.getenv("DEV_MODE") and request.path.startswith(("/_dash-", "/_reload-hash")):
+    # Only bypass rate limits for dev endpoints if IS_DEV
+    if IS_DEV and request.path.startswith(("/_dash-", "/_reload-hash")):
         return True
     return False
 
