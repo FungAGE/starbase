@@ -1046,10 +1046,16 @@ def generate_download_helper(rows, curated, dereplicate):
         if not rows:
             raise ValueError("No rows selected for download")
 
-        accessions = [
-            re.sub(pattern=r"\..*", repl="", string=row["accession_tag"])
-            for row in rows
-        ]
+        def _base_accession(row):
+            tag = row.get("accession_tag") or row.get("ship_accession_tag")
+            if tag is None or (isinstance(tag, float) and pd.isna(tag)):
+                return None
+            return re.sub(pattern=r"\..*", repl="", string=str(tag))
+
+        accessions = [_base_accession(row) for row in rows]
+        accessions = [a for a in accessions if a]
+        if not accessions:
+            raise ValueError("No valid accessions found in selected rows for download")
         dl_df = fetch_ships(
             accessions=accessions,
             curated=curated,
