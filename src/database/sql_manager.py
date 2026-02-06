@@ -9,77 +9,6 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _format_version(version):
-    """Format version tag to avoid trailing .0 for whole numbers."""
-    if pd.isna(version):
-        return None
-    try:
-        # Try to convert to float first to handle string numbers
-        version_float = float(version)
-        # If it's a whole number, return as int string, otherwise return as is
-        if version_float.is_integer():
-            return str(int(version_float))
-        return str(version_float)
-    except (ValueError, TypeError):
-        # If conversion fails, return as string
-        return str(version).strip()
-
-
-def _make_accession_display(accession, version):
-    """Create display string for accession with version (expects scalar values from a single row)."""
-    # Check both values are not null, and accession doesn't already have a dot-version
-    if (
-        pd.notna(accession)
-        and str(accession).strip() != ""
-        and pd.notna(version)
-        and str(version).strip() != ""
-        and "." not in str(accession)
-    ):
-        formatted_version = _format_version(version)
-        if formatted_version:
-            return f"{accession}.{formatted_version}"
-    # If accession_tag already has a version or version_tag is missing, just use as is
-    if pd.notna(accession) and str(accession).strip() != "":
-        return str(accession)
-    return ""
-
-
-def _add_display_fields(df, accession_column=None, version_column=None, ship_accession_column=None, ship_version_column=None):
-    """
-    Add accession_display and ship_accession_display fields to DataFrame.
-    - Ensure accession/version entries are valid (not NA/empty/None)
-    - Ensure accession does NOT already have a version tag appended with a dot
-    - Only assign when column does not exist or is all null (don't overwrite existing non-null).
-    - Default column names: accession_tag, version_tag, ship_accession_tag, ship_version_tag.
-    """
-    df = df.copy()
-
-    acc_col = accession_column if accession_column is not None else "accession_tag"
-    ver_col = version_column if version_column is not None else "version_tag"
-    ship_acc_col = ship_accession_column if ship_accession_column is not None else "ship_accession_tag"
-    ship_ver_col = ship_version_column if ship_version_column is not None else "ship_version_tag"
-
-    # accession_display: use accession + version columns (only if present in df)
-    if acc_col in df.columns and ver_col in df.columns:
-        col = "accession_display"
-        if col not in df.columns or df[col].isna().all():
-            df[col] = df.apply(
-                lambda row: _make_accession_display(row[acc_col], row[ver_col]),
-                axis=1,
-            )
-
-    # ship_accession_display: use ship accession + version columns (only if present in df)
-    if ship_acc_col in df.columns and ship_ver_col in df.columns:
-        col = "ship_accession_display"
-        if col not in df.columns or df[col].isna().all():
-            df[col] = df.apply(
-                lambda row: _make_accession_display(row[ship_acc_col], row[ship_ver_col]),
-                axis=1,
-            )
-
-    return df
-
-
 def _get_accession_mode(accessions):
     # the set of accessions should all start with either "SSA" or all start with "SSB"
     if accessions:
@@ -126,12 +55,13 @@ def fetch_meta_data(curated=False, accessions=None):
                     j.ship_id, j.id as joined_ship_id,
                     sa.ship_accession_tag,
                     sa.ship_version_tag,
+                    sa.ship_accession_display,
                     t.taxID, t.strain, t.`order`, t.family, t.name,
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
                     s.md5, s.rev_comp_md5, s.sequence_length,
-                    a.accession_tag, a.version_tag
+                    a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships j
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
                 LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -151,8 +81,6 @@ def fetch_meta_data(curated=False, accessions=None):
         except Exception as e:
             logger.error(f"Error fetching meta data: {str(e)}")
             raise
-
-        full_df = _add_display_fields(full_df)
 
         filtered_df = full_df.copy()
 
@@ -246,13 +174,14 @@ def fetch_ships(
                 j.ship_id,
                 sa.ship_accession_tag,
                 sa.ship_version_tag,
+                sa.ship_accession_display,
                 j.curated_status,
                 j.starshipID,
                 sf.elementBegin, sf.elementEnd, sf.contigID,
                 t.name, t.family, t.`order`,
                 f.familyName, n.navis_name, h.haplotype_name,
                 g.assembly_accession, c.captainID,
-                a.accession_tag, a.version_tag
+                a.accession_tag, a.version_tag, a.accession_display
                 """
 
         base_query += """
@@ -307,7 +236,9 @@ def fetch_ships(
                 sm.ship_id,
                 sm.accession_tag,
                 sm.version_tag,
+                sm.accession_display,
                 sm.ship_accession_tag,
+                sm.ship_accession_display,
                 sm.curated_status,
                 sm.starshipID,
                 sm.elementBegin,
@@ -336,7 +267,9 @@ def fetch_ships(
             SELECT
                 sm.accession_tag,
                 sm.version_tag,
+                sm.accession_display,
                 sm.ship_accession_tag,
+                sm.ship_accession_display,
                 sm.curated_status,
                 sm.starshipID,
                 sm.elementBegin,
@@ -357,9 +290,6 @@ def fetch_ships(
 
         try:
             df = pd.read_sql_query(query, session.bind)
-
-            # Create display fields in Python for better maintainability
-            df = _add_display_fields(df)
 
             if df.empty:
                 logger.warning("Fetched ships DataFrame is empty.")
@@ -400,9 +330,10 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                     js.curated_status,
                     sa.ship_accession_tag,
                     sa.ship_version_tag,
+                    sa.ship_accession_display,
                     f.familyName,
                     t.name,
-                    a.accession_tag, a.version_tag
+                    a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships js
                 LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
                 LEFT JOIN taxonomy t ON js.tax_id = t.id
@@ -412,9 +343,6 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                 """
 
                 full_df = pd.read_sql_query(query, session.bind)
-
-                # Create display fields in Python for better maintainability
-                full_df = _add_display_fields(full_df)
 
                 cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
 
@@ -522,6 +450,7 @@ def fetch_captains(
         SELECT DISTINCT
             sa.ship_accession_tag,
             sa.ship_version_tag,
+            sa.ship_accession_display,
             j.curated_status,
             j.starshipID,
             c.captainID as captain_id,
@@ -530,7 +459,8 @@ def fetch_captains(
             h.haplotype_name,
             c.captainID,
             a.accession_tag,
-            a.version_tag
+            a.version_tag,
+            a.accession_display
         FROM joined_ships j
         LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -557,7 +487,9 @@ def fetch_captains(
         SELECT
             cm.ship_accession_tag,
             cm.version_tag,
-            cm.ship_accession_tag,
+            cm.ship_accession_display,
+            cm.accession_tag,
+            cm.accession_display,
             cm.curated_status,
             cm.starshipID,
             cm.captain_id,
@@ -574,7 +506,9 @@ def fetch_captains(
         SELECT 
             cm.accession_tag,
             cm.version_tag,
+            cm.accession_display,
             cm.ship_accession_tag,
+            cm.ship_accession_display,
             cm.curated_status,
             cm.starshipID,
             cm.captainID,
@@ -587,9 +521,6 @@ def fetch_captains(
     with get_starbase_session() as session:
         try:
             df = pd.read_sql_query(query, session.bind)
-
-            # Create display fields in Python for better maintainability
-            df = _add_display_fields(df)
 
             if dereplicate:
                 df = df.drop_duplicates(subset="ship_accession_tag")
