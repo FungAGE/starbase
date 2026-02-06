@@ -150,7 +150,7 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
     )
 
 
-def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
+def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
     Specific table constructor for ship data using AG Grid.
     """
@@ -163,14 +163,6 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
             )
         else:
             df = pd.DataFrame()
-
-    # If we have display columns, use them for display but keep original tags for functionality
-    display_df = df.copy() if isinstance(df, pd.DataFrame) else df
-    if isinstance(df, pd.DataFrame):
-        if "accession_display" in df.columns:
-            display_df["accession_tag"] = display_df["accession_display"]
-        if "ship_accession_display" in df.columns:
-            display_df["ship_accession_tag"] = display_df["ship_accession_display"]
 
     # Convert column format to AG Grid format
     if columns:
@@ -199,9 +191,9 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 )
 
             # Add special styling for accession_tag and ship_accession_tag
-            if col.get("id") in ["accession_tag", "ship_accession_tag"] or col.get(
+            if col.get("id") in ["accession_display", "ship_accession_display"] or col.get(
                 "field"
-            ) in ["accession_tag", "ship_accession_tag"]:
+            ) in ["accession_display", "ship_accession_display"]:
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
@@ -216,8 +208,8 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 "headerName": col.replace("_", " ").title(),
                 "sortable": True,
             }
-            for col in display_df.columns
-            if col not in ["accession_display", "ship_accession_display"]
+            for col in df.columns
+            if col not in ["accession_tag", "ship_accession_tag"]
         ]
 
     # Simplified grid options
@@ -242,9 +234,9 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
         id=id,
         columnDefs=grid_columns,
         rowData=(
-            display_df.to_dict("records")
-            if isinstance(display_df, pd.DataFrame)
-            else display_df
+            df.to_dict("records")
+            if isinstance(df, pd.DataFrame)
+            else df
         ),
         defaultColDef={
             "resizable": True,
