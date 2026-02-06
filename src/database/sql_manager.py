@@ -13,10 +13,9 @@ def _get_accession_mode(accessions):
     # the set of accessions should all start with either "SSA" or all start with "SSB"
     if accessions:
         if all(accession.startswith("SSA") for accession in accessions):
-            accession_mode = "SSA"
-        elif all(accession.startswith("SSB") for accession in accessions):
-            accession_mode = "SSB"
-        return accession_mode
+            return "SSA"
+        if all(accession.startswith("SSB") for accession in accessions):
+            return "SSB"
     return None
 
 
@@ -87,9 +86,7 @@ def fetch_meta_data(curated=False, accessions=None):
         if curated:
             filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
         if accessions:
-            formatted_values = []
-            for tag in accessions:
-                formatted_values.append(str(tag).strip("'\""))
+            formatted_values = [str(tag).strip("'\"") for tag in accessions]
 
             if accession_mode == "SSA":
                 filtered_df = filtered_df[
@@ -99,6 +96,13 @@ def fetch_meta_data(curated=False, accessions=None):
                 filtered_df = filtered_df[
                     filtered_df["ship_accession_tag"].isin(formatted_values)
                 ]
+            elif accession_mode is None:
+                # Mixed or unknown: match either column
+                mask = (
+                    filtered_df["accession_tag"].isin(formatted_values)
+                    | filtered_df["ship_accession_tag"].isin(formatted_values)
+                )
+                filtered_df = filtered_df[mask]
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")
 
@@ -201,28 +205,39 @@ def fetch_ships(
         query = base_query
 
         if accessions:
-            # Format the values as accession_tag.version_tag if version_tag is present, else accession_tag only
-            formatted_values = []
+            formatted_values = [str(tag).strip("'\"") for tag in accessions]
+            quoted_sql = ", ".join(
+                "'" + str(v).replace("'", "''") + "'" for v in formatted_values
+            )
+            # Match base accession with or without version suffix
+            like_clauses = " OR ".join(
+                "a.accession_tag LIKE '"
+                + str(v).replace("'", "''")
+                + ".%'"
+                for v in formatted_values
+            )
+            ship_like_clauses = " OR ".join(
+                "sa.ship_accession_tag LIKE '"
+                + str(v).replace("'", "''")
+                + ".%'"
+                for v in formatted_values
+            )
 
             if accession_mode == "SSA":
-                accession_column = "a.accession_tag"
-                version_column = "a.version_tag"
-                query += " AND ({} IS NOT NULL AND {} != '' AND ({}.version_tag || '.' || {}) IN ({}))".format(
-                    version_column,
-                    version_column,
-                    accession_column,
-                    accession_column,
-                    ",".join(formatted_values),
+                query += " AND (a.accession_tag IN ({}) OR ({}))".format(
+                    quoted_sql, like_clauses
                 )
             elif accession_mode == "SSB":
-                accession_column = "sa.ship_accession_tag"
-                version_column = "sa.ship_version_tag"
-                query += " AND ({} IS NOT NULL AND {} != '' AND ({}.version_tag || '.' || {}) IN ({}))".format(
-                    version_column,
-                    version_column,
-                    accession_column,
-                    accession_column,
-                    ",".join(formatted_values),
+                query += " AND (sa.ship_accession_tag IN ({}) OR ({}))".format(
+                    quoted_sql, ship_like_clauses
+                )
+            elif accession_mode is None:
+                # Mixed or unknown: match either column (e.g. download with mixed SSA/SSB or null SSA)
+                query += " AND ((a.accession_tag IN ({}) OR ({})) OR (sa.ship_accession_tag IN ({}) OR ({})))".format(
+                    quoted_sql,
+                    like_clauses,
+                    quoted_sql,
+                    ship_like_clauses,
                 )
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")

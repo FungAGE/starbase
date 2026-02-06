@@ -33,6 +33,7 @@ class ShipAccessions(Base):
     ship_accession_tag = Column(String, unique=True, nullable=False)
     version_tag = Column(Integer, nullable=False, default=1)
     ship_id = Column(Integer, ForeignKey("ships.id"), unique=True, nullable=False)
+    ship_accession_display = Column(String, nullable=True)
 
     # Relationships
     ship = relationship("Ships", back_populates="ship_accession")
