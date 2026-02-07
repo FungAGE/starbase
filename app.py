@@ -97,7 +97,9 @@ def initialize_app():
         from src.database.migrations import create_database_indexes
         from src.database.blastdb import create_dbs
         from src.config.celery_config import celery
+        from src.config.sentry import init_sentry
 
+        init_sentry()
         create_database_indexes()
         cleanup_old_cache()
         update_ip_locations_task()

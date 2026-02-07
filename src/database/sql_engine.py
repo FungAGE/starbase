@@ -15,7 +15,7 @@ def get_starbase_session():
         session.commit()
     except Exception as e:
         session.rollback()
-        logger.error(f"Database error: {e}")
+        logger.error(f"starbase session error: {e}")
         raise
     finally:
         session.close()
@@ -30,7 +30,7 @@ def get_submissions_session():
         session.commit()
     except Exception as e:
         session.rollback()
-        logger.error(f"Database error: {e}")
+        logger.error(f"submissions session error: {e}")
         raise
     finally:
         session.close()
@@ -45,7 +45,7 @@ def get_telemetry_session():
         session.commit()
     except Exception as e:
         session.rollback()
-        logger.error(f"Database error: {e}")
+        logger.error(f"telemetry session error: {e}")
         raise
     finally:
         session.close()

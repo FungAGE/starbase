@@ -99,6 +99,7 @@ dependencies:
   - libxcrypt=4.4.36=hd590300_1
   - libxml2=2.13.8=h2cb61b6_1
   - libzlib=1.3.1=hb9d3cd8_2
+  - matplotlib-base=3.9.4=py39h16632d1_0
   - mcl=22.282=pl5321h7b50bb2_4
   - minimap2=2.30=h577a1d6_0
   - mmseqs2=17.b804f=hd6d6fdc_1
@@ -113,6 +114,7 @@ dependencies:
   - openmpi=4.1.6=hc5af2df_101
   - openssl=3.5.2=h26f9b46_0
   - pandas=2.0.3=py39h40cae4c_1
+  - patsy=1.0.1=pyhd8ed1ab_1
   - percy=2.0.2=pyhd8ed1ab_1
   - perl=5.32.1=7_hd590300_perl5
   - perl-archive-tar=3.04=pl5321hdfd78af_0
@@ -150,15 +152,19 @@ dependencies:
   - python_abi=3.9=8_cp39
   - pytz=2025.2=pyhd8ed1ab_0
   - pyvcf3=1.0.4=py39hbcbf7aa_0
+  - qhull=2020.2=h434a139_5
   - readline=8.2=h8c095d6_2
   - rpsbproc=0.5.0=hd6d6fdc_3
   - scipy=1.11.2=py39h6183b62_0
   - screed=1.1.3=pyhd8ed1ab_0
+  - seaborn=0.13.2=hd8ed1ab_3
+  - seaborn-base=0.13.2=pyhd8ed1ab_3
   - simplejson=3.20.1=py39h8cd3c5a_0
   - six=1.17.0=pyhe01879c_1
   - soupsieve=2.7=pyhd8ed1ab_0
   - sourmash=4.8.4=hdfd78af_0
   - sourmash-minimal=4.8.4=py39h9fdd4d6_1
+  - statsmodels=0.14.5=py39h7c0b2d6_0
   - sysroot_linux-64=2.34=h087de78_2
   - tk=8.6.13=noxft_hd72426e_102
   - typing-extensions=4.14.1=h4440ef1_0
@@ -187,10 +193,12 @@ dependencies:
       - backports-zoneinfo==0.2.1
       - billiard==4.2.1
       - bleach==6.2.0
+      - blinker==1.9.0
       - bokeh==3.2.2
       - cachelib==0.9.0
       - celery==5.3.1
       - chardet==5.2.0
+      - choreographer==1.2.1
       - click==8.1.8
       - click-didyoumean==0.3.1
       - click-plugins==1.1.1.2
@@ -241,11 +249,13 @@ dependencies:
       - joblib==1.5.1
       - jsonschema==4.25.0
       - jsonschema-specifications==2025.4.1
+      - kaleido==0.2.1
       - keyring==25.6.0
       - kombu==5.5.4
       - lazy-object-proxy==1.11.0
       - limits==4.2
       - linkify-it-py==2.0.3
+      - logistro==2.0.1
       - logomaker==0.8
       - lxml==6.0.0
       - mako==1.3.10
@@ -260,9 +270,11 @@ dependencies:
       - more-itertools==10.7.0
       - multidict==6.6.4
       - multiprocess==0.70.18
+      - narwhals==2.11.0
       - nest-asyncio==1.6.0
       - nh3==0.3.0
       - ordered-set==4.1.0
+      - orjson==3.11.4
       - outcome==1.3.0.post0
       - packaging==24.2
       - panel==1.2.3
@@ -286,6 +298,7 @@ dependencies:
       - pymysql==1.1.2
       - pyquery==2.0.1
       - pytest==7.1.2
+      - pytest-timeout==2.4.0
       - python-dotenv==1.0.1
       - pyviz-comms==3.0.6
       - pyyaml==6.0.2
@@ -304,6 +317,7 @@ dependencies:
       - scikit-learn==1.6.1
       - secretstorage==3.3.3
       - selenium==4.29.0
+      - sentry-sdk==2.50.0
       - setuptools==62.1.0
       - sniffio==1.3.1
       - sortedcontainers==2.4.0
@@ -324,7 +338,7 @@ dependencies:
       - typed-ast==1.5.5
       - typing==3.7.4.3
       - uc-micro-py==1.0.3
-      - urllib3==1.26.9
+      - urllib3==2.6.3
       - uvicorn==0.33.0
       - vine==5.1.0
       - wcwidth==0.2.13

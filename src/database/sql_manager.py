@@ -9,88 +9,13 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _format_version(version):
-    """Format version tag to avoid trailing .0 for whole numbers."""
-    if pd.isna(version):
-        return None
-    try:
-        # Try to convert to float first to handle string numbers
-        version_float = float(version)
-        # If it's a whole number, return as int string, otherwise return as is
-        if version_float.is_integer():
-            return str(int(version_float))
-        return str(version_float)
-    except (ValueError, TypeError):
-        # If conversion fails, return as string
-        return str(version).strip()
-
-
-def _make_accession_display(accession, version):
-    """Create display string for accession with version."""
-    # Check both values are not null, and accession doesn't already have a dot-version
-    if (
-        pd.notna(accession)
-        and str(accession).strip() != ""
-        and pd.notna(version)
-        and str(version).strip() != ""
-        and "." not in str(accession)
-    ):
-        formatted_version = _format_version(version)
-        if formatted_version:
-            return f"{accession}.{formatted_version}"
-    # If accession_tag already has a version or version_tag is missing, just use as is
-    if pd.notna(accession) and str(accession).strip() != "":
-        return str(accession)
-    return ""
-
-
-def _add_display_fields(df):
-    """
-    Add accession_display and ship_accession_display fields to DataFrame.
-    - Ensure 'accession_tag' and 'version_tag' entries are valid (not NA/empty/None)
-    - Ensure 'accession_tag' does NOT already have a version tag appended with a dot
-    - Only assign 'accession_display' if it does not already exist and has no version tag
-    - In other words, don't overwrite if 'accession_display' is already non-null
-    """
-    df = df.copy()
-    if "accession_display" not in df.columns or df["accession_display"].isna().all():
-        df["accession_display"] = df.apply(
-            lambda row: _make_accession_display(
-                row["accession_tag"], row["version_tag"]
-            ),
-            axis=1,
-        )
-    if (
-        "ship_accession_display" not in df.columns
-        or df["ship_accession_display"].isna().all()
-    ):
-        # Use ship_version_tag if available, otherwise fall back to version_tag
-        if "ship_version_tag" in df.columns:
-            df["ship_accession_display"] = df.apply(
-                lambda row: _make_accession_display(
-                    row["ship_accession_tag"], row["ship_version_tag"]
-                ),
-                axis=1,
-            )
-        else:
-            df["ship_accession_display"] = df.apply(
-                lambda row: _make_accession_display(
-                    row["ship_accession_tag"], row["version_tag"]
-                ),
-                axis=1,
-            )
-
-    return df
-
-
 def _get_accession_mode(accessions):
     # the set of accessions should all start with either "SSA" or all start with "SSB"
     if accessions:
         if all(accession.startswith("SSA") for accession in accessions):
-            accession_mode = "SSA"
-        elif all(accession.startswith("SSB") for accession in accessions):
-            accession_mode = "SSB"
-        return accession_mode
+            return "SSA"
+        if all(accession.startswith("SSB") for accession in accessions):
+            return "SSB"
     return None
 
 
@@ -105,9 +30,7 @@ def fetch_meta_data(curated=False, accessions=None):
     Args:
         curated (bool): If True, only return curated entries
         accessions (str or list): Single accession tag or list of accession tags
-        accession_mode (str): "USS" (unified), "SSA", or "SSB" for backward compatibility
-        accession_tags (str or list): Deprecated - use 'accessions' instead
-
+        
     Returns:
         pd.DataFrame: Metadata for the specified filters
     """
@@ -130,13 +53,14 @@ def fetch_meta_data(curated=False, accessions=None):
                 SELECT j.curated_status, j.starshipID,
                     j.ship_id, j.id as joined_ship_id,
                     sa.ship_accession_tag,
-                    sa.version_tag,
+                    sa.ship_version_tag,
+                    sa.ship_accession_display,
                     t.taxID, t.strain, t.`order`, t.family, t.name,
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
                     s.md5, s.rev_comp_md5, s.sequence_length,
-                    a.accession_tag, a.version_tag
+                    a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships j
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
                 LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -157,16 +81,12 @@ def fetch_meta_data(curated=False, accessions=None):
             logger.error(f"Error fetching meta data: {str(e)}")
             raise
 
-        full_df = _add_display_fields(full_df)
-
         filtered_df = full_df.copy()
 
         if curated:
             filtered_df = filtered_df[filtered_df["curated_status"] == "curated"]
         if accessions:
-            formatted_values = []
-            for tag in accessions:
-                formatted_values.append(str(tag).strip("'\""))
+            formatted_values = [str(tag).strip("'\"") for tag in accessions]
 
             if accession_mode == "SSA":
                 filtered_df = filtered_df[
@@ -176,6 +96,13 @@ def fetch_meta_data(curated=False, accessions=None):
                 filtered_df = filtered_df[
                     filtered_df["ship_accession_tag"].isin(formatted_values)
                 ]
+            elif accession_mode is None:
+                # Mixed or unknown: match either column
+                mask = (
+                    filtered_df["accession_tag"].isin(formatted_values)
+                    | filtered_df["ship_accession_tag"].isin(formatted_values)
+                )
+                filtered_df = filtered_df[mask]
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")
 
@@ -234,7 +161,7 @@ def fetch_ships(
     Fetch ship data for specified accession tags.
 
     Args:
-        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all ships.
+        accessions (list, optional): List of accession tags to fetch. If None, fetches all ships.
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
         with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
@@ -244,19 +171,21 @@ def fetch_ships(
     accession_mode = _get_accession_mode(accessions)
 
     with get_starbase_session() as session:
+        # CTE: denormalized ships (joined_ships + display metadata). Not validation—just one place for the join.
         base_query = """
-        WITH valid_ships AS (
+        WITH ships_with_metadata AS (
             SELECT DISTINCT
                 j.ship_id,
                 sa.ship_accession_tag,
-                sa.version_tag as ship_version_tag,
+                sa.ship_version_tag,
+                sa.ship_accession_display,
                 j.curated_status,
                 j.starshipID,
                 sf.elementBegin, sf.elementEnd, sf.contigID,
                 t.name, t.family, t.`order`,
                 f.familyName, n.navis_name, h.haplotype_name,
                 g.assembly_accession, c.captainID,
-                a.accession_tag, a.version_tag
+                a.accession_tag, a.version_tag, a.accession_display
                 """
 
         base_query += """
@@ -276,28 +205,39 @@ def fetch_ships(
         query = base_query
 
         if accessions:
-            # Format the values as accession_tag.version_tag if version_tag is present, else accession_tag only
-            formatted_values = []
+            formatted_values = [str(tag).strip("'\"") for tag in accessions]
+            quoted_sql = ", ".join(
+                "'" + str(v).replace("'", "''") + "'" for v in formatted_values
+            )
+            # Match base accession with or without version suffix
+            like_clauses = " OR ".join(
+                "a.accession_tag LIKE '"
+                + str(v).replace("'", "''")
+                + ".%'"
+                for v in formatted_values
+            )
+            ship_like_clauses = " OR ".join(
+                "sa.ship_accession_tag LIKE '"
+                + str(v).replace("'", "''")
+                + ".%'"
+                for v in formatted_values
+            )
 
             if accession_mode == "SSA":
-                accession_column = "a.accession_tag"
-                version_column = "a.version_tag"
-                query += " AND ({} IS NOT NULL AND {} != '' AND ({}.version_tag || '.' || {}) IN ({}))".format(
-                    version_column,
-                    version_column,
-                    accession_column,
-                    accession_column,
-                    ",".join(formatted_values),
+                query += " AND (a.accession_tag IN ({}) OR ({}))".format(
+                    quoted_sql, like_clauses
                 )
             elif accession_mode == "SSB":
-                accession_column = "sa.ship_accession_tag"
-                version_column = "sa.version_tag"
-                query += " AND ({} IS NOT NULL AND {} != '' AND ({}.version_tag || '.' || {}) IN ({}))".format(
-                    version_column,
-                    version_column,
-                    accession_column,
-                    accession_column,
-                    ",".join(formatted_values),
+                query += " AND (sa.ship_accession_tag IN ({}) OR ({}))".format(
+                    quoted_sql, ship_like_clauses
+                )
+            elif accession_mode is None:
+                # Mixed or unknown: match either column (e.g. download with mixed SSA/SSB or null SSA)
+                query += " AND ((a.accession_tag IN ({}) OR ({})) OR (sa.ship_accession_tag IN ({}) OR ({})))".format(
+                    quoted_sql,
+                    like_clauses,
+                    quoted_sql,
+                    ship_like_clauses,
                 )
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")
@@ -308,28 +248,30 @@ def fetch_ships(
             query += """
             )
             SELECT
-                v.ship_id,
-                v.accession_tag,
-                v.version_tag,
-                v.ship_accession_tag,
-                v.curated_status,
-                v.starshipID,
-                v.elementBegin,
-                v.elementEnd,
-                v.contigID,
-                v.name,
-                v.family,
-                v.`order`,
-                v.familyName,
-                v.navis_name,
-                v.haplotype_name,
-                v.assembly_accession,
+                sm.ship_id,
+                sm.accession_tag,
+                sm.version_tag,
+                sm.accession_display,
+                sm.ship_accession_tag,
+                sm.ship_accession_display,
+                sm.curated_status,
+                sm.starshipID,
+                sm.elementBegin,
+                sm.elementEnd,
+                sm.contigID,
+                sm.name,
+                sm.family,
+                sm.`order`,
+                sm.familyName,
+                sm.navis_name,
+                sm.haplotype_name,
+                sm.assembly_accession,
                 s.sequence,
                 s.md5,
                 s.rev_comp_md5,
-                v.captainID
-            FROM valid_ships v
-            LEFT JOIN ships s ON s.id = v.ship_id
+                sm.captainID
+            FROM ships_with_metadata sm
+            LEFT JOIN ships s ON s.id = sm.ship_id
             WHERE s.sequence IS NOT NULL"""
 
             query += """
@@ -338,32 +280,31 @@ def fetch_ships(
             query += """
             )
             SELECT
-                v.accession_tag,
-                v.version_tag,
-                v.ship_accession_tag,
-                v.curated_status,
-                v.starshipID,
-                v.elementBegin,
-                v.elementEnd,
-                v.contigID,
-                v.name,
-                v.family,
-                v.`order`,
-                v.familyName,
-                v.navis_name,
-                v.haplotype_name,
-                v.assembly_accession,
-                v.captainID
-            FROM valid_ships v"""
+                sm.accession_tag,
+                sm.version_tag,
+                sm.accession_display,
+                sm.ship_accession_tag,
+                sm.ship_accession_display,
+                sm.curated_status,
+                sm.starshipID,
+                sm.elementBegin,
+                sm.elementEnd,
+                sm.contigID,
+                sm.name,
+                sm.family,
+                sm.`order`,
+                sm.familyName,
+                sm.navis_name,
+                sm.haplotype_name,
+                sm.assembly_accession,
+                sm.captainID
+            FROM ships_with_metadata sm"""
 
             query += """
             """
 
         try:
             df = pd.read_sql_query(query, session.bind)
-
-            # Create display fields in Python for better maintainability
-            df = _add_display_fields(df)
 
             if df.empty:
                 logger.warning("Fetched ships DataFrame is empty.")
@@ -403,10 +344,11 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                     js.source,
                     js.curated_status,
                     sa.ship_accession_tag,
-                    sa.version_tag as ship_version_tag,
+                    sa.ship_version_tag,
+                    sa.ship_accession_display,
                     f.familyName,
                     t.name,
-                    a.accession_tag, a.version_tag
+                    a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships js
                 LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
                 LEFT JOIN taxonomy t ON js.tax_id = t.id
@@ -416,9 +358,6 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                 """
 
                 full_df = pd.read_sql_query(query, session.bind)
-
-                # Create display fields in Python for better maintainability
-                full_df = _add_display_fields(full_df)
 
                 cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
 
@@ -506,13 +445,13 @@ def fetch_accession_ship(ship_accession_tag):
 
 
 def fetch_captains(
-    accession_tags=None, curated=False, dereplicate=True, with_sequence=False
+    accessions=None, curated=False, dereplicate=True, with_sequence=False
 ):
     """
     Fetch captain data for specified accession tags.
 
     Args:
-        accession_tags (list, optional): List of accession tags to fetch. If None, fetches all captains.
+        accessions (list, optional): List of accession tags to fetch. If None, fetches all captains.
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
         with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
@@ -520,11 +459,13 @@ def fetch_captains(
         pd.DataFrame: DataFrame containing captain data
     """
 
+    # CTE: denormalized captains (joined_ships + display metadata). Not validation—just one place for the join.
     query = """
-    WITH valid_captains AS (
+    WITH captains_with_metadata AS (
         SELECT DISTINCT
             sa.ship_accession_tag,
-            sa.version_tag as ship_version_tag,
+            sa.ship_version_tag,
+            sa.ship_accession_display,
             j.curated_status,
             j.starshipID,
             c.captainID as captain_id,
@@ -533,7 +474,8 @@ def fetch_captains(
             h.haplotype_name,
             c.captainID,
             a.accession_tag,
-            a.version_tag
+            a.version_tag,
+            a.accession_display
         FROM joined_ships j
         LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
         LEFT JOIN taxonomy t ON j.tax_id = t.id
@@ -547,9 +489,9 @@ def fetch_captains(
         WHERE 1=1
     """
 
-    if accession_tags:
-        query += " AND a.accession_tag IN ({})".format(
-            ",".join(f"'{tag}'" for tag in accession_tags)
+    if accessions:
+        query += " AND sa.ship_accession_tag IN ({})".format(
+            ",".join(f"'{tag}'" for tag in accessions)
         )
     if curated:
         query += " AND j.curated_status = 'curated'"
@@ -558,44 +500,45 @@ def fetch_captains(
         query += """
         )
         SELECT
-            v.accession_tag,
-            v.version_tag,
-            v.ship_accession_tag,
-            v.curated_status,
-            v.starshipID,
-            v.captain_id,
-            v.sequence,
-            v.navis_name,
-            v.haplotype_name,
-            v.captain_id as captain_id_col
-        FROM valid_captains v
-        WHERE v.sequence IS NOT NULL
+            cm.ship_accession_tag,
+            cm.version_tag,
+            cm.ship_accession_display,
+            cm.accession_tag,
+            cm.accession_display,
+            cm.curated_status,
+            cm.starshipID,
+            cm.captain_id,
+            cm.sequence,
+            cm.navis_name,
+            cm.haplotype_name,
+            cm.captain_id as captain_id_col
+        FROM captains_with_metadata cm
+        WHERE cm.sequence IS NOT NULL
         """
     else:
         query += """
         )
         SELECT 
-            v.accession_tag,
-            v.version_tag,
-            v.ship_accession_tag,
-            v.curated_status,
-            v.starshipID,
-            v.captainID,
-            v.navis_name,
-            v.haplotype_name,
-            v.captainID
-        FROM valid_captains v
+            cm.accession_tag,
+            cm.version_tag,
+            cm.accession_display,
+            cm.ship_accession_tag,
+            cm.ship_accession_display,
+            cm.curated_status,
+            cm.starshipID,
+            cm.captainID,
+            cm.navis_name,
+            cm.haplotype_name,
+            cm.captainID
+        FROM captains_with_metadata cm
         """
 
     with get_starbase_session() as session:
         try:
             df = pd.read_sql_query(query, session.bind)
 
-            # Create display fields in Python for better maintainability
-            df = _add_display_fields(df)
-
             if dereplicate:
-                df = df.drop_duplicates(subset="accession_tag")
+                df = df.drop_duplicates(subset="ship_accession_tag")
 
             if df.empty:
                 logger.warning("Fetched captains DataFrame is empty.")
