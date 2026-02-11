@@ -1,0 +1,13 @@
+# External sources for metadata enrichment during ETL.
+
+ncbi:
+  base_url: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+  # Rate limiting (requests per second)
+  rate_limit: 3
+  timeout_seconds: 30
+  # Optional API key for higher rate limit (set via env NCBI_API_KEY)
+  use_api_key: false
+
+# Future: add other sources (e.g. ENA, custom APIs)
+# ena:
+#   base_url: "https://www.ebi.ac.uk/ena/portal/api"

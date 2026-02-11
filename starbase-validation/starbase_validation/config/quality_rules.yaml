@@ -1,0 +1,34 @@
+# Quality gates configuration for Starbase validation pipeline.
+# Blocking issues STOP publication; warning issues generate reports but allow publication.
+
+quality_gates:
+  taxonomy:
+    max_missing_species: 5%
+    max_missing_strain: 10%
+    require_genus: true
+
+  genome:
+    max_missing_assembly: 10%
+    require_taxonomy_link: true
+
+  classification:
+    max_missing_family: 0%   # CRITICAL - blocks if any missing
+
+  sequences:
+    max_duplicate_accessions: 0%
+    require_reverse_complement_check: true
+
+  relationships:
+    max_orphaned_foreign_keys: 0%
+
+blocking_issues:
+  - missing_family
+  - orphaned_foreign_keys
+  - duplicate_accessions
+  - taxonomy_hierarchy_invalid
+
+warning_issues:
+  - missing_strain
+  - missing_biosample
+  - missing_assembly
+  - missing_species

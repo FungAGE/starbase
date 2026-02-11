@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "starbase-validation"
+version = "0.1.0"
+description = "Validation and ETL app: extract from Django MySQL, validate quality, load versioned SQLite"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pyyaml>=6.0",
+    "sqlalchemy>=2.0",
+    "pymysql>=1.0",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+
+[project.scripts]
+starbase-validate = "starbase_validation.pipeline:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["starbase_validation*"]
+
+[tool.setuptools.package-data]
+starbase_validation = ["config/*.yaml"]
