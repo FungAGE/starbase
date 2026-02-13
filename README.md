@@ -41,14 +41,16 @@ Contributions to the development of `starbase` are welcome! If you have suggesti
 
 ### Building and running from the Docker image
 
-- **Note:** Currently, `starbase` will not run without database files (`src/database/db/`), which need to be mounted into the container. We will provide a link to an archive of the database files, when available.
+- **Note:** Currently, `starbase` will not run without database files (`src/database/db/`), which need to be mounted into the container.
+
+Versions of the database are stored in a [Zenodo repository](https://doi.org/10.5281/zenodo.17533381).
 
 ## Local Development
 
 ### Mimicking [Serve](https://github.com/ScilifelabDataCentre/serve?tab=readme-ov-file#deploy-serve-for-local-development-with-docker-compose) Production Environment (Recommended)
 The SciLifeLab Serve platform uses a single-pod kubernetes environment for each app.
 
-#### Quick Start
+### Quick Start
 
 ```bash
 # Option 1: Simple setup (recommended)
