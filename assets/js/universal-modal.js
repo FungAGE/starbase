@@ -343,11 +343,11 @@ class UniversalModal {
         // Wrapper for better centering
         html += '<div class="modal-container">';
 
-        // Basic ship information section
-        if (data.familyName || data.genomes_present) {
+        // Starship information + curation status combined section
+        if (data.familyName || data.genomes_present || data.navis_name || data.haplotype_name || data.curated_status || (data.quality_tags && data.quality_tags.length > 0)) {
             html += `
                 <div class="modal-section">
-                    <div class="section-title">🚀 Starship Information</div>
+                    <div class="section-title">Starship Information</div>
                     <div class="section-content">
                         <div class="modal-grid">
                             ${data.familyName ? `
@@ -356,10 +356,16 @@ class UniversalModal {
                                     <span class="modal-value">${data.familyName}</span>
                                 </div>
                             ` : ''}
-                            ${data.navis_name && ['Aristaeus', 'Arwing', 'Atlantia', 'Chrysoar', 'Defiant', 'Enterprise', 'Galactica', 'Hephaestus', 'Horizon', 'Mithridate', 'Osiris', 'Phoenix', 'Prometheus', 'Typhon', 'Voyager', 'Wallaby'].includes(data.navis_name) ? `
+                            ${data.navis_name ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Navis:</span>
                                     <span class="modal-value">${data.navis_name}</span>
+                                </div>
+                            ` : ''}
+                            ${data.haplotype_name ? `
+                                <div class="modal-row">
+                                    <span class="modal-label">Haplotype:</span>
+                                    <span class="modal-value">${data.haplotype_name}</span>
                                 </div>
                             ` : ''}
                             ${data.genomes_present ? `
@@ -368,31 +374,17 @@ class UniversalModal {
                                     <span class="modal-badge badge-blue">${data.genomes_present}</span>
                                 </div>
                             ` : ''}
-
-                            </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Curation status and quality tags
-        if (data.curated_status || (data.quality_tags && data.quality_tags.length > 0)) {
-            html += `
-                <div class="modal-section">
-                    <div class="section-title">Curation Status</div>
-                    <div class="section-content">
-                        <div class="modal-grid">
                             ${data.curated_status ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Status:</span>
+                                    <span class="modal-label">Curation Status:</span>
                                     <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
                                 </div>
                             ` : ''}
                             ${data.quality_tags && data.quality_tags.length > 0 ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Quality:</span>
+                                    <span class="modal-label">Quality Tags:</span>
                                     <div class="quality-tags">
-                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-red">${tag}</span>`).join('')}
+                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
                                     </div>
                                 </div>
                             ` : ''}
