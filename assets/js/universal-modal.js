@@ -1,7 +1,9 @@
 // Universal Modal System for Starbase
 // Provides consistent modal styling and behavior across all pages
 
-class UniversalModal {
+// Only define the class if it doesn't already exist
+if (typeof window.UniversalModal === 'undefined') {
+    window.UniversalModal = class {
     constructor() {
         this.modal = null;
         this.isInitialized = false;
@@ -484,11 +486,12 @@ class UniversalModal {
 
         return html;
     }
-}
+    };  // Close the class definition
+}  // Close the if block for UniversalModal class guard
 
 // Global instance - only create if not already exists
 if (typeof window.universalModal === 'undefined') {
-    window.universalModal = new UniversalModal();
+    window.universalModal = new window.UniversalModal();
 }
 
 // Global function for easy access - only create if not already exists
@@ -506,16 +509,16 @@ if (typeof window.showAccessionModal === 'undefined') {
             const data = await response.json();
 
             if (data.error) {
-                window.showUniversalModal('Error', UniversalModal.renderAccessionModal(data));
+                window.showUniversalModal('Error', window.UniversalModal.renderAccessionModal(data));
                 return;
             }
 
             const title = data.title || `Starship Accession: ${accessionId}`;
-            const content = UniversalModal.renderAccessionModal(data);
+            const content = window.UniversalModal.renderAccessionModal(data);
             window.showUniversalModal(title, content);
         } catch (error) {
             console.error('Error fetching accession details:', error);
-            window.showUniversalModal('Error', UniversalModal.renderAccessionModal({
+            window.showUniversalModal('Error', window.UniversalModal.renderAccessionModal({
                 error: `Error loading details for ${accessionId}. Details: ${error.message}`
             }));
         }
