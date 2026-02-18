@@ -59,7 +59,7 @@ def fetch_meta_data(curated=False, accessions=None):
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                    s.md5, s.rev_comp_md5, s.sequence_length,
+                    s.md5, s.rev_comp_md5,
                     a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships j
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id

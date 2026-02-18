@@ -445,9 +445,10 @@ class SubmissionProcessor:
                 session.add(accession)
                 session.flush()  # Get accession.id
 
-                # Step 3: Create Ships record
+                # Step 3: Create Ships record (sequence_length must equal len(sequence))
                 ship = Ships(
                     sequence=clean_seq,
+                    sequence_length=len(clean_seq),
                     md5=generate_md5_hash(clean_seq),
                     rev_comp_md5=generate_md5_hash(revcomp(clean_seq)),
                     accession_id=accession.id,
@@ -671,10 +672,9 @@ class SubmissionProcessor:
         if not (contig_id and element_start and element_end):
             return
 
-        # Calculate element length if not provided
-        element_length = data.get("element_length")
-        if element_length is None and element_start and element_end:
-            element_length = element_end - element_start + 1
+        # elementLength must equal ABS(elementEnd - elementBegin) + 1 (always compute from coordinates)
+        # abs() handles negative-strand features where element_start > element_end
+        element_length = abs(element_end - element_start) + 1
 
         features = StarshipFeatures(
             contigID=contig_id,

@@ -700,15 +700,6 @@ def _create_genome_section(modal_data: dict) -> dmc.Paper:
                 ]
             )
         )
-    elif element_length:
-        fields.append(
-            dmc.Group(
-                [
-                    dmc.Text("Size:", fw=700),
-                    dmc.Text("N/A"),
-                ]
-            )
-        )
 
     if not fields:
         return None
