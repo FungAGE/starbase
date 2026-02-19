@@ -31,7 +31,7 @@ class ShipAccessions(Base):
     __tablename__ = "ship_accessions"
     id = Column(Integer, primary_key=True)
     ship_accession_tag = Column(String, unique=True, nullable=False)
-    version_tag = Column(Integer, nullable=False, default=1)
+    ship_version_tag = Column(Integer, nullable=False, default=1)
     ship_id = Column(Integer, ForeignKey("ships.id"), unique=True, nullable=False)
     ship_accession_display = Column(String, nullable=True)
 
