@@ -122,19 +122,19 @@ def get_ships_unified_search():
             if not accession_display and row.accession_tag:
                 accession_display = f"{row.accession_tag}.{row.version_tag}"
             
-            # Build searchable label with all classification info
+            # Build searchable label: SSB accession first, then taxonomy/family context
             label_parts = []
+            if accession_display:
+                label_parts.append(accession_display)
             if row.taxonomy_name:
-                label_parts.append(row.taxonomy_name)
+                label_parts.append(f"| {row.taxonomy_name}")
             if row.familyName:
                 label_parts.append(f"[{row.familyName}]")
             if row.navis_name:
                 label_parts.append(f"({row.navis_name})")
             if row.haplotype_name:
                 label_parts.append(f"<{row.haplotype_name}>")
-            if accession_display:
-                label_parts.append(f"- {accession_display}")
-            
+
             label = " ".join(label_parts) if label_parts else f"Ship {row.id}"
             
             # Determine grouping for dropdown organization
