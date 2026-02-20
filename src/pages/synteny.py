@@ -40,7 +40,6 @@ layout = dmc.Container(
         dcc.Store(id="synteny-available-ships", data=[]),
         dcc.Store(id="synteny-filtered-ships", data=None),
         dcc.Store(id="synteny-selected-ships", data=[]),
-
         # Header Section
         dmc.Paper(
             children=[
@@ -56,7 +55,6 @@ layout = dmc.Container(
             withBorder=False,
             mb="xl",
         ),
-
         # Main content
         dmc.Grid(
             children=[
@@ -65,314 +63,389 @@ layout = dmc.Container(
                     span={"base": 12, "md": 4},
                     children=[
                         dmc.Paper(
-                            children=dmc.Stack([
-
-                                # ── Search Section ────────────────────────
-                                dmc.Stack([
-                                    dmc.Title("Search Sequences", order=2),
-                                    dmc.Text(
-                                        "Filter available sequences by taxonomy, family, or SSB accession",
-                                        size="sm",
-                                        c="dimmed",
-                                    ),
-                                    dmc.Autocomplete(
-                                        id="synteny-taxa-search",
-                                        label="Taxonomy",
-                                        placeholder="Search species, genus, etc.",
-                                        data=[],
-                                        limit=20,
-                                        style={"width": "100%"},
-                                    ),
-                                    dmc.Autocomplete(
-                                        id="synteny-family-search",
-                                        label="Starship Family",
-                                        placeholder="Search by family...",
-                                        data=[],
-                                        limit=20,
-                                        style={"width": "100%"},
-                                    ),
-                                    dmc.Autocomplete(
-                                        id="synteny-ssb-search",
-                                        label="SSB Accession",
-                                        placeholder="Search by SSB accession...",
-                                        data=[],
-                                        limit=20,
-                                        style={"width": "100%"},
-                                    ),
-                                    dmc.Group(
+                            children=dmc.Stack(
+                                [
+                                    # ── Search Section ────────────────────────
+                                    dmc.Stack(
                                         [
-                                            dmc.Button(
-                                                "Reset",
-                                                id="synteny-reset-search",
-                                                variant="outline",
-                                                leftSection=DashIconify(icon="tabler:refresh"),
+                                            dmc.Title("Search Sequences", order=2),
+                                            dmc.Text(
+                                                "Filter available sequences by taxonomy, family, or SSB accession",
                                                 size="sm",
+                                                c="dimmed",
                                             ),
-                                            dmc.Button(
-                                                "Search",
-                                                id="synteny-apply-search",
-                                                variant="filled",
-                                                leftSection=DashIconify(icon="tabler:search"),
-                                                size="sm",
+                                            dmc.Autocomplete(
+                                                id="synteny-taxa-search",
+                                                label="Taxonomy",
+                                                placeholder="Search species, genus, etc.",
+                                                data=[],
+                                                limit=20,
+                                                style={"width": "100%"},
+                                            ),
+                                            dmc.Autocomplete(
+                                                id="synteny-family-search",
+                                                label="Starship Family",
+                                                placeholder="Search by family...",
+                                                data=[],
+                                                limit=20,
+                                                style={"width": "100%"},
+                                            ),
+                                            dmc.Autocomplete(
+                                                id="synteny-ssb-search",
+                                                label="SSB Accession",
+                                                placeholder="Search by SSB accession...",
+                                                data=[],
+                                                limit=20,
+                                                style={"width": "100%"},
+                                            ),
+                                            dmc.Group(
+                                                [
+                                                    dmc.Button(
+                                                        "Reset",
+                                                        id="synteny-reset-search",
+                                                        variant="outline",
+                                                        leftSection=DashIconify(
+                                                            icon="tabler:refresh"
+                                                        ),
+                                                        size="sm",
+                                                    ),
+                                                    dmc.Button(
+                                                        "Search",
+                                                        id="synteny-apply-search",
+                                                        variant="filled",
+                                                        leftSection=DashIconify(
+                                                            icon="tabler:search"
+                                                        ),
+                                                        size="sm",
+                                                    ),
+                                                ],
+                                                justify="flex-end",
                                             ),
                                         ],
-                                        justify="flex-end",
+                                        gap="sm",
                                     ),
-                                ], gap="sm"),
-
-                                dmc.Divider(),
-
-                                # ── Results Section ───────────────────────
-                                dmc.Stack([
-                                    dmc.Title("Results", order=3),
-                                    dcc.Loading(
-                                        type="circle",
-                                        children=html.Div(
-                                            id="synteny-search-results",
-                                            children=dmc.Text(
-                                                "Use the search fields above to find sequences",
-                                                c="dimmed",
-                                                size="sm",
+                                    dmc.Divider(),
+                                    # ── Results Section ───────────────────────
+                                    dmc.Stack(
+                                        [
+                                            dmc.Title("Results", order=3),
+                                            dcc.Loading(
+                                                type="circle",
+                                                children=html.Div(
+                                                    id="synteny-search-results",
+                                                    children=dmc.Text(
+                                                        "Use the search fields above to find sequences",
+                                                        c="dimmed",
+                                                        size="sm",
+                                                    ),
+                                                ),
                                             ),
-                                        ),
+                                        ],
+                                        gap="xs",
                                     ),
-                                ], gap="xs"),
-
-                                dmc.Divider(),
-
-                                # ── Selected Sequences Section ────────────
-                                dmc.Stack([
-                                    dmc.Group([
-                                        dmc.Title("Selected for Comparison", order=3),
-                                        dmc.Badge(
-                                            id="synteny-selected-count",
-                                            children="0 / 4",
-                                            color="blue",
-                                            variant="filled",
-                                        ),
-                                    ], justify="space-between"),
-                                    html.Div(
-                                        id="synteny-selected-display",
-                                        children=dmc.Text(
-                                            "No sequences selected yet",
-                                            c="dimmed",
-                                            size="sm",
-                                        ),
+                                    dmc.Divider(),
+                                    # ── Selected Sequences Section ────────────
+                                    dmc.Stack(
+                                        [
+                                            dmc.Group(
+                                                [
+                                                    dmc.Title(
+                                                        "Selected for Comparison",
+                                                        order=3,
+                                                    ),
+                                                    dmc.Badge(
+                                                        id="synteny-selected-count",
+                                                        children="0 / 4",
+                                                        color="blue",
+                                                        variant="filled",
+                                                    ),
+                                                ],
+                                                justify="space-between",
+                                            ),
+                                            html.Div(
+                                                id="synteny-selected-display",
+                                                children=dmc.Text(
+                                                    "No sequences selected yet",
+                                                    c="dimmed",
+                                                    size="sm",
+                                                ),
+                                            ),
+                                            dmc.Button(
+                                                "Clear All",
+                                                id="synteny-clear-selected",
+                                                variant="subtle",
+                                                color="red",
+                                                size="sm",
+                                                leftSection=DashIconify(
+                                                    icon="tabler:trash"
+                                                ),
+                                            ),
+                                        ],
+                                        gap="sm",
+                                    ),
+                                    dmc.Divider(),
+                                    # ── Visualization Settings ────────────────
+                                    dmc.Accordion(
+                                        variant="filled",
+                                        chevronPosition="right",
+                                        chevronSize=16,
+                                        value="visualization-settings",
+                                        children=[
+                                            dmc.AccordionItem(
+                                                value="visualization-settings",
+                                                children=[
+                                                    dmc.AccordionControl(
+                                                        dmc.Title(
+                                                            "Visualization Settings",
+                                                            order=3,
+                                                        )
+                                                    ),
+                                                    dmc.AccordionPanel(
+                                                        [
+                                                            dmc.Stack(
+                                                                [
+                                                                    dmc.NumberInput(
+                                                                        label="Identity Threshold",
+                                                                        description="Minimum similarity to show links",
+                                                                        id="synteny-identity-threshold",
+                                                                        value=0.3,
+                                                                        min=0.1,
+                                                                        max=1,
+                                                                        step=0.05,
+                                                                        decimalScale=2,
+                                                                    ),
+                                                                    dmc.NumberInput(
+                                                                        label="Scale Factor",
+                                                                        description="Zoom level for genes",
+                                                                        id="synteny-scale-factor",
+                                                                        value=10,
+                                                                        min=1,
+                                                                        max=50,
+                                                                    ),
+                                                                    dmc.NumberInput(
+                                                                        label="Cluster Spacing",
+                                                                        description="Vertical spacing between sequences",
+                                                                        id="synteny-cluster-spacing",
+                                                                        value=50,
+                                                                        min=10,
+                                                                        max=200,
+                                                                    ),
+                                                                    dmc.Switch(
+                                                                        id="synteny-show-links",
+                                                                        label="Display synteny links",
+                                                                        checked=True,
+                                                                    ),
+                                                                ],
+                                                                gap="sm",
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ],
+                                            ),
+                                            dmc.AccordionItem(
+                                                value="display-options",
+                                                children=[
+                                                    dmc.AccordionControl(
+                                                        dmc.Title(
+                                                            "Display Options", order=3
+                                                        )
+                                                    ),
+                                                    dmc.AccordionPanel(
+                                                        [
+                                                            dmc.Stack(
+                                                                [
+                                                                    dmc.Select(
+                                                                        label="Color genes by",
+                                                                        description="Gene coloring scheme",
+                                                                        id="synteny-color-by",
+                                                                        value="category",
+                                                                        data=[
+                                                                            {
+                                                                                "value": "category",
+                                                                                "label": "Functional Category",
+                                                                            },
+                                                                            {
+                                                                                "value": "family",
+                                                                                "label": "Gene Family (Target_ID)",
+                                                                            },
+                                                                            {
+                                                                                "value": "strand",
+                                                                                "label": "Strand",
+                                                                            },
+                                                                            {
+                                                                                "value": "type",
+                                                                                "label": "Feature Type",
+                                                                            },
+                                                                            {
+                                                                                "value": "source",
+                                                                                "label": "Source",
+                                                                            },
+                                                                        ],
+                                                                    ),
+                                                                    dmc.Select(
+                                                                        label="Gene label field",
+                                                                        description="Which attribute to show in labels",
+                                                                        id="synteny-label-field",
+                                                                        value="Alias",
+                                                                        data=[
+                                                                            {
+                                                                                "value": "Alias",
+                                                                                "label": "Gene Alias",
+                                                                            },
+                                                                            {
+                                                                                "value": "Target_ID",
+                                                                                "label": "Target ID",
+                                                                            },
+                                                                            {
+                                                                                "value": "type",
+                                                                                "label": "Feature Type",
+                                                                            },
+                                                                        ],
+                                                                    ),
+                                                                ],
+                                                                gap="sm",
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
                                     ),
                                     dmc.Button(
-                                        "Clear All",
-                                        id="synteny-clear-selected",
-                                        variant="subtle",
-                                        color="red",
-                                        size="sm",
-                                        leftSection=DashIconify(icon="tabler:trash"),
+                                        dmc.Text("Generate Visualization", size="lg"),
+                                        id="synteny-update-button",
+                                        variant="gradient",
+                                        gradient={"from": "indigo", "to": "cyan"},
+                                        leftSection=html.I(className="bi bi-diagram-3"),
+                                        fullWidth=True,
                                     ),
-                                ], gap="sm"),
-
-                                dmc.Divider(),
-
-                                # ── Visualization Settings ────────────────
-                                dmc.Accordion(
-                                    variant="filled",
-                                    chevronPosition="right",
-                                    chevronSize=16,
-                                    value="visualization-settings",
-                                    children=[
-                                        dmc.AccordionItem(
-                                            value="visualization-settings",
-                                            children=[
-                                                dmc.AccordionControl(
-                                                    dmc.Title("Visualization Settings", order=3)
-                                                ),
-                                                dmc.AccordionPanel([
-                                                    dmc.Stack([
-                                                        dmc.NumberInput(
-                                                            label="Identity Threshold",
-                                                            description="Minimum similarity to show links",
-                                                            id="synteny-identity-threshold",
-                                                            value=0.3,
-                                                            min=0.1,
-                                                            max=1,
-                                                            step=0.05,
-                                                            decimalScale=2,
-                                                        ),
-                                                        dmc.NumberInput(
-                                                            label="Scale Factor",
-                                                            description="Zoom level for genes",
-                                                            id="synteny-scale-factor",
-                                                            value=10,
-                                                            min=1,
-                                                            max=50,
-                                                        ),
-                                                        dmc.NumberInput(
-                                                            label="Cluster Spacing",
-                                                            description="Vertical spacing between sequences",
-                                                            id="synteny-cluster-spacing",
-                                                            value=50,
-                                                            min=10,
-                                                            max=200,
-                                                        ),
-                                                        dmc.Switch(
-                                                            id="synteny-show-links",
-                                                            label="Display synteny links",
-                                                            checked=True,
-                                                        ),
-                                                    ], gap="sm"),
-                                                ]),
-                                            ],
-                                        ),
-                                        dmc.AccordionItem(
-                                            value="display-options",
-                                            children=[
-                                                dmc.AccordionControl(
-                                                    dmc.Title("Display Options", order=3)
-                                                ),
-                                                dmc.AccordionPanel([
-                                                    dmc.Stack([
-                                                        dmc.Select(
-                                                            label="Color genes by",
-                                                            description="Gene coloring scheme",
-                                                            id="synteny-color-by",
-                                                            value="category",
-                                                            data=[
-                                                                {"value": "category", "label": "Functional Category"},
-                                                                {"value": "family", "label": "Gene Family (Target_ID)"},
-                                                                {"value": "strand", "label": "Strand"},
-                                                                {"value": "type", "label": "Feature Type"},
-                                                                {"value": "source", "label": "Source"},
-                                                            ],
-                                                        ),
-                                                        dmc.Select(
-                                                            label="Gene label field",
-                                                            description="Which attribute to show in labels",
-                                                            id="synteny-label-field",
-                                                            value="Alias",
-                                                            data=[
-                                                                {"value": "Alias", "label": "Gene Alias"},
-                                                                {"value": "Target_ID", "label": "Target ID"},
-                                                                {"value": "type", "label": "Feature Type"},
-                                                            ],
-                                                        ),
-                                                    ], gap="sm"),
-                                                ]),
-                                            ],
-                                        ),
-                                    ],
-                                ),
-
-                                dmc.Button(
-                                    dmc.Text("Generate Visualization", size="lg"),
-                                    id="synteny-update-button",
-                                    variant="gradient",
-                                    gradient={"from": "indigo", "to": "cyan"},
-                                    leftSection=html.I(className="bi bi-diagram-3"),
-                                    fullWidth=True,
-                                ),
-
-                            ], gap="md"),
+                                ],
+                                gap="md",
+                            ),
                             p="xl",
                             radius="md",
                             withBorder=True,
                         ),
                     ],
                 ),
-
                 # Right Column — Visualization and Gene Details
                 dmc.GridCol(
                     span={"base": 12, "md": 8},
                     children=[
                         dmc.Paper(
-                            children=dmc.Stack([
-                                html.Div(id="synteny-message"),
-                                dcc.Loading(
-                                    id="synteny-loading-viz",
-                                    type="circle",
-                                    children=[
-                                        html.Div(
-                                            "Select sequences and click 'Generate Visualization'",
-                                            id="synteny-static-viz",
-                                            style={
-                                                "height": "600px",
-                                                "width": "100%",
-                                                "display": "flex",
-                                                "alignItems": "center",
-                                                "justifyContent": "center",
-                                                "color": "#6c757d",
-                                                "fontSize": "16px",
-                                                "backgroundColor": "#f8f9fa",
-                                                "border": "1px solid #dee2e6",
-                                                "borderRadius": "4px",
-                                            },
-                                        ),
-                                        html.Div(
-                                            id="synteny-controls",
-                                            style={"display": "none"},
-                                            children=dmc.Group([
-                                                dmc.Button(
-                                                    "Save as SVG",
-                                                    id="synteny-save-svg",
-                                                    variant="light",
-                                                    leftSection=html.I(className="bi bi-download"),
-                                                    size="sm",
+                            children=dmc.Stack(
+                                [
+                                    html.Div(id="synteny-message"),
+                                    dcc.Loading(
+                                        id="synteny-loading-viz",
+                                        type="circle",
+                                        children=[
+                                            html.Div(
+                                                "Select sequences and click 'Generate Visualization'",
+                                                id="synteny-static-viz",
+                                                style={
+                                                    "height": "600px",
+                                                    "width": "100%",
+                                                    "display": "flex",
+                                                    "alignItems": "center",
+                                                    "justifyContent": "center",
+                                                    "color": "#6c757d",
+                                                    "fontSize": "16px",
+                                                    "backgroundColor": "#f8f9fa",
+                                                    "border": "1px solid #dee2e6",
+                                                    "borderRadius": "4px",
+                                                },
+                                            ),
+                                            html.Div(
+                                                id="synteny-controls",
+                                                style={"display": "none"},
+                                                children=dmc.Group(
+                                                    [
+                                                        dmc.Button(
+                                                            "Save as SVG",
+                                                            id="synteny-save-svg",
+                                                            variant="light",
+                                                            leftSection=html.I(
+                                                                className="bi bi-download"
+                                                            ),
+                                                            size="sm",
+                                                        ),
+                                                        dmc.Button(
+                                                            "Reset View",
+                                                            id="synteny-reset-view",
+                                                            variant="light",
+                                                            leftSection=html.I(
+                                                                className="bi bi-arrow-counterclockwise"
+                                                            ),
+                                                            size="sm",
+                                                        ),
+                                                        dmc.Button(
+                                                            "Clear",
+                                                            id="synteny-clear-viz",
+                                                            variant="light",
+                                                            color="red",
+                                                            leftSection=html.I(
+                                                                className="bi bi-x-circle"
+                                                            ),
+                                                            size="sm",
+                                                        ),
+                                                    ],
+                                                    gap="xs",
+                                                    mt="sm",
                                                 ),
-                                                dmc.Button(
-                                                    "Reset View",
-                                                    id="synteny-reset-view",
-                                                    variant="light",
-                                                    leftSection=html.I(className="bi bi-arrow-counterclockwise"),
-                                                    size="sm",
-                                                ),
-                                                dmc.Button(
-                                                    "Clear",
-                                                    id="synteny-clear-viz",
-                                                    variant="light",
-                                                    color="red",
-                                                    leftSection=html.I(className="bi bi-x-circle"),
-                                                    size="sm",
-                                                ),
-                                            ], gap="xs", mt="sm"),
-                                        ),
-                                    ],
-                                ),
-                                dmc.Divider(mt="xs", mb="xs"),
-                                dmc.Group(
-                                    [
-                                        dmc.Group(
-                                            [
-                                                html.Div(style={
-                                                    "width": "14px",
-                                                    "height": "14px",
-                                                    "borderRadius": "3px",
-                                                    "backgroundColor": GENE_CATEGORY_COLORS[cat],
-                                                    "flexShrink": "0",
-                                                }),
-                                                dmc.Text(GENE_CATEGORY_LABELS[cat], size="xs"),
-                                            ],
-                                            gap="xs",
-                                        )
-                                        for cat in GENE_CATEGORY_COLORS
-                                    ],
-                                    gap="md",
-                                ),
-                            ], gap="xs"),
+                                            ),
+                                        ],
+                                    ),
+                                    dmc.Divider(mt="xs", mb="xs"),
+                                    dmc.Group(
+                                        [
+                                            dmc.Group(
+                                                [
+                                                    html.Div(
+                                                        style={
+                                                            "width": "14px",
+                                                            "height": "14px",
+                                                            "borderRadius": "3px",
+                                                            "backgroundColor": GENE_CATEGORY_COLORS[
+                                                                cat
+                                                            ],
+                                                            "flexShrink": "0",
+                                                        }
+                                                    ),
+                                                    dmc.Text(
+                                                        GENE_CATEGORY_LABELS[cat],
+                                                        size="xs",
+                                                    ),
+                                                ],
+                                                gap="xs",
+                                            )
+                                            for cat in GENE_CATEGORY_COLORS
+                                        ],
+                                        gap="md",
+                                    ),
+                                ],
+                                gap="xs",
+                            ),
                             p="xl",
                             radius="md",
                             withBorder=True,
                             mb="md",
                         ),
-
                         dmc.Paper(
-                            children=dmc.Stack([
-                                dmc.Title("Gene Details", order=3),
-                                html.Div(
-                                    id="gene-details-panel",
-                                    children=dmc.Text(
-                                        "Click on a gene in the visualization to see detailed information",
-                                        c="dimmed",
-                                        size="sm",
+                            children=dmc.Stack(
+                                [
+                                    dmc.Title("Gene Details", order=3),
+                                    html.Div(
+                                        id="gene-details-panel",
+                                        children=dmc.Text(
+                                            "Click on a gene in the visualization to see detailed information",
+                                            c="dimmed",
+                                            size="sm",
+                                        ),
                                     ),
-                                ),
-                            ], gap="sm"),
+                                ],
+                                gap="sm",
+                            ),
                             p="md",
                             radius="md",
                             withBorder=True,
@@ -402,13 +475,15 @@ def load_available_ships(pathname):
 
         options = []
         for ship in ships_data:
-            options.append({
-                "value": str(ship["id"]),
-                "label": ship["label"],
-                "taxonomy_name": ship.get("taxonomy_name", ""),
-                "familyName": ship.get("familyName", ""),
-                "ship_accession_display": ship.get("ship_accession_display", ""),
-            })
+            options.append(
+                {
+                    "value": str(ship["id"]),
+                    "label": ship["label"],
+                    "taxonomy_name": ship.get("taxonomy_name", ""),
+                    "familyName": ship.get("familyName", ""),
+                    "ship_accession_display": ship.get("ship_accession_display", ""),
+                }
+            )
 
         logger.info(f"Loaded {len(options)} ships with GFF data")
         return options
@@ -492,19 +567,20 @@ def search_synteny_ships(
 
     if taxa_val and taxa_val.strip():
         filtered = [
-            s for s in filtered
+            s
+            for s in filtered
             if taxa_val.lower() in s.get("taxonomy_name", "").lower()
         ]
 
     if family_val and family_val.strip():
         filtered = [
-            s for s in filtered
-            if family_val.lower() == s.get("familyName", "").lower()
+            s for s in filtered if family_val.lower() == s.get("familyName", "").lower()
         ]
 
     if ssb_val and ssb_val.strip():
         filtered = [
-            s for s in filtered
+            s
+            for s in filtered
             if ssb_val.lower() in s.get("ship_accession_display", "").lower()
         ]
 
@@ -556,7 +632,9 @@ def display_search_results(filtered_ships, selected_ships):
                         ),
                         dmc.ActionIcon(
                             DashIconify(
-                                icon="tabler:circle-check" if already_added else "tabler:circle-plus"
+                                icon="tabler:circle-check"
+                                if already_added
+                                else "tabler:circle-plus"
                             ),
                             id={"type": "synteny-add-ship", "index": ship_id},
                             variant="subtle",
@@ -607,7 +685,9 @@ def display_search_results(filtered_ships, selected_ships):
     prevent_initial_call=True,
 )
 @handle_callback_error
-def manage_selected_ships(add_clicks, remove_clicks, clear_clicks, current_selected, all_ships):
+def manage_selected_ships(
+    add_clicks, remove_clicks, clear_clicks, current_selected, all_ships
+):
     ctx = dash.callback_context
     if not ctx.triggered:
         raise PreventUpdate
@@ -637,9 +717,7 @@ def manage_selected_ships(add_clicks, remove_clicks, clear_clicks, current_selec
             raise PreventUpdate
         if any(str(s["id"]) == ship_id for s in current_selected):
             raise PreventUpdate
-        ship = next(
-            (s for s in (all_ships or []) if str(s["value"]) == ship_id), None
-        )
+        ship = next((s for s in (all_ships or []) if str(s["value"]) == ship_id), None)
         if ship:
             return current_selected + [{"id": int(ship_id), "label": ship["label"]}]
 
@@ -718,7 +796,10 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
         gff_data = get_gff_by_ship_ids(ship_ids)
 
         if not gff_data:
-            return {"error": "No GFF data found for selected sequences", "success": False}
+            return {
+                "error": "No GFF data found for selected sequences",
+                "success": False,
+            }
 
         clusters = []
         for ship_id in ship_ids:
@@ -764,13 +845,15 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
                         **attrs,
                     },
                     "group": group,
-                    "colour": GENE_CATEGORY_COLORS.get(category) if color_by == "category" else None,
+                    "colour": GENE_CATEGORY_COLORS.get(category)
+                    if color_by == "category"
+                    else None,
                 }
                 genes.append(gene)
 
             locus = {
                 "uid": f"locus_{ship_id}",
-                "name": ship_gff[0].get("accession", f"Locus {ship_id}"),
+                "name": ship_gff[0].get("ship_accession_display", f"Locus {ship_id}"),
                 "start": min(g["start"] for g in genes),
                 "end": max(g["end"] for g in genes),
                 "_start": min(g["start"] for g in genes),
@@ -780,7 +863,7 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
 
             cluster = {
                 "uid": f"cluster_{ship_id}",
-                "name": f"{ship_gff[0]['ship_accession_display']} - {ship_gff[0]['name']}",
+                "name": f"{ship_gff[0]['ship_accession_display']}",
                 "loci": [locus],
             }
             clusters.append(cluster)
@@ -802,6 +885,7 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
 
 # ── Helper functions ───────────────────────────────────────────────────────────
 
+
 def parse_gff_attributes(attr_string):
     if not attr_string:
         return {}
@@ -816,20 +900,24 @@ def parse_gff_attributes(attr_string):
 
 def categorize_gene(gff_entry):
     attrs = parse_gff_attributes(gff_entry.get("attributes", ""))
-    searchable_text = " ".join([
-        attrs.get("Alias", ""),
-        attrs.get("Target_ID", ""),
-        attrs.get("product", ""),
-        attrs.get("Name", ""),
-        attrs.get("gene", ""),
-        gff_entry.get("type", ""),
-        gff_entry.get("source", ""),
-    ]).lower()
+    searchable_text = " ".join(
+        [
+            attrs.get("Alias", ""),
+            attrs.get("Target_ID", ""),
+            attrs.get("product", ""),
+            attrs.get("Name", ""),
+            attrs.get("gene", ""),
+            gff_entry.get("type", ""),
+            gff_entry.get("source", ""),
+        ]
+    ).lower()
 
     # Use (?<![a-z])...(?![a-z]) instead of \b so that abbreviations embedded in
     # underscore-delimited gene names (e.g. "altals1_tyr65") still match.
     # Full words like "tyrosine" / "recombinase" are matched without boundary guards.
-    if re.search(r"tyrosine|recombinase|capsid|(?<![a-z])(tyr|cap)(?![a-z])", searchable_text):
+    if re.search(
+        r"tyrosine|recombinase|capsid|(?<![a-z])(tyr|cap)(?![a-z])", searchable_text
+    ):
         return "captain"
     elif re.search(r"(?<![a-z])nlr(?![a-z])", searchable_text):
         return "nlr"
@@ -869,12 +957,14 @@ def generate_synteny_links(clusters):
                     gene_i_cat = genes[i]["metadata"].get("category", "other")
                     gene_j_cat = genes[j]["metadata"].get("category", "other")
                     identity = 0.95 if gene_i_cat == gene_j_cat else 0.85
-                    links.append({
-                        "uid": f"link_{link_id}",
-                        "query": {"uid": genes[i]["uid"]},
-                        "target": {"uid": genes[j]["uid"]},
-                        "identity": identity,
-                    })
+                    links.append(
+                        {
+                            "uid": f"link_{link_id}",
+                            "query": {"uid": genes[i]["uid"]},
+                            "target": {"uid": genes[j]["uid"]},
+                            "identity": identity,
+                        }
+                    )
                     link_id += 1
 
     linked_genes = set()
@@ -884,16 +974,20 @@ def generate_synteny_links(clusters):
 
     for category in ["captain", "nlr", "plp", "fre"]:
         if category in category_index:
-            genes = [g for g in category_index[category] if g["uid"] not in linked_genes]
+            genes = [
+                g for g in category_index[category] if g["uid"] not in linked_genes
+            ]
             if len(genes) > 1:
                 for i in range(len(genes)):
                     for j in range(i + 1, len(genes)):
-                        links.append({
-                            "uid": f"link_{link_id}",
-                            "query": {"uid": genes[i]["uid"]},
-                            "target": {"uid": genes[j]["uid"]},
-                            "identity": 0.6,
-                        })
+                        links.append(
+                            {
+                                "uid": f"link_{link_id}",
+                                "query": {"uid": genes[i]["uid"]},
+                                "target": {"uid": genes[j]["uid"]},
+                                "identity": 0.6,
+                            }
+                        )
                         link_id += 1
 
     return links
