@@ -762,7 +762,12 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
         links = generate_synteny_links(clusters)
         logger.info(f"Generated {len(clusters)} clusters with {len(links)} links")
 
-        return {"clusters": clusters, "links": links, "success": True}
+        return {
+            "clusters": clusters,
+            "links": links,
+            "config": {"updateGroups": False},
+            "success": True,
+        }
 
     except Exception as e:
         logger.error(f"Error generating synteny data: {e}", exc_info=True)
