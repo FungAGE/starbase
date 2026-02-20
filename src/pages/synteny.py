@@ -937,11 +937,11 @@ clientside_callback(
                 },
                 cluster: {
                     spacing: cluster_spacing || 50,
-                    alignLabels: true,
+                    alignLabels: false,
                 },
                 gene: {
                     label: {
-                        show: show_gene_labels || false,
+                        show: false,
                     },
                     shape: {
                         onClick: function(event, gene) {
@@ -1036,7 +1036,7 @@ clientside_callback(
                         .datum(store_data)
                         .call(chart);
                     
-                    if (show_tooltips && typeof d3 !== 'undefined') {
+                    if (typeof d3 !== 'undefined') {
                         const tooltip = d3.select('body').selectAll('.gene-tooltip').data([null])
                             .join('div')
                             .attr('class', 'gene-tooltip')
