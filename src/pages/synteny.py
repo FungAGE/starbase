@@ -217,16 +217,6 @@ layout = dmc.Container(
                                                             label="Display synteny links",
                                                             checked=True,
                                                         ),
-                                                        dmc.Switch(
-                                                            id="synteny-show-gene-labels",
-                                                            label="Display gene labels",
-                                                            checked=False,
-                                                        ),
-                                                        dmc.Switch(
-                                                            id="synteny-show-tooltips",
-                                                            label="Enable gene tooltips",
-                                                            checked=True,
-                                                        ),
                                                     ], gap="sm"),
                                                 ]),
                                             ],
@@ -912,8 +902,8 @@ def generate_synteny_links(clusters):
 # ── Clientside: render ClusterMap visualization ────────────────────────────────
 clientside_callback(
     """
-    function(store_data, scale_factor, cluster_spacing, show_links, show_gene_labels, 
-             identity_threshold, show_tooltips, clear_clicks) {
+    function(store_data, scale_factor, cluster_spacing, show_links, 
+             identity_threshold, clear_clicks) {
         
         const containerId = 'synteny-static-viz';
         
@@ -1133,9 +1123,7 @@ clientside_callback(
         Input("synteny-scale-factor", "value"),
         Input("synteny-cluster-spacing", "value"),
         Input("synteny-show-links", "value"),
-        Input("synteny-show-gene-labels", "value"),
         Input("synteny-identity-threshold", "value"),
-        Input("synteny-show-tooltips", "checked"),
         Input("synteny-clear-viz", "n_clicks"),
     ],
 )
