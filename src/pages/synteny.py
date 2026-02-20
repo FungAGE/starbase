@@ -16,6 +16,22 @@ dash.register_page(__name__, path="/synteny")
 
 SEQUENCE_COLORS = ["blue", "green", "orange", "grape"]
 
+GENE_CATEGORY_COLORS = {
+    "captain": "#e74c3c",
+    "nlr": "#3498db",
+    "plp": "#2ecc71",
+    "fre": "#f39c12",
+    "other": "#95a5a6",
+}
+
+GENE_CATEGORY_LABELS = {
+    "captain": "Captain (Tyr)",
+    "nlr": "NLR",
+    "plp": "PLP",
+    "fre": "FRE",
+    "other": "Other",
+}
+
 layout = dmc.Container(
     fluid=True,
     children=[
@@ -327,6 +343,26 @@ layout = dmc.Container(
                                             ], gap="xs", mt="sm"),
                                         ),
                                     ],
+                                ),
+                                dmc.Divider(mt="xs", mb="xs"),
+                                dmc.Group(
+                                    [
+                                        dmc.Group(
+                                            [
+                                                html.Div(style={
+                                                    "width": "14px",
+                                                    "height": "14px",
+                                                    "borderRadius": "3px",
+                                                    "backgroundColor": GENE_CATEGORY_COLORS[cat],
+                                                    "flexShrink": "0",
+                                                }),
+                                                dmc.Text(GENE_CATEGORY_LABELS[cat], size="xs"),
+                                            ],
+                                            gap="xs",
+                                        )
+                                        for cat in GENE_CATEGORY_COLORS
+                                    ],
+                                    gap="md",
                                 ),
                             ], gap="xs"),
                             p="xl",
@@ -813,23 +849,6 @@ def categorize_gene(gff_entry):
         return "fre"
     else:
         return "other"
-
-
-GENE_CATEGORY_COLORS = {
-    "captain": "#e74c3c",
-    "nlr": "#3498db",
-    "plp": "#2ecc71",
-    "fre": "#f39c12",
-    "other": "#95a5a6",
-}
-
-GENE_CATEGORY_LABELS = {
-    "captain": "Captain (Tyr/Cap)",
-    "nlr": "NLR",
-    "plp": "PLP",
-    "fre": "FRE",
-    "other": "Other",
-}
 
 
 def generate_synteny_links(clusters):
