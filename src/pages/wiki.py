@@ -372,7 +372,16 @@ layout = dmc.Container(
                 dmc.GridCol(
                     span={"lg": 6, "md": 12},
                     children=[
-                        html.Div(id="search-results"),
+                        dbc.Spinner(
+                            children=html.Div(
+                                id="search-results",
+                                style={"minHeight": "300px"},
+                            ),
+                            color="primary",
+                            type="border",
+                            fullscreen=False,
+                            spinner_style={"width": "3rem", "height": "3rem"},
+                        ),
                     ],
                 ),
                 # Right Column - Search Section
@@ -382,9 +391,7 @@ layout = dmc.Container(
                         dmc.Paper(
                             children=[
                                 dmc.Title("Taxonomic Distribution", order=2, mb="md"),
-                                dcc.Loading(
-                                    id="search-sunburst-loading",
-                                    type="circle",
+                                dbc.Spinner(
                                     children=html.Div(
                                         id="search-sunburst-plot",
                                         style={
@@ -394,8 +401,13 @@ layout = dmc.Container(
                                             "display": "flex",  # Use flexbox
                                             "alignItems": "center",
                                             "justifyContent": "center",
+                                            "minHeight": "300px",
                                         },
                                     ),
+                                    color="primary",
+                                    type="border",
+                                    fullscreen=False,
+                                    spinner_style={"width": "3rem", "height": "3rem"},
                                 ),
                             ],
                             p="xl",
@@ -419,13 +431,15 @@ layout = dmc.Container(
                                     order=2,
                                     mb="md",
                                 ),
-                                dcc.Loading(
-                                    id="wiki-loading",
-                                    type="circle",
+                                dbc.Spinner(
                                     children=html.Div(
                                         id="accordion",
                                         children=dbc.Accordion(id="category-accordion"),
                                     ),
+                                    color="primary",
+                                    type="border",
+                                    fullscreen=False,
+                                    spinner_style={"width": "3rem", "height": "3rem"},
                                 ),
                             ],
                             p="xl",
