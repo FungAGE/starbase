@@ -1140,22 +1140,31 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
     )
 
     if not download_data:
-        return None, dmc.Alert(
-            children="No sequences found for download", color="red", title="Error"
+        return None, dmc.Notification(
+            title="Error",
+            message="No sequences found for download",
+            color="red",
+            id="dl-download-notify",
+            action="show",
+            autoClose=5000,
         )
 
     if num_sequences > 0:
         if num_sequences == 1:
-            download_message = f"Downloading {num_sequences} sequence"
+            ship_accession_display = [row.get("ship_accession_display") for row in table_data]
+            download_message = f"Downloading sequence for {ship_accession_display[0]}"
         else:
             download_message = f"Downloading {num_sequences} sequences"
     else:
         download_message = "No sequences found for download"
 
-    return download_data, dmc.Alert(
-        children=download_message,
-        color="green",
+    return download_data, dmc.Notification(
         title="Success",
+        message=download_message,
+        color="green",
+        id="dl-download-notify",
+        action="show",
+        autoClose=5000,
     )
 
 
@@ -1193,14 +1202,22 @@ def generate_download_selected(
     )
 
     if not download_data:
-        return None, dmc.Alert(
-            children="No sequences found for selected rows", color="red", title="Error"
+        return None, dmc.Notification(
+            title="Error",
+            message="No sequences found for selected rows",
+            color="red",
+            id="dl-download-notify",
+            action="show",
+            autoClose=5000,
         )
 
-    return download_data, dmc.Alert(
-        children=f"Downloading {num_sequences} sequences",
-        color="green",
+    return download_data, dmc.Notification(
         title="Success",
+        message=f"Downloading {num_sequences} sequences",
+        color="green",
+        id="dl-download-notify",
+        action="show",
+        autoClose=5000,
     )
 
 
