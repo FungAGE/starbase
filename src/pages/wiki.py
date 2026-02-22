@@ -1065,6 +1065,7 @@ def generate_download_helper(rows, curated, dereplicate):
 
         accessions = [_base_accession(row) for row in rows]
         accessions = [a for a in accessions if a]
+
         if not accessions:
             raise ValueError("No valid accessions found in selected rows for download")
         dl_df = fetch_ships(
@@ -1077,34 +1078,36 @@ def generate_download_helper(rows, curated, dereplicate):
         if dl_df is None or dl_df.empty:
             raise ValueError("No sequences found for download")
 
-        # Count occurrences of each accession tag
-        accession_counts = dl_df["accession_tag"].value_counts()
-
         fasta_content = []
         for _, row in dl_df.drop_duplicates(
-            subset=["accession_tag", "sequence"]
+            subset=["ship_accession_display", "sequence"]
         ).iterrows():
-            count = accession_counts[row["accession_tag"]]
-            header = create_ncbi_style_header(row, count)
+            header = create_ncbi_style_header(row, type_ship=True)
             # Skip if header creation failed (returns None)
             if header is None:
                 logger.warning(
-                    f"Skipping sequence with accession_tag={row.get('accession_tag', 'unknown')} due to header creation failure"
+                    f"Skipping sequence with ship_accession_display={row.get('ship_accession_display', 'unknown')} due to header creation failure"
                 )
                 continue
             fasta_content.append(f"{header}\n{row['sequence']}")
 
+        num_sequences = len(fasta_content)
         fasta_str = "\n".join(fasta_content)
         logger.debug(
             f"FASTA content created successfully for {len(fasta_content)} sequences."
         )
 
+        if num_sequences == 1:
+            filename_prefix = accessions[0]
+        else:
+            filename_prefix = "starships"
+
         # Return both the FASTA content and download info
         return dict(
             content=fasta_str,
-            filename=f"starships_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fasta",
+            filename=f"{filename_prefix}_{datetime.now().strftime('%y%m%d')}.fasta",
             type="text/plain",
-        ), len(fasta_content)
+        ), num_sequences
 
     except ValueError as e:
         logger.warning(f"Download helper warning: {str(e)}")
