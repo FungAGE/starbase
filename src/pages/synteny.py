@@ -1024,6 +1024,10 @@ clientside_callback(
         }
         
         try {
+            if (window._syntenyRenderTimeout) {
+                clearTimeout(window._syntenyRenderTimeout);
+                window._syntenyRenderTimeout = null;
+            }
             const config = {
                 plot: {
                     scaleFactor: scale_factor || 10,
@@ -1123,7 +1127,8 @@ clientside_callback(
                 d3.selectAll('#' + containerId + ' *').remove();
             }
             
-            setTimeout(function() {
+            window._syntenyRenderTimeout = setTimeout(function() {
+                window._syntenyRenderTimeout = null;
                 try {
                     const chart = ClusterMap.ClusterMap().config(config);
                     d3.select('#' + containerId)
