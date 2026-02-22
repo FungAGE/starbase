@@ -210,20 +210,6 @@ table_columns = [
         "presentation": "markdown",
     },
     {
-        "name": "Order",
-        "id": "order",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-    },
-    {
-        "name": "Family",
-        "id": "family",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-    },
-    {
         "name": "Species",
         "id": "name",
         "deletable": False,
