@@ -874,7 +874,6 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
         return {
             "clusters": clusters,
             "links": links,
-            "config": {"updateGroups": False},
             "success": True,
         }
 
@@ -1036,6 +1035,8 @@ clientside_callback(
                 cluster: {
                     spacing: cluster_spacing || 50,
                     alignLabels: false,
+                    hideLocusCoordinates: true,
+                    lociFontSize: 0,
                 },
                 gene: {
                     label: {
@@ -1134,6 +1135,9 @@ clientside_callback(
                     d3.select('#' + containerId)
                         .datum(store_data)
                         .call(chart);
+                    
+                    // legend: { show: false } only prevents repositioning; hide it explicitly
+                    d3.select('#' + containerId).select('g.legend').style('display', 'none');
                     
                     if (typeof d3 !== 'undefined') {
                         const tooltip = d3.select('body').selectAll('.gene-tooltip').data([null])
