@@ -210,20 +210,6 @@ table_columns = [
         "presentation": "markdown",
     },
     {
-        "name": "Order",
-        "id": "order",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-    },
-    {
-        "name": "Family",
-        "id": "family",
-        "deletable": False,
-        "selectable": False,
-        "presentation": "markdown",
-    },
-    {
         "name": "Species",
         "id": "name",
         "deletable": False,
@@ -239,6 +225,297 @@ table_columns = [
     },
 ]
 
+main_card = dmc.Paper(
+    children=[
+        dmc.Title(
+            [
+                html.Span(
+                    "starbase ",
+                    className="logo-text",
+                ),
+                " Wiki",
+            ],
+            order=1,
+            mb="md",
+        ),
+        dmc.Text(
+            [
+                "Search and explore the characteristics of different ",
+                html.Span("Starship", style={"fontStyle": "italic"}),
+                " families",
+            ],
+            c="dimmed",
+            size="lg",
+        ),
+        dmc.Space(h="md"),
+        dmc.Group(
+            gap="xl",
+            children=[
+                dmc.Autocomplete(
+                    id="taxa-search",
+                    label="Taxonomy",
+                    placeholder="Search across family, genus, etc.",
+                    data=[],
+                    limit=20,
+                    style={"flex": "1", "minWidth": "200px"},
+                ),
+                dmc.Autocomplete(
+                    id="family-search",
+                    label="Starship Family",
+                    placeholder="Search by family...",
+                    data=[],
+                    limit=20,
+                    style={"flex": "1", "minWidth": "200px"},
+                ),
+            ],
+        ),
+        dmc.Group(
+            align="right",
+            mt="md",
+            children=[
+                dmc.Group(
+                    children=[
+                        curated_switch(
+                            text=html.Div(
+                                [
+                                    "Only show curated ",
+                                    html.Span(
+                                        "Starships",
+                                        style={"fontStyle": "italic"},
+                                    ),
+                                ]
+                            ),
+                            size="md",
+                        ),
+                        dereplicated_switch(
+                            text=html.Div(
+                                [
+                                    "Only show dereplicated ",
+                                    html.Span(
+                                        "Starships",
+                                        style={"fontStyle": "italic"},
+                                    ),
+                                ]
+                            ),
+                            size="md",
+                        ),
+                    ],
+                    mt="md",
+                ),
+            ],
+        ),
+        # Search Actions
+        dmc.Group(
+            align="right",
+            mt="md",
+            children=[
+                dmc.Button(
+                    "Reset",
+                    id="reset-search",
+                    variant="outline",
+                    leftSection=DashIconify(icon="tabler:refresh"),
+                ),
+                dmc.Button(
+                    "Search",
+                    id="apply-search",
+                    variant="filled",
+                    leftSection=DashIconify(icon="tabler:search"),
+                ),
+            ],
+        ),
+    ],
+    p="xl",
+    radius="md",
+    withBorder=True,
+    mb="xl",
+)
+
+taxonomic_distribution_card = dmc.Paper(
+    children=[
+        dmc.Title("Taxonomic Distribution", order=2, mb="md"),
+        dbc.Spinner(
+            children=html.Div(
+                id="search-sunburst-plot",
+                style={
+                    "width": "100%",
+                    "height": "100%",
+                    "overflow": "hidden",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "minHeight": "300px",
+                },
+            ),
+            color="primary",
+            type="border",
+            fullscreen=False,
+            spinner_style={"width": "3rem", "height": "3rem"},
+        ),
+    ],
+    p="xl",
+    radius="md",
+    withBorder=True,
+    mb="xl",
+)
+
+starship_families_card = dmc.Paper(
+    children=[
+        dmc.Title(
+            html.Div(
+                [
+                    html.Span(
+                        "Starship",
+                        style={"fontStyle": "italic"},
+                    ),
+                    " Families",
+                ]
+            ),
+            order=2,
+            mb="md",
+        ),
+        dbc.Spinner(
+            children=html.Div(
+                id="accordion",
+                children=dbc.Accordion(id="category-accordion"),
+            ),
+            color="primary",
+            type="border",
+            fullscreen=False,
+            spinner_style={"width": "3rem", "height": "3rem"},
+        ),
+    ],
+    p="xl",
+    radius="md",
+    withBorder=True,
+    mb="xl",
+    style={
+        "minHeight": "200px",
+        "maxHeight": "calc(100vh - 200px)",
+        "height": "auto",
+        "overflowY": "auto",
+    },
+)
+
+
+info_table_paper = dmc.Paper(
+    children=[
+        dmc.Title("Info Table and Downloads", order=2, mb="md"),
+        dmc.Stack(
+            [
+                dmc.Text(
+                    [
+                        "Select individual ",
+                        html.Span("Starships", style={"fontStyle": "italic"}),
+                        " or download the complete dataset",
+                    ],
+                    size="lg",
+                    c="dimmed",
+                ),
+                dmc.Center(
+                    dmc.Group(
+                        gap="xl",
+                        children=[
+                            dmc.Button(
+                                html.Div(
+                                    [
+                                        "Download All ",
+                                        html.Span(
+                                            "Starships",
+                                            style={"fontStyle": "italic"},
+                                        ),
+                                    ]
+                                ),
+                                id="download-all-btn",
+                                variant="gradient",
+                                gradient={"from": "indigo", "to": "cyan"},
+                                leftSection=html.I(className="bi bi-cloud-download"),
+                                size="md",
+                                loaderProps={"variant": "dots", "color": "white"},
+                            ),
+                            dmc.Button(
+                                html.Div(
+                                    [
+                                        "Download Selected ",
+                                        html.Span(
+                                            "Starships",
+                                            style={"fontStyle": "italic"},
+                                        ),
+                                    ]
+                                ),
+                                id="download-selected-btn",
+                                variant="gradient",
+                                gradient={"from": "teal", "to": "lime"},
+                                leftSection=html.I(className="bi bi-download"),
+                                size="md",
+                                loaderProps={"variant": "dots", "color": "white"},
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+            gap="xl",
+        ),
+        dmc.Space(h="md"),
+        html.Div(id="dl-notify"),
+        dcc.Download(id="dl-package"),
+        html.Div(
+            children=[
+                dmc.Group(
+                    gap="apart",
+                    mt="md",
+                    children=[
+                        dmc.Text(
+                            id="table-stats",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                        dmc.Text(
+                            [
+                                "Click rows to select ",
+                                html.Span("Starships", style={"fontStyle": "italic"}),
+                            ],
+                            size="sm",
+                            c="dimmed",
+                            style={"fontStyle": "italic"},
+                        ),
+                    ],
+                ),
+                dmc.Modal(
+                    id="accession-modal",
+                    opened=False,
+                    centered=True,
+                    overlayProps={"blur": 3},
+                    size="lg",
+                    children=[
+                        dmc.Title(id="modal-title", order=3),
+                        dmc.Space(h="md"),
+                        html.Div(id="modal-content"),
+                    ],
+                ),
+                html.Div(
+                    id="dl-table-container",
+                    children=make_dl_table(
+                        pd.DataFrame(),
+                        id="dl-table",
+                        table_columns=table_columns,
+                    ),
+                ),
+                html.Div(id="dummy-output", style={"display": "none"}),
+            ],
+        ),
+    ],
+    p="xl",
+    radius="md",
+    withBorder=True,
+    mb="xl",
+    style={
+        "minHeight": "calc(100vh - 120px)",
+        "height": "auto",
+        "maxHeight": "none",
+        "overflowY": "visible",
+        "marginBottom": "2rem",
+    },
+)
 
 layout = dmc.Container(
     fluid=True,
@@ -248,200 +525,50 @@ layout = dmc.Container(
         dcc.Store(id="meta-data", data=load_initial_data()),
         dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
-        # Header Section
-        dmc.Space(h="md"),
-        dmc.Paper(
-            children=[
-                dmc.Title(
-                    [
-                        html.Span(
-                            "starbase ",
-                            className="logo-text",
-                        ),
-                        " Wiki",
-                    ],
-                    order=1,
-                    mb="md",
-                ),
-                dmc.Text(
-                    [
-                        "Search and explore the characteristics of different ",
-                        html.Span("Starship", style={"fontStyle": "italic"}),
-                        " families",
-                    ],
-                    c="dimmed",
-                    size="lg",
-                ),
-                dmc.Space(h="md"),
-                dmc.Grid(
-                    children=[
-                        # Taxonomy Search
-                        dmc.GridCol(
-                            span={"lg": 3, "md": 6, "sm": 12},
-                            children=[
-                                dmc.Autocomplete(
-                                    id="taxa-search",
-                                    label="Taxonomy",
-                                    placeholder="Search across family, genus, etc.",
-                                    data=[],  # Will be populated by callback
-                                    limit=20,  # Limit dropdown items for performance
-                                    style={"width": "100%"},
-                                )
-                            ],
-                        ),
-                        # Family Search
-                        dmc.GridCol(
-                            span={"lg": 3, "md": 6, "sm": 12},
-                            children=[
-                                dmc.Autocomplete(
-                                    id="family-search",
-                                    label="Starship Family",
-                                    placeholder="Search by family...",
-                                    data=[],  # Will be populated by callback
-                                    limit=20,  # Limit dropdown items for performance
-                                    style={"width": "100%"},
-                                ),
-                            ],
-                        ),
-                    ],
-                    gutter="xl",
-                ),
-                dmc.Group(
-                    align="right",
-                    mt="md",
-                    children=[
-                        dmc.Group(
-                            children=[
-                                curated_switch(
-                                    text=html.Div(
-                                        [
-                                            "Only show curated ",
-                                            html.Span(
-                                                "Starships",
-                                                style={"fontStyle": "italic"},
-                                            ),
-                                        ]
-                                    ),
-                                    size="md",
-                                ),
-                                dereplicated_switch(
-                                    text=html.Div(
-                                        [
-                                            "Only show dereplicated ",
-                                            html.Span(
-                                                "Starships",
-                                                style={"fontStyle": "italic"},
-                                            ),
-                                        ]
-                                    ),
-                                    size="md",
-                                ),
-                            ],
-                            mt="md",
-                        ),
-                    ],
-                ),
-                # Search Actions
-                dmc.Group(
-                    align="right",
-                    mt="md",
-                    children=[
-                        dmc.Button(
-                            "Reset",
-                            id="reset-search",
-                            variant="outline",
-                            leftSection=DashIconify(icon="tabler:refresh"),
-                        ),
-                        dmc.Button(
-                            "Search",
-                            id="apply-search",
-                            variant="filled",
-                            leftSection=DashIconify(icon="tabler:search"),
-                        ),
-                    ],
-                ),
-            ],
-            p="xl",
-            radius="md",
-            withBorder=True,
-            mb="xl",
-        ),
         dmc.Grid(
             children=[
-                # Left Column - Search Results
                 dmc.GridCol(
-                    span={"lg": 6, "md": 12},
+                    span={"lg": 6, "md": 6, "sm": 12},
                     children=[
-                        html.Div(id="search-results"),
-                    ],
-                ),
-                # Right Column - Search Section
-                dmc.GridCol(
-                    span={"lg": 6, "md": 12},
-                    children=[
-                        dmc.Paper(
-                            children=[
-                                dmc.Title("Taxonomic Distribution", order=2, mb="md"),
-                                dcc.Loading(
-                                    id="search-sunburst-loading",
-                                    type="circle",
-                                    children=html.Div(
-                                        id="search-sunburst-plot",
-                                        style={
-                                            "width": "100%",
-                                            "height": "100%",
-                                            "overflow": "hidden",  # Prevent overflow
-                                            "display": "flex",  # Use flexbox
-                                            "alignItems": "center",
-                                            "justifyContent": "center",
-                                        },
-                                    ),
-                                ),
-                            ],
-                            p="xl",
-                            radius="md",
-                            withBorder=True,
-                            mb="xl",
-                        ),
-                        dmc.Space(h="sm"),
-                        dmc.Paper(
-                            children=[
-                                dmc.Title(
+                        dmc.Space(h="md"),
+                        main_card,
+                        dbc.Spinner(
+                            children=html.Div(
+                                id="search-results",
+                                style={"minHeight": "300px"},
+                                children=[
                                     html.Div(
-                                        [
-                                            html.Span(
-                                                "Starship",
-                                                style={"fontStyle": "italic"},
-                                            ),
-                                            " Families",
-                                        ]
+                                        id="search-results-placeholder",
+                                        style={"display": "block"},
+                                        children=dmc.Text(
+                                            "Start a search to see results",
+                                            size="lg",
+                                            c="dimmed",
+                                        ),
                                     ),
-                                    order=2,
-                                    mb="md",
-                                ),
-                                dcc.Loading(
-                                    id="wiki-loading",
-                                    type="circle",
-                                    children=html.Div(
-                                        id="accordion",
-                                        children=dbc.Accordion(id="category-accordion"),
+                                    html.Div(
+                                        id="search-results-table",
+                                        style={"display": "none"},
+                                        children=info_table_paper,
                                     ),
-                                ),
-                            ],
-                            p="xl",
-                            radius="md",
-                            withBorder=True,
-                            mb="xl",
-                            style={
-                                "minHeight": "200px",  # Minimum height when collapsed
-                                "maxHeight": "calc(100vh - 200px)",  # Maximum height
-                                "height": "auto",  # Allow height to adjust to content
-                                "overflowY": "auto",
-                            },
+                                ],
+                            ),
+                            color="primary",
+                            type="border",
+                            fullscreen=False,
+                            spinner_style={"width": "3rem", "height": "3rem"},
                         ),
                     ],
                 ),
-            ],
+                dmc.GridCol(
+                    span={"lg": 6, "md": 12},
+                    children=[
+                        dmc.Space(h="md"),
+                        taxonomic_distribution_card,
+                        starship_families_card,
+                    ],
+                ),
+            ]
         ),
     ],
 )
@@ -473,22 +600,19 @@ def load_meta_data(url):
 @callback(Output("paper-data", "data"), Input("url", "href"))
 @handle_callback_error
 def load_paper_data(url):
-    if url:
-        try:
-            logger.debug("Loading paper data from database.")
-            paper_df = cache.get("paper_data")
-            if paper_df is None:
-                paper_df = fetch_paper_data()
-            logger.debug(f"Paper data query returned {len(paper_df)} rows.")
-            return paper_df.to_dict("records")
-        except SQLAlchemyError as e:
-            logger.error(
-                f"Error occurred while executing the paper data query: {str(e)}"
-            )
-            return []
+    if not url:
+        raise PreventUpdate
 
-    logger.warning("No URL provided for paper data loading.")
-    raise PreventUpdate
+    try:
+        logger.debug("Loading paper data from database.")
+        paper_df = cache.get("paper_data")
+        if paper_df is None:
+            paper_df = fetch_paper_data()
+        logger.debug(f"Paper data query returned {len(paper_df)} rows.")
+        return paper_df.to_dict("records")
+    except SQLAlchemyError as e:
+        logger.error(f"Error occurred while executing the paper data query: {str(e)}")
+        return []
 
 
 # Callback to create accordion layout
@@ -540,7 +664,13 @@ def create_accordion(cached_meta, cached_papers):
 
 
 @callback(
-    Output("search-results", "children"),
+    [
+        Output("search-results-placeholder", "children"),
+        Output("search-results-placeholder", "style"),
+        Output("search-results-table", "style"),
+        Output("dl-table", "rowData"),
+        Output("table-stats", "children"),
+    ],
     [
         Input("filtered-meta-data", "data"),
         Input("meta-data", "data"),
@@ -553,26 +683,49 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
     # Use filtered data if available, otherwise use original data
     data_to_use = filtered_meta if filtered_meta is not None else cached_meta
 
+    placeholder_show = {"display": "block"}
+    table_show = {"display": "none"}
+    empty_row_data = []
+
     if data_to_use is None:
-        return dmc.Text("Start a search to see results", size="lg", c="dimmed")
+        return (
+            dmc.Text("Start a search to see results", size="lg", c="dimmed"),
+            placeholder_show,
+            table_show,
+            empty_row_data,
+            "No data available",
+        )
 
     try:
         df = pd.DataFrame(data_to_use)
 
-        # Check if DataFrame is empty before applying filters
         if df.empty:
-            return dmc.Alert(
-                "No results match your search criteria.", color="blue", variant="filled"
+            return (
+                dmc.Alert(
+                    "No results match your search criteria.",
+                    color="blue",
+                    variant="filled",
+                ),
+                placeholder_show,
+                table_show,
+                empty_row_data,
+                "No data available",
             )
 
-        # Apply curated/dereplicated filters if switches are enabled
         if curated and "curated_status" in df.columns:
             df = df[df["curated_status"] == "curated"]
 
-        # Check again after applying filters
         if df.empty:
-            return dmc.Alert(
-                "No results match your search criteria.", color="blue", variant="filled"
+            return (
+                dmc.Alert(
+                    "No results match your search criteria.",
+                    color="blue",
+                    variant="filled",
+                ),
+                placeholder_show,
+                table_show,
+                empty_row_data,
+                "No data available",
             )
 
         if dereplicate:
@@ -581,164 +734,39 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             filtered_meta_df = df.copy()
 
         if filtered_meta_df.empty:
-            return dmc.Text("No results found", size="lg", c="dimmed")
+            return (
+                dmc.Text("No results found", size="lg", c="dimmed"),
+                placeholder_show,
+                table_show,
+                empty_row_data,
+                "No records found",
+            )
 
-        # drop unnecessary columns
         filtered_meta_df = filtered_meta_df.drop(columns=["elementLength"])
-
-        # Fill NA values
         filtered_meta_df = filtered_meta_df.fillna("")
+        row_data = filtered_meta_df.to_dict("records")
+        n_records = len(row_data)
 
-        table = make_dl_table(
-            filtered_meta_df,
-            id="dl-table",
-            table_columns=table_columns,
+        return (
+            dmc.Text("Start a search to see results", size="lg", c="dimmed"),
+            {"display": "none"},
+            {"display": "block"},
+            row_data,
+            f"Showing {n_records} records",
         )
-
-        # Create the enhanced component similar to wiki_table_with_download
-        enhanced_results = dmc.Paper(
-            children=[
-                # Main Content
-                dmc.Title("Info Table and Downloads", order=2, mb="md"),
-                dmc.Stack(
-                    [
-                        dmc.Text(
-                            [
-                                "Select individual ",
-                                html.Span("Starships", style={"fontStyle": "italic"}),
-                                " or download the complete dataset",
-                            ],
-                            size="lg",
-                            c="dimmed",
-                        ),
-                        # Download Options
-                        dmc.Center(
-                            dmc.Group(
-                                gap="xl",
-                                children=[
-                                    dmc.Button(
-                                        html.Div(
-                                            [
-                                                "Download All ",
-                                                html.Span(
-                                                    "Starships",
-                                                    style={"fontStyle": "italic"},
-                                                ),
-                                            ]
-                                        ),
-                                        id="download-all-btn",
-                                        variant="gradient",
-                                        gradient={
-                                            "from": "indigo",
-                                            "to": "cyan",
-                                        },
-                                        leftSection=html.I(
-                                            className="bi bi-cloud-download"
-                                        ),
-                                        size="md",
-                                        loaderProps={
-                                            "variant": "dots",
-                                            "color": "white",
-                                        },
-                                    ),
-                                    dmc.Button(
-                                        html.Div(
-                                            [
-                                                "Download Selected ",
-                                                html.Span(
-                                                    "Starships",
-                                                    style={"fontStyle": "italic"},
-                                                ),
-                                            ]
-                                        ),
-                                        id="download-selected-btn",
-                                        variant="gradient",
-                                        gradient={"from": "teal", "to": "lime"},
-                                        leftSection=html.I(className="bi bi-download"),
-                                        size="md",
-                                        loaderProps={
-                                            "variant": "dots",
-                                            "color": "white",
-                                        },
-                                    ),
-                                ],
-                            ),
-                        ),
-                    ],
-                    gap="xl",
-                ),
-                dmc.Space(h="md"),
-                # Notification Area
-                html.Div(id="dl-notify"),
-                dcc.Download(id="dl-package"),
-                # Table Section
-                html.Div(
-                    children=[
-                        # Table Header with Stats
-                        dmc.Group(
-                            gap="apart",
-                            mt="md",
-                            children=[
-                                dmc.Text(
-                                    id="table-stats",
-                                    size="sm",
-                                    c="dimmed",
-                                ),
-                                dmc.Text(
-                                    [
-                                        "Click rows to select ",
-                                        html.Span(
-                                            "Starships", style={"fontStyle": "italic"}
-                                        ),
-                                    ],
-                                    size="sm",
-                                    c="dimmed",
-                                    style={"fontStyle": "italic"},
-                                ),
-                            ],
-                        ),
-                        dmc.Modal(
-                            id="accession-modal",
-                            opened=False,
-                            centered=True,
-                            overlayProps={"blur": 3},
-                            size="lg",
-                            children=[
-                                dmc.Title(id="modal-title", order=3),
-                                dmc.Space(h="md"),
-                                html.Div(id="modal-content"),
-                            ],
-                        ),
-                        html.Div(
-                            id="dl-table-container",
-                            children=[table],
-                        ),
-                        # Dummy div for clientside callback
-                        html.Div(id="dummy-output", style={"display": "none"}),
-                    ],
-                ),
-            ],
-            p="xl",
-            radius="md",
-            withBorder=True,
-            mb="xl",
-            style={
-                "minHeight": "calc(100vh - 120px)",
-                "height": "auto",
-                "maxHeight": "none",
-                "overflowY": "visible",
-                "marginBottom": "2rem",
-            },
-        )
-
-        return enhanced_results
 
     except Exception as e:
         logger.error(f"Error in create_search_results: {str(e)}")
-        return dmc.Alert(
-            f"An error occurred while loading the results: {str(e)}",
-            color="red",
-            variant="filled",
+        return (
+            dmc.Alert(
+                f"An error occurred while loading the results: {str(e)}",
+                color="red",
+                variant="filled",
+            ),
+            placeholder_show,
+            table_show,
+            empty_row_data,
+            "Error loading data",
         )
 
 
@@ -998,43 +1026,6 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
         )
 
 
-@callback(
-    Output("table-stats", "children"),
-    Input("filtered-meta-data", "data"),
-    Input("meta-data", "data"),
-    Input("curated-input", "checked"),
-    Input("dereplicated-input", "checked"),
-)
-@handle_callback_error
-def update_table_stats(filtered_meta, cached_meta, curated, dereplicate):
-    """Update the table statistics based on current data and filters"""
-    data_to_use = filtered_meta if filtered_meta is not None else cached_meta
-
-    if data_to_use is None:
-        return "No data available"
-
-    try:
-        df = pd.DataFrame(data_to_use)
-
-        # Apply curated/dereplicated filters if switches are enabled
-        if curated:
-            df = df[df["curated_status"] == "curated"]
-
-        if dereplicate:
-            df = dereplicate_sequences(df)
-
-        if df.empty:
-            return "No records found"
-
-        # Count unique accession ships
-        unique_ships = len(df)
-        return f"Showing {unique_ships} records"
-
-    except Exception as e:
-        logger.error(f"Error updating table stats: {str(e)}")
-        return "Error loading data"
-
-
 def generate_download_helper(rows, curated, dereplicate):
     """Helper function containing the common download logic"""
     import re
@@ -1051,6 +1042,7 @@ def generate_download_helper(rows, curated, dereplicate):
 
         accessions = [_base_accession(row) for row in rows]
         accessions = [a for a in accessions if a]
+
         if not accessions:
             raise ValueError("No valid accessions found in selected rows for download")
         dl_df = fetch_ships(
@@ -1063,34 +1055,36 @@ def generate_download_helper(rows, curated, dereplicate):
         if dl_df is None or dl_df.empty:
             raise ValueError("No sequences found for download")
 
-        # Count occurrences of each accession tag
-        accession_counts = dl_df["accession_tag"].value_counts()
-
         fasta_content = []
         for _, row in dl_df.drop_duplicates(
-            subset=["accession_tag", "sequence"]
+            subset=["ship_accession_display", "sequence"]
         ).iterrows():
-            count = accession_counts[row["accession_tag"]]
-            header = create_ncbi_style_header(row, count)
+            header = create_ncbi_style_header(row, type_ship=True)
             # Skip if header creation failed (returns None)
             if header is None:
                 logger.warning(
-                    f"Skipping sequence with accession_tag={row.get('accession_tag', 'unknown')} due to header creation failure"
+                    f"Skipping sequence with ship_accession_display={row.get('ship_accession_display', 'unknown')} due to header creation failure"
                 )
                 continue
             fasta_content.append(f"{header}\n{row['sequence']}")
 
+        num_sequences = len(fasta_content)
         fasta_str = "\n".join(fasta_content)
         logger.debug(
             f"FASTA content created successfully for {len(fasta_content)} sequences."
         )
 
+        if num_sequences == 1:
+            filename_prefix = accessions[0]
+        else:
+            filename_prefix = "starships"
+
         # Return both the FASTA content and download info
         return dict(
             content=fasta_str,
-            filename=f"starships_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fasta",
+            filename=f"{filename_prefix}_{datetime.now().strftime('%y%m%d')}.fasta",
             type="text/plain",
-        ), len(fasta_content)
+        ), num_sequences
 
     except ValueError as e:
         logger.warning(f"Download helper warning: {str(e)}")
@@ -1126,22 +1120,33 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
     )
 
     if not download_data:
-        return None, dmc.Alert(
-            children="No sequences found for download", color="red", title="Error"
+        return None, dmc.Notification(
+            title="Error",
+            message="No sequences found for download",
+            color="red",
+            id="dl-download-notify",
+            action="show",
+            autoClose=5000,
         )
 
     if num_sequences > 0:
         if num_sequences == 1:
-            download_message = f"Downloading {num_sequences} sequence"
+            ship_accession_display = [
+                row.get("ship_accession_display") for row in table_data
+            ]
+            download_message = f"Downloading sequence for {ship_accession_display[0]}"
         else:
             download_message = f"Downloading {num_sequences} sequences"
     else:
         download_message = "No sequences found for download"
 
-    return download_data, dmc.Alert(
-        children=download_message,
-        color="green",
+    return download_data, dmc.Notification(
         title="Success",
+        message=download_message,
+        color="green",
+        id="dl-download-notify",
+        action="show",
+        autoClose=5000,
     )
 
 
@@ -1179,14 +1184,22 @@ def generate_download_selected(
     )
 
     if not download_data:
-        return None, dmc.Alert(
-            children="No sequences found for selected rows", color="red", title="Error"
+        return None, dmc.Notification(
+            title="Error",
+            message="No sequences found for selected rows",
+            color="red",
+            id="dl-download-notify",
+            action="show",
+            autoClose=5000,
         )
 
-    return download_data, dmc.Alert(
-        children=f"Downloading {num_sequences} sequences",
-        color="green",
+    return download_data, dmc.Notification(
         title="Success",
+        message=f"Downloading {num_sequences} sequences",
+        color="green",
+        id="dl-download-notify",
+        action="show",
+        autoClose=5000,
     )
 
 
