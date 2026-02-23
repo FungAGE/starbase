@@ -194,3 +194,5 @@ tests/test_data/real_*
 !tests/test_data/mock_*
 
 .agent-docs/
+
+starbase-validation/
