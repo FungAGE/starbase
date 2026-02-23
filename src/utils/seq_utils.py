@@ -12,6 +12,7 @@ import dash_mantine_components as dmc
 from typing import Dict, Union
 import os
 from src.config.logging import get_logger
+from src.database.sql_manager import fetch_ships
 
 logger = get_logger(__name__)
 
@@ -710,7 +711,7 @@ def extract_accession(accession: str) -> str:
     return base_accession
 
 
-def create_ncbi_style_header(row, count=1):
+def create_ncbi_style_header(row, type_ship=False):
     try:
 
         def safe_get(key):
@@ -739,23 +740,11 @@ def create_ncbi_style_header(row, count=1):
 
         # safe get values from row
         # Use accession_display if available, otherwise combine accession_tag and version_tag
-        accession_tag = safe_get("ship_accession_tag")
-        version_tag = safe_get("ship_version_tag")
-        starshipID = safe_get("starshipID")
+        ship_accession_display = safe_get("ship_accession_display")
+        group_accession_display = safe_get("accession_display")
+        # n_genomes = safe_get("n_genomes") # TODO: add this back in when we have it
         element_begin = safe_get("elementBegin")
         element_end = safe_get("elementEnd")
-
-        if accession_tag and version_tag and version_tag != "":
-            accession_with_version = f"{accession_tag}.{version_tag}"
-        else:
-            accession_with_version = accession_tag
-
-        # Ensure accession_with_version is never None - provide fallback
-        if not accession_with_version:
-            starshipID_fallback = starshipID if starshipID else "unknown"
-            accession_with_version = (
-                f"unknown_accession [starshipID={starshipID_fallback}]"
-            )
 
         # Collect taxonomic information in a single consolidated field
         tax_field_mapping = {"organism": "name", "order": "order", "family": "family"}
@@ -796,27 +785,29 @@ def create_ncbi_style_header(row, count=1):
         else:
             genomic_location = ""
 
-        if count > 1:
-            # we need a way to tell different sequences apart that have the same accession
-            # Handle None starshipID gracefully
-            starshipID_str = starshipID if starshipID else "unknown"
-            accession_with_version = (
-                accession_with_version
-                + f" [starshipID={starshipID_str}] [n_genomes={count}]"
-            )
+        if type_ship:
+            # generate a count of the number of genomes for each group accession
+            # TODO: the field `n_genomes` does not exist yet, so count how many ships have the same group accession
+            n_genomes = fetch_ships(
+                accessions=[group_accession_display], with_sequence=False
+            ).shape[0]
+            header = f"{ship_accession_display} {group_accession_display} [n_genomes={n_genomes}]"
+        else:
+            header = f"{ship_accession_display} {group_accession_display}"
 
         header = (
-            f"{accession_with_version} "
+            header
             + tax_info
             + starship_classification_info
             + assembly
             + genomic_location
         )
+
         sanitized_header = sanitize_header(header)
         return sanitized_header
     except Exception as e:
         logger.warning(
-            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown') if isinstance(row, dict) else 'unknown'}: {str(e)}"
+            f"Failed to create NCBI-style header for {row.get('ship_accession_display', 'unknown') if isinstance(row, dict) else 'unknown'}: {str(e)}"
         )
         return None
 

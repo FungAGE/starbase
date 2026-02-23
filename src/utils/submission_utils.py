@@ -38,6 +38,7 @@ from src.config.database import StarbaseSession
 from src.database.models.schema import (
     Ships,
     Accessions,
+    ShipAccessions,
     JoinedShips,
     Taxonomy,
     FamilyNames,
@@ -47,7 +48,11 @@ from src.database.models.schema import (
     Gff,
     StarshipFeatures,
 )
-from src.utils.classification_utils import assign_accession, generate_md5_hash
+from src.utils.classification_utils import (
+    assign_accession,
+    ensure_ship_has_ssb,
+    generate_md5_hash,
+)
 from src.utils.seq_utils import clean_sequence, revcomp
 from src.database.sql_manager import fetch_ships
 
@@ -394,22 +399,29 @@ class SubmissionProcessor:
         """
         Insert submission data into database with proper foreign key relationships.
 
+        1. Determine if we need to create a new ship or reuse existing
+        2. Assign accession
+        3. Create Accessions record
+        4. Create Ships record
+        5. Ensure this ship has an SSB (ship) accession for display/search
+        6. Get or create foreign key records
+        7. Create JoinedShips record
+        8. Add GFF entries if provided
+        9. Create StarshipFeatures if location data provided
+        10. Commit all changes
+
         Returns:
             Tuple of (ship_id, accession_tag)
         """
         session = StarbaseSession()
 
         try:
-            # Clean sequence
             clean_seq = clean_sequence(data["sequence"])
 
-            # Determine if we need to create a new ship or reuse existing
             if duplicate_info.is_duplicate and duplicate_info.different_taxon:
-                # Reuse existing ship for different taxon
                 ship_id = duplicate_info.existing_ship_id
                 ship = session.query(Ships).filter(Ships.id == ship_id).first()
 
-                # Use existing accession
                 if ship.accession_id:
                     accession = (
                         session.query(Accessions)
@@ -418,45 +430,45 @@ class SubmissionProcessor:
                     )
                     accession_tag = accession.accession_tag if accession else None
                 else:
-                    # Need to create accession
                     existing_ships = fetch_ships(with_sequence=True)
                     accession_tag, _ = assign_accession(clean_seq, existing_ships)
 
-                    # Create accession record
                     new_accession = Accessions(
                         accession_tag=accession_tag, version_tag=1
                     )
                     session.add(new_accession)
                     session.flush()
 
-                    # Update ship
                     ship.accession_id = new_accession.id
                     accession_tag = new_accession.accession_tag
             else:
                 # Create new ship
-                # Step 1: Assign accession
                 existing_ships = fetch_ships(with_sequence=True)
                 accession_tag, needs_review = assign_accession(
                     clean_seq, existing_ships
                 )
 
-                # Step 2: Create Accessions record
+                ship_accession = ShipAccessions(ship_accession_tag=accession_tag)
+                session.add(ship_accession)
+                session.flush()
+
                 accession = Accessions(accession_tag=accession_tag, version_tag=1)
                 session.add(accession)
-                session.flush()  # Get accession.id
+                session.flush()
 
-                # Step 3: Create Ships record
                 ship = Ships(
                     sequence=clean_seq,
+                    sequence_length=len(clean_seq),
                     md5=generate_md5_hash(clean_seq),
                     rev_comp_md5=generate_md5_hash(revcomp(clean_seq)),
                     accession_id=accession.id,
                 )
                 session.add(ship)
-                session.flush()  # Get ship.id
+                session.flush()
                 ship_id = ship.id
 
-            # Step 4: Get or create foreign key records
+            ensure_ship_has_ssb(session, ship_id)
+
             taxonomy_id = self._get_or_create_taxonomy(session, data)
             family_id = self._get_or_create_family(session, data)
             navis_id = self._get_or_create_navis(session, data, family_id)
@@ -465,7 +477,6 @@ class SubmissionProcessor:
             )
             genome_id = self._get_or_create_genome(session, data, taxonomy_id)
 
-            # Step 5: Create JoinedShips record
             joined_ship = JoinedShips(
                 starshipID=data["starshipID"],
                 ship_id=ship_id,
@@ -487,18 +498,15 @@ class SubmissionProcessor:
             session.add(joined_ship)
             session.flush()
 
-            # Step 6: Add GFF entries if provided
             if data.get("gff_entries"):
                 self._add_gff_entries(
                     session, data["gff_entries"], accession.id, ship_id
                 )
 
-            # Step 7: Create StarshipFeatures if location data provided
             self._create_starship_features(
                 session, data, ship_id, data.get("captain_id")
             )
 
-            # Commit all changes
             session.commit()
             logger.info(
                 f"Successfully inserted {data['starshipID']} (ship_id={ship_id}, accession={accession_tag})"
@@ -671,10 +679,9 @@ class SubmissionProcessor:
         if not (contig_id and element_start and element_end):
             return
 
-        # Calculate element length if not provided
-        element_length = data.get("element_length")
-        if element_length is None and element_start and element_end:
-            element_length = element_end - element_start + 1
+        # elementLength must equal ABS(elementEnd - elementBegin) + 1 (always compute from coordinates)
+        # abs() handles negative-strand features where element_start > element_end
+        element_length = abs(element_end - element_start) + 1
 
         features = StarshipFeatures(
             contigID=contig_id,

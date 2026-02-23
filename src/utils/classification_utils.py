@@ -24,6 +24,8 @@ from src.utils.seq_utils import (
     revcomp,
 )
 
+from sqlalchemy import text
+
 from Bio import SeqIO
 from Bio.Seq import Seq
 import networkx as nx
@@ -37,14 +39,17 @@ accession_workflow = """
 # assigning accessions
 ########################################################
 accession format:
-- normal ship accession: SSA123456
-- updated ship accession: SSA123456.1
+- haplotype/sequence-group accession: SSA123456 (SSA123456.1 for versions)
+- per-ship accession: SSB0000042 (one per ship, for display/search)
 
-workflow:
+workflow (SSA: classification):
 - first check for exact matches
 - then check for contained within matches
 - then check for almost identical matches
 - if no matches, assign a new accession
+
+SSB: assigned when a ship is created or reused (ensure_ship_has_ssb).
+Used by BLAST, submission, and wiki for per-sequence identifiers.
 
 if a sequence is a truncated version of a longer sequence, assign the longer sequence accession, flag for review
 
@@ -133,6 +138,10 @@ def assign_accession(
     if exact_match:
         logger.debug(f"Found exact match: {exact_match}")
         return exact_match, False
+    else:
+        # return SSB accessions
+        # this should return a new SSB accession if the ship doesn't have one?
+        ssb_accession = get_next_available_accession(session, "SSB")
 
     logger.debug("Step 2: Checking for contained matches...")
     container_result = check_contained_match(
@@ -186,15 +195,18 @@ def assign_accession(
 
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
-    """Generate a new unique accession number."""
-    # Extract existing accession numbers
+    """
+    Generate accessions for a new sequence.
+    1. Extract existing accession numbers
+    2. Find next available number
+    3. Return new accession number
+    """
     existing_nums = [
         int(acc.replace("SSA", "").split(".")[0])
         for acc in existing_ships["accession_tag"]
         if acc is not None and acc.startswith("SSA")
     ]
 
-    # Check if we have existing accessions
     if not existing_nums:
         logger.info(
             "No existing SSA accessions found - starting fresh accession numbering from 1"
@@ -202,7 +214,6 @@ def generate_new_accession(existing_ships: pd.DataFrame) -> str:
         next_num = 1
         logger.debug(f"Assigning new accession number: SSA{next_num:06d}")
     else:
-        # Find next available number
         next_num = max(existing_nums) + 1
         logger.debug(f"Last used accession number: SSA{max(existing_nums):06d}")
         logger.debug(f"Assigning new accession number: SSA{next_num:06d}")
@@ -218,6 +229,69 @@ def get_version_sort_key(version_tag):
         return int(version_tag)
     except (ValueError, TypeError):
         return 0
+
+
+def get_next_available_accession(session, accession_type: str):
+    """Get the next available accession (full tag string, e.g. 'SSB0000002')."""
+    if accession_type == "SSB":
+        query = text("""
+        SELECT ship_accession_tag FROM ship_accessions
+        WHERE ship_accession_tag LIKE 'SSB%'
+        ORDER BY ship_accession_tag DESC
+        LIMIT 1
+        """)
+    elif accession_type == "SSA":
+        query = text("""
+        SELECT accession_tag FROM accessions
+        WHERE accession_tag LIKE 'SSA%'
+        ORDER BY accession_tag DESC
+        LIMIT 1
+        """)
+    else:
+        raise ValueError(f"Invalid accession type: {accession_type}")
+
+    result = session.execute(query).fetchone()
+
+    if result:
+        # Extract number from accession format
+        last_accession = result[0]
+        last_number = int(last_accession.replace(accession_type, ""))
+        return f"{accession_type}{last_number + 1:07d}"
+    else:
+        return f"{accession_type}0000001"
+
+
+def ensure_ship_has_ssb(session, ship_id: int) -> str:
+    """
+    Ensure a ship has an SSB (ship) accession; create one if missing.
+
+    Used when inserting or reusing a ship so that every ship has an SSB for
+    display and search (BLAST, submission, wiki). Idempotent: if the ship
+    already has an SSB, returns the existing tag.
+
+    Args:
+        session: SQLAlchemy session (same DB as ships/ship_accessions).
+        ship_id: ships.id.
+
+    Returns:
+        The ship's SSB tag (e.g. 'SSB0000042').
+    """
+    existing = session.execute(
+        text("SELECT ship_accession_tag FROM ship_accessions WHERE ship_id = :ship_id"),
+        {"ship_id": ship_id},
+    ).fetchone()
+    if existing:
+        return existing[0]
+    next_tag = get_next_available_accession(session, "SSB")
+    session.execute(
+        text("""
+        INSERT INTO ship_accessions (ship_accession_tag, version_tag, ship_id)
+        VALUES (:tag, :version, :ship_id)
+        """),
+        {"tag": next_tag, "version": 1, "ship_id": ship_id},
+    )
+    logger.debug(f"Assigned SSB {next_tag} to ship_id={ship_id}")
+    return next_tag
 
 
 ########################################################
@@ -2155,6 +2229,7 @@ def create_classification_output(workflow_state=None, classification_data=None):
     """Create the classification output component"""
     import dash_html_components as html
     import dash_mantine_components as dmc
+    from dash_iconify import DashIconify
 
     # Extract classification data
     classification_title = dmc.Title(
@@ -2166,10 +2241,33 @@ def create_classification_output(workflow_state=None, classification_data=None):
     if classification_data:
         classification_card = create_classification_card(classification_data)
         if classification_card:
+            action_buttons = dmc.Group(
+                [
+                    dmc.Button(
+                        "View in synteny",
+                        id="blast-view-synteny-btn",
+                        variant="light",
+                        leftSection=dmc.ThemeIcon(
+                            DashIconify(icon="tabler:chart-line"), radius="xl"
+                        ),
+                    ),
+                    dmc.Button(
+                        "Submit to portal",
+                        id="blast-submit-portal-btn",
+                        variant="light",
+                        leftSection=dmc.ThemeIcon(
+                            DashIconify(icon="tabler:upload"), radius="xl"
+                        ),
+                    ),
+                ],
+                gap="sm",
+                mt="md",
+            )
             return html.Div(
                 [
                     classification_title,
                     classification_card,
+                    action_buttons,
                 ]
             )
         else:

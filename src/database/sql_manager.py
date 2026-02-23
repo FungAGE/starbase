@@ -59,7 +59,7 @@ def fetch_meta_data(curated=False, accessions=None):
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
                     f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                    s.md5, s.rev_comp_md5, s.sequence_length,
+                    s.md5, s.rev_comp_md5,
                     a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships j
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
@@ -98,10 +98,9 @@ def fetch_meta_data(curated=False, accessions=None):
                 ]
             elif accession_mode is None:
                 # Mixed or unknown: match either column
-                mask = (
-                    filtered_df["accession_tag"].isin(formatted_values)
-                    | filtered_df["ship_accession_tag"].isin(formatted_values)
-                )
+                mask = filtered_df["accession_tag"].isin(
+                    formatted_values
+                ) | filtered_df["ship_accession_tag"].isin(formatted_values)
                 filtered_df = filtered_df[mask]
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")
@@ -211,15 +210,11 @@ def fetch_ships(
             )
             # Match base accession with or without version suffix
             like_clauses = " OR ".join(
-                "a.accession_tag LIKE '"
-                + str(v).replace("'", "''")
-                + ".%'"
+                "a.accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
                 for v in formatted_values
             )
             ship_like_clauses = " OR ".join(
-                "sa.ship_accession_tag LIKE '"
-                + str(v).replace("'", "''")
-                + ".%'"
+                "sa.ship_accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
                 for v in formatted_values
             )
 

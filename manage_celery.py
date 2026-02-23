@@ -15,7 +15,6 @@ import argparse
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.config.celery_config import celery
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -24,19 +23,34 @@ logger = get_logger(__name__)
 def start_worker():
     """Start Celery worker."""
     logger.info("Starting Celery worker...")
-    subprocess.run([
-        sys.executable, "-m", "celery", "-A", "src.config.celery_config", 
-        "worker", "--loglevel=info", "--concurrency=2"
-    ])
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "celery",
+            "-A",
+            "src.config.celery_config",
+            "worker",
+            "--loglevel=info",
+            "--concurrency=2",
+        ]
+    )
 
 
 def start_beat():
     """Start Celery beat scheduler."""
     logger.info("Starting Celery beat scheduler...")
-    subprocess.run([
-        sys.executable, "-m", "celery", "-A", "src.config.celery_config", 
-        "beat", "--loglevel=info"
-    ])
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "celery",
+            "-A",
+            "src.config.celery_config",
+            "beat",
+            "--loglevel=info",
+        ]
+    )
 
 
 def start_both():
@@ -49,13 +63,13 @@ def main():
     """Main function to handle command line arguments."""
     parser = argparse.ArgumentParser(description="Manage Celery processes for Starbase")
     parser.add_argument(
-        "command", 
+        "command",
         choices=["worker", "beat", "both"],
-        help="Which Celery process to start"
+        help="Which Celery process to start",
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.command == "worker":
         start_worker()
     elif args.command == "beat":

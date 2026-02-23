@@ -61,7 +61,6 @@ external_scripts = [
     "https://cdn.jsdelivr.net/npm/micromodal/dist/micromodal.min.js",
     "https://d3js.org/d3.v6.min.js",
     "/assets/js/clustermap.min.js",
-    "/assets/js/synteny.js",
     "/assets/js/universal-modal.js",
     "/assets/js/blaster.min.woaln.js",
 ]
@@ -144,7 +143,7 @@ def serve_app_layout():
                         "display": "flex",
                         "flexDirection": "column",
                         "gap": "10px",
-                    }
+                    },
                 ),
             ]
         )

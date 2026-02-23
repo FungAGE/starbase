@@ -69,6 +69,23 @@ def safe_get_position(df, begin_col, end_col, index=0, default="N/A"):
     return default
 
 
+def _modal_element_length(modal_data, index=0):
+    """
+    Element length for modals: always use computed value
+    elementEnd - elementBegin + 1 when both coordinates exist (canonical).
+    Only use starship_features.elementLength when coordinates are missing.
+    Never use ships.sequence_length.
+    """
+    begin = safe_get_value(
+        modal_data, "elementBegin", index, None, lambda x: int(float(x))
+    )
+    end = safe_get_value(modal_data, "elementEnd", index, None, lambda x: int(float(x)))
+    if begin not in (None, "N/A") and end not in (None, "N/A"):
+        return str(abs(int(end) - int(begin) + 1))
+    length = safe_get_numeric(modal_data, "elementLength", index=index, default="")
+    return length if length and length != "" else ""
+
+
 def create_ship_accession_modal_data(ship_accession_id):
     """Create structured data for accession modal instead of Dash components."""
     try:
@@ -132,7 +149,8 @@ def create_ship_accession_modal_data(ship_accession_id):
             ),
             "genome_source": safe_get_value(modal_data, "genomeSource", default=""),
             "contig_id": safe_get_value(modal_data, "contigID", default=""),
-            "element_length": safe_get_numeric(modal_data, "elementLength", default=""),
+            # Compute from coordinates (elementEnd - elementBegin + 1); fall back to stored elementLength if coordinates are missing.
+            "element_length": _modal_element_length(modal_data),
             "element_position": safe_get_position(
                 modal_data, "elementBegin", "elementEnd"
             ),

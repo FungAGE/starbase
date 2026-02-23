@@ -17,6 +17,7 @@ from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def create_error_alert(error_message, title="Error"):
     """Create a standardized error alert component"""
     return dmc.Alert(

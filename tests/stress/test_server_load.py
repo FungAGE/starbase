@@ -1,9 +1,4 @@
 import pytest
-
-# Skip all browser tests until WebDriver issues are resolved
-pytestmark = pytest.mark.skip(reason="WebDriver setup issues - needs investigation")
-
-import pytest
 from dash.testing.application_runners import import_app
 from dash.testing.browser import Browser
 import time
@@ -17,6 +12,9 @@ import base64  # Add this import for test_blast_submission
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Skip all browser tests until WebDriver issues are resolved
+pytestmark = pytest.mark.skip(reason="WebDriver setup issues - needs investigation")
 
 # Add project root to path if needed
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

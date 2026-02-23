@@ -13,6 +13,7 @@ celery = None
 try:
     from celery import Celery
     from celery.schedules import crontab
+
     CELERY_AVAILABLE = True
 except ImportError:
     # Celery not installed - will run tasks directly
@@ -25,7 +26,9 @@ except ImportError:
 if CELERY_AVAILABLE:
     # Redis configuration
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+    CELERY_RESULT_BACKEND = os.getenv(
+        "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
+    )
 
     # Configure Celery loggers immediately - before app initialization
     if not IS_DEV:
@@ -46,7 +49,7 @@ else:
     def crontab(*args, **kwargs):
         """Dummy crontab function when Celery is not available"""
         return None
-    
+
     CELERY_BROKER_URL = None
     CELERY_RESULT_BACKEND = None
 
@@ -125,7 +128,7 @@ if CELERY_AVAILABLE and celery:
 def run_task(task_func, *args, **kwargs):
     """
     Run a task either via Celery (if enabled) or directly (if disabled).
-    
+
     For single-pod deployments, set CELERY_ENABLED=false to run tasks directly.
     For distributed deployments with Redis, set CELERY_ENABLED=true.
     If Celery fails, log error and run directly as fallback
@@ -133,7 +136,7 @@ def run_task(task_func, *args, **kwargs):
         task_func: The Celery task function to run
         *args: Positional arguments to pass to the task
         **kwargs: Keyword arguments to pass to the task
-    
+
     Returns:
         AsyncResult if Celery is enabled, None otherwise
     """

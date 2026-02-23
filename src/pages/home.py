@@ -290,12 +290,6 @@ accession_card = dmc.Paper(
             order=2,
             mb="md",
         ),
-        dmc.Alert(
-            "The abbriviations at the beginning of accession tags (i.e. 'SSA') will be renamed soon!",
-            color="yellow",
-            radius="md",
-            mb="md",
-        ),
         dmc.Text(
             [
                 "To maintain data integrity, we employ an accessioning framework within ",
@@ -329,7 +323,7 @@ accession_card = dmc.Paper(
         ),
         dmc.Space(h=20),
         dmc.Alert(
-            "The first type of accession is abbreviated as SSA and the second type is abbreviated as SSB.",
+            "Classification/group accessions are SSA. Individual sequence accessions are SSB accessions.",
             color="blue",
             radius="md",
             mb="md",

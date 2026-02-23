@@ -1,7 +1,9 @@
 // Universal Modal System for Starbase
 // Provides consistent modal styling and behavior across all pages
 
-class UniversalModal {
+// Only define the class if it doesn't already exist
+if (typeof window.UniversalModal === 'undefined') {
+    window.UniversalModal = class {
     constructor() {
         this.modal = null;
         this.isInitialized = false;
@@ -343,56 +345,76 @@ class UniversalModal {
         // Wrapper for better centering
         html += '<div class="modal-container">';
 
-        // Basic ship information section
-        if (data.familyName || data.genomes_present) {
+        // Treat null, undefined, empty string, or "N/A" as no value (omit row)
+        const hasValue = (v) => v != null && v !== '' && String(v).trim() !== 'N/A';
+
+        // Starship Information section
+        if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || hasValue(data.element_position) || hasValue(data.element_length)) {
             html += `
                 <div class="modal-section">
-                    <div class="section-title">🚀 Starship Information</div>
+                    <div class="section-title">Starship Information</div>
                     <div class="section-content">
                         <div class="modal-grid">
-                            ${data.familyName ? `
+                            ${hasValue(data.familyName) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Family:</span>
                                     <span class="modal-value">${data.familyName}</span>
                                 </div>
                             ` : ''}
-                            ${data.navis_name && ['Aristaeus', 'Arwing', 'Atlantia', 'Chrysoar', 'Defiant', 'Enterprise', 'Galactica', 'Hephaestus', 'Horizon', 'Mithridate', 'Osiris', 'Phoenix', 'Prometheus', 'Typhon', 'Voyager', 'Wallaby'].includes(data.navis_name) ? `
+                            ${hasValue(data.navis_name) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Navis:</span>
                                     <span class="modal-value">${data.navis_name}</span>
                                 </div>
                             ` : ''}
-                            ${data.genomes_present ? `
+                            ${hasValue(data.haplotype_name) ? `
+                                <div class="modal-row">
+                                    <span class="modal-label">Haplotype:</span>
+                                    <span class="modal-value">${data.haplotype_name}</span>
+                                </div>
+                            ` : ''}
+                            ${hasValue(data.genomes_present) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Genomes Present:</span>
                                     <span class="modal-badge badge-blue">${data.genomes_present}</span>
                                 </div>
                             ` : ''}
-
-                            </div>
+                            ${hasValue(data.element_position) ? `
+                                <div class="modal-row">
+                                    <span class="modal-label">Element Position:</span>
+                                    <span class="modal-value">${data.element_position}</span>
+                                </div>
+                            ` : ''}
+                            ${hasValue(data.element_length) ? `
+                                <div class="modal-row">
+                                    <span class="modal-label">Size:</span>
+                                    <span class="modal-value">${data.element_length} bp</span>
+                                </div>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             `;
         }
 
-        // Curation status and quality tags
-        if (data.curated_status || (data.quality_tags && data.quality_tags.length > 0)) {
+        // Data Quality section
+        if (hasValue(data.curated_status) || (data.quality_tags && data.quality_tags.length > 0)) {
             html += `
                 <div class="modal-section">
-                    <div class="section-title">Curation Status</div>
+                    <div class="section-title">Data Quality</div>
                     <div class="section-content">
                         <div class="modal-grid">
-                            ${data.curated_status ? `
+                            ${hasValue(data.curated_status) ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Status:</span>
+                                    <span class="modal-label">Curation Status:</span>
                                     <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
                                 </div>
                             ` : ''}
                             ${data.quality_tags && data.quality_tags.length > 0 ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Quality:</span>
+                                    <span class="modal-label">Quality Tags:</span>
                                     <div class="quality-tags">
-                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-red">${tag}</span>`).join('')}
+                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
                                     </div>
                                 </div>
                             ` : ''}
@@ -403,38 +425,35 @@ class UniversalModal {
         }
 
         // Taxonomy section
-        if (data.order || data.family || data.species_name) {
+        if (hasValue(data.order) || hasValue(data.family) || hasValue(data.species_name) || hasValue(data.tax_id)) {
             html += `
                 <div class="modal-section">
                     <div class="section-title">Taxonomy</div>
                     <div class="section-content">
                         <div class="modal-grid">
-                            ${data.order ? `
+                            ${hasValue(data.order) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Order:</span>
                                     <span class="modal-value">${data.order}</span>
                                 </div>
                             ` : ''}
-                            ${data.family ? `
+                            ${hasValue(data.family) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Family:</span>
                                     <span class="modal-value">${data.family}</span>
                                 </div>
                             ` : ''}
-                            ${data.species_name ? `
+                            ${hasValue(data.species_name) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Species:</span>
                                     <span class="modal-value">${data.species_name}</span>
                                 </div>
                             ` : ''}
-                            ${data.tax_id ? `
+                            ${hasValue(data.tax_id) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">NCBI Taxonomy ID:</span>
                                     <span class="modal-value">
-                                        ${data.tax_id !== 'N/A' ?
-                                            `<a href="https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${data.tax_id}" target="_blank" class="modal-link">${data.tax_id}</a>` :
-                                            'N/A'
-                                        }
+                                        <a href="https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${data.tax_id}" target="_blank" class="modal-link">${data.tax_id}</a>
                                     </span>
                                 </div>
                             ` : ''}
@@ -445,40 +464,28 @@ class UniversalModal {
         }
 
         // Genome details section
-        if (data.assembly_accession || data.genome_source || data.contig_id || data.element_position || data.element_length) {
+        if (hasValue(data.assembly_accession) || hasValue(data.genome_source) || hasValue(data.contig_id)) {
             html += `
                 <div class="modal-section">
                     <div class="section-title">Genome Details</div>
                     <div class="section-content">
                         <div class="modal-grid">
-                            ${data.assembly_accession ? `
+                            ${hasValue(data.assembly_accession) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Assembly Accession:</span>
                                     <span class="modal-value">${data.assembly_accession}</span>
                                 </div>
                             ` : ''}
-                            ${data.genome_source ? `
+                            ${hasValue(data.genome_source) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Genome Source:</span>
                                     <span class="modal-value">${data.genome_source}</span>
                                 </div>
                             ` : ''}
-                            ${data.contig_id ? `
+                            ${hasValue(data.contig_id) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Contig ID:</span>
                                     <span class="modal-value">${data.contig_id}</span>
-                                </div>
-                            ` : ''}
-                            ${data.element_position ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Element Position:</span>
-                                    <span class="modal-value">${data.element_position}</span>
-                                </div>
-                            ` : ''}
-                            ${data.element_length ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Size:</span>
-                                    <span class="modal-value">${data.element_length} bp</span>
                                 </div>
                             ` : ''}
                         </div>
@@ -492,11 +499,12 @@ class UniversalModal {
 
         return html;
     }
-}
+    };  // Close the class definition
+}  // Close the if block for UniversalModal class guard
 
 // Global instance - only create if not already exists
 if (typeof window.universalModal === 'undefined') {
-    window.universalModal = new UniversalModal();
+    window.universalModal = new window.UniversalModal();
 }
 
 // Global function for easy access - only create if not already exists
@@ -514,16 +522,16 @@ if (typeof window.showAccessionModal === 'undefined') {
             const data = await response.json();
 
             if (data.error) {
-                window.showUniversalModal('Error', UniversalModal.renderAccessionModal(data));
+                window.showUniversalModal('Error', window.UniversalModal.renderAccessionModal(data));
                 return;
             }
 
             const title = data.title || `Starship Accession: ${accessionId}`;
-            const content = UniversalModal.renderAccessionModal(data);
+            const content = window.UniversalModal.renderAccessionModal(data);
             window.showUniversalModal(title, content);
         } catch (error) {
             console.error('Error fetching accession details:', error);
-            window.showUniversalModal('Error', UniversalModal.renderAccessionModal({
+            window.showUniversalModal('Error', window.UniversalModal.renderAccessionModal({
                 error: `Error loading details for ${accessionId}. Details: ${error.message}`
             }));
         }

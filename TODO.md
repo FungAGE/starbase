@@ -1,29 +1,30 @@
 # TODO
 
-- change name? existing tools/databases named "starbase"... one which is mRNA, etc. database
+- [ ] change name? existing tools/databases named "starbase"... one which is mRNA, etc. database
   - "starfleet", "armada"
-- "SSA" why did we change?
+- [x] "SSA" why did we change?
+  - I didn't really consult with anyone before changing this
 
 ## data integrity
-- sequences without accessions? accessions without sequences? check zenodo version, Andres found inconsistencies...
-- wiki table has issues with metadata
-  - assembly accessions should not have the zenodo doi in there...
-  - genome information is usually not visible at all
-- check accessions that have lots of ships collapsed in them
-- for example, asp fum, lots under a single accession
-  - these are missing taxonomy ids
-  - we have strains for these taxonomy entries, they should not have the same tax id anymore
-- accession version tags, we should keep them
-- unique identifiers should be a new level of accessions
+- [x] sequences without accessions? accessions without sequences? check zenodo version, Andres found inconsistencies...
+- [x] wiki table has issues with metadata
+  - [x] assembly accessions should not have the zenodo doi in there...
+  - [x] genome information is usually not visible at all
+- [ ] check accessions that have lots of ships collapsed in them
+  - for example, asp fum, lots under a single accession
+    - these are missing taxonomy ids
+    - we have strains for these taxonomy entries, they should not have the same tax id anymore
+- [x] accession version tags, we should keep them
+- [x] unique identifiers should be a new level of accessions
 
 SSAXXXXXX.X : collapsed navis/haplotype identifiers
 SSBXXXXXX.X : individual ships
 
 
-- re-organize modals to reflect the new organization of the multiple accessions
+- [x] re-organize modals to reflect the new organization of the multiple accessions
   - have a table to metadata with rows for each individual ships with their specific genome, taxonomy info
 - synteny viewer should show the genome accession, instead of the SSA twice
-- flag one uique entry in each SSA accession as the "reference" 
+- flag one unique entry in each SSA accession as the "reference" 
   - this should also be designated at the "SSB" accession level, arbitrarily chosen if there are multiple same ships in the same genome
 - switch to more direct comparisons for synteny viewer, the table is overwhelming for a user
 - blast page
@@ -35,7 +36,7 @@ SSBXXXXXX.X : individual ships
 
 
 
-- handle operations with accession tags, when multiple sequences are returned by the accession tag
+- [x] handle operations with accession tags, when multiple sequences are returned by the accession tag
 
 - synteny
   - should viz all sequences, even if they are identical (it's still useful)
@@ -47,5 +48,5 @@ SSBXXXXXX.X : individual ships
   - it should be clear that the table is displaying a list of accessions
   - from the table we can get information about the individual ships within that accession
 
-- sourmash signatures should be created at the same time as other databases?
-  - use existing sourmash signatures at the time of similarity comparison, rather than creating it fresh
+- [x] sourmash signatures should be created at the same time as other databases?
+  - [x] use existing sourmash signatures at the time of similarity comparison, rather than creating it fresh

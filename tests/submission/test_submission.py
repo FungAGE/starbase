@@ -7,42 +7,47 @@ from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def test_create_new_submission():
     """Test creating and saving a new submission record"""
     # Create a session from the sessionmaker
     with get_submissions_session() as session:
         try:
             # Load test sequence from test data file
-            test_data_path = os.path.join(os.path.dirname(__file__), "test_data", "test_sequence.fasta")
+            test_data_path = os.path.join(
+                os.path.dirname(__file__), "test_data", "test_sequence.fasta"
+            )
             sequence_filename = os.path.basename(test_data_path)
-            
+
             with open(test_data_path, "r") as f:
                 sequence_content = f.read()
 
             # Create mock existing ships data for testing accession assignment
             import pandas as pd
             import hashlib
-            existing_ships = pd.DataFrame({
-                "accession_tag": ["SSA000001", "SSA000002"],
-                "sequence": [
-                    "ATGCATGCATGCATGCATGC",
-                    "TTTTTTTTTTTTTTTTTTTT"
-                ],
-                "md5": [
-                    hashlib.md5("ATGCATGCATGCATGCATGC".encode()).hexdigest(),
-                    hashlib.md5("TTTTTTTTTTTTTTTTTTTT".encode()).hexdigest(),
-                ],
-                "rev_comp_md5": [
-                    hashlib.md5("GCATGCATGCATGCATGCAT".encode()).hexdigest(),
-                    hashlib.md5("AAAAAAAAAAAAAAAAAAAA".encode()).hexdigest(),
-                ]
-            })
+
+            existing_ships = pd.DataFrame(
+                {
+                    "accession_tag": ["SSA000001", "SSA000002"],
+                    "sequence": ["ATGCATGCATGCATGCATGC", "TTTTTTTTTTTTTTTTTTTT"],
+                    "md5": [
+                        hashlib.md5("ATGCATGCATGCATGCATGC".encode()).hexdigest(),
+                        hashlib.md5("TTTTTTTTTTTTTTTTTTTT".encode()).hexdigest(),
+                    ],
+                    "rev_comp_md5": [
+                        hashlib.md5("GCATGCATGCATGCATGCAT".encode()).hexdigest(),
+                        hashlib.md5("AAAAAAAAAAAAAAAAAAAA".encode()).hexdigest(),
+                    ],
+                }
+            )
 
             # Get accession and review status
             accession, needs_review = assign_accession(sequence_content, existing_ships)
 
             assert accession.startswith("SSA")
-            assert needs_review is False  # Should be new since it's different from existing
+            assert (
+                needs_review is False
+            )  # Should be new since it's different from existing
 
             today = datetime.now().strftime("%Y-%m-%d")
 
@@ -50,7 +55,7 @@ def test_create_new_submission():
             new_submission = Submission(
                 seq_contents=sequence_content,
                 seq_filename=sequence_filename,
-                seq_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                seq_date=today,
                 uploader="adrian",
                 evidence="manual",
                 genus="Aspergillus",
@@ -60,7 +65,8 @@ def test_create_new_submission():
                 shipend=36857,
                 shipstrand="+",
                 comment="Test submission",
-                needs_review=False,
+                needs_review=needs_review,
+                accession_tag=accession,
             )
 
             # Add and commit the new submission to the database
