@@ -8,6 +8,7 @@ Enforces:
 - ships.sequence_length = length of ships.sequence (character length)
 - starship_features.elementLength = elementEnd - elementBegin + 1
 """
+
 from typing import Sequence, Union
 
 from alembic import op

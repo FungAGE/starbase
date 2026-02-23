@@ -98,10 +98,9 @@ def fetch_meta_data(curated=False, accessions=None):
                 ]
             elif accession_mode is None:
                 # Mixed or unknown: match either column
-                mask = (
-                    filtered_df["accession_tag"].isin(formatted_values)
-                    | filtered_df["ship_accession_tag"].isin(formatted_values)
-                )
+                mask = filtered_df["accession_tag"].isin(
+                    formatted_values
+                ) | filtered_df["ship_accession_tag"].isin(formatted_values)
                 filtered_df = filtered_df[mask]
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")
@@ -211,15 +210,11 @@ def fetch_ships(
             )
             # Match base accession with or without version suffix
             like_clauses = " OR ".join(
-                "a.accession_tag LIKE '"
-                + str(v).replace("'", "''")
-                + ".%'"
+                "a.accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
                 for v in formatted_values
             )
             ship_like_clauses = " OR ".join(
-                "sa.ship_accession_tag LIKE '"
-                + str(v).replace("'", "''")
-                + ".%'"
+                "sa.ship_accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
                 for v in formatted_values
             )
 

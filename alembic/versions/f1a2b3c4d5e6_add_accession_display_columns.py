@@ -9,6 +9,7 @@ Adds computed columns to accessions and ship_accessions so display strings
 Requires SQLite 3.31+ for generated columns; downgrade requires SQLite 3.35+ for DROP COLUMN.
 Idempotent: skips ADD COLUMN if column already exists (e.g. after a partial run).
 """
+
 from typing import Sequence, Union
 
 from alembic import op

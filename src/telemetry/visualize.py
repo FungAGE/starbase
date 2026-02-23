@@ -6,6 +6,7 @@ from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def create_time_series_figure(time_series_data):
     """Create a time series visualization."""
     if time_series_data:

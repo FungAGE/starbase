@@ -111,11 +111,17 @@ def create_genome_cards(df):
                             dmc.Group(
                                 [dmc.Text("ContigID:", fw=700), dmc.Text(contig_id)]
                             ),
-                            dmc.Group(
+                            *(
                                 [
-                                    dmc.Text("Element Position:", fw=700),
-                                    dmc.Text(position),
+                                    dmc.Group(
+                                        [
+                                            dmc.Text("Element Position:", fw=700),
+                                            dmc.Text(position),
+                                        ]
+                                    )
                                 ]
+                                if position != "N/A"
+                                else []
                             ),
                             dmc.Group([dmc.Text("Size:", fw=700), dmc.Text(length_bp)]),
                         ],

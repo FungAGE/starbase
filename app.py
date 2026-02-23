@@ -143,7 +143,7 @@ def serve_app_layout():
                         "display": "flex",
                         "flexDirection": "column",
                         "gap": "10px",
-                    }
+                    },
                 ),
             ]
         )

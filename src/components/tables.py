@@ -191,9 +191,10 @@ def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 )
 
             # Add special styling for accession_tag and ship_accession_tag
-            if col.get("id") in ["accession_display", "ship_accession_display"] or col.get(
-                "field"
-            ) in ["accession_display", "ship_accession_display"]:
+            if col.get("id") in [
+                "accession_display",
+                "ship_accession_display",
+            ] or col.get("field") in ["accession_display", "ship_accession_display"]:
                 col_def.update(
                     {
                         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
@@ -233,11 +234,7 @@ def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
-        rowData=(
-            df.to_dict("records")
-            if isinstance(df, pd.DataFrame)
-            else df
-        ),
+        rowData=(df.to_dict("records") if isinstance(df, pd.DataFrame) else df),
         defaultColDef={
             "resizable": True,
             "minWidth": 100,

@@ -1,9 +1,14 @@
 from unittest.mock import patch
 import pandas as pd
 from src.database.sql_manager import fetch_meta_data, fetch_ships, fetch_captains
-from src.components.data import create_ship_accession_modal_data, create_accession_modal_data
+from src.components.data import (
+    create_ship_accession_modal_data,
+    create_accession_modal_data,
+)
+from src.utils.seq_utils import generate_md5_hash, clean_sequence
 
-def test_successful_modal_data_creation(test_single_accession_meta_data):
+
+def test_ship_accession_modal_data_creation(test_single_accession_meta_data):
     """Test successful creation of ship accession modal data"""
     # Mock fetch_meta_data to return test data
     with patch("src.components.data.fetch_meta_data") as mock_fetch:
@@ -14,16 +19,20 @@ def test_successful_modal_data_creation(test_single_accession_meta_data):
                 {"tag_type": "missing_direct_repeats", "tag_value": None}
             ]
 
-            result = create_ship_accession_modal_data(test_single_accession_meta_data["ship_accession_tag"])
+            result = create_ship_accession_modal_data(
+                test_single_accession_meta_data["ship_accession_tag"]
+            )
 
             assert isinstance(result, dict)
 
-            assert result["title"] == test_single_accession_meta_data["ship_accession_tag"]
+            assert (
+                result["title"] == test_single_accession_meta_data["ship_accession_tag"]
+            )
             assert result["familyName"] == "Prometheus"
             assert result["curated_status"] == "curated"
 
 
-def test_successful_modal_data_creation(test_multiple_accession_meta_data):
+def test_accession_modal_data_creation(test_multiple_accession_meta_data):
     """Test successful creation of accession modal data"""
     # Mock fetch_meta_data to return test data
     with patch("src.components.data.fetch_meta_data") as mock_fetch:
@@ -42,21 +51,27 @@ def test_successful_modal_data_creation(test_multiple_accession_meta_data):
 
 def test_single_accession_data(single_accession_meta_data):
     """Legacy fixture providing raw DataFrame - kept for backward compatibility"""
-    
-    meta_df = fetch_meta_data(accessions=single_accession_meta_data["ship_accession_tag"])
+
+    meta_df = fetch_meta_data(
+        accessions=single_accession_meta_data["ship_accession_tag"]
+    )
     assert not meta_df.empty
     assert meta_df.equals(pd.DataFrame(single_accession_meta_data))
 
 
 def test_multiple_accession_data(multiple_accession_meta_data):
     """Legacy fixture providing raw DataFrame - kept for backward compatibility"""
-    meta_df = fetch_meta_data(accessions=multiple_accession_meta_data["ship_accession_tag"])
+    meta_df = fetch_meta_data(
+        accessions=multiple_accession_meta_data["ship_accession_tag"]
+    )
     assert not meta_df.empty
     assert meta_df.equals(pd.DataFrame(multiple_accession_meta_data))
 
 
 def test_single_accession_multiple_ships(single_accession_multiple_ships_meta_data):
-    meta_df = fetch_meta_data(accessions=single_accession_multiple_ships_meta_data["ship_accession_tag"])
+    meta_df = fetch_meta_data(
+        accessions=single_accession_multiple_ships_meta_data["ship_accession_tag"]
+    )
     assert not meta_df.empty
     assert meta_df.equals(pd.DataFrame(single_accession_multiple_ships_meta_data))
 
@@ -64,13 +79,19 @@ def test_single_accession_multiple_ships(single_accession_multiple_ships_meta_da
 def test_ship_accession_modal_data(single_accession_meta_data):
     """Fixture providing processed ship accession modal data dictionary"""
     from src.components.data import create_ship_accession_modal_data
-    return create_ship_accession_modal_data(single_accession_meta_data["ship_accession_tag"])
+
+    return create_ship_accession_modal_data(
+        single_accession_meta_data["ship_accession_tag"]
+    )
 
 
 def test_accession_modal_data(multiple_accession_meta_data):
     """Fixture providing processed accession modal data dictionary"""
     from src.components.data import create_accession_modal_data
-    return create_accession_modal_data(multiple_accession_meta_data["ship_accession_tag"])
+
+    return create_accession_modal_data(
+        multiple_accession_meta_data["ship_accession_tag"]
+    )
 
 
 def test_ships_df(test_ships_df):
@@ -86,33 +107,29 @@ def test_ships_df(test_ships_df):
 
 
 ()
+
+
 def test_captains_df():
     try:
         # Try a few different accession tags that are more likely to work
         for accession in ["SSA002851", "SSA002904", "SSA002596"]:
-            captains_df = fetch_captains(
-                accessions=[accession], with_sequence=True
-            )
+            captains_df = fetch_captains(accessions=[accession], with_sequence=True)
             if not captains_df.empty:
                 return captains_df
     except Exception:
         pass
 
 
-
 def test_sequence():
     # looking for a real sequence from the database
     try:
-        ship_df = fetch_ships(
-            accessions=["SSA002851"], with_sequence=True
-        )
+        ship_df = fetch_ships(accessions=["SSA002851"], with_sequence=True)
         if not ship_df.empty:
             sequence = ship_df.iloc[0]["sequence"]
             return sequence
     except Exception:
         pass
     return "ATGCATGCATGC"  # Mock sequence
-
 
 
 def test_sequence_revcomp(test_sequence):
@@ -126,7 +143,6 @@ def test_sequence_revcomp(test_sequence):
     return "GCATGCATGCAT"  # Mock sequence
 
 
-
 def test_contained_sequence(test_sequence):
     try:
         # return a contained subsequence of the real sequence
@@ -136,7 +152,6 @@ def test_contained_sequence(test_sequence):
     except Exception:
         pass
     return "ATGCATGC"  # Mock sequence
-
 
 
 def test_similar_sequence(test_sequence):
@@ -149,6 +164,7 @@ def test_similar_sequence(test_sequence):
 
 
 # separate test fixtures for haplotype matching
+
 
 def test_haplotype_ships_df():
     try:
@@ -190,7 +206,6 @@ def test_haplotype_ships_df():
     )
 
 
-
 def test_haplotype_sequence(test_haplotype_ships_df):
     # return the sequence with the haplotype
     try:
@@ -200,7 +215,6 @@ def test_haplotype_sequence(test_haplotype_ships_df):
     except Exception:
         pass
     return "ATGCATGCATGC"  # Mock sequence
-
 
 
 def test_similarities(test_haplotype_sequence, test_haplotype_ships_df):

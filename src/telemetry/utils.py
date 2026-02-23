@@ -19,7 +19,11 @@ from sqlalchemy import text
 from src.config.settings import PAGE_MAPPING
 from typing import Dict, Any
 from src.database.sql_engine import get_telemetry_session
-from src.telemetry.visualize import create_time_series_figure, create_endpoints_figure, create_map_figure
+from src.telemetry.visualize import (
+    create_time_series_figure,
+    create_endpoints_figure,
+    create_map_figure,
+)
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +31,7 @@ logger = get_logger(__name__)
 # Load environment variables from .env file
 env_path = Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
+
 
 @dataclass
 class LocationInfo:
@@ -255,7 +260,7 @@ def get_private_ip_filter_sql():
 
 def get_telemetry_data():
     """Fetch telemetry data from the database."""
-    
+
     # Get reusable IP filter
     ip_filter = get_private_ip_filter_sql()
 
@@ -354,9 +359,6 @@ def count_blast_submissions(ip_address, hours=1):
             return 0
 
 
-    return fig
-
-
 def get_telemetry_visualizations() -> Dict[str, Any]:
     """Analyze telemetry data and create visualizations."""
     try:
@@ -384,7 +386,11 @@ def get_telemetry_visualizations() -> Dict[str, Any]:
 
         # Calculate total requests
         total_requests = (
-            sum(row[1] for row in telemetry_data["endpoints_data"] if row[0] in PAGE_MAPPING)
+            sum(
+                row[1]
+                for row in telemetry_data["endpoints_data"]
+                if row[0] in PAGE_MAPPING
+            )
             if telemetry_data["endpoints_data"]
             else 0
         )
@@ -410,7 +416,6 @@ def get_telemetry_visualizations() -> Dict[str, Any]:
         }
 
 
-
 def get_blast_limit_info(ip_address):
     """Get rate limit info for an IP address."""
     try:
@@ -421,4 +426,3 @@ def get_blast_limit_info(ip_address):
     except Exception as e:
         logger.error(f"Error getting BLAST limit info: {str(e)}")
         return {"remaining": 0, "limit": 10, "submissions": 10}
-
