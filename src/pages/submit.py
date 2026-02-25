@@ -231,6 +231,8 @@ dash.register_page(__name__)
 layout = dmc.Container(
     size="md",
     children=[
+        dcc.Location(id="submit-url", refresh=False),
+        dcc.Store(id="submission-prefill-store", data=None),
         # Header Section
         dmc.Paper(
             children=[
@@ -259,6 +261,7 @@ layout = dmc.Container(
                 [
                     dmc.Stack(
                         [
+                            html.Div(id="submit-prefill-banner"),
                             # File Upload Section
                             dmc.Stack(
                                 [
@@ -495,6 +498,51 @@ layout = dmc.Container(
     },
 )
 
+SUBMISSION_PREFILL_PREFIX = "submission_prefill:"
+
+
+@callback(
+    Output("submission-prefill-store", "data"),
+    [Input("submit-url", "pathname"), Input("submit-url", "search")],
+)
+def load_submission_prefill_from_url(pathname, search):
+    """When URL has ?token=..., load prefill from cache into store."""
+    if pathname != "/submit" or not search or "token=" not in search:
+        return None
+    import re
+
+    match = re.search(r"token=([^&]+)", search)
+    if not match:
+        return None
+    token = match.group(1).strip()
+    if not token:
+        return None
+    cache_key = f"{SUBMISSION_PREFILL_PREFIX}{token}"
+    raw = cache.get(cache_key)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+@callback(
+    Output("submit-prefill-banner", "children"),
+    Input("submission-prefill-store", "data"),
+)
+def show_prefill_banner(prefill):
+    """Show a banner when submission is prefilled from BLAST."""
+    if not prefill or not prefill.get("seq_filename"):
+        return None
+    return dmc.Alert(
+        f"Using sequence from BLAST: {prefill.get('seq_filename', 'query_sequence.fasta')}. "
+        "Fill in the required fields below and click Submit.",
+        color="blue",
+        variant="light",
+        mb="md",
+    )
+
 
 # Function to insert a new submission into the database
 def insert_submission(
@@ -617,7 +665,10 @@ def create_fasta_display(records, filename):
         Input("submit-ship", "n_clicks"),
         Input("close", "n_clicks"),
     ],
-    [State("submit-modal", "is_open")],
+    [
+        State("submit-modal", "is_open"),
+        State("submission-prefill-store", "data"),
+    ],
 )
 def submit_ship(
     seq_contents,
@@ -638,16 +689,31 @@ def submit_ship(
     n_clicks,
     close_modal,
     is_open,
+    prefill,
 ):
     """
     Main submission callback with asynchronous processing.
 
     This function validates input, starts an async task, and provides immediate feedback.
     Users can check progress via submission status.
+    When submission-prefill-store has data (from BLAST), use it if upload is empty.
     """
     modal = is_open
     message = ""
     loading = False
+
+    # Use prefill from BLAST when upload did not provide sequence
+    if (
+        (not seq_contents or not seq_filename)
+        and prefill
+        and prefill.get("seq_contents")
+    ):
+        seq_contents = prefill.get("seq_contents")
+        seq_filename = prefill.get("seq_filename") or "query_sequence.fasta"
+        if not seq_date:
+            import time
+
+            seq_date = time.time()
 
     # Only process if submit button was clicked
     if not n_clicks or n_clicks <= 0:

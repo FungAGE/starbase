@@ -40,6 +40,7 @@ layout = dmc.Container(
         dcc.Store(id="synteny-available-ships", data=[]),
         dcc.Store(id="synteny-filtered-ships", data=None),
         dcc.Store(id="synteny-selected-ships", data=[]),
+        dcc.Store(id="synteny-custom-track", data=None),
         # Header Section
         dmc.Paper(
             children=[
@@ -492,6 +493,57 @@ def load_available_ships(pathname):
         return []
 
 
+# ── Load synteny session from URL (?session=token) ─────────────────────────────
+@callback(
+    [
+        Output("synteny-selected-ships", "data", allow_duplicate=True),
+        Output("synteny-custom-track", "data"),
+    ],
+    [
+        Input("synteny-url", "pathname"),
+        Input("synteny-url", "search"),
+    ],
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def load_synteny_session_from_url(pathname, search):
+    """When URL has ?session=token, load session from cache and pre-select ships + custom track."""
+    if pathname != "/synteny" or not search or "session=" not in search:
+        return no_update, no_update
+
+    import re
+    from src.api.synteny_routes import SYNTENY_SESSION_PREFIX
+    from src.config.cache import cache
+
+    match = re.search(r"session=([^&]+)", search)
+    if not match:
+        return no_update, no_update
+    token = match.group(1).strip()
+    if not token:
+        return no_update, no_update
+
+    cache_key = f"{SYNTENY_SESSION_PREFIX}{token}"
+    raw = cache.get(cache_key)
+    if not raw:
+        logger.warning(f"Synteny session not found or expired: {token}")
+        return no_update, no_update
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return no_update, no_update
+
+    preselected_ships = payload.get("preselected_ships") or []
+    custom_track = payload.get("custom_track")
+    # Normalize ship id to int for consistency with rest of app
+    for s in preselected_ships:
+        if "id" in s and not isinstance(s["id"], int):
+            try:
+                s["id"] = int(s["id"])
+            except (ValueError, TypeError):
+                pass
+    return preselected_ships, custom_track
+
+
 # ── Populate autocomplete options from available ships ─────────────────────────
 @callback(
     [
@@ -672,7 +724,7 @@ def display_search_results(filtered_ships, selected_ships):
 
 # ── Add / remove / clear selected ships ───────────────────────────────────────
 @callback(
-    Output("synteny-selected-ships", "data"),
+    Output("synteny-selected-ships", "data", allow_duplicate=True),
     [
         Input({"type": "synteny-add-ship", "index": ALL}, "n_clicks"),
         Input({"type": "synteny-remove-ship", "index": ALL}, "n_clicks"),
@@ -770,6 +822,49 @@ def display_selected_ships(selected_ships):
 
 
 # ── Generate visualization data ────────────────────────────────────────────────
+def _build_custom_track_cluster(custom_track):
+    """Build one cluster (one locus, one gene) for a user sequence with no GFF."""
+    if not custom_track:
+        return None
+    length = custom_track.get("length") or len(custom_track.get("sequence") or "")
+    label = custom_track.get("label") or "User sequence"
+    if length <= 0:
+        return None
+    uid_custom = "custom_user_sequence"
+    gene = {
+        "uid": f"gene_{uid_custom}_0",
+        "start": 1,
+        "end": length,
+        "strand": 1,
+        "_start": 1,
+        "_end": length,
+        "_strand": 1,
+        "name": label,
+        "label": label,
+        "locus_tag": "",
+        "metadata": {
+            "category": "other",
+            "category_label": "Other",
+        },
+        "group": "other",
+        "colour": GENE_CATEGORY_COLORS.get("other"),
+    }
+    locus = {
+        "uid": f"locus_{uid_custom}",
+        "name": label,
+        "start": 1,
+        "end": length,
+        "_start": 1,
+        "_end": length,
+        "genes": [gene],
+    }
+    return {
+        "uid": f"cluster_{uid_custom}",
+        "name": label,
+        "loci": [locus],
+    }
+
+
 @callback(
     Output("synteny-data-store", "data"),
     Input("synteny-update-button", "n_clicks"),
@@ -777,97 +872,123 @@ def display_selected_ships(selected_ships):
         State("synteny-selected-ships", "data"),
         State("synteny-color-by", "value"),
         State("synteny-label-field", "value"),
+        State("synteny-custom-track", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
-def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
+def generate_synteny_data(
+    n_clicks, selected_ships, color_by, label_field, custom_track
+):
     from src.utils.synteny_queries import get_gff_by_ship_ids
 
-    if not n_clicks or not selected_ships:
+    if not n_clicks:
         return no_update
 
+    clusters = []
+    if custom_track:
+        custom_cluster = _build_custom_track_cluster(custom_track)
+        if custom_cluster:
+            clusters.append(custom_cluster)
+
+    selected_ships = selected_ships or []
     ship_ids = [s["id"] for s in selected_ships]
 
-    if not ship_ids:
-        return {"error": "Please select at least one sequence", "success": False}
+    if not ship_ids and not clusters:
+        return {
+            "error": "Please select at least one sequence or load a BLAST session",
+            "success": False,
+        }
 
-    try:
-        gff_data = get_gff_by_ship_ids(ship_ids)
+    if ship_ids:
+        try:
+            gff_data = get_gff_by_ship_ids(ship_ids)
+        except Exception as e:
+            logger.error(f"get_gff_by_ship_ids failed: {e}", exc_info=True)
+            return {"error": f"Error loading GFF: {str(e)}", "success": False}
 
         if not gff_data:
-            return {
-                "error": "No GFF data found for selected sequences",
-                "success": False,
-            }
-
-        clusters = []
-        for ship_id in ship_ids:
-            ship_gff = [g for g in gff_data if g["ship_id"] == ship_id]
-
-            if not ship_gff:
-                continue
-
-            genes = []
-            for idx, gff_entry in enumerate(ship_gff):
-                attrs = parse_gff_attributes(gff_entry["attributes"])
-                category = categorize_gene(gff_entry)
-
-                if color_by == "category":
-                    group = category
-                elif color_by == "family":
-                    group = attrs.get("Target_ID", category)
-                else:
-                    group = gff_entry.get(color_by, "unknown")
-
-                gene = {
-                    "uid": f"gene_{ship_id}_{idx}",
-                    "start": gff_entry["start"],
-                    "end": gff_entry["end"],
-                    "strand": 1 if gff_entry["strand"] == "+" else -1,
-                    "_start": gff_entry["start"],
-                    "_end": gff_entry["end"],
-                    "_strand": 1 if gff_entry["strand"] == "+" else -1,
-                    "name": attrs.get("Alias", attrs.get("Target_ID", f"gene_{idx}")),
-                    "label": attrs.get(label_field, attrs.get("Alias", f"gene_{idx}")),
-                    "locus_tag": attrs.get("SeqID", ""),
-                    "metadata": {
-                        "id": gff_entry["id"],
-                        "source": gff_entry["source"],
-                        "type": gff_entry["type"],
-                        "score": gff_entry["score"],
-                        "phase": gff_entry["phase"],
-                        "Target_ID": attrs.get("Target_ID", ""),
-                        "Alias": attrs.get("Alias", ""),
-                        "SeqID": attrs.get("SeqID", ""),
-                        "category": category,
-                        "category_label": GENE_CATEGORY_LABELS.get(category, category),
-                        **attrs,
-                    },
-                    "group": group,
-                    "colour": GENE_CATEGORY_COLORS.get(category)
-                    if color_by == "category"
-                    else None,
+            if not clusters:
+                return {
+                    "error": "No GFF data found for selected sequences",
+                    "success": False,
                 }
-                genes.append(gene)
+        else:
+            for ship_id in ship_ids:
+                ship_gff = [g for g in gff_data if g["ship_id"] == ship_id]
 
-            locus = {
-                "uid": f"locus_{ship_id}",
-                "name": ship_gff[0].get("ship_accession_display", f"Locus {ship_id}"),
-                "start": min(g["start"] for g in genes),
-                "end": max(g["end"] for g in genes),
-                "_start": min(g["start"] for g in genes),
-                "_end": max(g["end"] for g in genes),
-                "genes": genes,
-            }
+                if not ship_gff:
+                    continue
 
-            cluster = {
-                "uid": f"cluster_{ship_id}",
-                "name": f"{ship_gff[0]['ship_accession_display']}",
-                "loci": [locus],
-            }
-            clusters.append(cluster)
+                genes = []
+                for idx, gff_entry in enumerate(ship_gff):
+                    attrs = parse_gff_attributes(gff_entry["attributes"])
+                    category = categorize_gene(gff_entry)
 
+                    if color_by == "category":
+                        group = category
+                    elif color_by == "family":
+                        group = attrs.get("Target_ID", category)
+                    else:
+                        group = gff_entry.get(color_by, "unknown")
+
+                    gene = {
+                        "uid": f"gene_{ship_id}_{idx}",
+                        "start": gff_entry["start"],
+                        "end": gff_entry["end"],
+                        "strand": 1 if gff_entry["strand"] == "+" else -1,
+                        "_start": gff_entry["start"],
+                        "_end": gff_entry["end"],
+                        "_strand": 1 if gff_entry["strand"] == "+" else -1,
+                        "name": attrs.get(
+                            "Alias", attrs.get("Target_ID", f"gene_{idx}")
+                        ),
+                        "label": attrs.get(
+                            label_field, attrs.get("Alias", f"gene_{idx}")
+                        ),
+                        "locus_tag": attrs.get("SeqID", ""),
+                        "metadata": {
+                            "id": gff_entry["id"],
+                            "source": gff_entry["source"],
+                            "type": gff_entry["type"],
+                            "score": gff_entry["score"],
+                            "phase": gff_entry["phase"],
+                            "Target_ID": attrs.get("Target_ID", ""),
+                            "Alias": attrs.get("Alias", ""),
+                            "SeqID": attrs.get("SeqID", ""),
+                            "category": category,
+                            "category_label": GENE_CATEGORY_LABELS.get(
+                                category, category
+                            ),
+                            **attrs,
+                        },
+                        "group": group,
+                        "colour": GENE_CATEGORY_COLORS.get(category)
+                        if color_by == "category"
+                        else None,
+                    }
+                    genes.append(gene)
+
+                locus = {
+                    "uid": f"locus_{ship_id}",
+                    "name": ship_gff[0].get(
+                        "ship_accession_display", f"Locus {ship_id}"
+                    ),
+                    "start": min(g["start"] for g in genes),
+                    "end": max(g["end"] for g in genes),
+                    "_start": min(g["start"] for g in genes),
+                    "_end": max(g["end"] for g in genes),
+                    "genes": genes,
+                }
+
+                cluster = {
+                    "uid": f"cluster_{ship_id}",
+                    "name": f"{ship_gff[0]['ship_accession_display']}",
+                    "loci": [locus],
+                }
+                clusters.append(cluster)
+
+    try:
         links = generate_synteny_links(clusters)
         logger.info(f"Generated {len(clusters)} clusters with {len(links)} links")
 

@@ -5,7 +5,9 @@ import dash_mantine_components as dmc
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Output, Input, State
 
+import json
 import os
+import uuid
 import base64
 import pandas as pd
 
@@ -110,6 +112,7 @@ layout = dmc.Container(
             disabled=True,  # Always disabled
             max_intervals=0,  # Never trigger
         ),
+        dcc.Location(id="blast-redirect-location", refresh=True),
         dmc.Space(h=20),
         dmc.Grid(
             children=[
@@ -1400,14 +1403,19 @@ def process_additional_sequence(
         if not main_sequence_id:
             # Try to find the main sequence ID from existing sequences
             # Look for sequences that don't have "_tab_" in their ID
-            main_sequences = [seq_id for seq_id in pipeline_state._sequences.keys() 
-                            if "_tab_" not in seq_id]
+            main_sequences = [
+                seq_id
+                for seq_id in pipeline_state._sequences.keys()
+                if "_tab_" not in seq_id
+            ]
             if main_sequences:
                 main_sequence_id = main_sequences[0]
                 logger.info(f"Recovered main sequence ID: {main_sequence_id}")
                 pipeline_state.set_active_sequence(main_sequence_id)
             else:
-                logger.error("No active sequence ID found for tab processing and no main sequences available")
+                logger.error(
+                    "No active sequence ID found for tab processing and no main sequences available"
+                )
                 raise PreventUpdate
         tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
 
@@ -1736,16 +1744,21 @@ def render_tab_content(active_tab, blast_data_dict):
         if not main_sequence_id:
             # Try to find the main sequence ID from existing sequences
             # Look for sequences that don't have "_tab_" in their ID
-            main_sequences = [seq_id for seq_id in pipeline_state._sequences.keys() 
-                            if "_tab_" not in seq_id]
+            main_sequences = [
+                seq_id
+                for seq_id in pipeline_state._sequences.keys()
+                if "_tab_" not in seq_id
+            ]
             if main_sequences:
                 main_sequence_id = main_sequences[0]
-                logger.info(f"Recovered main sequence ID in render_tab_content: {main_sequence_id}")
+                logger.info(
+                    f"Recovered main sequence ID in render_tab_content: {main_sequence_id}"
+                )
                 pipeline_state.set_active_sequence(main_sequence_id)
             else:
                 logger.warning("No main sequence ID found in render_tab_content")
                 main_sequence_id = None
-                
+
         if main_sequence_id:
             tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
         else:
@@ -2628,3 +2641,175 @@ def disable_interval_when_complete(workflow_state, blast_results):
     """Disable the interval when classification is complete"""
     # Always disable the interval since we're no longer using polling
     return True
+
+
+# ── Redirect to synteny viewer with session from BLAST result ─────────────────
+@callback(
+    [
+        Output("blast-redirect-location", "pathname"),
+        Output("blast-redirect-location", "search"),
+    ],
+    Input("blast-view-synteny-btn", "n_clicks"),
+    State("blast-data-store", "data"),
+    prevent_initial_call=True,
+)
+def redirect_to_synteny_viewer(n_clicks, blast_data_dict):
+    """Create a synteny session from current BLAST result and redirect to /synteny?session=."""
+    if not n_clicks:
+        raise PreventUpdate
+    if not blast_data_dict:
+        logger.warning(
+            "redirect_to_synteny_viewer: blast_data_store is empty, cannot create synteny session"
+        )
+        raise PreventUpdate
+
+    # Support both top-level and sequence_results["0"] structure (legacy store shape)
+    seq_results = blast_data_dict.get("sequence_results") or {}
+    first_result = seq_results.get("0") if isinstance(seq_results, dict) else None
+    if first_result and isinstance(first_result, dict):
+        fasta = (
+            blast_data_dict.get("sequence")
+            or blast_data_dict.get("fasta_file")
+            or first_result.get("sequence")
+            or first_result.get("fasta_file")
+        )
+        blast_df = blast_data_dict.get("blast_df") or first_result.get("blast_df") or []
+    else:
+        fasta = blast_data_dict.get("sequence") or blast_data_dict.get("fasta_file")
+        blast_df = blast_data_dict.get("blast_df") or []
+
+    if not fasta:
+        logger.warning("redirect_to_synteny_viewer: no sequence or fasta_file in store")
+        raise PreventUpdate
+    # fasta_file can be a path; only use as content if it looks like FASTA
+    if isinstance(fasta, str) and fasta.strip().startswith("/"):
+        logger.warning(
+            "redirect_to_synteny_viewer: fasta_file is a path, reading file for synteny session"
+        )
+        try:
+            with open(fasta, "r") as f:
+                fasta = f.read()
+        except Exception as e:
+            logger.warning(
+                f"redirect_to_synteny_viewer: could not read fasta file: {e}"
+            )
+            raise PreventUpdate
+    if isinstance(fasta, str) and not fasta.strip().startswith(">"):
+        fasta = f">query\n{fasta}"
+
+    from src.api.synteny_routes import (
+        SYNTENY_SESSION_PREFIX,
+        SYNTENY_SESSION_TTL,
+        _extract_accessions_from_blast_df,
+        _fasta_to_sequence_and_label,
+    )
+    from src.config.cache import cache
+    from src.utils.synteny_queries import resolve_accessions_to_ship_ids
+
+    sequence, label, _ = _fasta_to_sequence_and_label(fasta)
+    if not sequence:
+        logger.warning("redirect_to_synteny_viewer: could not parse FASTA sequence")
+        raise PreventUpdate
+
+    preselected_ship_ids = []
+    preselected_ships = []
+    if blast_df:
+        accessions = _extract_accessions_from_blast_df(blast_df, max_hits=10)
+        if accessions:
+            resolved = resolve_accessions_to_ship_ids(accessions, max_ships=10)
+            for ship_id, info in resolved:
+                preselected_ship_ids.append(ship_id)
+                preselected_ships.append(
+                    {
+                        "id": ship_id,
+                        "label": info.get("label", ""),
+                        "ship_accession_display": info.get(
+                            "ship_accession_display", ""
+                        ),
+                    }
+                )
+
+    session_payload = {
+        "custom_track": {
+            "fasta": fasta,
+            "sequence": sequence,
+            "label": label,
+            "length": len(sequence),
+        },
+        "preselected_ship_ids": preselected_ship_ids,
+        "preselected_ships": preselected_ships,
+    }
+    token = str(uuid.uuid4())
+    cache_key = f"{SYNTENY_SESSION_PREFIX}{token}"
+    cache.set(cache_key, json.dumps(session_payload), timeout=SYNTENY_SESSION_TTL)
+    logger.info(
+        f"Redirecting to synteny with session {token} ({len(preselected_ship_ids)} preselected ships)"
+    )
+    return "/synteny", f"?session={token}"
+
+
+# ── Redirect to submission portal with prefill from BLAST result ──────────────
+@callback(
+    [
+        Output("blast-redirect-location", "pathname", allow_duplicate=True),
+        Output("blast-redirect-location", "search", allow_duplicate=True),
+    ],
+    Input("blast-submit-portal-btn", "n_clicks"),
+    [
+        State("blast-data-store", "data"),
+        State("classification-data-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def redirect_to_submission_portal(n_clicks, blast_data_dict, classification_data_dict):
+    """Create submission prefill from BLAST result and redirect to /submit?token=."""
+    if not n_clicks:
+        raise PreventUpdate
+    if not blast_data_dict:
+        logger.warning("redirect_to_submission_portal: blast_data_store is empty")
+        raise PreventUpdate
+    from src.config.cache import cache
+
+    SUBMISSION_PREFILL_PREFIX = "submission_prefill:"
+    SUBMISSION_PREFILL_TTL = 3600
+
+    seq_results = blast_data_dict.get("sequence_results") or {}
+    first_result = seq_results.get("0") if isinstance(seq_results, dict) else None
+    if first_result and isinstance(first_result, dict):
+        fasta = (
+            blast_data_dict.get("sequence")
+            or blast_data_dict.get("fasta_file")
+            or first_result.get("sequence")
+            or first_result.get("fasta_file")
+        )
+    else:
+        fasta = blast_data_dict.get("sequence") or blast_data_dict.get("fasta_file")
+    if not fasta:
+        logger.warning(
+            "redirect_to_submission_portal: no sequence or fasta_file in store"
+        )
+        raise PreventUpdate
+    if isinstance(fasta, str) and fasta.strip().startswith("/"):
+        try:
+            with open(fasta, "r") as f:
+                fasta = f.read()
+        except Exception as e:
+            logger.warning(
+                f"redirect_to_submission_portal: could not read fasta file: {e}"
+            )
+            raise PreventUpdate
+    if isinstance(fasta, str) and not fasta.strip().startswith(">"):
+        fasta = f">query\n{fasta}"
+    seq_contents = base64.b64encode(fasta.strip().encode("utf-8")).decode("ascii")
+    seq_contents = f"data:application/octet-stream;base64,{seq_contents}"
+    seq_filename = "query_sequence.fasta"
+    classification = classification_data_dict or {}
+    prefill_payload = {
+        "seq_contents": seq_contents,
+        "seq_filename": seq_filename,
+        "classification": classification,
+    }
+    token = str(uuid.uuid4())
+    cache_key = f"{SUBMISSION_PREFILL_PREFIX}{token}"
+    cache.set(cache_key, json.dumps(prefill_payload), timeout=SUBMISSION_PREFILL_TTL)
+    return "/submit", f"?token={token}"
