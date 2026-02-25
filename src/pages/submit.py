@@ -11,8 +11,8 @@ from typing import Dict, Any, Optional
 from src.utils.seq_utils import parse_fasta, parse_gff
 
 from src.database.sql_engine import get_submissions_session
+from src.database.models.schema import Submission
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import text
 from src.components.ui import create_file_upload
 
 from src.config.logging import get_logger
@@ -565,59 +565,44 @@ def insert_submission(
     needs_review=False,
 ):
     try:
-        content_type, content_string = seq_contents.split(",")
+        _ct, content_string = seq_contents.split(",", 1)
         seq_decoded = base64.b64decode(content_string).decode("utf-8")
-        seq_datetime_obj = datetime.datetime.fromtimestamp(seq_date).strftime(
+        seq_datetime_str = datetime.datetime.fromtimestamp(seq_date).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
 
-        anno_contents = ""
-        anno_datetime_obj = ""
-
+        anno_decoded = None
+        anno_filename_val = None
+        anno_datetime_str = None
         if anno_contents:
-            content_type, content_string = anno_contents.split(",")
-            anno_contents = base64.b64decode(content_string).decode("utf-8")
-            anno_datetime_obj = datetime.datetime.fromtimestamp(anno_date).strftime(
+            _ct, content_string = anno_contents.split(",", 1)
+            anno_decoded = base64.b64decode(content_string).decode("utf-8")
+            anno_filename_val = anno_filename
+            anno_datetime_str = datetime.datetime.fromtimestamp(anno_date).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
 
         with get_submissions_session() as session:
-            query = """
-                INSERT INTO submissions (
-                    seq_contents, seq_filename, seq_date, anno_contents,
-                    anno_filename, anno_date, uploader, evidence,
-                    genus, species, hostchr, shipstart, shipend,
-                    shipstrand, comment, accession_tag, needs_review
-                )
-                VALUES (
-                    :seq_contents, :seq_filename, :seq_date, :anno_contents, 
-                    :anno_filename, :anno_date, :uploader, :evidence, 
-                    :genus, :species, :hostchr, :shipstart, :shipend, 
-                    :shipstrand, :comment, :accession_tag, :needs_review
-                )
-            """
-            session.execute(
-                text(query),
-                {
-                    "seq_contents": seq_decoded,
-                    "seq_filename": seq_filename,
-                    "seq_date": seq_datetime_obj,
-                    "anno_contents": anno_contents,
-                    "anno_filename": anno_filename,
-                    "anno_date": anno_datetime_obj,
-                    "uploader": uploader,
-                    "evidence": evidence,
-                    "genus": genus,
-                    "species": species,
-                    "hostchr": hostchr,
-                    "shipstart": shipstart,
-                    "shipend": shipend,
-                    "shipstrand": shipstrand,
-                    "comment": comment,
-                    "accession_tag": accession,
-                    "needs_review": needs_review,
-                },
+            submission = Submission(
+                seq_contents=seq_decoded,
+                seq_filename=seq_filename,
+                seq_date=seq_datetime_str,
+                anno_contents=anno_decoded,
+                anno_filename=anno_filename_val,
+                anno_date=anno_datetime_str,
+                uploader=uploader,
+                evidence=evidence,
+                genus=genus,
+                species=species,
+                hostchr=hostchr,
+                shipstart=shipstart,
+                shipend=shipend,
+                shipstrand=shipstrand,
+                comment=comment,
+                accession_tag=accession,
+                needs_review=needs_review,
             )
+            session.add(submission)
             session.commit()
             logger.debug(f"Successfully inserted submission for {seq_filename}")
             return True

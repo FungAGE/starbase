@@ -4,8 +4,10 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     DateTime,
     VARCHAR,
+    Boolean,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -280,3 +282,27 @@ class ShipQualityTags(Base):
 
     # Unique constraint to prevent duplicate tags per ship
     __table_args__ = ({"sqlite_autoincrement": True},)
+
+
+class Submission(Base):
+    """Submission records in the submissions database (queue for processing)."""
+
+    __tablename__ = "submissions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    seq_contents = Column(Text, nullable=False)
+    seq_filename = Column(String(255), nullable=False)
+    seq_date = Column(String(50), nullable=True)
+    anno_contents = Column(Text, nullable=True)
+    anno_filename = Column(String(255), nullable=True)
+    anno_date = Column(String(50), nullable=True)
+    uploader = Column(String(255), nullable=True)
+    evidence = Column(String(100), nullable=True)
+    genus = Column(String(255), nullable=True)
+    species = Column(String(255), nullable=True)
+    hostchr = Column(String(255), nullable=True)
+    shipstart = Column(Integer, nullable=True)
+    shipend = Column(Integer, nullable=True)
+    shipstrand = Column(String(10), nullable=True)
+    comment = Column(Text, nullable=True)
+    accession_tag = Column(String(50), nullable=True)
+    needs_review = Column(Boolean, default=False, nullable=True)
