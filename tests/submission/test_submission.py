@@ -1,6 +1,6 @@
 from datetime import datetime
 from src.database.sql_engine import get_submissions_session
-from src.database.models import Submission
+from src.database.models.schema import Submission
 import os
 from src.utils.classification_utils import assign_accession
 from src.config.logging import get_logger
