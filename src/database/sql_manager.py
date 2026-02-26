@@ -71,6 +71,7 @@ def fetch_meta_data(curated=False, accessions=None):
                 LEFT JOIN genomes g ON j.genome_id = g.id
                 LEFT JOIN ships s ON s.id = j.ship_id
                 LEFT JOIN accessions a ON j.accession_id = a.id
+                WHERE j.ship_id IS NOT NULL
                 """
 
                 full_df = pd.read_sql_query(meta_query, session.bind)
@@ -198,7 +199,7 @@ def fetch_ships(
             LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
             LEFT JOIN captains c ON j.captain_id = c.id
             LEFT JOIN accessions a ON j.accession_id = a.id
-            WHERE 1=1
+            WHERE 1=1 AND j.ship_id IS NOT NULL
         """
 
         query = base_query
@@ -349,7 +350,7 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                 LEFT JOIN taxonomy t ON js.tax_id = t.id
                 LEFT JOIN family_names f ON js.ship_family_id = f.id
                 LEFT JOIN accessions a ON js.accession_id = a.id
-                WHERE 1=1
+                WHERE js.ship_id IS NOT NULL
                 """
 
                 full_df = pd.read_sql_query(query, session.bind)
@@ -398,7 +399,7 @@ def fetch_accession_ship(ship_accession_tag):
     LEFT JOIN ships s ON s.id = j.ship_id
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN accessions a ON a.id = j.accession_id
-    WHERE sa.ship_accession_tag = :ship_accession_tag AND s.sequence IS NOT NULL
+    WHERE j.ship_id IS NOT NULL AND sa.ship_accession_tag = :ship_accession_tag AND s.sequence IS NOT NULL
     """
 
     gff_query = """
@@ -407,7 +408,7 @@ def fetch_accession_ship(ship_accession_tag):
     LEFT JOIN gff g ON g.ship_id = j.ship_id
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN accessions a ON a.id = j.accession_id
-    WHERE sa.ship_accession_tag = :ship_accession_tag AND g.source IS NOT NULL
+    WHERE j.ship_id IS NOT NULL AND sa.ship_accession_tag = :ship_accession_tag AND g.source IS NOT NULL
     """
 
     with get_starbase_session() as session:
@@ -481,7 +482,7 @@ def fetch_captains(
         LEFT JOIN captains c ON j.captain_id = c.id
         LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
         LEFT JOIN accessions a ON j.accession_id = a.id
-        WHERE 1=1
+        WHERE 1=1 AND j.ship_id IS NOT NULL
     """
 
     if accessions:
@@ -642,6 +643,7 @@ def get_database_stats():
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
     LEFT JOIN ships s ON s.id = j.ship_id
+    WHERE j.ship_id IS NOT NULL
     """
     with get_starbase_session() as session:
         try:
