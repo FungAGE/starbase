@@ -1149,6 +1149,16 @@ def process_multiple_sequences(
         logger.warning("No submission_id provided to process_multiple_sequences")
         raise PreventUpdate
 
+    # Bind this submission to a session-scoped ID so all workers can find state in Redis
+    try:
+        from flask import session
+        import uuid
+
+        session["blast_submission_id"] = str(uuid.uuid4())
+        session.modified = True
+    except Exception:
+        pass
+
     adapter = get_dash_adapter()
     sequence_id = str(submission_id)
 
@@ -1400,14 +1410,19 @@ def process_additional_sequence(
         if not main_sequence_id:
             # Try to find the main sequence ID from existing sequences
             # Look for sequences that don't have "_tab_" in their ID
-            main_sequences = [seq_id for seq_id in pipeline_state._sequences.keys() 
-                            if "_tab_" not in seq_id]
+            main_sequences = [
+                seq_id
+                for seq_id in pipeline_state._sequences.keys()
+                if "_tab_" not in seq_id
+            ]
             if main_sequences:
                 main_sequence_id = main_sequences[0]
                 logger.info(f"Recovered main sequence ID: {main_sequence_id}")
                 pipeline_state.set_active_sequence(main_sequence_id)
             else:
-                logger.error("No active sequence ID found for tab processing and no main sequences available")
+                logger.error(
+                    "No active sequence ID found for tab processing and no main sequences available"
+                )
                 raise PreventUpdate
         tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
 
@@ -1736,16 +1751,21 @@ def render_tab_content(active_tab, blast_data_dict):
         if not main_sequence_id:
             # Try to find the main sequence ID from existing sequences
             # Look for sequences that don't have "_tab_" in their ID
-            main_sequences = [seq_id for seq_id in pipeline_state._sequences.keys() 
-                            if "_tab_" not in seq_id]
+            main_sequences = [
+                seq_id
+                for seq_id in pipeline_state._sequences.keys()
+                if "_tab_" not in seq_id
+            ]
             if main_sequences:
                 main_sequence_id = main_sequences[0]
-                logger.info(f"Recovered main sequence ID in render_tab_content: {main_sequence_id}")
+                logger.info(
+                    f"Recovered main sequence ID in render_tab_content: {main_sequence_id}"
+                )
                 pipeline_state.set_active_sequence(main_sequence_id)
             else:
                 logger.warning("No main sequence ID found in render_tab_content")
                 main_sequence_id = None
-                
+
         if main_sequence_id:
             tab_sequence_id = f"{main_sequence_id}_tab_{tab_idx}"
         else:
@@ -2419,6 +2439,7 @@ def update_classification_workflow_state(
                     logger.debug(
                         "Cleared empty classification data from centralized state"
                     )
+                    pipeline_state._maybe_persist()
 
         # Return synchronized data from centralized state
         store_data = adapter.sync_all_stores(sequence_id)

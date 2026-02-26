@@ -29,8 +29,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Any
 from src.config.logging import get_logger
+from src.config.cache import cache, DEFAULT_CACHE_TIMEOUT
 
 logger = get_logger(__name__)
+
+# Cache key prefix for pipeline state (shared across workers via filesystem cache)
+_BLAST_PIPELINE_CACHE_KEY_PREFIX = "blast_pipeline:"
 
 # =============================================================================
 # CONSOLIDATED DATA MODELS
@@ -669,11 +673,31 @@ class PipelineState:
 
     This eliminates data duplication by providing a single source of truth
     for all sequence data, workflow states, and classification results.
+
+    When running with multiple workers (e.g. production), state is
+    backed by the filesystem cache so all workers share the same pipeline
+    state for a given submission (keyed by session blast_submission_id).
     """
 
     def __init__(self):
         self._sequences: Dict[str, SequenceState] = {}
         self._active_sequence_id: Optional[str] = None
+        # Optional cache backing: when set, state is persisted after each mutation
+        self._cache_key: Optional[str] = None
+        self._cache_timeout: int = DEFAULT_CACHE_TIMEOUT
+
+    def _maybe_persist(self) -> None:
+        """Persist state to filesystem cache when cache backing is configured."""
+        if not self._cache_key:
+            return
+        try:
+            cache.set(
+                self._cache_key,
+                self.to_dict(),
+                timeout=self._cache_timeout,
+            )
+        except Exception as e:
+            logger.warning("Failed to persist pipeline state to cache: %s", e)
 
     def add_sequence(
         self, sequence_id: str, clear_existing: bool = False
@@ -704,6 +728,7 @@ class PipelineState:
             )
 
         logger.debug(f"Added sequence {sequence_id} to pipeline state")
+        self._maybe_persist()
         return sequence_state
 
     def add_sequence_without_activation(
@@ -730,6 +755,7 @@ class PipelineState:
         logger.debug(
             f"Added sequence {sequence_id} to pipeline state (without activation)"
         )
+        self._maybe_persist()
         return sequence_state
 
     def get_sequence(self, sequence_id: str) -> Optional[SequenceState]:
@@ -780,6 +806,7 @@ class PipelineState:
                 )
         else:
             logger.error(f"Cannot set active sequence to {sequence_id} - not found")
+        self._maybe_persist()
 
     def update_blast_data(self, sequence_id: str, blast_data: BlastData):
         """Update BLAST data for a sequence"""
@@ -788,6 +815,7 @@ class PipelineState:
 
         self._sequences[sequence_id].blast_data = blast_data
         logger.debug(f"Updated BLAST data for sequence {sequence_id}")
+        self._maybe_persist()
 
     def update_workflow_state(self, sequence_id: str, workflow_state: WorkflowState):
         """Update workflow state for a sequence"""
@@ -796,6 +824,7 @@ class PipelineState:
 
         self._sequences[sequence_id].workflow_state = workflow_state
         logger.debug(f"Updated workflow state for sequence {sequence_id}")
+        self._maybe_persist()
 
     def update_classification_data(
         self, sequence_id: str, classification_data: ClassificationData
@@ -817,6 +846,7 @@ class PipelineState:
         logger.debug(
             f"Classification: family={classification_data.family}, navis={classification_data.navis}, haplotype={classification_data.haplotype}"
         )
+        self._maybe_persist()
 
     def get_classification_data(self, sequence_id: str) -> Optional[ClassificationData]:
         """Get classification data for a sequence - SINGLE SOURCE OF TRUTH"""
@@ -830,18 +860,21 @@ class PipelineState:
         if sequence_id in self._sequences:
             self._sequences[sequence_id].processed = True
             logger.debug(f"Marked sequence {sequence_id} as processed")
+            self._maybe_persist()
 
     def set_sequence_error(self, sequence_id: str, error: str):
         """Set an error for a sequence"""
         if sequence_id in self._sequences:
             self._sequences[sequence_id].error = error
             logger.error(f"Set error for sequence {sequence_id}: {error}")
+            self._maybe_persist()
 
     def clear_all_sequences(self):
         """Clear all sequences from the pipeline state"""
         logger.info("Clearing all sequences from pipeline state")
         self._sequences.clear()
         self._active_sequence_id = None
+        self._maybe_persist()
 
     def start_new_submission(self, sequence_id: str) -> SequenceState:
         """Start a new submission by clearing old state and adding the sequence"""
@@ -853,6 +886,7 @@ class PipelineState:
         logger.info(
             f"New submission initialized - active sequence: {self._active_sequence_id}"
         )
+        self._maybe_persist()
         return sequence_state
 
     def get_processed_sequences(self) -> List[str]:
@@ -913,13 +947,44 @@ class PipelineState:
         return None
 
 
-# Global instance - single source of truth
+# Global instance - single source of truth (used when no session submission_id)
 _legacy_pipeline_state = PipelineState()
 
 
 def get_legacy_pipeline_state() -> PipelineState:
-    """Get the global legacy pipeline state instance"""
-    return _legacy_pipeline_state
+    """
+    Get the pipeline state for the current request.
+
+    When the request has a session with blast_submission_id, state is loaded
+    from/saved to the filesystem cache so all workers share the same state
+    (fixes multi-worker deployments where text-input submission and polling
+    hit different workers).
+    """
+    try:
+        from flask import session
+    except ImportError:
+        return _legacy_pipeline_state
+
+    submission_id = session.get("blast_submission_id") if session else None
+    if not submission_id:
+        return _legacy_pipeline_state
+
+    cache_key = f"{_BLAST_PIPELINE_CACHE_KEY_PREFIX}{submission_id}"
+    try:
+        data = cache.get(cache_key)
+        if data:
+            state = PipelineState.from_dict(data)
+            state._cache_key = cache_key
+            state._cache_timeout = DEFAULT_CACHE_TIMEOUT
+            return state
+        # New submission: return empty state that will be persisted when we mutate
+        state = PipelineState()
+        state._cache_key = cache_key
+        state._cache_timeout = DEFAULT_CACHE_TIMEOUT
+        return state
+    except Exception as e:
+        logger.warning("Failed to load pipeline state from cache: %s", e)
+        return _legacy_pipeline_state
 
 
 def reset_legacy_pipeline_state():
