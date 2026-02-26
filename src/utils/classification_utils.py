@@ -1609,16 +1609,18 @@ def metaeuk_easy_predict(query_fasta, threads=20):
 
     try:
         with tempfile.TemporaryDirectory() as output_dir:
-            # Output prefix for MetaEuk files
+            # Output prefix for MetaEuk files; MetaEuk requires 4 positional args: contigs, targets, outputPrefix, tmpDir
             output_prefix = os.path.join(output_dir, "prediction")
+            metaeuk_tmp = os.path.join(output_dir, "metaeuk_tmp")
+            os.makedirs(metaeuk_tmp, exist_ok=True)
 
-            # Run MetaEuk with explicit paths
             cmd = [
                 "metaeuk",
                 "easy-predict",
                 os.path.abspath(query_fasta),
                 os.path.abspath(ref_db),
                 output_prefix,
+                metaeuk_tmp,
                 "--metaeuk-eval",
                 "0.0001",
                 "-e",
@@ -2252,7 +2254,7 @@ def create_classification_output(workflow_state=None, classification_data=None):
                         ),
                     ),
                     dmc.Button(
-                        "Submit to portal",
+                        "Submit Sequence for Curation",
                         id="blast-submit-portal-btn",
                         variant="light",
                         leftSection=dmc.ThemeIcon(

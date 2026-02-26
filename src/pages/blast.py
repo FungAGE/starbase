@@ -112,7 +112,8 @@ layout = dmc.Container(
             disabled=True,  # Always disabled
             max_intervals=0,  # Never trigger
         ),
-        dcc.Location(id="blast-redirect-location", refresh=True),
+        dcc.Store(id="blast-synteny-redirect-url", data=None),
+        dcc.Store(id="blast-submit-redirect-url", data=None),
         dmc.Space(h=20),
         dmc.Grid(
             children=[
@@ -2643,17 +2644,47 @@ def disable_interval_when_complete(workflow_state, blast_results):
     return True
 
 
-# ── Redirect to synteny viewer with session from BLAST result ─────────────────
+# ── Open synteny/submission in new tab (store URL, clientside opens _blank) ───
+clientside_callback(
+    """
+    function(url) {
+      if (url && typeof url === 'string') {
+        window.open(url, '_blank');
+        return null;
+      }
+      return dash_clientside.no_update;
+    }
+    """,
+    Output("blast-synteny-redirect-url", "data"),
+    Input("blast-synteny-redirect-url", "data"),
+)
+
+clientside_callback(
+    """
+    function(url) {
+      if (url && typeof url === 'string') {
+        window.open(url, '_blank');
+        return null;
+      }
+      return dash_clientside.no_update;
+    }
+    """,
+    Output("blast-submit-redirect-url", "data"),
+    Input("blast-submit-redirect-url", "data"),
+)
+
+
+# ── Create synteny session and set URL for new-tab open ──────────────────────
 @callback(
-    [
-        Output("blast-redirect-location", "pathname"),
-        Output("blast-redirect-location", "search"),
-    ],
+    Output("blast-synteny-redirect-url", "data", allow_duplicate=True),
     Input("blast-view-synteny-btn", "n_clicks"),
-    State("blast-data-store", "data"),
+    [
+        State("blast-data-store", "data"),
+        State("classification-data-store", "data"),
+    ],
     prevent_initial_call=True,
 )
-def redirect_to_synteny_viewer(n_clicks, blast_data_dict):
+def redirect_to_synteny_viewer(n_clicks, blast_data_dict, classification_data_dict):
     """Create a synteny session from current BLAST result and redirect to /synteny?session=."""
     if not n_clicks:
         raise PreventUpdate
@@ -2700,8 +2731,9 @@ def redirect_to_synteny_viewer(n_clicks, blast_data_dict):
     from src.api.synteny_routes import (
         SYNTENY_SESSION_PREFIX,
         SYNTENY_SESSION_TTL,
-        _extract_accessions_from_blast_df,
+        _extract_top_blast_hits_by_coverage,
         _fasta_to_sequence_and_label,
+        _run_metaeuk_and_get_gff,
     )
     from src.config.cache import cache
     from src.utils.synteny_queries import resolve_accessions_to_ship_ids
@@ -2713,10 +2745,47 @@ def redirect_to_synteny_viewer(n_clicks, blast_data_dict):
 
     preselected_ship_ids = []
     preselected_ships = []
-    if blast_df:
-        accessions = _extract_accessions_from_blast_df(blast_df, max_hits=10)
-        if accessions:
-            resolved = resolve_accessions_to_ship_ids(accessions, max_ships=10)
+    # Build ordered accession list: closest_match first, then top BLAST hits (coverage > 50%)
+    accessions_to_resolve = []
+
+    # 1) Classification closest_match (most relevant)
+    closest_match = None
+    if classification_data_dict and isinstance(classification_data_dict, dict):
+        closest_match = classification_data_dict.get("closest_match")
+    if closest_match:
+        if isinstance(closest_match, list):
+            accessions_to_resolve.extend(closest_match)
+        else:
+            accessions_to_resolve.append(str(closest_match))
+        logger.info(
+            f"redirect_to_synteny_viewer: closest_match accession(s): {closest_match}"
+        )
+
+    # 2) Top 3 blast hits with query coverage > 50%
+    if blast_df and len(sequence) > 0:
+        hit_accessions = _extract_top_blast_hits_by_coverage(
+            blast_df,
+            query_length=len(sequence),
+            min_query_coverage=0.5,
+            max_hits=3,
+        )
+        logger.info(
+            f"redirect_to_synteny_viewer: coverage-filtered blast hits: {hit_accessions}"
+        )
+        for acc in hit_accessions:
+            if acc not in accessions_to_resolve:
+                accessions_to_resolve.append(acc)
+    else:
+        logger.info(
+            f"redirect_to_synteny_viewer: blast_df empty={not blast_df}, seq_len={len(sequence)}"
+        )
+
+    if accessions_to_resolve:
+        resolved = resolve_accessions_to_ship_ids(accessions_to_resolve, max_ships=4)
+        logger.info(
+            f"redirect_to_synteny_viewer: resolved {len(resolved)} ships from {accessions_to_resolve}"
+        )
+        if resolved:
             for ship_id, info in resolved:
                 preselected_ship_ids.append(ship_id)
                 preselected_ships.append(
@@ -2729,12 +2798,16 @@ def redirect_to_synteny_viewer(n_clicks, blast_data_dict):
                     }
                 )
 
+    # Run metaeuk to annotate the custom track (non-fatal if unavailable)
+    gff_entries = _run_metaeuk_and_get_gff(fasta, label=label)
+
     session_payload = {
         "custom_track": {
             "fasta": fasta,
             "sequence": sequence,
             "label": label,
             "length": len(sequence),
+            "gff_entries": gff_entries,
         },
         "preselected_ship_ids": preselected_ship_ids,
         "preselected_ships": preselected_ships,
@@ -2743,17 +2816,16 @@ def redirect_to_synteny_viewer(n_clicks, blast_data_dict):
     cache_key = f"{SYNTENY_SESSION_PREFIX}{token}"
     cache.set(cache_key, json.dumps(session_payload), timeout=SYNTENY_SESSION_TTL)
     logger.info(
-        f"Redirecting to synteny with session {token} ({len(preselected_ship_ids)} preselected ships)"
+        f"Opening synteny in new tab with session {token} "
+        f"({len(preselected_ship_ids)} preselected ships, "
+        f"{len(gff_entries)} GFF entries for custom track)"
     )
-    return "/synteny", f"?session={token}"
+    return f"/synteny?session={token}"
 
 
-# ── Redirect to submission portal with prefill from BLAST result ──────────────
+# ── Create submission prefill and set URL for new-tab open ─────────────────────
 @callback(
-    [
-        Output("blast-redirect-location", "pathname", allow_duplicate=True),
-        Output("blast-redirect-location", "search", allow_duplicate=True),
-    ],
+    Output("blast-submit-redirect-url", "data", allow_duplicate=True),
     Input("blast-submit-portal-btn", "n_clicks"),
     [
         State("blast-data-store", "data"),
@@ -2812,4 +2884,5 @@ def redirect_to_submission_portal(n_clicks, blast_data_dict, classification_data
     token = str(uuid.uuid4())
     cache_key = f"{SUBMISSION_PREFILL_PREFIX}{token}"
     cache.set(cache_key, json.dumps(prefill_payload), timeout=SUBMISSION_PREFILL_TTL)
-    return "/submit", f"?token={token}"
+    logger.info("Opening submission portal in new tab with prefill token")
+    return f"/submit?token={token}"

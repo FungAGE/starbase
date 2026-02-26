@@ -419,15 +419,32 @@ def resolve_accessions_to_ship_ids(accession_list, max_ships=10):
 
     from src.database.sql_manager import fetch_meta_data
 
-    # Normalize to list and strip
-    accs = [
+    # Normalize: strip whitespace/quotes, also strip version suffix (e.g. SSA002921.1 → SSA002921)
+    # because fetch_meta_data filters on accession_tag which has no version.
+    def _strip_version(acc: str) -> str:
+        """Remove trailing .N version (e.g. SSA002921.1 → SSA002921)."""
+        import re
+
+        return re.sub(r"\.\d+$", "", acc)
+
+    accs_raw = [
         (a.strip() if isinstance(a, str) else str(a)).strip("'\"")
         for a in accession_list
     ]
-    accs = [a for a in accs if a]
+    accs_raw = [a for a in accs_raw if a]
 
-    if not accs:
+    if not accs_raw:
         return []
+
+    # Try both the raw accession and the version-stripped form.
+    # Using a list to keep order and a set to deduplicate.
+    seen_acc = set()
+    accs = []
+    for a in accs_raw:
+        for candidate in (a, _strip_version(a)):
+            if candidate and candidate not in seen_acc:
+                seen_acc.add(candidate)
+                accs.append(candidate)
 
     try:
         meta_df = fetch_meta_data(accessions=accs)

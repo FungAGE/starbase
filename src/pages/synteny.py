@@ -822,41 +822,115 @@ def display_selected_ships(selected_ships):
 
 
 # ── Generate visualization data ────────────────────────────────────────────────
-def _build_custom_track_cluster(custom_track):
-    """Build one cluster (one locus, one gene) for a user sequence with no GFF."""
+def _build_custom_track_cluster(custom_track, color_by="category", label_field="Alias"):
+    """
+    Build one cluster for a user sequence.
+    Uses GFF entries from metaeuk annotation when available; falls back to a
+    single whole-contig gene when GFF is absent.
+    """
     if not custom_track:
         return None
     length = custom_track.get("length") or len(custom_track.get("sequence") or "")
     label = custom_track.get("label") or "User sequence"
     if length <= 0:
         return None
+
     uid_custom = "custom_user_sequence"
-    gene = {
-        "uid": f"gene_{uid_custom}_0",
-        "start": 1,
-        "end": length,
-        "strand": 1,
-        "_start": 1,
-        "_end": length,
-        "_strand": 1,
-        "name": label,
-        "label": label,
-        "locus_tag": "",
-        "metadata": {
-            "category": "other",
-            "category_label": "Other",
-        },
-        "group": "other",
-        "colour": GENE_CATEGORY_COLORS.get("other"),
-    }
+    gff_entries = custom_track.get("gff_entries") or []
+
+    if gff_entries:
+        # Build genes from metaeuk GFF entries (CDS/gene/exon rows)
+        genes = []
+        for idx, entry in enumerate(gff_entries):
+            attrs = parse_gff_attributes(entry.get("attributes", ""))
+            category = categorize_gene(entry)
+            strand_raw = entry.get("strand", "+")
+            strand_int = 1 if strand_raw == "+" else -1
+            start = entry.get("start", 1)
+            end = entry.get("end", length)
+
+            if color_by == "category":
+                group = category
+            elif color_by == "family":
+                group = attrs.get("Target_ID", category)
+            else:
+                group = entry.get(color_by, "other")
+
+            gene_label = (
+                attrs.get(label_field)
+                or attrs.get("Alias")
+                or attrs.get("ID")
+                or f"gene_{idx}"
+            )
+            genes.append(
+                {
+                    "uid": f"gene_{uid_custom}_{idx}",
+                    "start": start,
+                    "end": end,
+                    "strand": strand_int,
+                    "_start": start,
+                    "_end": end,
+                    "_strand": strand_int,
+                    "name": gene_label,
+                    "label": gene_label,
+                    "locus_tag": attrs.get("ID", ""),
+                    "metadata": {
+                        "id": None,
+                        "source": entry.get("source", "metaeuk"),
+                        "type": entry.get("type", "CDS"),
+                        "score": entry.get("score"),
+                        "phase": entry.get("phase"),
+                        "Target_ID": attrs.get("Target_ID", ""),
+                        "Alias": attrs.get("Alias", ""),
+                        "SeqID": attrs.get("SeqID", ""),
+                        "category": category,
+                        "category_label": GENE_CATEGORY_LABELS.get(category, category),
+                        **attrs,
+                    },
+                    "group": group,
+                    "colour": GENE_CATEGORY_COLORS.get(category)
+                    if color_by == "category"
+                    else None,
+                }
+            )
+
+        if not genes:
+            # GFF had no usable entries; fall through to fallback below
+            gff_entries = []
+
+    if not gff_entries:
+        # Fallback: one gene spanning the full contig
+        genes = [
+            {
+                "uid": f"gene_{uid_custom}_0",
+                "start": 1,
+                "end": length,
+                "strand": 1,
+                "_start": 1,
+                "_end": length,
+                "_strand": 1,
+                "name": label,
+                "label": label,
+                "locus_tag": "",
+                "metadata": {
+                    "category": "other",
+                    "category_label": "Other",
+                },
+                "group": "other",
+                "colour": GENE_CATEGORY_COLORS.get("other"),
+            }
+        ]
+
+    gene_starts = [g["start"] for g in genes]
+    gene_ends = [g["end"] for g in genes]
     locus = {
         "uid": f"locus_{uid_custom}",
         "name": label,
-        "start": 1,
-        "end": length,
-        "_start": 1,
-        "_end": length,
-        "genes": [gene],
+        "start": min(gene_starts),
+        "end": max(gene_ends),
+        "_start": min(gene_starts),
+        "_end": max(gene_ends),
+        "genes": genes,
     }
     return {
         "uid": f"cluster_{uid_custom}",
@@ -887,7 +961,11 @@ def generate_synteny_data(
 
     clusters = []
     if custom_track:
-        custom_cluster = _build_custom_track_cluster(custom_track)
+        custom_cluster = _build_custom_track_cluster(
+            custom_track,
+            color_by=color_by or "category",
+            label_field=label_field or "Alias",
+        )
         if custom_cluster:
             clusters.append(custom_cluster)
 
