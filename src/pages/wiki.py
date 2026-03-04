@@ -1035,7 +1035,7 @@ def generate_download_helper(rows, curated, dereplicate):
             raise ValueError("No rows selected for download")
 
         def _base_accession(row):
-            tag = row.get("accession_tag") or row.get("ship_accession_tag")
+            tag = row.get("ship_accession_tag")
             if tag is None or (isinstance(tag, float) and pd.isna(tag)):
                 return None
             return re.sub(pattern=r"\..*", repl="", string=str(tag))
