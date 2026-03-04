@@ -196,3 +196,5 @@ tests/test_data/real_*
 .agent-docs/
 
 starbase-validation/
+
+examples/
