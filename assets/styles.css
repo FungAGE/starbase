@@ -27,6 +27,7 @@
     text-align: center;
     transition: all 0.3s ease;
     cursor: pointer;
+    box-shadow: none;
 }
 
 .upload-box:hover {

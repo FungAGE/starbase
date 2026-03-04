@@ -225,39 +225,39 @@ def create_file_upload(
     icon: str = "mdi:file-upload",
     **kwargs,
 ) -> dmc.Stack:
-    return dmc.Stack(
-        [
-            dmc.Center(DashIconify(icon=icon, width=40, height=40, color="#228be6")),
-            dcc.Upload(
+    return dcc.Upload(
                 id=upload_id,
                 children=dmc.Stack(
                     [
-                        html.Div(
-                            id=output_id,
-                            children=placeholder_text,
+                        dmc.Center(DashIconify(icon=icon, width=40, height=40, color="#228be6")),
+                        dmc.Stack(
+                            [
+                                html.Div(
+                                    id=output_id,
+                                    children=placeholder_text,
+                                ),
+                                dmc.Text(
+                                    f"Accepted formats: {', '.join(accept_types)}",
+                                    size="sm",
+                                    c="dimmed",
+                                ),
+                            ],
+                            align="center",
+                            gap="xs",
                         ),
-                        dmc.Text(
-                            f"Accepted formats: {', '.join(accept_types)}",
-                            size="sm",
-                            c="dimmed",
+                        dmc.Progress(
+                            id=f"{upload_id}-progress",
+                            value=0,
+                            animated=True,
+                            style={"display": "none"},
                         ),
                     ],
-                    align="center",
-                    gap="xs",
-                ),
-                className="upload-box",
-                **kwargs,
-            ),
-            dmc.Progress(
-                id=f"{upload_id}-progress",
-                value=0,
-                animated=True,
-                style={"display": "none"},
-            ),
-        ],
-        gap="md",
-    )
-
+                        className="upload-box",
+                        style={"boxShadow": "none"},
+                        **kwargs,
+                    gap="md",
+                )
+            )
 
 def create_feedback_button():
     return dmc.Notification(

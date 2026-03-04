@@ -74,6 +74,26 @@ WORKFLOW_STAGES = [
     {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
+CLASSIFICATION_TOOLS_INFO = """
+**Initial search**
+- **BLAST** (blastn for nucleotide, tblastn for protein): Search against the Starbase Starships nucleotide database.
+
+**Exact / contained / similar detection**
+- **MD5 hash**: Exact sequence match detection.
+- **minimap2**: Alignment-based detection of contained sequences (query contained within reference or vice versa).
+- **sourmash**: K-mer similarity for near-identical sequence detection.
+
+**Family assignment**
+- **DIAMOND**: For nucleotide input, translates and searches against captain (tyrosine recombinase) protein database to extract the captain gene.
+- **HMMER** (hmmsearch): Profile HMM search against captain gene models to assign Starship family.
+
+**Navis classification**
+- **MMseqs2** (easy-cluster): Clusters the query captain sequence with existing classified captains to assign navis (sequence cluster) identity.
+
+**Haplotype classification**
+- Uses cluster membership from the navis stage to assign haplotype based on the most common haplotype among similar sequences in the database.
+"""
+
 # Define badge colors based on source
 source_colors = {
     "exact": "green",

@@ -23,7 +23,7 @@ from src.components.ui import (
     create_file_upload,
 )
 from src.database.sql_manager import fetch_meta_data
-from src.utils.classification_utils import WORKFLOW_STAGES
+from src.utils.classification_utils import WORKFLOW_STAGES, CLASSIFICATION_TOOLS_INFO
 from src.tasks import (
     run_blast_search_task,
     run_classification_workflow_sync,
@@ -110,6 +110,23 @@ layout = dmc.Container(
             disabled=True,  # Always disabled
             max_intervals=0,  # Never trigger
         ),
+        dmc.Modal(
+            id="classification-tools-modal",
+            opened=False,
+            centered=True,
+            overlayProps={"blur": 3},
+            size="lg",
+            title="Classification workflow tools",
+            children=[
+                dmc.Space(h="md"),
+                dcc.Markdown(CLASSIFICATION_TOOLS_INFO.strip()),
+                dmc.Space(h="md"),
+                dmc.Group(
+                    dmc.Button("Close", id="classification-tools-modal-close", variant="light"),
+                    justify="flex-end",
+                ),
+            ],
+        ),
         dmc.Space(h=20),
         dmc.Grid(
             children=[
@@ -122,15 +139,27 @@ layout = dmc.Container(
                                     dmc.Title("BLAST Search", order=1),
                                     dmc.Text(
                                         [
-                                            "Search protein/nucleotide sequences for ",
-                                            html.Span(
-                                                "Starships",
-                                                style={"fontStyle": "italic"},
-                                            ),
-                                            " and ",
-                                            html.Span(
-                                                "Starship-associated genes",
-                                                style={"fontStyle": "italic"},
+                                            "This tools does two things: ",
+                                            html.Ul(
+                                                [
+                                                    html.Li(["Run BLAST against ",
+                                                        html.Span("Starship", style={"fontStyle": "italic"}),
+                                                        " sequences in ",
+                                                        html.Span("Starbase", className="logo-text"),
+                                                    ]),
+                                                    html.Li(
+                                                        [
+                                                            "Classify matches through exact/contained/similar detection, family assignment via captain gene similarity, and navis/haplotype classification. ",
+                                                            dmc.Button(
+                                                                "More info",
+                                                                id="classification-tools-more-info",
+                                                                variant="subtle",
+                                                                size="compact-xs",
+                                                                style={"fontStyle": "italic", "padding": "0 4px", "height": "auto", "minWidth": "auto"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ],
                                             ),
                                         ],
                                         c="dimmed",
@@ -180,7 +209,7 @@ layout = dmc.Container(
                                                             ),
                                                         ),
                                                         withBorder=False,
-                                                        shadow="sm",
+                                                        shadow="none",
                                                         radius="md",
                                                         style={"cursor": "pointer"},
                                                     ),
@@ -331,9 +360,11 @@ layout = dmc.Container(
                                                                 "textAlign": "left",
                                                             },
                                                         ),
-                                                    ]
+                                                    ],
+                                                    style={"alignSelf": "stretch"},
                                                 ),
                                             ],
+                                            style={"alignItems": "flex-start"},
                                         ),
                                     ],
                                 ),
@@ -537,6 +568,25 @@ def clear_file_on_text_input(text_value, current_file_contents):
     if text_value and len(text_value.strip()) > 10 and current_file_contents:
         return None, html.Div(html.P(["Select a FASTA file to upload"]))
     raise PreventUpdate
+
+
+@callback(
+    Output("classification-tools-modal", "opened"),
+    [
+        Input("classification-tools-more-info", "n_clicks"),
+        Input("classification-tools-modal-close", "n_clicks"),
+    ],
+    prevent_initial_call=True,
+)
+def toggle_classification_tools_modal(open_clicks, close_clicks):
+    """Open modal when 'More info' is clicked, close when Close button is clicked."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    trigger_id = ctx.triggered_id
+    if trigger_id == "classification-tools-more-info":
+        return True
+    return False
 
 
 # Add the clientside callback to immediately set button loading state
