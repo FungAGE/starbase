@@ -49,6 +49,7 @@ class Ships(Base):
     header = Column(String)
     rev_comp_md5 = Column(String)
     accession_id = Column(Integer, ForeignKey("accessions.id"))
+    type_ship = Column(String)
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="ships")

@@ -711,7 +711,7 @@ def extract_accession(accession: str) -> str:
     return base_accession
 
 
-def create_ncbi_style_header(row, type_ship=False):
+def create_ncbi_style_header(row):
     try:
 
         def safe_get(key):
@@ -785,7 +785,8 @@ def create_ncbi_style_header(row, type_ship=False):
         else:
             genomic_location = ""
 
-        if type_ship:
+        type_ship = safe_get("type_ship")
+        if type_ship and str(type_ship) == "1":
             # generate a count of the number of genomes for each group accession
             # TODO: the field `n_genomes` does not exist yet, so count how many ships have the same group accession
             n_genomes = fetch_ships(

@@ -1059,7 +1059,7 @@ def generate_download_helper(rows, curated, dereplicate):
         for _, row in dl_df.drop_duplicates(
             subset=["ship_accession_display", "sequence"]
         ).iterrows():
-            header = create_ncbi_style_header(row, type_ship=True)
+            header = create_ncbi_style_header(row)
             # Skip if header creation failed (returns None)
             if header is None:
                 logger.warning(
