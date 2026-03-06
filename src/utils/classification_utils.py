@@ -443,6 +443,10 @@ def check_contained_match(
 ) -> Optional[Tuple[str, bool]]:
     """Check if sequence is contained within any existing sequences.
 
+    Note: this will use SSB accessions as a key for the dict during Navis search
+    - ships without SSA accession can still be used in the sequence comparison
+
+
     Args:
         sequence: Query sequence to check
         existing_ships: DataFrame containing existing sequences
@@ -498,11 +502,19 @@ def check_contained_match(
             logger.debug("Writing reference sequences to temporary file")
             for _, row in existing_ships.iterrows():
                 if row["sequence"] is not None and len(row["sequence"]) >= query_len:
-                    # Use accession_display if available, otherwise fall back to accession_tag
-                    accession_display = row.get(
-                        "accession_display", row.get("accession_tag")
+                    ref_id = (
+                        row.get("accession_display")
+                        or row.get("accession_tag")
+                        or row.get("ship_accession_display")
+                        or row.get("ship_accession_tag")
                     )
-                    ref_file_context.write(f">{accession_display}\n{row['sequence']}\n")
+                    if ref_id is None or str(ref_id).strip() == "":
+                        ship_id = row.get("ship_id")
+                        if ship_id is not None:
+                            ref_id = f"ship_{ship_id}"
+                        else:
+                            continue  # Skip if no usable identifier
+                    ref_file_context.write(f">{ref_id}\n{row['sequence']}\n")
                     ref_count += 1
             ref_file_context.flush()
             ref_file_path = ref_file_context.name
@@ -537,20 +549,29 @@ def check_contained_match(
                         f"(coverage: {coverage:.2f}, identity: {identity:.2f})"
                     )
 
-                    # Find the sequence length using either accession_display or accession_tag
-                    matching_rows = existing_ships[
-                        (
-                            existing_ships.get(
-                                "accession_display", existing_ships.get("accession_tag")
-                            )
-                            == ref_name
-                        )
-                    ]
-                    if matching_rows.empty:
-                        # Fallback to accession_tag only
-                        matching_rows = existing_ships[
-                            existing_ships["accession_tag"] == ref_name
-                        ]
+                    # Find the sequence length by matching ref_name against any identifier
+                    # we may have used in the FASTA header (accession, ship_accession, ship_id)
+                    matching_rows = pd.DataFrame()
+                    for col in [
+                        "accession_display",
+                        "accession_tag",
+                        "ship_accession_display",
+                        "ship_accession_tag",
+                    ]:
+                        if col in existing_ships.columns:
+                            mask = existing_ships[col].astype(str) == str(ref_name)
+                            if mask.any():
+                                matching_rows = existing_ships[mask]
+                                break
+                    if matching_rows.empty and str(ref_name).startswith("ship_"):
+                        try:
+                            ship_id = int(ref_name.split("_", 1)[1])
+                            if "ship_id" in existing_ships.columns:
+                                matching_rows = existing_ships[
+                                    existing_ships["ship_id"] == ship_id
+                                ]
+                        except (ValueError, IndexError):
+                            pass
 
                     if not matching_rows.empty:
                         sequence_length = len(matching_rows["sequence"].iloc[0])
