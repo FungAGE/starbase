@@ -24,7 +24,9 @@ server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
 
 server.config.update(
-    MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB limit
+    MAX_CONTENT_LENGTH=50
+    * 1024
+    * 1024,  # 50MB limit (BLAST accepts large FASTA uploads)
     CACHE_TYPE="SimpleCache",
     CACHE_DEFAULT_TIMEOUT=300,
     SEND_FILE_MAX_AGE_DEFAULT=0,
@@ -55,6 +57,7 @@ external_stylesheets = [
 ]
 
 external_scripts = [
+    "/assets/js/dash-fetch-error-handler.js",  # Show error when callback requests fail (413, timeout, etc.)
     "https://code.jquery.com/jquery-2.2.4.min.js",
     "https://cdn.jsdelivr.net/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
