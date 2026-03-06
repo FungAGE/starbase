@@ -122,7 +122,9 @@ layout = dmc.Container(
                 dcc.Markdown(CLASSIFICATION_TOOLS_INFO.strip()),
                 dmc.Space(h="md"),
                 dmc.Group(
-                    dmc.Button("Close", id="classification-tools-modal-close", variant="light"),
+                    dmc.Button(
+                        "Close", id="classification-tools-modal-close", variant="light"
+                    ),
                     justify="flex-end",
                 ),
             ],
@@ -142,11 +144,22 @@ layout = dmc.Container(
                                             "This tools does two things: ",
                                             html.Ul(
                                                 [
-                                                    html.Li(["Run BLAST against ",
-                                                        html.Span("Starship", style={"fontStyle": "italic"}),
-                                                        " sequences in ",
-                                                        html.Span("Starbase", className="logo-text"),
-                                                    ]),
+                                                    html.Li(
+                                                        [
+                                                            "Run BLAST against ",
+                                                            html.Span(
+                                                                "Starship",
+                                                                style={
+                                                                    "fontStyle": "italic"
+                                                                },
+                                                            ),
+                                                            " sequences in ",
+                                                            html.Span(
+                                                                "Starbase",
+                                                                className="logo-text",
+                                                            ),
+                                                        ]
+                                                    ),
                                                     html.Li(
                                                         [
                                                             "Classify matches through exact/contained/similar detection, family assignment via captain gene similarity, and navis/haplotype classification. ",
@@ -155,7 +168,12 @@ layout = dmc.Container(
                                                                 id="classification-tools-more-info",
                                                                 variant="subtle",
                                                                 size="compact-xs",
-                                                                style={"fontStyle": "italic", "padding": "0 4px", "height": "auto", "minWidth": "auto"},
+                                                                style={
+                                                                    "fontStyle": "italic",
+                                                                    "padding": "0 4px",
+                                                                    "height": "auto",
+                                                                    "minWidth": "auto",
+                                                                },
                                                             ),
                                                         ]
                                                     ),
@@ -403,7 +421,7 @@ def update_file_details(seq_content, seq_filename):
     Immediately process the file to show a summary.
     Will display an error related to file problems in the upload area.
     - show and error and block submission if:
-        - file is too large (over 10 MB)
+        - file is too large (over 50 MB)
         - file is not a valid FASTA format
         - file contains no sequences
         - file parsing fails for any reason
@@ -425,7 +443,7 @@ def update_file_details(seq_content, seq_filename):
 
     try:
         try:
-            max_size = 10 * 1024 * 1024  # 10 MB
+            max_size = 50 * 1024 * 1024  # 50 MB
             content_type, content_string = seq_content.split(",")
             decoded = base64.b64decode(content_string)
             file_size = len(decoded)
@@ -440,7 +458,7 @@ def update_file_details(seq_content, seq_filename):
             return True, "Error", None, upload_details, error_alert
 
         if file_size > max_size:
-            error_msg = f"The file '{seq_filename}' exceeds the 10 MB limit."
+            error_msg = f"The file '{seq_filename}' exceeds the 50 MB limit."
             error_alert = dmc.Alert(
                 title="File Too Large",
                 children=error_msg,

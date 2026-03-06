@@ -34,7 +34,7 @@ def run_blast(
 ):
     try:
         # Add input size check
-        max_input_size = 10 * 1024 * 1024  # 10MB
+        max_input_size = 50 * 1024 * 1024  # 50MB
         if os.path.getsize(query_fasta) > max_input_size:
             logger.error(
                 f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes"

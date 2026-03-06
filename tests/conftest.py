@@ -30,7 +30,7 @@ def test_client():
 
     server.config.update(
         TESTING=True,
-        MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB limit
+        MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50MB limit
         CACHE_TYPE="SimpleCache",
         CACHE_DEFAULT_TIMEOUT=300,
         SEND_FILE_MAX_AGE_DEFAULT=0,
