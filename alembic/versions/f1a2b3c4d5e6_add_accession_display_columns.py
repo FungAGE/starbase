@@ -30,11 +30,11 @@ _ACCESSION_DISPLAY_EXPR = (
     "AND instr(accession_tag,'.')=0) THEN accession_tag||'.'||cast(version_tag AS text) "
     "WHEN (accession_tag IS NOT NULL AND trim(coalesce(accession_tag,''))<>'') THEN trim(accession_tag) ELSE '' END"
 )
-# ship_accessions uses ship_version_tag (not version_tag) as the version column name
+# ship_accessions table column is version_tag (migration 8adfce5239bb)
 _SHIP_ACCESSION_DISPLAY_EXPR = (
     "CASE WHEN (ship_accession_tag IS NOT NULL AND trim(coalesce(ship_accession_tag,''))<>'' "
-    "AND ship_version_tag IS NOT NULL AND trim(cast(ship_version_tag AS text))<>'' "
-    "AND instr(ship_accession_tag,'.')=0) THEN ship_accession_tag||'.'||cast(ship_version_tag AS text) "
+    "AND version_tag IS NOT NULL AND trim(cast(version_tag AS text))<>'' "
+    "AND instr(ship_accession_tag,'.')=0) THEN ship_accession_tag||'.'||cast(version_tag AS text) "
     "WHEN (ship_accession_tag IS NOT NULL AND trim(coalesce(ship_accession_tag,''))<>'') THEN trim(ship_accession_tag) ELSE '' END"
 )
 
