@@ -193,6 +193,9 @@ class Navis(Base):
     navis_name = Column(String)
     previous_navis_name = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    activity = Column(
+        Integer, default=1, nullable=True
+    )  # 0 = inactive, don't show in modals
 
     # Relationships
     family = relationship("FamilyNames")
@@ -205,6 +208,9 @@ class Haplotype(Base):
     previous_haplotype_name = Column(String)
     navis_id = Column(Integer, ForeignKey("navis_names.id"))
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    activity = Column(
+        Integer, default=1, nullable=True
+    )  # 0 = inactive, don't show in modals
 
     # Relationships
     family = relationship("FamilyNames")

@@ -69,6 +69,21 @@ def safe_get_position(df, begin_col, end_col, index=0, default="N/A"):
     return default
 
 
+def _get_value_if_active(modal_data, value_col, activity_col, index=0):
+    """
+    Return value only if activity is not 0. NULL/None activity = active (show).
+    When activity=0, return None so the modal omits the field.
+    """
+    if activity_col in modal_data.columns:
+        try:
+            act = modal_data[activity_col].iloc[index]
+            if not pd.isna(act) and act is not None and int(act) == 0:
+                return None  # inactive - don't show
+        except (IndexError, KeyError, ValueError, TypeError):
+            pass
+    return safe_get_value(modal_data, value_col, index, default=None)
+
+
 def _modal_element_length(modal_data, index=0):
     """
     Element length for modals: always use computed value
@@ -133,13 +148,17 @@ def create_ship_accession_modal_data(ship_accession_id):
                     f"Error fetching quality tags for joined_ship_id {joined_ship_id}: {e}"
                 )
 
-        # Create structured data
+        # Create structured data (omit navis/haplotype when activity=0)
         result = {
             "title": base_accession,
             "version_tag": safe_get_value(modal_data, "version_tag"),
             "familyName": safe_get_value(modal_data, "familyName"),
-            "navis_name": safe_get_value(modal_data, "navis_name"),
-            "haplotype_name": safe_get_value(modal_data, "haplotype_name"),
+            "navis_name": _get_value_if_active(
+                modal_data, "navis_name", "navis_activity"
+            ),
+            "haplotype_name": _get_value_if_active(
+                modal_data, "haplotype_name", "haplotype_activity"
+            ),
             "taxonomic_family": safe_get_value(modal_data, "family"),
             "order": safe_get_value(modal_data, "order"),
             "species_name": safe_get_value(modal_data, "name"),
@@ -234,12 +253,17 @@ def create_accession_modal_data(accession):
         # TODO: Create more comprehensive structured data
         # - some output will be the same across all ships within this accession
         # - some output we will have to aggregate across all ships within this accession
+        # Omit navis/haplotype when activity=0
         result = {
             "title": f"Starship Accession: {accession}",
             "familyName": safe_get_value(modal_data, "familyName"),
             "genomes_present": str(len(modal_data)),
-            "navis_name": safe_get_value(modal_data, "navis_name"),
-            "haplotype_name": safe_get_value(modal_data, "haplotype_name"),
+            "navis_name": _get_value_if_active(
+                modal_data, "navis_name", "navis_activity"
+            ),
+            "haplotype_name": _get_value_if_active(
+                modal_data, "haplotype_name", "haplotype_activity"
+            ),
         }
 
         return result
