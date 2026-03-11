@@ -199,8 +199,9 @@ table_columns = [
         "name": "Group Accession (SSA)",
         "id": "accession_display",
         "deletable": False,
-        "selectable": False,
+        "selectable": True,
         "presentation": "markdown",
+        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
     },
     {
         "name": "Starship Family",
@@ -1222,25 +1223,47 @@ clientside_callback(
         }
 
         let accession = null;
+        let isShipColumn = false;
+        let isGroupColumn = false;
+
+        const shipCols = ['ship_accession_tag', 'ship_accession_display'];
+        const groupCols = ['accession_tag', 'accession_display'];
 
         // Handle AG Grid cell clicks
-        if (cellClicked && (cellClicked.colId === 'ship_accession_tag' || cellClicked.colId === 'ship_accession_display')) {
-            accession = cellClicked.value;
+        if (cellClicked) {
+            if (shipCols.includes(cellClicked.colId)) {
+                accession = cellClicked.value;
+                isShipColumn = true;
+            } else if (groupCols.includes(cellClicked.colId)) {
+                accession = cellClicked.value;
+                isGroupColumn = true;
+            }
         }
         // Handle DataTable active cell
-        else if (activeCell && (activeCell.column_id === 'ship_accession_tag' || activeCell.column_id === 'ship_accession_display')) {
+        else if (activeCell) {
             const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
             if (tableData && actualRowIdx < tableData.length) {
-                accession = tableData[actualRowIdx][activeCell.column_id];
+                if (shipCols.includes(activeCell.column_id)) {
+                    accession = tableData[actualRowIdx][activeCell.column_id];
+                    isShipColumn = true;
+                } else if (groupCols.includes(activeCell.column_id)) {
+                    accession = tableData[actualRowIdx][activeCell.column_id];
+                    isGroupColumn = true;
+                }
             }
         }
 
         if (accession) {
-            // Clean and standardize the accession tag
-            accession = accession.toString().trim().split('/').pop().trim();
-
-            // Show the universal modal
-            showAccessionModal(accession);
+            let parts = accession.toString().trim().split('/').map(s => s.trim()).filter(Boolean);
+            if (isShipColumn) {
+                let ssbPart = parts.find(p => p.startsWith('SSB'));
+                accession = ssbPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
+                showShipAccessionModal(accession);
+            } else if (isGroupColumn) {
+                let ssaPart = parts.find(p => p.startsWith('SSA'));
+                accession = ssaPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
+                showGroupAccessionModal(accession);
+            }
         }
 
         return window.dash_clientside.no_update;
