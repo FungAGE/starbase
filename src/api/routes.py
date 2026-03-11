@@ -82,10 +82,10 @@ def export_for_submission():
 def get_accession_details(accession_id):
     """Get details for a specific ship accession."""
     try:
-        if accession_id.startswith("SSA"):
-            modal_data = create_accession_modal_data(accession_id)
         if accession_id.startswith("SSB"):
             modal_data = create_ship_accession_modal_data(accession_id)
+        elif accession_id.startswith("SSA"):
+            modal_data = create_accession_modal_data(accession_id)
         else:
             modal_data = {"error": "Invalid accession ID"}
     except Exception as e:
