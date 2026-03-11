@@ -186,6 +186,11 @@ if (typeof window.UniversalModal === 'undefined') {
                 margin-bottom: 0;
             }
 
+            .modal-grid-span-full {
+                grid-column: 1 / -1;
+                width: 100%;
+            }
+
             .modal-row {
                 display: flex;
                 justify-content: center;
@@ -379,45 +384,35 @@ if (typeof window.UniversalModal === 'undefined') {
                                     <span class="modal-badge badge-blue">${data.genomes_present}</span>
                                 </div>
                             ` : ''}
-                            ${hasValue(data.element_position) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Element Position:</span>
-                                    <span class="modal-value">${data.element_position}</span>
-                                </div>
-                            ` : ''}
-                            ${hasValue(data.element_length) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Size:</span>
-                                    <span class="modal-value">${data.element_length} bp</span>
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
 
-        // Data Quality section
-        if (hasValue(data.curated_status) || (data.quality_tags && data.quality_tags.length > 0)) {
-            html += `
-                <div class="modal-section">
-                    <div class="section-title">Data Quality</div>
-                    <div class="section-content">
-                        <div class="modal-grid">
-                            ${hasValue(data.curated_status) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Curation Status:</span>
-                                    <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
-                                </div>
-                            ` : ''}
-                            ${data.quality_tags && data.quality_tags.length > 0 ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Quality Tags:</span>
-                                    <div class="quality-tags">
-                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
+                            <div class="modal-section modal-grid-span-full">
+                                <div class="section-title">Genome Details</div>
+                                <div class="section-content">
+                                    <div class="modal-grid">
+                                    ${hasValue(data.assembly_accession) || hasValue(data.genome_source) || hasValue(data.contig_id) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-value">
+                                                ${hasValue(data.assembly_accession) ? `Assembly Accession: ${data.assembly_accession}` : ''}
+                                                ${hasValue(data.genome_source) ? `Genome Source: ${data.genome_source}` : ''}
+                                                ${hasValue(data.contig_id) ? `Contig ID: ${data.contig_id}` : ''}
+                                            </span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(data.element_position) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Element Position:</span>
+                                            <span class="modal-value">${data.element_position}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(data.element_length) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Size:</span>
+                                            <span class="modal-value">${data.element_length} bp</span>
+                                        </div>
+                                    ` : ''}
                                     </div>
                                 </div>
-                            ` : ''}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -463,29 +458,25 @@ if (typeof window.UniversalModal === 'undefined') {
             `;
         }
 
-        // Genome details section
-        if (hasValue(data.assembly_accession) || hasValue(data.genome_source) || hasValue(data.contig_id)) {
+        // Data Quality section
+        if (hasValue(data.curated_status) || (data.quality_tags && data.quality_tags.length > 0)) {
             html += `
                 <div class="modal-section">
-                    <div class="section-title">Genome Details</div>
+                    <div class="section-title">Data Quality</div>
                     <div class="section-content">
                         <div class="modal-grid">
-                            ${hasValue(data.assembly_accession) ? `
+                            ${hasValue(data.curated_status) ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Assembly Accession:</span>
-                                    <span class="modal-value">${data.assembly_accession}</span>
+                                    <span class="modal-label">Curation Status:</span>
+                                    <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
                                 </div>
                             ` : ''}
-                            ${hasValue(data.genome_source) ? `
+                            ${data.quality_tags && data.quality_tags.length > 0 ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Genome Source:</span>
-                                    <span class="modal-value">${data.genome_source}</span>
-                                </div>
-                            ` : ''}
-                            ${hasValue(data.contig_id) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Contig ID:</span>
-                                    <span class="modal-value">${data.contig_id}</span>
+                                    <span class="modal-label">Quality Tags:</span>
+                                    <div class="quality-tags">
+                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
+                                    </div>
                                 </div>
                             ` : ''}
                         </div>
