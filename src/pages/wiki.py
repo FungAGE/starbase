@@ -1176,8 +1176,8 @@ def generate_download_selected(
     selected_data = [
         row
         for row in table_data
-        if row.get("accession_tag")
-        in [selected.get("accession_tag") for selected in selected_rows]
+        if row.get("ship_accession_tag")
+        in [selected.get("ship_accession_tag") for selected in selected_rows]
     ]
 
     download_data, num_sequences = generate_download_helper(
