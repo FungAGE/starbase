@@ -331,6 +331,10 @@ if (typeof window.UniversalModal === 'undefined') {
         document.body.style.overflow = 'auto';
     }
 
+    static hasValue(v) {
+        return v != null && v !== '' && String(v).trim() !== 'N/A';
+    }
+
     // Static method to render modal content from structured data
     static renderAccessionModal(data) {
         let html = '';
@@ -350,11 +354,10 @@ if (typeof window.UniversalModal === 'undefined') {
         // Wrapper for better centering
         html += '<div class="modal-container">';
 
-        // Treat null, undefined, empty string, or "N/A" as no value (omit row)
-        const hasValue = (v) => v != null && v !== '' && String(v).trim() !== 'N/A';
+        const hasValue = (v) => this.hasValue(v);
 
         // Starship Information section
-        if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || hasValue(data.element_position) || hasValue(data.element_length)) {
+        if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || (data.genomes && data.genomes.length > 0)) {
             html += `
                 <div class="modal-section">
                     <div class="section-title">Starship Information</div>
@@ -384,36 +387,51 @@ if (typeof window.UniversalModal === 'undefined') {
                                     <span class="modal-badge badge-blue">${data.genomes_present}</span>
                                 </div>
                             ` : ''}
-
-                            <div class="modal-section modal-grid-span-full">
-                                <div class="section-title">Genome Details</div>
+                        </div>
+                        ${(data.genomes && data.genomes.length > 0) ? data.genomes.map((genome, i) => {
+                            const sectionTitle = hasValue(genome.assembly_accession) ? genome.assembly_accession
+                                : hasValue(genome.genome_source) ? genome.genome_source
+                                : (data.genomes.length === 1 ? 'Genome' : `Genome ${i + 1}`);
+                            return `
+                            <div class="modal-section" style="margin-top: 20px;">
+                                <div class="section-title">${sectionTitle}</div>
                                 <div class="section-content">
                                     <div class="modal-grid">
-                                    ${hasValue(data.assembly_accession) || hasValue(data.genome_source) || hasValue(data.contig_id) ? `
+                                    ${hasValue(genome.assembly_accession) ? `
                                         <div class="modal-row">
-                                            <span class="modal-value">
-                                                ${hasValue(data.assembly_accession) ? `Assembly Accession: ${data.assembly_accession}` : ''}
-                                                ${hasValue(data.genome_source) ? `Genome Source: ${data.genome_source}` : ''}
-                                                ${hasValue(data.contig_id) ? `Contig ID: ${data.contig_id}` : ''}
-                                            </span>
+                                            <span class="modal-label">Assembly Accession:</span>
+                                            <span class="modal-value">${genome.assembly_accession}</span>
                                         </div>
                                     ` : ''}
-                                    ${hasValue(data.element_position) ? `
+                                    ${hasValue(genome.genome_source) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Genome Source:</span>
+                                            <span class="modal-value">${genome.genome_source}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(genome.contig_id) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Contig ID:</span>
+                                            <span class="modal-value">${genome.contig_id}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(genome.element_position) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Element Position:</span>
-                                            <span class="modal-value">${data.element_position}</span>
+                                            <span class="modal-value">${genome.element_position}</span>
                                         </div>
                                     ` : ''}
-                                    ${hasValue(data.element_length) ? `
+                                    ${hasValue(genome.element_length) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Size:</span>
-                                            <span class="modal-value">${data.element_length} bp</span>
+                                            <span class="modal-value">${genome.element_length} bp</span>
                                         </div>
                                     ` : ''}
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                            `;
+                        }).join('') : ''}
                     </div>
                 </div>
             `;
@@ -490,6 +508,46 @@ if (typeof window.UniversalModal === 'undefined') {
 
         return html;
     }
+
+    // Static method to render group accession (SSA) modal content - different layout from ship modal
+    static renderGroupAccessionModal(data) {
+        let html = '';
+
+        // Handle error case
+        if (data.error) {
+            return `
+                <div class="modal-container">
+                    <div class="alert alert-red">
+                        <div style="font-weight: 600; margin-bottom: 8px;">Error</div>
+                        <div>${data.error}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const hasValue = (v) => this.hasValue(v);
+
+        html += '<div class="modal-container">';
+        html += '<div class="modal-section">';
+        html += '<div class="section-title">Group Information</div>';
+        html += '<div class="section-content"><div class="modal-grid">';
+
+        if (hasValue(data.familyName)) {
+            html += `<div class="modal-row"><span class="modal-label">Starship Family:</span><span class="modal-value">${data.familyName}</span></div>`;
+        }
+        if (hasValue(data.genomes_present)) {
+            html += `<div class="modal-row"><span class="modal-label">Genomes Present:</span><span class="modal-badge badge-blue">${data.genomes_present}</span></div>`;
+        }
+        if (hasValue(data.navis_name)) {
+            html += `<div class="modal-row"><span class="modal-label">Starship Navis:</span><span class="modal-value">${data.navis_name}</span></div>`;
+        }
+        if (hasValue(data.haplotype_name)) {
+            html += `<div class="modal-row"><span class="modal-label">Haplotype:</span><span class="modal-value">${data.haplotype_name}</span></div>`;
+        }
+
+        html += '</div></div></div></div>';
+        return html;
+    }
     };  // Close the class definition
 }  // Close the if block for UniversalModal class guard
 
@@ -505,11 +563,11 @@ if (typeof window.showUniversalModal === 'undefined') {
     };
 }
 
-// Function to show accession modal with data fetching - only create if not already exists
-if (typeof window.showAccessionModal === 'undefined') {
-    window.showAccessionModal = async function(accessionId) {
+// Ship accession (SSB) modal - fetches from ship_accession_details
+if (typeof window.showShipAccessionModal === 'undefined') {
+    window.showShipAccessionModal = async function(ssbId) {
         try {
-            const response = await fetch(`/api/accession/accession_details/${accessionId}`);
+            const response = await fetch(`/api/accession/ship_accession_details/${ssbId}`);
             const data = await response.json();
 
             if (data.error) {
@@ -517,14 +575,43 @@ if (typeof window.showAccessionModal === 'undefined') {
                 return;
             }
 
-            const title = data.title || `Starship Accession: ${accessionId}`;
+            const title = data.title || `Ship Accession: ${ssbId}`;
             const content = window.UniversalModal.renderAccessionModal(data);
             window.showUniversalModal(title, content);
         } catch (error) {
-            console.error('Error fetching accession details:', error);
+            console.error('Error fetching ship accession details:', error);
             window.showUniversalModal('Error', window.UniversalModal.renderAccessionModal({
-                error: `Error loading details for ${accessionId}. Details: ${error.message}`
+                error: `Error loading details for ${ssbId}. Details: ${error.message}`
             }));
         }
     };
+}
+
+// Group accession (SSA) modal - fetches from group_accession_details
+if (typeof window.showGroupAccessionModal === 'undefined') {
+    window.showGroupAccessionModal = async function(ssaId) {
+        try {
+            const response = await fetch(`/api/accession/group_accession_details/${ssaId}`);
+            const data = await response.json();
+
+            if (data.error) {
+                window.showUniversalModal('Error', window.UniversalModal.renderGroupAccessionModal(data));
+                return;
+            }
+
+            const title = data.title || `Group Accession: ${ssaId}`;
+            const content = window.UniversalModal.renderGroupAccessionModal(data);
+            window.showUniversalModal(title, content);
+        } catch (error) {
+            console.error('Error fetching group accession details:', error);
+            window.showUniversalModal('Error', window.UniversalModal.renderGroupAccessionModal({
+                error: `Error loading details for ${ssaId}. Details: ${error.message}`
+            }));
+        }
+    };
+}
+
+// Backward compatibility: showAccessionModal treats as ship accession (SSB)
+if (typeof window.showAccessionModal === 'undefined') {
+    window.showAccessionModal = window.showShipAccessionModal;
 }
