@@ -44,7 +44,7 @@ def create_search_autocomplete(
         "data": [],  # Will be populated by callbacks
         "limit": limit,
         "style": {"width": "100%"},
-        "leftSection": DashIconify(icon=icon),
+        "leftSection": DashIconify(icon=icon, color="indigo"),
     }
 
     # Merge default props with user-provided kwargs

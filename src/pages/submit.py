@@ -83,55 +83,64 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
     if isinstance(error, ValidationError):
         return {
             "modal_open": False,
-            "message": html.Div(
-                [
-                    html.H4("Validation Error", className="text-warning"),
-                    html.P(str(error.user_message), className="text-muted"),
-                ]
+            "message": dmc.Alert(
+                title="Validation Error",
+                children=str(error.user_message),
+                color="yellow",
+                variant="light",
             ),
             "loading": False,
         }
     elif isinstance(error, ProcessingError):
         return {
             "modal_open": False,
-            "message": html.Div(
-                [
-                    html.H4("Processing Error", className="text-danger"),
-                    html.P(str(error.user_message), className="text-muted"),
-                ]
+            "message": dmc.Alert(
+                title="Processing Error",
+                children=str(error.user_message),
+                color="var(--mantine-color-red-6)",
+                variant="light",
             ),
             "loading": False,
         }
     elif isinstance(error, DatabaseError):
         return {
             "modal_open": False,
-            "message": html.Div(
-                [
-                    html.H4("Database Error", className="text-danger"),
-                    html.P(str(error.user_message), className="text-muted"),
-                    html.P(
-                        "If this persists, please contact support.",
-                        className="text-muted small",
-                    ),
-                ]
+            "message": dmc.Alert(
+                title="Database Error",
+                children=dmc.Stack(
+                    [
+                        dmc.Text(str(error.user_message)),
+                        dmc.Text(
+                            "If this persists, please contact support.",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                    ],
+                    gap="xs",
+                ),
+                color="var(--mantine-color-red-6)",
+                variant="light",
             ),
             "loading": False,
         }
     else:
         return {
             "modal_open": False,
-            "message": html.Div(
-                [
-                    html.H4("Unexpected Error", className="text-danger"),
-                    html.P(
-                        "An unexpected error occurred. Please try again.",
-                        className="text-muted",
-                    ),
-                    html.P(
-                        "If this persists, please contact support.",
-                        className="text-muted small",
-                    ),
-                ]
+            "message": dmc.Alert(
+                title="Unexpected Error",
+                children=dmc.Stack(
+                    [
+                        dmc.Text("An unexpected error occurred. Please try again."),
+                        dmc.Text(
+                            "If this persists, please contact support.",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                    ],
+                    gap="xs",
+                ),
+                color="var(--mantine-color-red-6)",
+                variant="light",
             ),
             "loading": False,
         }
@@ -236,7 +245,8 @@ layout = dmc.Container(
             children=[
                 dmc.Title(
                     [
-                        "Submit Starships to ",
+                        "Submit ",
+                        html.Span("Starships", style={"fontStyle": "italic"})," to ",
                         html.Span("starbase", className="logo-text"),
                     ],
                     order=1,
@@ -244,7 +254,7 @@ layout = dmc.Container(
                 ),
                 dmc.Text(
                     "Fields marked with * are required",
-                    c="red",
+                    c="var(--mantine-color-red-6)",
                     size="lg",
                 ),
             ],
@@ -255,6 +265,7 @@ layout = dmc.Container(
         ),
         # Form Content
         dmc.Paper(
+            style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
             children=dbc.Form(
                 [
                     dmc.Stack(
@@ -270,7 +281,10 @@ layout = dmc.Container(
                                                 [
                                                     "Starship Sequence ",
                                                     html.Span(
-                                                        "*", style={"color": "red"}
+                                                        "*",
+                                                        style={
+                                                            "color": "var(--mantine-color-red-6)"
+                                                        },
                                                     ),
                                                 ],
                                                 fw=500,
@@ -331,7 +345,9 @@ layout = dmc.Container(
                             # Metadata Section
                             dmc.Stack(
                                 [
-                                    dmc.Title("Metadata", order=2, mb="md"),
+                                    dmc.Title(
+                                        "Metadata", order=2, mb="md"
+                                    ),
                                     # Curator Info
                                     dmc.TextInput(
                                         id="uploader",
@@ -394,9 +410,9 @@ layout = dmc.Container(
                                         label="Strand",
                                         value=1,
                                         children=[
-                                            dmc.Radio(label="Positive strand", value=1),
-                                            dmc.Space(h=10),
-                                            dmc.Radio(label="Negative strand", value=2),
+                                            dmc.Radio(label="Positive strand", value=1, color="indigo"),
+                                            dmc.Space(h="sm"),
+                                            dmc.Radio(label="Negative strand", value=2, color="indigo"),
                                         ],
                                     ),
                                     # Comments
@@ -429,10 +445,14 @@ layout = dmc.Container(
             radius="md",
             withBorder=True,
         ),
+        dmc.Space(h="xl"),
         # Submission Status Section
         dmc.Paper(
+            style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
             children=[
-                dmc.Title("Submission Status", order=3, mb="md"),
+                dmc.Title(
+                    "Submission Status", order=3, mb="md"
+                ),
                 dmc.Stack(
                     [
                         dmc.TextInput(
@@ -446,6 +466,9 @@ layout = dmc.Container(
                             id="check-status-btn",
                             variant="light",
                             size="sm",
+                            color="indigo",
+                            fullWidth=False,
+                            radius="md",
                         ),
                         html.Div(id="status-display", className="mt-3"),
                     ],
@@ -461,7 +484,7 @@ layout = dmc.Container(
         dbc.Modal(
             [
                 dbc.ModalHeader(
-                    dbc.ModalTitle("Submission Status", className="text-info"),
+                    dbc.ModalTitle("Submission Status"),
                     close_button=True,
                 ),
                 dbc.ModalBody(
@@ -491,7 +514,7 @@ layout = dmc.Container(
     ],
     style={
         "margin": "0 auto",
-        "padding": "2rem",
+        "padding": "var(--mantine-spacing-xl)",
     },
 )
 
@@ -874,12 +897,12 @@ def check_submission_status(n_clicks, submission_id):
     created_at = status_data.get("created_at", "")
     updated_at = status_data.get("updated_at", "")
 
-    # Status color mapping
+    # Status color mapping (design system: indigo for info, semantic for states)
     status_colors = {
-        "queued": "blue",
+        "queued": "indigo",
         "processing": "yellow",
         "completed": "green",
-        "failed": "red",
+        "failed": "var(--mantine-color-red-6)",
         "unknown": "gray",
     }
 
@@ -892,7 +915,7 @@ def check_submission_status(n_clicks, submission_id):
                 dmc.Badge(status.upper(), color=color, variant="light"),
             ]
         ),
-        dmc.Progress(value=progress, color=color, size="lg"),
+        dmc.Progress(value=progress, color="var(--mantine-primary-color-6)", size="lg"),
         dmc.Text(f"Progress: {progress}%", size="sm", c="dimmed"),
         dmc.Text(message, size="sm"),
     ]
@@ -929,7 +952,7 @@ def check_submission_status(n_clicks, submission_id):
                 dmc.Alert(
                     result.get("user_message", "Processing failed"),
                     title="Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     variant="light",
                 ),
             ]

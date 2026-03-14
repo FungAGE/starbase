@@ -233,7 +233,7 @@ layout = dmc.Container(
                                                     ),
                                                     html.Div(
                                                         id="upload-error-message",
-                                                        style={"color": "red"},
+                                                        style={"color": "var(--mantine-color-red-6)"},
                                                     ),
                                                 ],
                                                 gap="md",
@@ -449,7 +449,7 @@ def update_file_details(seq_content, seq_filename):
             error_alert = dmc.Alert(
                 title="Invalid File Format",
                 children="The file appears to be corrupted or in an unsupported format.",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
             return True, "Error", None, upload_details, error_alert
@@ -459,7 +459,7 @@ def update_file_details(seq_content, seq_filename):
             error_alert = dmc.Alert(
                 title="File Too Large",
                 children=error_msg,
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
             return True, "Error", None, upload_details, error_alert
@@ -939,7 +939,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
                         else dmc.Alert(
                             title="Error Processing File",
                             children=error,
-                            color="red",
+                            color="var(--mantine-color-red-6)",
                             variant="filled",
                         )
                     )
@@ -1014,7 +1014,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         error_alert = dmc.Alert(
             title="Error Processing Input",
             children=f"An unexpected error occurred: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
         return None, str(e), error_alert, None, n_clicks
@@ -1803,7 +1803,7 @@ def render_tab_content(active_tab, blast_data_dict):
             return dmc.Alert(
                 title="Error",
                 children="Invalid tab format",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
 
@@ -1859,7 +1859,7 @@ def render_tab_content(active_tab, blast_data_dict):
             return dmc.Alert(
                 title="Error",
                 children=f"No results found for sequence {tab_idx + 1}. Please try clicking on this tab again to reprocess.",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
 
@@ -1926,7 +1926,7 @@ def render_tab_content(active_tab, blast_data_dict):
         return dmc.Alert(
             title="Error Rendering Tab",
             children=f"An unexpected error occurred while rendering this tab: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
 

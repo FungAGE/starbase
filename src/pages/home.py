@@ -69,7 +69,7 @@ title = dmc.Paper(
     p={"base": "md", "sm": "lg", "md": "xl"},
     radius="md",
     style={
-        "backgroundColor": "#2C2E33",
+        "background": "linear-gradient(135deg, var(--mantine-color-dark-8) 50%, var(--mantine-color-indigo-9) 100%)",
         "marginBottom": "2rem",
     },
     className="responsive-group",
@@ -141,6 +141,7 @@ starship_card = dmc.Paper(
             ),
             order=2,
             mb="md",
+            c="indigo",
         ),
         dmc.Grid(
             [
@@ -176,7 +177,11 @@ starship_card = dmc.Paper(
                                 dmc.Anchor(
                                     "here",
                                     href="https://en.wikipedia.org/wiki/Starship_(genetics)",
-                                    style={"textDecoration": "none"},
+                                    style={
+                                        "textDecoration": "none",
+                                        "color": "var(--mantine-color-indigo-6)",
+                                        "fontWeight": 500,
+                                    },
                                 ),
                                 ".",
                             ],
@@ -204,6 +209,7 @@ starship_card = dmc.Paper(
     p="xl",
     radius="md",
     withBorder=True,
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 
@@ -224,6 +230,7 @@ working_features_card = dmc.Paper(
                             ],
                             order=2,
                             mb="md",
+                            c="indigo",
                         ),
                         dmc.Stack(
                             working_buttons,
@@ -273,6 +280,7 @@ working_features_card = dmc.Paper(
     withBorder=True,
     mb="xl",
     h="100%",
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 accession_card = dmc.Paper(
@@ -289,6 +297,7 @@ accession_card = dmc.Paper(
             ),
             order=2,
             mb="md",
+            c="indigo",
         ),
         dmc.Text(
             [
@@ -324,7 +333,8 @@ accession_card = dmc.Paper(
         dmc.Space(h=20),
         dmc.Alert(
             "Classification/group accessions are SSA. Individual sequence accessions are SSB accessions.",
-            color="blue",
+            color="indigo",
+            variant="light",
             radius="md",
             mb="md",
         ),
@@ -345,6 +355,7 @@ accession_card = dmc.Paper(
     radius="md",
     withBorder=True,
     h="100%",
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 # Database version card for the hero section
@@ -408,6 +419,7 @@ db_version_card = dmc.Paper(
     radius="md",
     withBorder=True,
     h="100%",
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 
@@ -454,6 +466,7 @@ def create_features_section():
         size="xl",
         py="xl",
         flex=True,
+        style={"backgroundColor": "var(--mantine-color-indigo-0)"},
     )
 
 
@@ -471,6 +484,7 @@ def create_publications_section():
                         ),
                         order=2,
                         mb="md",
+                        c="indigo",
                     ),
                     html.Div(make_paper_table(), style={"width": "100%"}),
                 ],
@@ -493,7 +507,7 @@ total_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:dna",
                     width=30,
-                    color="var(--mantine-color-gray-6)",
+                    color="var(--mantine-color-indigo-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
@@ -710,7 +724,7 @@ family_info = dmc.Stack(
 
 stats_section = dmc.Paper(
     [
-        dmc.Title("Database Statistics", order=2, mb="xl"),
+        dmc.Title("Database Statistics", order=2, mb="xl", c="indigo"),
         dmc.SimpleGrid(
             [
                 dmc.Stack(
@@ -757,6 +771,7 @@ stats_section = dmc.Paper(
     radius="md",
     shadow="sm",
     withBorder=True,
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 

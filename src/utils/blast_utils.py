@@ -23,7 +23,7 @@ def create_error_alert(error_message, title="Error"):
     return dmc.Alert(
         title=title,
         children=error_message,
-        color="red",
+        color="var(--mantine-color-red-6)",
         variant="filled",
         withCloseButton=True,
     )

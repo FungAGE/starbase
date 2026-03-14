@@ -300,12 +300,14 @@ main_card = dmc.Paper(
                     "Reset",
                     id="reset-search",
                     variant="outline",
+                    color="indigo",
                     leftSection=DashIconify(icon="tabler:refresh"),
                 ),
                 dmc.Button(
                     "Search",
                     id="apply-search",
                     variant="filled",
+                    color="indigo",
                     leftSection=DashIconify(icon="tabler:search"),
                 ),
             ],
@@ -430,8 +432,8 @@ info_table_paper = dmc.Paper(
                                     ]
                                 ),
                                 id="download-selected-btn",
-                                variant="gradient",
-                                gradient={"from": "teal", "to": "lime"},
+                                variant="light",
+                                color="indigo",
                                 leftSection=html.I(className="bi bi-download"),
                                 size="md",
                                 loaderProps={"variant": "dots", "color": "white"},
@@ -734,7 +736,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
         return (
             dmc.Alert(
                 f"An error occurred while loading the results: {str(e)}",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             ),
             placeholder_show,
@@ -995,7 +997,7 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
         logger.error(f"Error in update_search_sunburst: {str(e)}")
         return dmc.Alert(
             f"An error occurred while creating the plot: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
 
@@ -1097,7 +1099,7 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
         return None, dmc.Notification(
             title="Error",
             message="No sequences found for download",
-            color="red",
+            color="var(--mantine-color-red-6)",
             id="dl-download-notify",
             action="show",
             autoClose=5000,
@@ -1161,7 +1163,7 @@ def generate_download_selected(
         return None, dmc.Notification(
             title="Error",
             message="No sequences found for selected rows",
-            color="red",
+            color="var(--mantine-color-red-6)",
             id="dl-download-notify",
             action="show",
             autoClose=5000,

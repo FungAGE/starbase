@@ -331,7 +331,7 @@ def get_metrics_layout():
                             style={"marginTop": "10px"},
                         ),
                     ],
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     style={"marginTop": "20px"},
                 )
             ],

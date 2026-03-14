@@ -42,7 +42,7 @@ def handle_callback_error(callback_func):
                     dmc.Space(h=10),
                     dmc.Code(str(traceback.format_exc()), block=True),
                 ],
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
 

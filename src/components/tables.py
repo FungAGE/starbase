@@ -23,7 +23,7 @@ def table_loading_alert():
             children="Loading data...",
             color="indigo",
             variant="light",
-            icon=[DashIconify(icon="line-md:loading-loop")],
+            icon=[DashIconify(icon="line-md:loading-loop", color="indigo")],
         ),
         style={"padding": "var(--mantine-spacing-lg)"},
     )
@@ -37,7 +37,7 @@ def table_no_results_alert():
             children="The query returned no results.",
             color="gray",
             variant="light",
-            icon=[DashIconify(icon="clarity:empty-line")],
+            icon=[DashIconify(icon="clarity:empty-line", color="indigo")],
         ),
         style={"padding": "var(--mantine-spacing-lg)"},
     )
@@ -49,7 +49,7 @@ def table_error(e):
         dmc.Alert(
             title="Error",
             children="Failed to load table. Please try again.",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="light",
         ),
         style={"padding": "var(--mantine-spacing-lg)"},

@@ -17,11 +17,11 @@ dash.register_page(__name__, path="/synteny")
 SEQUENCE_COLORS = ["blue", "green", "orange", "grape"]
 
 GENE_CATEGORY_COLORS = {
-    "captain": "#e74c3c",
-    "nlr": "#3498db",
-    "plp": "#2ecc71",
-    "fre": "#f39c12",
-    "other": "#95a5a6",
+    "captain": "var(--mantine-color-red-6)",
+    "nlr": "var(--mantine-color-blue-6)",
+    "plp": "var(--mantine-color-green-6)",
+    "fre": "var(--mantine-color-orange-6)",
+    "other": "var(--mantine-color-gray-5)",
 }
 
 GENE_CATEGORY_LABELS = {
@@ -104,6 +104,7 @@ layout = dmc.Container(
                                                         "Reset",
                                                         id="synteny-reset-search",
                                                         variant="outline",
+                                                        color="indigo",
                                                         leftSection=DashIconify(
                                                             icon="tabler:refresh"
                                                         ),
@@ -113,6 +114,7 @@ layout = dmc.Container(
                                                         "Search",
                                                         id="synteny-apply-search",
                                                         variant="filled",
+                                                        color="indigo",
                                                         leftSection=DashIconify(
                                                             icon="tabler:search"
                                                         ),
@@ -152,11 +154,12 @@ layout = dmc.Container(
                                                     dmc.Title(
                                                         "Selected for Comparison",
                                                         order=3,
+                                                        c="indigo",
                                                     ),
                                                     dmc.Badge(
                                                         id="synteny-selected-count",
                                                         children="0 / 4",
-                                                        color="blue",
+                                                        color="indigo",
                                                         variant="filled",
                                                     ),
                                                 ],
@@ -174,7 +177,7 @@ layout = dmc.Container(
                                                 "Clear All",
                                                 id="synteny-clear-selected",
                                                 variant="subtle",
-                                                color="red",
+                                                color="var(--mantine-color-red-6)",
                                                 size="sm",
                                                 leftSection=DashIconify(
                                                     icon="tabler:trash"
@@ -234,6 +237,7 @@ layout = dmc.Container(
                                                                         id="synteny-show-links",
                                                                         label="Display synteny links",
                                                                         checked=True,
+                                                                        color="indigo",
                                                                     ),
                                                                 ],
                                                                 gap="sm",
@@ -383,7 +387,7 @@ layout = dmc.Container(
                                                             "Clear",
                                                             id="synteny-clear-viz",
                                                             variant="light",
-                                                            color="red",
+                                                            color="var(--mantine-color-red-6)",
                                                             leftSection=html.I(
                                                                 className="bi bi-x-circle"
                                                             ),
@@ -796,7 +800,7 @@ def display_selected_ships(selected_ships):
                         DashIconify(icon="tabler:x"),
                         id={"type": "synteny-remove-ship", "index": str(ship["id"])},
                         variant="subtle",
-                        color="red",
+                        color="var(--mantine-color-red-6)",
                         size="sm",
                     ),
                 ],
@@ -1094,10 +1098,10 @@ clientside_callback(
                                     html += '</div>';
                                     if (gene.metadata.category_label) {
                                         const categoryColors = {
-                                            'captain': '#e74c3c', 'nlr': '#3498db',
-                                            'plp': '#2ecc71', 'fre': '#f39c12', 'other': '#95a5a6'
+                                            'captain': 'var(--mantine-color-red-6)', 'nlr': 'var(--mantine-color-blue-6)',
+                                            'plp': 'var(--mantine-color-green-6)', 'fre': 'var(--mantine-color-orange-6)', 'other': 'var(--mantine-color-gray-5)'
                                         };
-                                        const bgColor = categoryColors[gene.metadata.category] || '#95a5a6';
+                                        const bgColor = categoryColors[gene.metadata.category] || 'var(--mantine-color-gray-5)';
                                         html += '<span style="display: inline-block; background: ' + bgColor + '; color: white; ';
                                         html += 'padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">';
                                         html += gene.metadata.category_label + '</span>';
@@ -1203,10 +1207,10 @@ clientside_callback(
                                     html += (d.label || d.name || 'Unknown Gene') + '</div>';
                                     if (d.metadata.category_label) {
                                         const categoryColors = {
-                                            'captain': '#e74c3c', 'nlr': '#3498db',
-                                            'plp': '#2ecc71', 'fre': '#f39c12', 'other': '#95a5a6'
+                                            'captain': 'var(--mantine-color-red-6)', 'nlr': 'var(--mantine-color-blue-6)',
+                                            'plp': 'var(--mantine-color-green-6)', 'fre': 'var(--mantine-color-orange-6)', 'other': 'var(--mantine-color-gray-5)'
                                         };
-                                        const bgColor = categoryColors[d.metadata.category] || '#95a5a6';
+                                        const bgColor = categoryColors[d.metadata.category] || 'var(--mantine-color-gray-5)';
                                         html += '<div style="margin-bottom: 6px;">';
                                         html += '<span style="background: ' + bgColor + '; color: white; padding: 2px 6px; ';
                                         html += 'border-radius: 10px; font-size: 10px; font-weight: 600;">';

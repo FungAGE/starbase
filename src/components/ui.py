@@ -11,12 +11,12 @@ logger = get_logger(__name__)
 
 def curated_switch(text="Only search curated Starships", size="sm"):
     """Create a switch component for toggling curated-only searches."""
-    return dmc.Switch(id="curated-input", label=text, size=size, checked=True)
+    return dmc.Switch(id="curated-input", label=text, size=size, checked=True, color="indigo")
 
 
 def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
     """Create a switch component for toggling dereplicated-only searches."""
-    return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True)
+    return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True, color="indigo")
 
 
 download_ships_button = dmc.Anchor(
@@ -24,7 +24,7 @@ download_ships_button = dmc.Anchor(
         [
             dmc.Group(
                 [
-                    DashIconify(icon="mdi:download"),
+                    DashIconify(icon="mdi:download", color="indigo"),
                     dmc.Stack(
                         [
                             dmc.Text("Download Starships", style={"display": "block"}),
@@ -122,7 +122,7 @@ def create_file_upload(
         children=dmc.Stack(
             [
                 dmc.Center(
-                    DashIconify(icon=icon, width=40, height=40, color="var(--mantine-primary-color-6)")
+                    DashIconify(icon=icon, width=40, height=40, color="var(--mantine-color-indigo-7)")
                 ),
                 dmc.Stack(
                     [
@@ -144,6 +144,7 @@ def create_file_upload(
                     value=0,
                     animated=True,
                     style={"display": "none"},
+                    c="var(--mantine-primary-color-6)",
                 ),
             ],
             className="upload-box",
@@ -169,7 +170,7 @@ def create_feedback_button():
                     variant="light",
                     color="blue",
                     size="sm",
-                    leftSection=DashIconify(icon="octicon:mark-github-16", width=20),
+                    leftSection=DashIconify(icon="octicon:mark-github-16", width=20, color="indigo"),
                 ),
                 href="https://github.com/FungAGE/starbase/issues",
                 target="_blank",
@@ -204,7 +205,7 @@ def create_database_version_indicator():
                 [
                     dmc.Group(
                         [
-                            DashIconify(icon="mdi:database", width=16, color="white"),
+                            DashIconify(icon="mdi:database", width=16, color="var(--mantine-color-white)"),
                             dmc.Text(
                                 version_text,
                                 size="sm",
@@ -262,8 +263,8 @@ def create_footer():
             align="center",
             p="md",
             style={
-                "borderTop": "1px solid var(--mantine-color-gray-2)",
-                "backgroundColor": "var(--mantine-color-gray-0)",
+                "borderTop": "1px solid var(--mantine-color-indigo-2)",
+                "backgroundColor": "var(--mantine-color-indigo-0)",
             },
         ),
         style={
