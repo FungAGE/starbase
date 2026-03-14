@@ -355,6 +355,13 @@ if (typeof window.UniversalModal === 'undefined') {
         html += '<div class="modal-container">';
 
         const hasValue = (v) => this.hasValue(v);
+        const isValidAccession = (id) => {
+            if (!id || typeof id !== 'string') return false;
+            const s = id.trim().toUpperCase();
+            return /^[A-Z]{1,2}\d{5,8}$/.test(s) ||
+                /^[A-Z]{4,6}\d{2}\d{6,}(\.\d+)?$/i.test(id.trim()) ||
+                /^(NC|NT|NW|NZ|NG)_[\d.]+$/i.test(id.trim());
+        };
 
         // Starship Information section
         if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || (data.genomes && data.genomes.length > 0)) {
@@ -401,7 +408,7 @@ if (typeof window.UniversalModal === 'undefined') {
                                 } else if (source === 'ncbi') {
                                     genomeUrl = `https://www.ncbi.nlm.nih.gov/datasets/genome/${genome.assembly_accession}/`;
                                 }
-                                if ((source === 'jgi' || source === 'ncbi') && hasValue(genome.contig_id) && hasValue(genome.element_position)) {
+                                if ((source === 'jgi' || source === 'ncbi') && hasValue(genome.contig_id) && isValidAccession(genome.contig_id) && hasValue(genome.element_position)) {
                                     const posMatch = (genome.element_position || '').match(/^(\d+)\s*-\s*(\d+)$/);
                                     if (posMatch) {
                                         sequenceViewerUrl = `https://www.ncbi.nlm.nih.gov/projects/sviewer/?id=${genome.contig_id}&from=${posMatch[1]}&to=${posMatch[2]}`;
