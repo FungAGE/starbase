@@ -52,8 +52,8 @@ download_ships_button = dmc.Anchor(
             ),
         ],
         id="navigate-to-download-btn",
-        variant="gradient",
-        gradient={"from": "indigo", "to": "cyan"},
+        variant="filled",
+        color="indigo",
         size="lg",
         radius="md",
         fullWidth=False,
@@ -87,7 +87,13 @@ download_ships_card = dmc.Paper(
                     "starbase",
                     className="logo-text",
                 ),
-                " data on our ",html.A("GitHub repo", href="https://github.com/FungAGE/starbase", target="_blank"),". This is a work in progress, and we are currently in the process of migrating to a new back-end, which will provide more options for data export.",
+                " data on our ",
+                html.A(
+                    "GitHub repo",
+                    href="https://github.com/FungAGE/starbase",
+                    target="_blank",
+                ),
+                ". This is a work in progress, and we are currently in the process of migrating to a new back-end, which will provide more options for data export.",
             ],
             size="lg",
             c="dimmed",
@@ -116,7 +122,7 @@ def create_file_upload(
         children=dmc.Stack(
             [
                 dmc.Center(
-                    DashIconify(icon=icon, width=40, height=40, color="#228be6")
+                    DashIconify(icon=icon, width=40, height=40, color="var(--mantine-primary-color-6)")
                 ),
                 dmc.Stack(
                     [
@@ -178,7 +184,7 @@ def create_feedback_button():
 
 
 def create_database_version_indicator():
-    """Create a database version indicator for the bottom-left corner"""
+    """Create a database version indicator (legacy notification - use create_footer instead)."""
     try:
         db_version = get_database_version()
         version_text = f"v{db_version}" if db_version != "unknown" else "Unknown"
@@ -190,7 +196,7 @@ def create_database_version_indicator():
         title="Database Version",
         id="db-version-notify",
         action="show",
-        autoClose=30000,  # Auto-close after 30 seconds (longer than feedback button)
+        autoClose=30000,
         color="blue",
         radius="md",
         message=[
@@ -221,6 +227,54 @@ def create_database_version_indicator():
             "color": "white",
         },
     )
+
+
+def create_footer():
+    """Create app footer with database version and feedback link."""
+    try:
+        db_version = get_database_version()
+        version_text = f"v{db_version}" if db_version != "unknown" else "Unknown"
+    except Exception as e:
+        logger.error(f"Error fetching database version: {str(e)}")
+        version_text = "Error"
+
+    return html.Footer(
+        dmc.Group(
+            [
+                dmc.Group(
+                    [
+                        DashIconify(icon="mdi:database", width=16, color="var(--mantine-color-gray-6)"),
+                        dmc.Text(version_text, size="sm", c="dimmed"),
+                    ],
+                    gap="xs",
+                    align="center",
+                ),
+                dmc.Anchor(
+                    "Report an issue",
+                    href="https://github.com/FungAGE/starbase/issues",
+                    target="_blank",
+                    size="sm",
+                    c="dimmed",
+                    style={"textDecoration": "none"},
+                ),
+            ],
+            justify="space-between",
+            align="center",
+            p="md",
+            style={
+                "borderTop": "1px solid var(--mantine-color-gray-2)",
+                "backgroundColor": "var(--mantine-color-gray-0)",
+            },
+        ),
+        style={
+            "position": "fixed",
+            "bottom": 0,
+            "left": 0,
+            "right": 0,
+            "zIndex": 100,
+        },
+    )
+
 
 source_code_card = dmc.Paper(
     children=[

@@ -359,8 +359,8 @@ def blast_download_button(blast_file=None):
                 dmc.Button(
                     "Download BLAST Results",
                     id="blast-dl-button",
-                    variant="gradient",
-                    gradient={"from": "indigo", "to": "cyan"},
+                    variant="filled",
+                    color="indigo",
                     size="lg",
                     leftSection=[html.I(className="bi bi-download")],
                     # Store the file path in a data attribute if needed

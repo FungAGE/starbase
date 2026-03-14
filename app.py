@@ -8,7 +8,7 @@ from dash import Dash, html, dcc, _dash_renderer
 
 from src.config.settings import IS_DEV
 from src.components import navmenu
-from src.components.ui import create_feedback_button, create_database_version_indicator
+from src.components.ui import create_footer
 from src.config.cache import cache, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
@@ -131,24 +131,20 @@ def serve_app_layout():
                 html.Div(id="notifications-container"),
                 dcc.Location(id="url", refresh=False),
                 navmenu.navmenu(),
-                html.Div(dash.page_container),
                 html.Div(
-                    [
-                        create_feedback_button(),
-                        create_database_version_indicator(),
-                    ],
+                    dash.page_container,
                     style={
-                        "position": "fixed",
-                        "top": "50%",
-                        "right": "20px",
-                        "transform": "translateY(-50%)",
-                        "zIndex": "1000",
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "gap": "10px",
+                        "flex": "1",
+                        "paddingBottom": "3.5rem",  # Space for fixed footer
                     },
                 ),
-            ]
+                create_footer(),
+            ],
+            style={
+                "display": "flex",
+                "flexDirection": "column",
+                "minHeight": "100vh",
+            },
         )
     )
 

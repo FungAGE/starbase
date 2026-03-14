@@ -314,8 +314,8 @@ layout = dmc.Container(
                                     dmc.Button(
                                         dmc.Text("Generate Visualization", size="lg"),
                                         id="synteny-update-button",
-                                        variant="gradient",
-                                        gradient={"from": "indigo", "to": "cyan"},
+                                        variant="filled",
+                                        color="indigo",
                                         leftSection=html.I(className="bi bi-diagram-3"),
                                         fullWidth=True,
                                     ),
@@ -349,10 +349,10 @@ layout = dmc.Container(
                                                     "display": "flex",
                                                     "alignItems": "center",
                                                     "justifyContent": "center",
-                                                    "color": "#6c757d",
+                                                    "color": "var(--mantine-color-gray-6)",
                                                     "fontSize": "16px",
-                                                    "backgroundColor": "#f8f9fa",
-                                                    "border": "1px solid #dee2e6",
+                                                    "backgroundColor": "var(--mantine-color-gray-0)",
+                                                    "border": "1px solid var(--mantine-color-gray-3)",
                                                     "borderRadius": "4px",
                                                 },
                                             ),
@@ -1047,7 +1047,7 @@ clientside_callback(
                 container.style.display = 'flex';
                 container.style.alignItems = 'center';
                 container.style.justifyContent = 'center';
-                container.style.color = '#6c757d';
+                container.style.color = 'var(--mantine-color-gray-6)';
                 container.style.fontSize = '16px';
             }
             return ["", {"display": "none"}];
@@ -1089,7 +1089,7 @@ clientside_callback(
                                 if (panel) {
                                     let html = '<div style="font-family: system-ui; font-size: 13px;">';
                                     html += '<div style="margin-bottom: 16px;">';
-                                    html += '<div style="font-size: 18px; font-weight: bold; color: #228be6; margin-bottom: 4px;">';
+                                    html += '<div style="font-size: 18px; font-weight: bold; color: var(--mantine-primary-color-6); margin-bottom: 4px;">';
                                     html += (gene.label || gene.name || 'Unknown Gene');
                                     html += '</div>';
                                     if (gene.metadata.category_label) {
@@ -1103,8 +1103,8 @@ clientside_callback(
                                         html += gene.metadata.category_label + '</span>';
                                     }
                                     html += '</div>';
-                                    html += '<div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
-                                    html += '<div style="font-weight: bold; margin-bottom: 8px; color: #495057;">📍 Genomic Location</div>';
+                                    html += '<div style="background: var(--mantine-color-gray-0); padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
+                                    html += '<div style="font-weight: bold; margin-bottom: 8px; color: var(--mantine-color-gray-7);">📍 Genomic Location</div>';
                                     html += '<div style="font-size: 12px;">';
                                     html += '<div style="margin-bottom: 4px;"><strong>Position:</strong> ' +
                                         gene.start.toLocaleString() + ' - ' + gene.end.toLocaleString() + '</div>';
@@ -1113,14 +1113,14 @@ clientside_callback(
                                     html += '<div><strong>Strand:</strong> ' + (gene.strand > 0 ? 'Forward (+)' : 'Reverse (-)') + '</div>';
                                     html += '</div></div>';
                                     if (gene.metadata) {
-                                        html += '<div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
-                                        html += '<div style="font-weight: bold; margin-bottom: 8px; color: #495057;">🏷️ Primary Annotation</div>';
+                                        html += '<div style="background: var(--mantine-color-gray-0); padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
+                                        html += '<div style="font-weight: bold; margin-bottom: 8px; color: var(--mantine-color-gray-7);">🏷️ Primary Annotation</div>';
                                         html += '<div style="font-size: 12px;">';
                                         const primaryFields = ['Target_ID', 'Alias', 'SeqID', 'product', 'Name', 'type', 'source'];
                                         for (const key of primaryFields) {
                                             if (gene.metadata[key] && gene.metadata[key] !== '.' && gene.metadata[key] !== '') {
                                                 html += '<div style="margin-bottom: 4px;"><strong>' + key + ':</strong> ';
-                                                html += '<span style="font-family: monospace; background: #e9ecef; padding: 1px 4px; border-radius: 3px;">';
+                                                html += '<span style="font-family: monospace; background: var(--mantine-color-gray-2); padding: 1px 4px; border-radius: 3px;">';
                                                 html += gene.metadata[key] + '</span></div>';
                                             }
                                         }
@@ -1133,8 +1133,8 @@ clientside_callback(
                                             gene.metadata[k] !== ''
                                         );
                                         if (additionalAttrs.length > 0) {
-                                            html += '<div style="background: #f8f9fa; padding: 12px; border-radius: 6px;">';
-                                            html += '<div style="font-weight: bold; margin-bottom: 8px; color: #495057;">📋 Additional Attributes</div>';
+                                            html += '<div style="background: var(--mantine-color-gray-0); padding: 12px; border-radius: 6px;">';
+                                            html += '<div style="font-weight: bold; margin-bottom: 8px; color: var(--mantine-color-gray-7);">📋 Additional Attributes</div>';
                                             html += '<div style="font-size: 12px;">';
                                             for (const key of additionalAttrs) {
                                                 html += '<div style="margin-bottom: 4px;"><strong>' + key + ':</strong> ' + gene.metadata[key] + '</div>';
@@ -1185,11 +1185,11 @@ clientside_callback(
                             .attr('class', 'gene-tooltip')
                             .style('position', 'absolute')
                             .style('background', 'rgba(255, 255, 255, 0.98)')
-                            .style('color', '#212529')
+                            .style('color', 'var(--mantine-color-dark-7)')
                             .style('padding', '12px')
                             .style('border-radius', '6px')
                             .style('box-shadow', '0 4px 12px rgba(0,0,0,0.15)')
-                            .style('border', '1px solid #dee2e6')
+                            .style('border', '1px solid var(--mantine-color-gray-3)')
                             .style('pointer-events', 'none')
                             .style('opacity', 0)
                             .style('z-index', 10000)
@@ -1199,7 +1199,7 @@ clientside_callback(
                             .on('mouseenter', function(event, d) {
                                 if (d && d.metadata) {
                                     let html = '<div style="font-size: 12px; line-height: 1.5;">';
-                                    html += '<div style="font-weight: bold; font-size: 13px; margin-bottom: 6px; color: #228be6;">';
+                                    html += '<div style="font-weight: bold; font-size: 13px; margin-bottom: 6px; color: var(--mantine-primary-color-6);">';
                                     html += (d.label || d.name || 'Unknown Gene') + '</div>';
                                     if (d.metadata.category_label) {
                                         const categoryColors = {
@@ -1212,7 +1212,7 @@ clientside_callback(
                                         html += 'border-radius: 10px; font-size: 10px; font-weight: 600;">';
                                         html += d.metadata.category_label + '</span></div>';
                                     }
-                                    html += '<div style="border-top: 1px solid #dee2e6; padding-top: 6px; margin-top: 6px;">';
+                                    html += '<div style="border-top: 1px solid var(--mantine-color-gray-3); padding-top: 6px; margin-top: 6px;">';
                                     html += '<strong>Position:</strong> ' + d.start.toLocaleString() + ' - ' + d.end.toLocaleString();
                                     html += ' (' + (d.end - d.start).toLocaleString() + ' bp)<br/>';
                                     html += '<strong>Strand:</strong> ' + (d.strand > 0 ? 'Forward (+)' : 'Reverse (-)') + '<br/>';
@@ -1229,7 +1229,7 @@ clientside_callback(
                                         html += '<strong>Type:</strong> ' + d.metadata.type + '<br/>';
                                     }
                                     html += '</div>';
-                                    html += '<div style="margin-top: 6px; font-size: 10px; color: #6c757d; font-style: italic;">Click for full details</div>';
+                                    html += '<div style="margin-top: 6px; font-size: 10px; color: var(--mantine-color-gray-6); font-style: italic;">Click for full details</div>';
                                     html += '</div>';
                                     tooltip.html(html)
                                         .style('left', (event.pageX + 15) + 'px')

@@ -307,11 +307,8 @@ layout = dmc.Container(
                                                 dmc.Button(
                                                     "Submit BLAST",
                                                     id="submit-button",
-                                                    variant="gradient",
-                                                    gradient={
-                                                        "from": "indigo",
-                                                        "to": "cyan",
-                                                    },
+                                                    variant="filled",
+                                                    color="indigo",
                                                     size="lg",
                                                     loading=False,
                                                     loaderProps={
@@ -382,7 +379,7 @@ layout = dmc.Container(
                                                     style={"alignSelf": "stretch"},
                                                 ),
                                             ],
-                                            style={"alignItems": "flex-start"},
+                                            style={"alignItems": "stretch"},
                                         ),
                                     ],
                                 ),

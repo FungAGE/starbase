@@ -46,7 +46,7 @@ if (typeof window.UniversalModal === 'undefined') {
                         background: white;
                         padding: 20px;
                         margin: 0;
-                        border-bottom: 1px solid #dee2e6;
+                        border-bottom: 1px solid var(--mantine-color-gray-3);
                         z-index: 1;
                         border-radius: 8px 8px 0 0;
                         box-sizing: border-box;
@@ -54,7 +54,7 @@ if (typeof window.UniversalModal === 'undefined') {
                         overflow: hidden;
                     ">
                         <span id="universal-modal-close" style="
-                            color: #868e96;
+                            color: var(--mantine-color-gray-6);
                             float: right;
                             font-size: 28px;
                             font-weight: bold;
@@ -210,7 +210,7 @@ if (typeof window.UniversalModal === 'undefined') {
 
             .modal-row:hover {
                 background: rgba(255, 255, 255, 0.9);
-                border-color: #dee2e6;
+                border-color: var(--mantine-color-gray-3);
                 transform: translateY(-1px);
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             }
@@ -263,7 +263,7 @@ if (typeof window.UniversalModal === 'undefined') {
             }
 
             .modal-link {
-                color: #228be6;
+                color: var(--mantine-primary-color-6);
                 text-decoration: none;
                 font-weight: 500;
             }
@@ -357,10 +357,8 @@ if (typeof window.UniversalModal === 'undefined') {
         const hasValue = (v) => this.hasValue(v);
         const isValidAccession = (id) => {
             if (!id || typeof id !== 'string') return false;
-            const s = id.trim().toUpperCase();
-            return /^[A-Z]{1,2}\d{5,8}$/.test(s) ||
-                /^[A-Z]{4,6}\d{2}\d{6,}(\.\d+)?$/i.test(id.trim()) ||
-                /^(NC|NT|NW|NZ|NG)_[\d.]+$/i.test(id.trim());
+            const s = id.trim();
+            return /^[A-Za-z]{2,}_?\d{6,}(\.\d+)?$/i.test(s);
         };
 
         // Starship Information section

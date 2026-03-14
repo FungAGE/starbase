@@ -40,7 +40,7 @@ title = dmc.Paper(
                         html.Span(
                             "starbase: ",
                             className="logo-text",
-                            style={"color": "white"},
+                            style={"color": "var(--mantine-color-white)"},
                         ),
                         "A Database and Toolkit for Exploration of ",
                         html.Span("Starship", style={"fontStyle": "italic"}),
@@ -82,13 +82,13 @@ working = {
 }
 
 
-def create_feature_button(label, href, icon):
+def create_feature_button(label, href, icon, primary=False):
     return dmc.Anchor(
         dmc.Button(
             label,
             leftSection=DashIconify(icon=icon),
-            variant="gradient",
-            gradient={"from": "indigo", "to": "cyan"},
+            variant="filled" if primary else "light",
+            color="indigo",
             size="lg",
             radius="md",
             fullWidth=False,
@@ -100,7 +100,7 @@ def create_feature_button(label, href, icon):
 
 
 working_buttons = [
-    create_feature_button("BLAST Search", "/blast", "mdi:dna"),
+    create_feature_button("BLAST Search", "/blast", "mdi:dna", primary=True),
     create_feature_button("Browse Wiki and Download", "/wiki", "mdi:book-open-variant"),
     create_feature_button(
         html.Span(
@@ -358,7 +358,7 @@ db_version_card = dmc.Paper(
                         DashIconify(
                             icon="mdi:database",
                             width=24,
-                            color="#868E96",
+                            color="var(--mantine-color-gray-6)",
                         ),
                         dmc.Text(
                             "Current Version:",
@@ -372,7 +372,7 @@ db_version_card = dmc.Paper(
                 dmc.Title(
                     get_database_version(),
                     order=3,
-                    style={"fontSize": "1.5rem", "color": "#228be6"},
+                    style={"fontSize": "1.5rem", "color": "var(--mantine-primary-color-6)"},
                 ),
                 dmc.Divider(my="sm"),
                 dmc.Group(
@@ -380,7 +380,7 @@ db_version_card = dmc.Paper(
                         DashIconify(
                             icon="mdi:cog",
                             width=20,
-                            color="#868E96",
+                            color="var(--mantine-color-gray-6)",
                         ),
                         dmc.Text(
                             "Schema Version:",
@@ -414,9 +414,9 @@ db_version_card = dmc.Paper(
 def create_hero_section():
     return dmc.Container(
         [
-            dmc.Space(h=20),
+            dmc.Space(h="lg"),
             dmc.Center(title),
-            dmc.Space(h=40),
+            dmc.Space(h="xl"),
             dmc.Grid(
                 [
                     dmc.GridCol(starship_card, span={"base": 12, "md": 12}),
@@ -493,7 +493,7 @@ total_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:dna",
                     width=30,
-                    color="#868E96",
+                    color="var(--mantine-color-gray-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
@@ -540,7 +540,7 @@ curated_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:check-circle",
                     width=24,
-                    color="#2F9E44",
+                    color="var(--mantine-color-green-8)",
                     style={"width": "clamp(20px, 3vw, 28px)"},
                 ),
                 dmc.Text(
@@ -582,7 +582,7 @@ uncurated_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:clock",
                     width=24,
-                    color="#E8590C",
+                    color="var(--mantine-color-orange-8)",
                     style={"width": "clamp(20px, 3vw, 28px)"},
                 ),
                 dmc.Text(
@@ -624,7 +624,7 @@ species_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:mushroom",
                     width=30,
-                    color="#868E96",
+                    color="var(--mantine-color-gray-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
@@ -666,7 +666,7 @@ family_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:family-tree",
                     width=30,
-                    color="#868E96",
+                    color="var(--mantine-color-gray-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(

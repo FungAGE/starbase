@@ -16,40 +16,43 @@ def truncate_string(s, length=40):
 
 
 def table_loading_alert():
+    """Loading state alert - uses theme primary color."""
     return html.Div(
         dmc.Alert(
-            title="No Data Available",
-            children="Waiting for data to load...",
-            color="blue",
+            title="Loading",
+            children="Loading data...",
+            color="indigo",
             variant="light",
             icon=[DashIconify(icon="line-md:loading-loop")],
         ),
-        style={"padding": "20px"},
+        style={"padding": "var(--mantine-spacing-lg)"},
     )
 
 
 def table_no_results_alert():
+    """Empty state alert."""
     return html.Div(
         dmc.Alert(
             title="No Results Found",
             children="The query returned no results.",
-            color="yellow",
+            color="gray",
             variant="light",
             icon=[DashIconify(icon="clarity:empty-line")],
         ),
-        style={"padding": "20px"},
+        style={"padding": "var(--mantine-spacing-lg)"},
     )
 
 
 def table_error(e):
+    """Error state alert."""
     return html.Div(
         dmc.Alert(
             title="Error",
-            children=f"Failed to create table: {str(e)}",
+            children="Failed to load table. Please try again.",
             color="red",
-            variant="filled",
+            variant="light",
         ),
-        style={"padding": "20px"},
+        style={"padding": "var(--mantine-spacing-lg)"},
     )
 
 
@@ -92,7 +95,7 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             if col["field"] in ["ship_accession_tag", "ship_accession_display"]:
                 col_def.update(
                     {
-                        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                        "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
                         "cellClass": "clickable-cell",
                     }
                 )
@@ -142,8 +145,8 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         style={
             "width": "100%",
             "height": "500px",  # Fixed height for stability
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
+            "border": "1px solid var(--mantine-color-gray-3)",
+            "borderRadius": "var(--mantine-radius-sm)",
         },
         persistence=True,
         persistence_type="memory",
@@ -197,7 +200,7 @@ def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
             ] or col.get("field") in ["accession_display", "ship_accession_display"]:
                 col_def.update(
                     {
-                        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                        "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
                     }
                 )
 
@@ -244,8 +247,8 @@ def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
         style={
             "width": "100%",
             "height": "450px",  # Increased height for better usability
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
+            "border": "1px solid var(--mantine-color-gray-3)",
+            "borderRadius": "var(--mantine-radius-sm)",
         },
     )
 
@@ -334,7 +337,7 @@ def make_paper_table():
                         ),
                         html.Td(doi_cell, style=doi_style),
                     ],
-                    style={"borderBottom": "1px solid #dee2e6"},
+                    style={"borderBottom": "1px solid var(--mantine-color-gray-3)"},
                 )
             )
 
@@ -357,7 +360,7 @@ def make_paper_table():
                             ),
                         ]
                     ),
-                    style={"borderBottom": "1px solid #dee2e6"},
+                    style={"borderBottom": "1px solid var(--mantine-color-gray-3)"},
                 ),
                 html.Tbody(
                     rows
@@ -414,7 +417,6 @@ def make_dl_table(df, id, table_columns):
             "filter": True,
         }
 
-        # Add checkbox and special styling to accession columns
         if col["id"] in [
             "ship_accession_tag",
             "ship_accession_display",
@@ -423,7 +425,16 @@ def make_dl_table(df, id, table_columns):
                 {
                     "checkboxSelection": True,
                     "headerCheckboxSelection": True,
-                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                    "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
+                    "width": 180,
+                    "minWidth": 150,
+                    "flex": 0,
+                }
+            )
+        elif col["id"] in ["accession_tag", "accession_display"]:
+            col_def.update(
+                {
+                    "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
                     "width": 180,
                     "minWidth": 150,
                     "flex": 0,
@@ -457,8 +468,8 @@ def make_dl_table(df, id, table_columns):
             style={
                 "width": "100%",
                 "height": "600px",  # Fixed height for better stability
-                "border": "1px solid #dee2e6",
-                "borderRadius": "4px",
+                "border": "1px solid var(--mantine-color-gray-3)",
+                "borderRadius": "var(--mantine-radius-sm)",
             },
             persistence=True,
             persistence_type="memory",
@@ -506,8 +517,8 @@ def make_wiki_table(n_ships, max_size, min_size):
         style={
             "width": "100%",
             "height": "192px",
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
+            "border": "1px solid var(--mantine-color-gray-3)",
+            "borderRadius": "var(--mantine-radius-sm)",
         },
         persistence=True,
         persistence_type="memory",

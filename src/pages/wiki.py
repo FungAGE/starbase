@@ -413,8 +413,8 @@ info_table_paper = dmc.Paper(
                                     ]
                                 ),
                                 id="download-all-btn",
-                                variant="gradient",
-                                gradient={"from": "indigo", "to": "cyan"},
+                                variant="filled",
+                                color="indigo",
                                 leftSection=html.I(className="bi bi-cloud-download"),
                                 size="md",
                                 loaderProps={"variant": "dots", "color": "white"},
