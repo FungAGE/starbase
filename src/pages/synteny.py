@@ -462,9 +462,10 @@ layout = dmc.Container(
 @callback(
     Output("synteny-available-ships", "data"),
     Input("synteny-url", "pathname"),
+    Input("synteny-url", "search"),
 )
 @handle_callback_error
-def load_available_ships(pathname):
+def load_available_ships(pathname, search):
     if pathname != "/synteny":
         return no_update
 
@@ -492,7 +493,46 @@ def load_available_ships(pathname):
         return []
 
 
-# ── Populate autocomplete options from available ships ─────────────────────────
+# ── Auto-select ship from URL query parameter (?accession=SSB...) ──────────────
+@callback(
+    Output("synteny-selected-ships", "data", allow_duplicate=True),
+    Input("synteny-available-ships", "data"),
+    State("synteny-url", "search"),
+    State("synteny-selected-ships", "data"),
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def autoselect_ship_from_url(available_ships, search, current_selected):
+    """When arriving from blast page with ?accession=SSBxxxxxx, auto-select that ship."""
+    if not search or not available_ships:
+        raise PreventUpdate
+
+    from urllib.parse import parse_qs
+
+    params = parse_qs(search.lstrip("?"))
+    accession = params.get("accession", [None])[0]
+    if not accession:
+        raise PreventUpdate
+
+    match = next(
+        (s for s in available_ships if s.get("ship_accession_display", "").lower() == accession.lower()),
+        None,
+    )
+    if not match:
+        logger.info(f"Accession {accession} from URL not found in available ships")
+        raise PreventUpdate
+
+    ship_id = int(match["value"])
+    current_selected = current_selected or []
+
+    if any(s["id"] == ship_id for s in current_selected):
+        raise PreventUpdate
+
+    logger.info(f"Auto-selecting ship {accession} (id={ship_id}) from URL parameter")
+    return current_selected + [{"id": ship_id, "label": match["label"]}]
+
+
+
 @callback(
     [
         Output("synteny-taxa-search", "data"),
