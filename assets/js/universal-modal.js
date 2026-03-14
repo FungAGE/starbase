@@ -563,11 +563,10 @@ if (typeof window.showUniversalModal === 'undefined') {
     };
 }
 
-// Ship accession (SSB) modal - fetches from ship_accession_details
 if (typeof window.showShipAccessionModal === 'undefined') {
     window.showShipAccessionModal = async function(ssbId) {
         try {
-            const response = await fetch(`/api/accession/ship_accession_details/${ssbId}`);
+            const response = await fetch(`/api/accession/accession_details/${ssbId}`);
             const data = await response.json();
 
             if (data.error) {
@@ -587,11 +586,10 @@ if (typeof window.showShipAccessionModal === 'undefined') {
     };
 }
 
-// Group accession (SSA) modal - fetches from group_accession_details
 if (typeof window.showGroupAccessionModal === 'undefined') {
     window.showGroupAccessionModal = async function(ssaId) {
         try {
-            const response = await fetch(`/api/accession/group_accession_details/${ssaId}`);
+            const response = await fetch(`/api/accession/accession_details/${ssaId}`);
             const data = await response.json();
 
             if (data.error) {

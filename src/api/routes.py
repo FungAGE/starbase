@@ -78,20 +78,26 @@ def export_for_submission():
         return jsonify({"error": str(e)}), 500
 
 
+def _get_accession_modal_data(accession_id):
+    """Route accession to ship or group modal based on prefix."""
+    accession_id = accession_id.lstrip(">") if accession_id else ""
+    if not accession_id:
+        return {"error": "Invalid accession ID (expected SSB or SSA)"}
+    if accession_id.startswith("SSB"):
+        return create_ship_accession_modal_data(accession_id)
+    if accession_id.startswith("SSA"):
+        return create_accession_modal_data(accession_id)
+    return {"error": "Invalid accession ID (expected SSB or SSA)"}
+
+
 @accession_routes.route("/accession_details/<accession_id>", methods=["GET"])
 def get_accession_details(accession_id):
-    """Get details for a specific ship accession."""
+    """Get details for a specific accession (SSB or SSA)."""
     try:
-        if accession_id.startswith("SSB"):
-            modal_data = create_ship_accession_modal_data(accession_id)
-        elif accession_id.startswith("SSA"):
-            modal_data = create_accession_modal_data(accession_id)
-        else:
-            modal_data = {"error": "Invalid accession ID"}
+        modal_data = _get_accession_modal_data(accession_id)
     except Exception as e:
         logger.error(f"Error in get_accession_details: {str(e)}")
         modal_data = {"error": str(e)}
-
     return jsonify(modal_data)
 
 
