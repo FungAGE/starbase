@@ -160,20 +160,6 @@ def create_accordion_item(df, papers, category):
         )
 
 
-modal = dmc.Modal(
-    id="wiki-modal",
-    opened=False,
-    centered=True,
-    overlayProps={"blur": 3},
-    size="lg",
-    children=[
-        dmc.Title(id="wiki-modal-title", order=3),
-        dmc.Space(h="md"),
-        html.Div(id="wiki-modal-content"),
-    ],
-)
-
-
 def load_initial_data():
     """Load initial data for the page"""
     try:
@@ -481,18 +467,6 @@ info_table_paper = dmc.Paper(
                         ),
                     ],
                 ),
-                dmc.Modal(
-                    id="accession-modal",
-                    opened=False,
-                    centered=True,
-                    overlayProps={"blur": 3},
-                    size="lg",
-                    children=[
-                        dmc.Title(id="modal-title", order=3),
-                        dmc.Space(h="md"),
-                        html.Div(id="modal-content"),
-                    ],
-                ),
                 html.Div(
                     id="dl-table-container",
                     children=make_dl_table(
@@ -521,7 +495,6 @@ info_table_paper = dmc.Paper(
 layout = dmc.Container(
     fluid=True,
     children=[
-        modal,
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="meta-data", data=load_initial_data()),
         dcc.Store(id="filtered-meta-data"),
