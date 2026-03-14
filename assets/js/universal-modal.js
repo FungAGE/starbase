@@ -389,18 +389,44 @@ if (typeof window.UniversalModal === 'undefined') {
                             ` : ''}
                         </div>
                         ${(data.genomes && data.genomes.length > 0) ? data.genomes.map((genome, i) => {
-                            const sectionTitle = hasValue(genome.assembly_accession) ? genome.assembly_accession
-                                : hasValue(genome.genome_source) ? genome.genome_source
+                            const hasAssemblyAccession = hasValue(genome.assembly_accession);
+                            const hasGenomeSource = hasValue(genome.genome_source);
+                            const source = (genome.genome_source || '').toLowerCase();
+
+                            let genomeUrl = null;
+                            let sequenceViewerUrl = null;
+                            if (hasAssemblyAccession && hasGenomeSource) {
+                                if (source === 'jgi') {
+                                    genomeUrl = `https://mycocosm.jgi.doe.gov/${genome.assembly_accession}/${genome.assembly_accession}.home.html`;
+                                } else if (source === 'ncbi') {
+                                    genomeUrl = `https://www.ncbi.nlm.nih.gov/datasets/genome/${genome.assembly_accession}/`;
+                                }
+                                if ((source === 'jgi' || source === 'ncbi') && hasValue(genome.contig_id) && hasValue(genome.element_position)) {
+                                    const posMatch = (genome.element_position || '').match(/^(\d+)\s*-\s*(\d+)$/);
+                                    if (posMatch) {
+                                        sequenceViewerUrl = `https://www.ncbi.nlm.nih.gov/projects/sviewer/?id=${genome.contig_id}&from=${posMatch[1]}&to=${posMatch[2]}`;
+                                    }
+                                }
+                            }
+
+                            const sectionTitle = hasAssemblyAccession && hasGenomeSource
+                                ? `Genome: ${genome.assembly_accession}`
+                                : hasAssemblyAccession ? genome.assembly_accession
+                                : hasGenomeSource ? genome.genome_source
                                 : (data.genomes.length === 1 ? 'Genome' : `Genome ${i + 1}`);
+                            const sectionTitleHtml = genomeUrl && hasAssemblyAccession && hasGenomeSource
+                                ? `Genome: <a href="${genomeUrl}" target="_blank" class="modal-link">${genome.assembly_accession}</a>`
+                                : sectionTitle;
+
                             return `
                             <div class="modal-section" style="margin-top: 20px;">
-                                <div class="section-title">${sectionTitle}</div>
+                                <div class="section-title">${sectionTitleHtml}</div>
                                 <div class="section-content">
                                     <div class="modal-grid">
                                     ${hasValue(genome.assembly_accession) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Assembly Accession:</span>
-                                            <span class="modal-value">${genome.assembly_accession}</span>
+                                            <span class="modal-value">${genomeUrl ? `<a href="${genomeUrl}" target="_blank" class="modal-link">${genome.assembly_accession}</a>` : genome.assembly_accession}</span>
                                         </div>
                                     ` : ''}
                                     ${hasValue(genome.genome_source) ? `
@@ -412,7 +438,7 @@ if (typeof window.UniversalModal === 'undefined') {
                                     ${hasValue(genome.contig_id) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Contig ID:</span>
-                                            <span class="modal-value">${genome.contig_id}</span>
+                                            <span class="modal-value">${sequenceViewerUrl ? `<a href="${sequenceViewerUrl}" target="_blank" class="modal-link">${genome.contig_id}</a>` : genome.contig_id}</span>
                                         </div>
                                     ` : ''}
                                     ${hasValue(genome.element_position) ? `
