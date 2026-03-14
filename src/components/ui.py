@@ -4,7 +4,6 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
 from src.config.logging import get_logger
-from src.components.data import safe_get_value, safe_get_position
 from src.database.sql_manager import get_database_version
 
 logger = get_logger(__name__)
@@ -57,7 +56,7 @@ download_ships_button = dmc.Anchor(
         gradient={"from": "indigo", "to": "cyan"},
         size="lg",
         radius="md",
-        fullWidth=True,
+        fullWidth=False,
         styles={
             "root": {
                 "minHeight": "auto",
@@ -73,7 +72,7 @@ download_ships_button = dmc.Anchor(
     href="/download",
     style={
         "textDecoration": "none",
-        "width": "100%",
+        "width": "auto",
         "display": "block",
     },
 )
@@ -88,7 +87,7 @@ download_ships_card = dmc.Paper(
                     "starbase",
                     className="logo-text",
                 ),
-                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export",
+                " data on our ",html.A("GitHub repo", href="https://github.com/FungAGE/starbase", target="_blank"),". This is a work in progress, and we are currently in the process of migrating to a new back-end, which will provide more options for data export.",
             ],
             size="lg",
             c="dimmed",
@@ -113,38 +112,41 @@ def create_file_upload(
     **kwargs,
 ) -> dmc.Stack:
     return dcc.Upload(
-                id=upload_id,
-                children=dmc.Stack(
+        id=upload_id,
+        children=dmc.Stack(
+            [
+                dmc.Center(
+                    DashIconify(icon=icon, width=40, height=40, color="#228be6")
+                ),
+                dmc.Stack(
                     [
-                        dmc.Center(DashIconify(icon=icon, width=40, height=40, color="#228be6")),
-                        dmc.Stack(
-                            [
-                                html.Div(
-                                    id=output_id,
-                                    children=placeholder_text,
-                                ),
-                                dmc.Text(
-                                    f"Accepted formats: {', '.join(accept_types)}",
-                                    size="sm",
-                                    c="dimmed",
-                                ),
-                            ],
-                            align="center",
-                            gap="xs",
+                        html.Div(
+                            id=output_id,
+                            children=placeholder_text,
                         ),
-                        dmc.Progress(
-                            id=f"{upload_id}-progress",
-                            value=0,
-                            animated=True,
-                            style={"display": "none"},
+                        dmc.Text(
+                            f"Accepted formats: {', '.join(accept_types)}",
+                            size="sm",
+                            c="dimmed",
                         ),
                     ],
-                        className="upload-box",
-                        style={"boxShadow": "none"},
-                        **kwargs,
-                    gap="md",
-                )
-            )
+                    align="center",
+                    gap="xs",
+                ),
+                dmc.Progress(
+                    id=f"{upload_id}-progress",
+                    value=0,
+                    animated=True,
+                    style={"display": "none"},
+                ),
+            ],
+            className="upload-box",
+            style={"boxShadow": "none"},
+            **kwargs,
+            gap="md",
+        ),
+    )
+
 
 def create_feedback_button():
     return dmc.Notification(
@@ -219,3 +221,31 @@ def create_database_version_indicator():
             "color": "white",
         },
     )
+
+source_code_card = dmc.Paper(
+    children=[
+        dmc.Stack(
+            [
+                dmc.Text(
+                    [
+                        "The source code for ",
+                        html.Span("starbase", className="logo-text"),
+                        " webserver will soon be available on GitHub",
+                    ],
+                    size="lg",
+                ),
+                dmc.Image(
+                    src="assets/images/starbase-map.png",
+                    fit="contain",
+                    className="auto-resize-750",
+                ),
+            ],
+            gap="xl",
+        ),
+    ],
+    p="xl",
+    radius="md",
+    withBorder=True,
+    h="100%",
+    shadow="sm",
+)

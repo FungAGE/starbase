@@ -4,9 +4,12 @@ import dash
 import dash_mantine_components as dmc
 from dash import html
 
+from src.components.ui import download_ships_card, source_code_card
+
 warnings.filterwarnings("ignore")
 
 dash.register_page(__name__)
+
 
 card_dict = {
     "aaron": {
@@ -151,31 +154,13 @@ layout = dmc.Container(
             withBorder=False,
             mb="xl",
         ),
-        # Source Code Section
-        dmc.Paper(
-            children=[
-                dmc.Stack(
-                    [
-                        dmc.Text(
-                            [
-                                "The source code for ",
-                                html.Span("starbase", className="logo-text"),
-                                " webserver will soon be available on GitHub",
-                            ],
-                            size="lg",
-                        ),
-                        dmc.Image(
-                            src="assets/images/starbase-map.png",
-                            fit="contain",
-                            className="auto-resize-750",
-                        ),
-                    ],
-                    gap="xl",
-                ),
+        dmc.Grid(
+            [
+                dmc.GridCol(download_ships_card, span={"lg": 6, "md": 6, "sm": 12}),
+                dmc.GridCol(source_code_card, span={"lg": 6, "md": 6, "sm": 12}),
             ],
-            p="xl",
-            radius="md",
-            withBorder=True,
+            gutter="xl",
+            align="stretch",
         ),
     ],
     py="xl",
