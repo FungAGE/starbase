@@ -74,6 +74,10 @@ WORKFLOW_STAGES = [
     {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
+# Split into sequence matching vs classification steps
+MATCHING_STAGES = [s for s in WORKFLOW_STAGES if s["id"] in ("exact", "contained", "similar")]
+CLASSIFICATION_STAGES = [s for s in WORKFLOW_STAGES if s["id"] in ("family", "navis", "haplotype")]
+
 CLASSIFICATION_TOOLS_INFO = """
 **Initial search**
 - **BLAST** (blastn for nucleotide, tblastn for protein): Search against the Starbase Starships nucleotide database.
@@ -96,21 +100,21 @@ CLASSIFICATION_TOOLS_INFO = """
 
 # Define badge colors based on source
 source_colors = {
-    "exact": "green",
+    "exact": "var(--mantine-color-green-6)",
     "contained": "teal",
     "similar": "cyan",
-    "blast_hit": "blue",
-    "hmmsearch": "purple",
-    "captain clustering": "orange",
-    "k-mer similarity": "red",
+    "blast_hit": "var(--mantine-color-blue-6)",
+    "hmmsearch": "var(--mantine-color-grape-6)",
+    "captain clustering": "var(--mantine-color-orange-6)",
+    "k-mer similarity": "var(--mantine-color-red-6)",
     "unknown": "gray",
 }
 
 # Define icon and color based on confidence level
 confidence_colors = {
-    "High": "green",
-    "Medium": "yellow",
-    "Low": "red",
+    "High": "var(--mantine-color-green-6)",
+    "Medium": "var(--mantine-color-yellow-6)",
+    "Low": "var(--mantine-color-red-6)",
     "Unknown": "gray",
 }
 
@@ -2282,15 +2286,23 @@ def create_classification_output(workflow_state=None, classification_data=None):
     if classification_data:
         classification_card = create_classification_card(classification_data)
         if classification_card:
+            closest_match = classification_data.get("closest_match")
+            synteny_href = (
+                f"/synteny?accession={closest_match}" if closest_match else "/synteny"
+            )
             action_buttons = dmc.Group(
                 [
-                    dmc.Button(
-                        "View in synteny",
-                        id="blast-view-synteny-btn",
-                        variant="light",
-                        leftSection=dmc.ThemeIcon(
-                            DashIconify(icon="tabler:chart-line"), radius="xl"
+                    html.A(
+                        dmc.Button(
+                            "View in synteny",
+                            variant="light",
+                            leftSection=dmc.ThemeIcon(
+                                DashIconify(icon="tabler:chart-line"), radius="xl"
+                            ),
                         ),
+                        href=synteny_href,
+                        target="_blank",
+                        style={"textDecoration": "none"},
                     ),
                     dmc.Button(
                         "Submit to portal",
@@ -2326,98 +2338,101 @@ def create_classification_output(workflow_state=None, classification_data=None):
 
     # Check if workflow is still running
     if workflow_state and not workflow_complete:
-        # Calculate progress from workflow state
-        progress = 0
-        current_stage_text = "Starting classification..."
-
-        # Get current stage index
-        current_stage_idx = None
-        if hasattr(workflow_state, "current_stage_idx"):
-            current_stage_idx = workflow_state.current_stage_idx
+        current_stage = None
+        if hasattr(workflow_state, "current_stage"):
+            current_stage = workflow_state.current_stage
         elif isinstance(workflow_state, dict):
-            current_stage_idx = workflow_state.get("current_stage_idx")
+            current_stage = workflow_state.get("current_stage")
 
-        if current_stage_idx is not None:
-            try:
-                stage_idx = int(current_stage_idx)
-                total_stages = 6  # Number of workflow stages
+        # Helper to get index in a stage list
+        def _stage_index(stage_id, stages):
+            for i, s in enumerate(stages):
+                if s["id"] == stage_id:
+                    return i
+            return 0
 
-                # Get current stage progress
-                current_stage = None
-                stages_dict = None
-                if hasattr(workflow_state, "current_stage"):
-                    current_stage = workflow_state.current_stage
-                    stages_dict = workflow_state.stages
-                elif isinstance(workflow_state, dict):
-                    current_stage = workflow_state.get("current_stage")
-                    stages_dict = workflow_state.get("stages", {})
+        in_classification = current_stage in ("family", "navis", "haplotype")
 
-                if current_stage and current_stage in stages_dict:
-                    stage_data = stages_dict[current_stage]
-                    stage_progress = (
-                        stage_data.get("progress", 0)
-                        if isinstance(stage_data, dict)
-                        else 0
-                    )
-                else:
-                    stage_progress = 0
+        # Matching stepper: active step or all complete when in classification phase
+        if in_classification:
+            matching_active = len(MATCHING_STAGES)
+        else:
+            matching_active = _stage_index(current_stage, MATCHING_STAGES)
 
-                # Calculate overall progress
-                progress = int(
-                    (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
+        # Classification stepper: only shown when in classification phase
+        classification_active = _stage_index(current_stage, CLASSIFICATION_STAGES)
+
+        # Build matching steps with loading on current step
+        matching_steps = [
+            dmc.StepperStep(
+                label=stage["label"],
+                description=stage["id"].replace("_", " ").title(),
+                loading=(not in_classification and i == matching_active),
+            )
+            for i, stage in enumerate(MATCHING_STAGES)
+        ]
+
+        # Build classification steps with loading on current step
+        classification_steps = [
+            dmc.StepperStep(
+                label=stage["label"],
+                description=stage["id"].replace("_", " ").title(),
+                loading=(in_classification and i == classification_active),
+            )
+            for i, stage in enumerate(CLASSIFICATION_STAGES)
+        ]
+
+        # Workflow is still running - show steppers
+        stepper_stack = [
+            dmc.Group(
+                [
+                    dmc.Loader(size="sm", color="var(--mantine-color-blue-6)"),
+                    dmc.Text(
+                        "Classification In Progress",
+                        size="lg",
+                        fw=500,
+                        c="var(--mantine-color-blue-6)",
+                    ),
+                ],
+                gap="md",
+                align="center",
+            ),
+            dmc.Stack(
+                [
+                    dmc.Text("Sequence matching", size="sm", fw=600, c="dimmed"),
+                    dmc.Stepper(
+                        active=matching_active,
+                        color="var(--mantine-color-blue-6)",
+                        orientation="horizontal",
+                        size="sm",
+                        children=matching_steps,
+                    ),
+                ],
+                gap="xs",
+            ),
+        ]
+
+        if in_classification:
+            stepper_stack.append(
+                dmc.Stack(
+                    [
+                        dmc.Text("Classification", size="sm", fw=600, c="dimmed"),
+                        dmc.Stepper(
+                            active=classification_active,
+                            color="var(--mantine-color-blue-6)",
+                            orientation="horizontal",
+                            size="sm",
+                            children=classification_steps,
+                        ),
+                    ],
+                    gap="xs",
                 )
-                progress = max(0, min(100, progress))
-                # get stage label from WORKFLOW_STAGES
-                stage_labels = {
-                    stage["id"]: stage["label"] for stage in WORKFLOW_STAGES
-                }
-                current_stage_text = stage_labels.get(
-                    current_stage,
-                    f"Processing {current_stage}"
-                    if current_stage
-                    else "Running classification...",
-                )
+            )
 
-            except (ValueError, ZeroDivisionError, TypeError):
-                progress = 0
-
-        # Handle case where workflow started but current_stage info is missing
-        if not current_stage_text or current_stage_text == "Processing None":
-            current_stage_text = "Running comprehensive classification..."
-
-        # Workflow is still running - show progress bar and loader
         return html.Div(
             [
                 classification_title,
-                dmc.Stack(
-                    [
-                        dmc.Group(
-                            [
-                                dmc.Loader(size="sm", color="blue"),
-                                dmc.Text(
-                                    "Classification In Progress",
-                                    size="lg",
-                                    fw=500,
-                                    c="blue",
-                                ),
-                            ],
-                            gap="md",
-                            align="center",
-                        ),
-                        dmc.Progress(
-                            value=progress,
-                            color="blue",
-                            size="lg",
-                            animated=True,
-                            striped=True,
-                            style={"width": "100%"},
-                        ),
-                        dmc.Text(
-                            current_stage_text, size="sm", c="dimmed", ta="center"
-                        ),
-                    ],
-                    gap="sm",
-                ),
+                dmc.Stack(stepper_stack, gap="sm"),
             ]
         )
     else:

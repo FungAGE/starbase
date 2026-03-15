@@ -23,7 +23,12 @@ from src.components.ui import (
     create_file_upload,
 )
 from src.database.sql_manager import fetch_meta_data
-from src.utils.classification_utils import WORKFLOW_STAGES, CLASSIFICATION_TOOLS_INFO
+from src.utils.classification_utils import (
+    WORKFLOW_STAGES,
+    MATCHING_STAGES,
+    CLASSIFICATION_STAGES,
+    CLASSIFICATION_TOOLS_INFO,
+)
 from src.tasks import (
     run_blast_search_task,
     run_classification_workflow_sync,
@@ -45,36 +50,65 @@ dash.register_page(__name__)
 
 logger = get_logger(__name__)
 
+def _make_matching_steps():
+    """Build StepperStep components for sequence matching stages."""
+    return [
+        dmc.StepperStep(
+            label=stage["label"],
+            description=stage["id"].replace("_", " ").title(),
+        )
+        for stage in MATCHING_STAGES
+    ]
+
+
+def _make_classification_steps():
+    """Build StepperStep components for classification stages."""
+    return [
+        dmc.StepperStep(
+            label=stage["label"],
+            description=stage["id"].replace("_", " ").title(),
+        )
+        for stage in CLASSIFICATION_STAGES
+    ]
+
+
 progress_section = dmc.Stack(
     [
-        dmc.Group(
+        dmc.Stack(
             [
-                dbc.Progress(
-                    id="classification-progress",
-                    value=0,
-                    color="blue",
-                    animated=True,
-                    striped=True,
-                    style={
-                        "width": "100%",
-                        "marginBottom": "5px",
-                    },
+                dmc.Text("Sequence matching", size="sm", fw=600, c="dimmed"),
+                dmc.Stepper(
+                    id="matching-stepper",
+                    active=0,
+                    color="var(--mantine-color-blue-6)",
+                    orientation="horizontal",
+                    size="sm",
+                    children=_make_matching_steps(),
                 ),
-            ]
+            ],
+            gap="xs",
         ),
-        dmc.Group(
+        dmc.Stack(
             [
-                dmc.Text(
-                    "Classification Status:",
-                    size="lg",
-                    fw=500,
+                dmc.Text("Classification", size="sm", fw=600, c="dimmed"),
+                dmc.Stepper(
+                    id="classification-stepper",
+                    active=0,
+                    color="var(--mantine-color-blue-6)",
+                    orientation="horizontal",
+                    size="sm",
+                    children=_make_classification_steps(),
                 ),
-                dmc.Text(
-                    id="classification-stage-display",
-                    size="lg",
-                    c="blue",
-                ),
-            ]
+            ],
+            gap="xs",
+            id="classification-stepper-section",
+            style={"display": "none"},
+        ),
+        dmc.Text(
+            id="classification-error-display",
+            size="sm",
+            c="var(--mantine-color-red-6)",
+            style={"display": "none"},
         ),
     ],
     gap="md",
@@ -233,7 +267,9 @@ layout = dmc.Container(
                                                     ),
                                                     html.Div(
                                                         id="upload-error-message",
-                                                        style={"color": "var(--mantine-color-red-6)"},
+                                                        style={
+                                                            "color": "var(--mantine-color-red-6)"
+                                                        },
                                                     ),
                                                 ],
                                                 gap="md",
@@ -1310,6 +1346,7 @@ def process_multiple_sequences(
                 blast_data.blast_content = sequence_analysis.blast_result.blast_content
                 blast_data.blast_file = sequence_analysis.blast_result.blast_file
                 blast_data.fasta_file = sequence_analysis.blast_result.fasta_file
+                blast_data.blast_df = sequence_analysis.blast_result.blast_hits
                 blast_data.seq_type = sequence_analysis.sequence_type.value
                 blast_data.processed = sequence_analysis.is_complete()
 
@@ -2557,7 +2594,7 @@ def _create_enriched_classification(
     # Look up metadata
     try:
         if meta_df is not None and not meta_df.empty:
-            meta_match = meta_df[meta_df["accession_display"] == match_accession]
+            meta_match = meta_df[meta_df["ship_accession_display"] == match_accession]
             if not meta_match.empty:
                 logger.debug(f"Found metadata for {match_accession}")
 
@@ -2608,10 +2645,34 @@ def _create_enriched_classification(
     return classification_data
 
 
+def _stage_to_matching_index(stage_id: str) -> int:
+    """Map stage id to matching stepper index (0-2)."""
+    for i, s in enumerate(MATCHING_STAGES):
+        if s["id"] == stage_id:
+            return i
+    return 0
+
+
+def _stage_to_classification_index(stage_id: str) -> int:
+    """Map stage id to classification stepper index (0-2)."""
+    for i, s in enumerate(CLASSIFICATION_STAGES):
+        if s["id"] == stage_id:
+            return i
+    return 0
+
+
+def _is_classification_stage(stage_id: str) -> bool:
+    """True if stage is family, navis, or haplotype."""
+    return stage_id in ("family", "navis", "haplotype")
+
+
 @callback(
     [
-        Output("classification-progress", "value"),
-        Output("classification-stage-display", "children"),
+        Output("matching-stepper", "active"),
+        Output("classification-stepper", "active"),
+        Output("classification-stepper-section", "style"),
+        Output("classification-error-display", "children"),
+        Output("classification-error-display", "style"),
         Output("classification-progress-section", "style"),
     ],
     Input("workflow-state-store", "data"),
@@ -2622,87 +2683,67 @@ def update_classification_progress(workflow_state_dict):
     """Update the classification progress UI based on workflow state"""
     if not workflow_state_dict or not isinstance(workflow_state_dict, dict):
         logger.warning("Invalid workflow state type or empty")
-        return 0, "No workflow data", {"display": "none"}
+        return 0, 0, {"display": "none"}, "", {"display": "none"}, {"display": "none"}
 
     workflow_state = WorkflowState.from_dict(workflow_state_dict)
 
     # Only show if we have a valid state with a status
     status = workflow_state.status
     if not status or status == "pending" or not workflow_state.task_id:
-        return 0, "", {"display": "none"}
+        return 0, 0, {"display": "none"}, "", {"display": "none"}, {"display": "none"}
 
-    # Calculate progress percentage
-    progress = 0
-    if workflow_state.complete:
-        progress = 100
-    elif (
-        workflow_state.current_stage_idx is not None
-        and workflow_state.current_stage_idx is not None
-    ):
-        try:
-            stage_idx = int(workflow_state.current_stage_idx)
-            total_stages = len(WORKFLOW_STAGES)
+    current_stage = workflow_state.current_stage
 
-            # Safely get the stage progress
-            current_stage = workflow_state.current_stage
-            stages_dict = workflow_state.stages
-
-            if current_stage and current_stage in stages_dict:
-                stage_data = stages_dict[current_stage]
-                stage_progress = (
-                    stage_data.get("progress", 0) if isinstance(stage_data, dict) else 0
-                )
-            else:
-                stage_progress = 0
-
-            # Calculate overall progress: stage contribution + progress within stage
-            progress = int(
-                (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
-            )
-            # Ensure progress is within valid range
-            progress = max(0, min(100, progress))
-        except (ValueError, ZeroDivisionError, TypeError) as e:
-            logger.error(f"Error calculating progress: {e}")
-            progress = 0
-
-    # Get current stage label
-    if workflow_state.error:
-        stage_text = f"Error: {workflow_state.error}"
-    elif workflow_state.complete:
-        if workflow_state.found_match:
-            match_stage = workflow_state.match_stage or "unknown"
-            stage_text = f"Complete - {match_stage.capitalize()} match found"
-        else:
-            stage_text = "Classification complete"
+    # Matching stepper: show current step, or all complete when in classification phase
+    if current_stage and _is_classification_stage(current_stage):
+        matching_active = len(MATCHING_STAGES)  # All matching steps complete
     else:
-        current_stage = workflow_state.current_stage
-        if current_stage:
-            # Find the stage label
-            stage_label = None
-            for stage in WORKFLOW_STAGES:
-                if stage["id"] == current_stage:
-                    stage_label = stage["label"]
-                    break
+        matching_active = (
+            _stage_to_matching_index(current_stage) if current_stage else 0
+        )
 
-            stage_text = stage_label if stage_label else f"Processing {current_stage}"
-        else:
-            stage_text = "Starting classification..."
+    # Classification stepper active (0-2) - only relevant when in classification phase
+    classification_active = (
+        _stage_to_classification_index(current_stage) if current_stage else 0
+    )
+
+    # Show classification stepper only after matching steps complete + no match found
+    show_classification_stepper = (
+        current_stage is not None and _is_classification_stage(current_stage)
+    )
+    classification_section_style = (
+        {"display": "block"} if show_classification_stepper else {"display": "none"}
+    )
+
+    # Error display
+    error_children = ""
+    error_style = {"display": "none"}
+    if workflow_state.error:
+        error_children = f"Error: {workflow_state.error}"
+        error_style = {"display": "block"}
 
     # Hide the progress section if classification is complete
     if workflow_state.complete:
-        style = {"display": "none"}
+        section_style = {"display": "none"}
     else:
-        # Show section if classification is in progress
-        style = (
+        section_style = (
             {"display": "block"}
             if status and status != "pending"
             else {"display": "none"}
         )
 
     logger.debug(
-        f"Progress update: progress={progress}, text='{stage_text}', style={style}"
+        f"Stepper update: matching={matching_active}, classification={classification_active}, "
+        f"show_classification={show_classification_stepper}, style={section_style}"
     )
-    return progress, stage_text, style
+    return (
+        matching_active,
+        classification_active,
+        classification_section_style,
+        error_children,
+        error_style,
+        section_style,
+    )
 
 
 @callback(
