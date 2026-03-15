@@ -510,7 +510,10 @@ def update_file_details(seq_content, seq_filename):
                             f"Found {n_seqs} sequences in the file",
                             html.Span(
                                 " (maximum of 10 will be processed)",
-                                style={"color": "var(--mantine-color-orange-6)", "fontStyle": "italic"}
+                                style={
+                                    "color": "var(--mantine-color-orange-6)",
+                                    "fontStyle": "italic",
+                                }
                                 if n_seqs > 10
                                 else {"display": "none"},
                             ),
@@ -549,7 +552,7 @@ def update_file_details(seq_content, seq_filename):
         error_alert = dmc.Alert(
             title="Error Processing File",
             children=f"An unexpected error occurred: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
         return True, "Error", None, upload_details, error_alert

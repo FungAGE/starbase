@@ -99,9 +99,10 @@ def create_feature_button(label, href, icon, primary=False):
     )
 
 
-working_buttons = [
+feature_buttons = [
     create_feature_button("BLAST Search", "/blast", "mdi:dna", primary=True),
     create_feature_button("Browse Wiki and Download", "/wiki", "mdi:book-open-variant"),
+    create_feature_button("Synteny Viewer", "/synteny", "mdi:view-sequential"),
     create_feature_button(
         html.Span(
             [
@@ -111,21 +112,6 @@ working_buttons = [
         ),
         "/submit",
         "mdi:database-plus",
-    ),
-]
-
-not_working = [
-    html.Span(
-        ["Synteny/Genome Browser"],
-    ),
-    html.Span(
-        [
-            html.Span(
-                "starfish",
-                className="logo-text",
-            ),
-            " webserver",
-        ],
     ),
 ]
 
@@ -233,7 +219,7 @@ working_features_card = dmc.Paper(
                             c="indigo",
                         ),
                         dmc.Stack(
-                            working_buttons,
+                            feature_buttons,
                             gap="md",
                             align="center",
                             justify="center",
@@ -252,18 +238,10 @@ working_features_card = dmc.Paper(
                                     "starbase",
                                     className="logo-text",
                                 ),
-                                " are still under active development. We plan on implementing:",
+                                " are still under active development.",
                             ],
                             order=2,
                             mb="md",
-                        ),
-                        dmc.List(
-                            [
-                                dmc.ListItem(dmc.Text(item, c="dimmed"))
-                                for item in not_working
-                            ],
-                            size="lg",
-                            spacing="sm",
                         ),
                     ],
                     justify="space-between",
