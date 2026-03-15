@@ -1353,6 +1353,8 @@ def process_multiple_sequences(
                 # Update the blast data again with the complete information
                 pipeline_state.update_blast_data(sequence_id, blast_data)
 
+        sequence_length = len(sequence_analysis.sequence or "")
+
         # Create workflow state using the submission ID
         workflow_state = WorkflowState(
             stages={
@@ -1366,7 +1368,6 @@ def process_multiple_sequences(
         # Ensure the sequence ID is properly set
         logger.debug(f"Created workflow state with task_id: {workflow_state.task_id}")
 
-        sequence_length = len(sequence_analysis.sequence or "")
         skip_classification = (
             sequence_length < 5000
             or sequence_analysis.has_error()
@@ -2114,6 +2115,30 @@ clientside_callback(
                         
                         // BlasterJS should now display clean accession numbers
                         const buttons = container.querySelectorAll('.alignment-table-description');
+
+                        // Sync the max-width of the parent output stack to the blast table's
+                        // natural rendered width so all sibling components share the same width.
+                        const syncMaxWidthToTable = () => {
+                            const firstTable = container.querySelector('table');
+                            if (!firstTable) return;
+                            const tableWidth = firstTable.offsetWidth;
+                            if (tableWidth <= 0) return;
+                            // Walk up to the dmc.Stack that holds classification-output,
+                            // progress section, and the blast container wrapper.
+                            const outerStack = container.closest('#right-column-content > div');
+                            if (outerStack) {
+                                outerStack.style.maxWidth = tableWidth + 'px';
+                            }
+                        };
+
+                        syncMaxWidthToTable();
+
+                        // Re-sync if the table resizes (e.g. window resize, tab switch)
+                        const firstTable = container.querySelector('table');
+                        if (firstTable) {
+                            const ro = new ResizeObserver(syncMaxWidthToTable);
+                            ro.observe(firstTable);
+                        }
                     }, 100);
                 } catch (blasterError) {
                     container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
@@ -2288,11 +2313,32 @@ clientside_callback(
                             tables.forEach(function(table) {
                                 table.style.marginLeft = '0';
                                 table.style.textAlign = 'left';
-                                                          });
-                              
-                              // BlasterJS should now display clean accession numbers
-                              const buttons = container.querySelectorAll('.alignment-table-description');
-                          }, 100);                        
+                            });
+
+                            // BlasterJS should now display clean accession numbers
+                            const buttons = container.querySelectorAll('.alignment-table-description');
+
+                            // Sync the max-width of the parent output stack to the blast table's
+                            // natural rendered width so all sibling components share the same width.
+                            const syncMaxWidthToTable = () => {
+                                const firstTable = container.querySelector('table');
+                                if (!firstTable) return;
+                                const tableWidth = firstTable.offsetWidth;
+                                if (tableWidth <= 0) return;
+                                const outerStack = container.closest('#right-column-content > div');
+                                if (outerStack) {
+                                    outerStack.style.maxWidth = tableWidth + 'px';
+                                }
+                            };
+
+                            syncMaxWidthToTable();
+
+                            const firstTable = container.querySelector('table');
+                            if (firstTable) {
+                                const ro = new ResizeObserver(syncMaxWidthToTable);
+                                ro.observe(firstTable);
+                            }
+                        }, 100);                        
                     } catch (error) {
                         console.error("Error initializing BlasterJS:", error);
                         container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
