@@ -136,8 +136,9 @@ def create_ship_accession_modal_data(ship_accession_id):
     """Create structured data for accession modal instead of Dash components."""
     try:
         base_accession = extract_accession(ship_accession_id)
+        accessions_to_try = list({str(ship_accession_id).strip(), base_accession})
 
-        modal_data = fetch_meta_data(accessions=[base_accession])
+        modal_data = fetch_meta_data(accessions=accessions_to_try)
 
         if modal_data.empty:
             return {
