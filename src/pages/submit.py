@@ -86,7 +86,7 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
             "message": dmc.Alert(
                 title="Validation Error",
                 children=str(error.user_message),
-                color="yellow",
+                color="var(--mantine-color-yellow-6)",
                 variant="light",
             ),
             "loading": False,
@@ -887,7 +887,7 @@ def check_submission_status(n_clicks, submission_id):
         return dmc.Alert(
             "Submission not found or expired. Submission status is only available for 1 hour after submission.",
             title="Status Not Found",
-            color="orange",
+            color="var(--mantine-color-orange-6)",
             variant="light",
         )
 
@@ -900,8 +900,8 @@ def check_submission_status(n_clicks, submission_id):
     # Status color mapping (design system: indigo for info, semantic for states)
     status_colors = {
         "queued": "indigo",
-        "processing": "yellow",
-        "completed": "green",
+        "processing": "var(--mantine-color-yellow-6)",
+        "completed": "var(--mantine-color-green-6)",
         "failed": "var(--mantine-color-red-6)",
         "unknown": "gray",
     }

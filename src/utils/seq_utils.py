@@ -345,7 +345,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid Input",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="Please enter a valid FASTA sequence.",
                 ),
             )
@@ -376,7 +376,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty Sequence",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="No valid sequence was found in the input.",
                 ),
             )
@@ -406,7 +406,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty Sequence",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="The sequence appears to be empty.",
                 ),
             )
@@ -462,7 +462,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="No File Contents",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="Please select a valid FASTA file.",
                 ),
             )
@@ -533,7 +533,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty FASTA File",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="No sequences were found in the uploaded file.",
                 ),
             )
@@ -563,7 +563,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
         if warning:
             warning_alert = dmc.Alert(
                 title="Sequence Limit Applied",
-                color="yellow",
+                color="var(--mantine-color-yellow-6)",
                 variant="light",
                 children=warning,
             )

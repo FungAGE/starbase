@@ -590,7 +590,7 @@ def make_captain_alert(family, aln_length, evalue, search_type):
                     c="dimmed",
                 ),
             ],
-            color="blue",
+            color="var(--mantine-color-blue-6)",
             variant="light",
             withCloseButton=False,
             style={
@@ -673,7 +673,7 @@ def create_no_matches_alert():
                 type="ordered",
             ),
         ],
-        color="yellow",
+        color="var(--mantine-color-yellow-6)",
         variant="light",
         withCloseButton=False,
         style={

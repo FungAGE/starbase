@@ -168,7 +168,7 @@ def create_feedback_button():
                 dmc.Button(
                     "Report it on GitHub",
                     variant="light",
-                    color="blue",
+                    color="var(--mantine-color-blue-6)",
                     size="sm",
                     leftSection=DashIconify(icon="octicon:mark-github-16", width=20, color="indigo"),
                 ),
@@ -198,7 +198,7 @@ def create_database_version_indicator():
         id="db-version-notify",
         action="show",
         autoClose=30000,
-        color="blue",
+        color="var(--mantine-color-blue-6)",
         radius="md",
         message=[
             dmc.Stack(

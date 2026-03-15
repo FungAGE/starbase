@@ -345,7 +345,7 @@ layout = dmc.Container(
                                     loaderProps={
                                         "variant": "oval",
                                         "size": "xl",
-                                        "color": "blue",
+                                        "color": "var(--mantine-color-blue-6)",
                                     },
                                     zIndex=10,
                                 ),
@@ -485,7 +485,7 @@ def update_file_details(seq_content, seq_filename):
                 else dmc.Alert(
                     title="Error Processing File",
                     children=error,
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     variant="filled",
                 )
             )
@@ -495,7 +495,7 @@ def update_file_details(seq_content, seq_filename):
             error_alert = dmc.Alert(
                 title="Parsing Error",
                 children="Failed to parse sequences from the file.",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
             return True, "Error", None, upload_details, error_alert
@@ -510,7 +510,7 @@ def update_file_details(seq_content, seq_filename):
                             f"Found {n_seqs} sequences in the file",
                             html.Span(
                                 " (maximum of 10 will be processed)",
-                                style={"color": "orange", "fontStyle": "italic"}
+                                style={"color": "var(--mantine-color-orange-6)", "fontStyle": "italic"}
                                 if n_seqs > 10
                                 else {"display": "none"},
                             ),
@@ -1004,7 +1004,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         error_alert = dmc.Alert(
             title="No Input Provided",
             children="Please enter a sequence or upload a FASTA file.",
-            color="yellow",
+            color="var(--mantine-color-yellow-6)",
             variant="filled",
         )
         return None, "No input provided", error_alert, None, n_clicks

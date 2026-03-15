@@ -577,7 +577,7 @@ curated_starships_info = dmc.Stack(
         dmc.Title(
             f"{stats['curated_starships']:,}",
             order=3,
-            c="green",
+            c="var(--mantine-color-green-6)",
             style={
                 "fontSize": "clamp(1.4rem, 2vw, 1.8rem)",
                 "textAlign": "center",
@@ -619,7 +619,7 @@ uncurated_starships_info = dmc.Stack(
         dmc.Title(
             f"{stats['uncurated_starships']:,}",
             order=3,
-            c="orange",
+            c="var(--mantine-color-orange-6)",
             style={
                 "fontSize": "clamp(1.4rem, 2vw, 1.8rem)",
                 "textAlign": "center",

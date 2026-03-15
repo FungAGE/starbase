@@ -65,12 +65,12 @@ classifcation pipeline that should be used:
 
 # Define our workflow stages with their colors
 WORKFLOW_STAGES = [
-    {"id": "exact", "label": "Checking for exact matches", "color": "red"},
-    {"id": "contained", "label": "Checking for contained matches", "color": "orange"},
-    {"id": "similar", "label": "Checking for similar matches", "color": "yellow"},
+    {"id": "exact", "label": "Checking for exact matches", "color": "var(--mantine-color-red-6)"},
+    {"id": "contained", "label": "Checking for contained matches", "color": "var(--mantine-color-orange-6)"},
+    {"id": "similar", "label": "Checking for similar matches", "color": "var(--mantine-color-yellow-6)"},
     # {"id": "denovo", "label": "Running denovo annotation", "color": "pink"},
-    {"id": "family", "label": "Running family classification", "color": "green"},
-    {"id": "navis", "label": "Running navis classification", "color": "blue"},
+    {"id": "family", "label": "Running family classification", "color": "var(--mantine-color-green-6)"},
+    {"id": "navis", "label": "Running navis classification", "color": "var(--mantine-color-blue-6)"},
     {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
@@ -2428,7 +2428,7 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 dmc.Alert(
                     title="No Classification Available",
                     children="Could not classify this sequence with any available method.",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     variant="light",
                 ),
             ]

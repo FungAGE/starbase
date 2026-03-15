@@ -679,7 +679,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             return (
                 dmc.Alert(
                     "No results match your search criteria.",
-                    color="blue",
+                    color="var(--mantine-color-blue-6)",
                     variant="filled",
                 ),
                 placeholder_show,
@@ -695,7 +695,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             return (
                 dmc.Alert(
                     "No results match your search criteria.",
-                    color="blue",
+                    color="var(--mantine-color-blue-6)",
                     variant="filled",
                 ),
                 placeholder_show,
@@ -1119,7 +1119,7 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
     return download_data, dmc.Notification(
         title="Success",
         message=download_message,
-        color="green",
+        color="var(--mantine-color-green-6)",
         id="dl-download-notify",
         action="show",
         autoClose=5000,
@@ -1172,7 +1172,7 @@ def generate_download_selected(
     return download_data, dmc.Notification(
         title="Success",
         message=f"Downloading {num_sequences} sequences",
-        color="green",
+        color="var(--mantine-color-green-6)",
         id="dl-download-notify",
         action="show",
         autoClose=5000,

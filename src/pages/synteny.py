@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__, path="/synteny")
 
-SEQUENCE_COLORS = ["blue", "green", "orange", "grape"]
+SEQUENCE_COLORS = ["var(--mantine-color-blue-6)", "var(--mantine-color-green-6)", "var(--mantine-color-orange-6)", "var(--mantine-color-grape-6)"]
 
 GENE_CATEGORY_COLORS = {
     "captain": "var(--mantine-color-red-6)",
@@ -651,7 +651,7 @@ def display_search_results(filtered_ships, selected_ships):
     if not filtered_ships:
         return dmc.Alert(
             "No sequences found matching your search criteria.",
-            color="blue",
+            color="var(--mantine-color-blue-6)",
             variant="light",
         )
 
@@ -682,7 +682,7 @@ def display_search_results(filtered_ships, selected_ships):
                             ),
                             id={"type": "synteny-add-ship", "index": ship_id},
                             variant="subtle",
-                            color="green" if already_added else "blue",
+                            color="var(--mantine-color-green-6)" if already_added else "var(--mantine-color-blue-6)",
                             disabled=disabled,
                             size="sm",
                         ),

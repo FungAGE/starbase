@@ -39,7 +39,7 @@ def get_metrics_layout():
                                 dmc.Title("Analytics Dashboard", order=1),
                                 dmc.Badge(
                                     "Live Data",
-                                    color="green",
+                                    color="var(--mantine-color-green-6)",
                                     variant="light",
                                     size="lg",
                                 ),
