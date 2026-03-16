@@ -625,12 +625,6 @@ submit_button_section = dmc.Box(
     ),
     mt="xl",
     pt="md",
-    style={
-        "position": "sticky",
-        "bottom": "var(--mantine-spacing-md)",
-        "backgroundColor": "var(--mantine-color-body)",
-        "zIndex": 10,
-    },
 )
 
 submission_body = dmc.Paper(
