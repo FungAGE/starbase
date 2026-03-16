@@ -266,40 +266,48 @@ submission_header = dmc.Title(
 
 submission_info_card = dmc.Paper(
     children=[
-        dmc.Text(
-            "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
-            size="md",
-            mb="md",
-        ),
-        dmc.Text(
-            "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
-            # TODO: "You'll receive a confirmation email once your submission is processed."
-            size="md",
-            mb="md",
-        ),
-        dmc.List(
+        dmc.Stack(
             [
-                dmc.ListItem(dmc.Text("Sequence validation and parsing")),
-                dmc.ListItem(dmc.Text("Duplicate checking and classification")),
-                dmc.ListItem(dmc.Text("Accession number assignment")),
-                dmc.ListItem(dmc.Text("Curator review")),
-                dmc.ListItem(dmc.Text("Inclusion in next database release")),
-            ],
-            type="ordered",
-            size="sm",
-            spacing="xs",
-            icon=dmc.ThemeIcon(
-                DashIconify(icon="tabler:check", width=16),
-                size="sm",
-                variant="light",
-                color="var(--mantine-color-indigo-6)",
+            dmc.Text(
+                "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
+                size="md",
+                mb="md",
             ),
-        ),
-        dmc.Alert(
-            "Complete all fields marked with * before submitting.",
-            color="var(--mantine-color-red-6)",
-            variant="light",
-            title="Required fields",
+            dmc.Text(
+                "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
+                # TODO: "You'll receive a confirmation email once your submission is processed."
+                size="md",
+                mb="md",
+            ),
+            dmc.List(
+                [
+                    dmc.ListItem(dmc.Text("Sequence validation and parsing")),
+                    dmc.ListItem(dmc.Text("Duplicate checking and classification")),
+                    dmc.ListItem(dmc.Text("Accession number assignment")),
+                ],
+                type="ordered",
+                size="sm",
+                spacing="xs",
+                icon=dmc.ThemeIcon(
+                    DashIconify(icon="tabler:check", width=16),
+                    size="sm",
+                    variant="light",
+                    color="var(--mantine-color-indigo-6)",
+                ),
+            ),
+            dmc.Text(
+                "Each submission will also go through a manual review. Submissions will be included in the next database release.",
+                size="sm",
+                mb="md",
+            ),
+            dmc.Alert(
+                "Complete all fields marked with * before submitting.",
+                color="var(--mantine-color-red-6)",
+                variant="light",
+                title="Required fields",
+            ),
+            ],
+            gap="md",
         ),
     ],
     p="xl",
@@ -626,6 +634,51 @@ submission_body = dmc.Paper(
     style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
+data_policy_card = dmc.Alert(
+    dmc.Stack(
+        [
+            dmc.Text(
+                "This data is used solely to:",
+                size="sm",
+                fw=500,
+            ),
+            dmc.List(
+                [
+                    dmc.ListItem(
+                        dmc.Text(
+                            "Build and maintain a public database for scientific research",
+                            size="sm",
+                        )
+                    ),
+                    dmc.ListItem(
+                        dmc.Text(
+                            "Attribute your contribution",
+                            size="sm",
+                        )
+                    ),
+                    dmc.ListItem(
+                        dmc.Text(
+                            "Contact you about your submission (confirmation, curation questions).",
+                            size="sm",
+                        )
+                    ),
+                ],
+                size="sm",
+                spacing="xs",
+            ),
+            dmc.Text(
+                "Your email is not published or shared.",
+                size="sm",
+            ),
+        ],
+        gap="xs",
+    ),
+    title="How this data is used",
+    color="var(--mantine-color-indigo-6)",
+    variant="light",
+    mb="md",
+)
+
 layout = dmc.Container(
     size="lg",
     children=[
@@ -639,7 +692,12 @@ layout = dmc.Container(
                     span={"base": 12, "md": 6},
                 ),
                 dmc.GridCol(
-                    create_submission_queue(max_items=15),
+                    dmc.Stack(
+                        [data_policy_card,
+                        create_submission_queue(max_items=15)
+                        ],
+                        gap="md",
+                    ),
                     span={"base": 12, "md": 6},
                 ),
             ],
