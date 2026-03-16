@@ -45,48 +45,46 @@ def get_pending_submissions() -> List[Dict[str, Any]]:
         List of pending submission dicts
     """
     try:
-        session = get_submissions_session()
+        with get_submissions_session() as session:
+            # Query for submissions that need review or are pending
+            query = text("""
+                SELECT 
+                    id,
+                    seq_filename,
+                    seq_date,
+                    uploader,
+                    evidence,
+                    genus,
+                    species,
+                    accession_tag,
+                    needs_review,
+                    created_at
+                FROM submissions
+                WHERE needs_review = TRUE OR needs_review IS NULL
+                ORDER BY created_at DESC
+                LIMIT 50
+            """)
 
-        # Query for submissions that need review or are pending
-        query = text("""
-            SELECT 
-                id,
-                seq_filename,
-                seq_date,
-                uploader,
-                evidence,
-                genus,
-                species,
-                accession_tag,
-                needs_review,
-                created_at
-            FROM submissions
-            WHERE needs_review = TRUE OR needs_review IS NULL
-            ORDER BY created_at DESC
-            LIMIT 50
-        """)
+            result = session.execute(query)
+            submissions = []
 
-        result = session.execute(query)
-        submissions = []
+            for row in result:
+                submissions.append(
+                    {
+                        "id": row.id,
+                        "filename": row.seq_filename,
+                        "date": row.seq_date,
+                        "submitter": anonymize_email(row.uploader),
+                        "evidence": row.evidence,
+                        "genus": row.genus,
+                        "species": row.species,
+                        "accession": row.accession_tag,
+                        "needs_review": row.needs_review,
+                        "created_at": row.created_at,
+                    }
+                )
 
-        for row in result:
-            submissions.append(
-                {
-                    "id": row.id,
-                    "filename": row.seq_filename,
-                    "date": row.seq_date,
-                    "submitter": anonymize_email(row.uploader),
-                    "evidence": row.evidence,
-                    "genus": row.genus,
-                    "species": row.species,
-                    "accession": row.accession_tag,
-                    "needs_review": row.needs_review,
-                    "created_at": row.created_at,
-                }
-            )
-
-        session.close()
-        return submissions
+            return submissions
 
     except Exception as e:
         logger.error(f"Error fetching pending submissions: {str(e)}")
