@@ -1,15 +1,17 @@
 import base64
 import dash
+from dash_iconify import DashIconify
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 
 from dash.dependencies import Output, Input, State
-from dash import dcc, html, callback
+from dash import dcc, html, callback, ctx
+from dash.exceptions import PreventUpdate
 
 import datetime
 from typing import Dict, Any, Optional
 from src.utils.seq_utils import parse_fasta, parse_gff
-
+import re
 from src.database.sql_engine import get_submissions_session
 from src.database.models.schema import Submission
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,8 +28,23 @@ from src.utils.web_submission_adapter import (
 
 import uuid
 import json
+from src.utils.email_notifications import (
+    send_curator_notification,
+    send_submission_confirmation,
+)
+from src.components.leaderboard import create_leaderboard
+from src.components.submission_queue import create_submission_queue
+
 
 logger = get_logger(__name__)
+
+
+def validate_email(email: str) -> bool:
+    """Validate email format."""
+    if not email:
+        return False
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    return re.match(pattern, email) is not None
 
 
 class SubmissionError(Exception):
@@ -238,33 +255,106 @@ dash.register_page(__name__)
 
 
 layout = dmc.Container(
-    size="md",
+    size="lg",
     children=[
         dcc.Location(id="submit-url", refresh=False),
         dcc.Store(id="submit-fasta-prefill"),
         # Header Section
+        dmc.Title(
+            [
+                "Submission of Candidate ",
+                html.Span("Starship", style={"fontStyle": "italic"}),
+                " Sequences to ",
+                html.Span("starbase", className="logo-text"),
+            ],
+            order=1,
+            mb="md",
+        ),
         dmc.Paper(
             children=[
-                dmc.Title(
-                    [
-                        "Submit ",
-                        html.Span("Starships", style={"fontStyle": "italic"})," to ",
-                        html.Span("starbase", className="logo-text"),
-                    ],
-                    order=1,
+                dmc.Text(
+                    "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
+                    size="md",
+                    c="dimmed",
                     mb="md",
                 ),
                 dmc.Text(
-                    "Fields marked with * are required",
-                    c="var(--mantine-color-red-6)",
-                    size="lg",
+                    "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
+                    # TODO: "You'll receive a confirmation email once your submission is processed."
+                    size="md",
+                    c="dimmed",
+                    mb="md",
+                ),
+                dmc.List(
+                    [
+                        dmc.ListItem(dmc.Text("Sequence validation and parsing")),
+                        dmc.ListItem(dmc.Text("Duplicate checking and classification")),
+                        dmc.ListItem(dmc.Text("Accession number assignment")),
+                        dmc.ListItem(dmc.Text("Curator review")),
+                        dmc.ListItem(
+                            dmc.Text("Inclusion in next database release (if approved)")
+                        ),
+                    ],
+                    type="ordered",
+                    size="sm",
+                    spacing="xs",
+                    icon=dmc.ThemeIcon(
+                        DashIconify(icon="tabler:check", width=16),
+                        size="sm",
+                        variant="light",
+                        color="blue",
+                    ),
                 ),
             ],
             p="xl",
             radius="md",
-            withBorder=False,
+            withBorder=True,
             mb="xl",
         ),
+        # Leaderboard Section
+        create_leaderboard(limit=10, title="🏆 Top Contributors"),
+        dmc.Space(h=20),
+        # Pending Submissions Queue
+        create_submission_queue(max_items=15),
+        dmc.Space(h=20),
+        # Modal
+        dbc.Modal(
+            [
+                dbc.ModalHeader(
+                    dbc.ModalTitle("Submission Received", className="text-info"),
+                    close_button=True,
+                ),
+                dbc.ModalBody(
+                    [
+                        html.Div(
+                            [
+                                html.Div(id="output-data-upload", className="mt-3"),
+                            ],
+                            className="text-center",
+                        )
+                    ]
+                ),
+                dbc.ModalFooter(
+                    dbc.Button(
+                        "Close",
+                        id="close",
+                        className="ms-auto",
+                        color="primary",
+                        n_clicks=0,
+                    )
+                ),
+            ],
+            id="submit-modal",
+            is_open=False,
+            centered=True,
+        ),
+        dmc.Alert(
+            "Fields marked with * are required",
+            color="red",
+            variant="light",
+            title="Submission Requirements",
+        ),
+        dmc.Space(h=10),
         # Form Content
         dmc.Paper(
             style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
@@ -357,12 +447,18 @@ layout = dmc.Container(
                                         label="Email of curator",
                                         placeholder="Enter email",
                                         required=True,
+                                        leftSection=DashIconify(icon="fas fa-envelope"),
+                                    ),
+                                    html.Div(
+                                        id="email-validation-message",
+                                        style={"minHeight": "20px"},
                                     ),
                                     dmc.TextInput(
                                         id="evidence",
                                         label="How were Starships annotated?",
-                                        placeholder="i.e. starfish",
+                                        placeholder="e.g., starfish, manual curation, etc.",
                                         required=True,
+                                        description="Please specify the tool or method used",
                                     ),
                                     # Taxonomy Info
                                     dmc.Group(
@@ -387,7 +483,8 @@ layout = dmc.Container(
                                     dmc.TextInput(
                                         id="hostchr",
                                         label="Host genome contig/scaffold/chromosome ID",
-                                        placeholder="'chr1', or GenBank Accession",
+                                        placeholder="e.g., chr1, scaffold_001, or GenBank Accession",
+                                        description="Identifier from the host genome assembly",
                                         required=True,
                                     ),
                                     dmc.Group(
@@ -396,14 +493,20 @@ layout = dmc.Container(
                                                 id="shipstart",
                                                 label="Start coordinate",
                                                 placeholder="1200",
+                                                description="5' boundary position",
                                                 required=True,
+                                                min=1,
+                                                step=1,
                                                 style={"flex": 1},
                                             ),
                                             dmc.NumberInput(
                                                 id="shipend",
                                                 label="End coordinate",
                                                 placeholder="20500",
+                                                description="3' boundary position",
                                                 required=True,
+                                                min=1,
+                                                step=1,
                                                 style={"flex": 1},
                                             ),
                                         ]
@@ -421,9 +524,12 @@ layout = dmc.Container(
                                     # Comments
                                     dmc.Textarea(
                                         id="comment",
-                                        label="Additional information",
+                                        label="Additional information (optional)",
                                         placeholder="Any comments about the Starship features, annotations, or host genome?",
+                                        description="Share any relevant details about this submission",
                                         minRows=3,
+                                        autosize=True,
+                                        maxRows=6,
                                     ),
                                 ],
                                 gap="md",
@@ -437,6 +543,11 @@ layout = dmc.Container(
                                     variant="filled",
                                     color="indigo",
                                     loading=False,
+                                    leftSection=html.I(className="fas fa-rocket")
+                                    if False
+                                    else None,  # Icon placeholder
+                                    fullWidth=False,
+                                    style={"marginTop": "1rem"},
                                 ),
                             ),
                         ],
@@ -677,11 +788,14 @@ def insert_submission(
 
 def create_fasta_display(records, filename):
     """Create HTML components to display FASTA file info."""
-    return html.Div(
-        [
-            html.H6(f"File name: {filename}"),
-            html.H6(f"Number of sequences: {len(records)}"),
-        ]
+    return dmc.Alert(
+        children=[
+            dmc.Text(f"✓ File: {filename}", size="sm", fw=500),
+            dmc.Text(f"Sequences found: {len(records)}", size="sm", c="dimmed"),
+        ],
+        title="FASTA File Loaded Successfully",
+        color="green",
+        variant="light",
     )
 
 
@@ -690,32 +804,46 @@ def create_fasta_display(records, filename):
         Output("submit-modal", "is_open"),
         Output("output-data-upload", "children"),
         Output("submit-ship", "loading"),
+        Output("uploader", "value"),
+        Output("evidence", "value"),
+        Output("genus", "value"),
+        Output("species", "value"),
+        Output("hostchr", "value"),
+        Output("shipstart", "value"),
+        Output("shipend", "value"),
+        Output("comment", "value"),
     ],
     [
-        Input("submit-fasta-upload", "contents"),
-        Input("submit-fasta-upload", "filename"),
-        Input("submit-fasta-upload", "last_modified"),
-        Input("submit-upload-gff", "contents"),
-        Input("submit-upload-gff", "filename"),
-        Input("submit-upload-gff", "last_modified"),
-        Input("uploader", "value"),
-        Input("evidence", "value"),
-        Input("genus", "value"),
-        Input("species", "value"),
-        Input("hostchr", "value"),
-        Input("shipstart", "value"),
-        Input("shipend", "value"),
-        Input("strand-radios", "value"),
-        Input("comment", "value"),
         Input("submit-ship", "n_clicks"),
         Input("close", "n_clicks"),
     ],
     [
         State("submit-modal", "is_open"),
         State("submit-fasta-prefill", "data"),
+        State("submit-fasta-upload", "contents"),
+        State("submit-fasta-upload", "filename"),
+        State("submit-fasta-upload", "last_modified"),
+        State("submit-upload-gff", "contents"),
+        State("submit-upload-gff", "filename"),
+        State("submit-upload-gff", "last_modified"),
+        State("uploader", "value"),
+        State("evidence", "value"),
+        State("genus", "value"),
+        State("species", "value"),
+        State("hostchr", "value"),
+        State("shipstart", "value"),
+        State("shipend", "value"),
+        State("strand-radios", "value"),
+        State("comment", "value"),
+        State("submit-modal", "is_open"),
     ],
+    prevent_initial_call=True,
 )
 def submit_ship(
+    submit_clicks,
+    close_clicks,
+    is_open,
+    fasta_prefill,
     seq_contents,
     seq_filename,
     seq_date,
@@ -731,10 +859,6 @@ def submit_ship(
     shipend,
     strand_radio,
     comment,
-    n_clicks,
-    close_modal,
-    is_open,
-    fasta_prefill,
 ):
     """
     Main submission callback with asynchronous processing.
@@ -742,13 +866,28 @@ def submit_ship(
     This function validates input, starts an async task, and provides immediate feedback.
     Users can check progress via submission status.
     """
-    modal = is_open
-    message = ""
-    loading = False
+    # Determine which button was clicked
+    triggered_id = ctx.triggered_id if ctx.triggered else None
 
-    # Only process if submit button was clicked
-    if not n_clicks or n_clicks <= 0:
-        return modal, message, loading
+    # Handle modal close button
+    if triggered_id == "close":
+        return (
+            False,
+            "",
+            False,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+        )
+
+    # If submit button wasn't clicked, prevent update
+    if triggered_id != "submit-ship":
+        raise PreventUpdate
 
     loading = True
 
@@ -757,13 +896,36 @@ def submit_ship(
         seq_contents = fasta_prefill.get("contents")
         seq_filename = seq_filename or fasta_prefill.get("filename", "sequence_from_blast.fa")
         seq_date = seq_date or datetime.datetime.now().timestamp()
+    # Early validation - email format
+    if uploader and not validate_email(uploader):
+        return (
+            True,
+            html.Div(
+                [
+                    html.H4("Validation Error", className="text-warning"),
+                    html.P(
+                        "Please enter a valid email address.", className="text-muted"
+                    ),
+                ]
+            ),
+            False,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+        )
 
     try:
         # Step 1: Validate input data (quick validation)
         # This must pass before we proceed with submission
         # If validation fails, validate_submission_data will raise ValidationError
         logger.debug("Validating submission data")
-        _ = validate_submission_data(
+        validated_data = validate_submission_data(
             seq_contents,
             seq_filename,
             uploader,
@@ -775,24 +937,14 @@ def submit_ship(
             shipend,
         )
 
-        # Step 2: Create submission data package
-        submission_data = {
-            "seq_contents": seq_contents,
-            "seq_filename": seq_filename,
-            "seq_date": seq_date,
-            "anno_contents": anno_contents,
-            "anno_filename": anno_filename,
-            "anno_date": anno_date,
-            "uploader": uploader,
-            "evidence": evidence,
-            "genus": genus,
-            "species": species,
-            "hostchr": hostchr,
-            "shipstart": shipstart,
-            "shipend": shipend,
-            "strand_radio": strand_radio,
-            "comment": comment or "",
-        }
+        # Step 2: Create submission data package, using `validated_data` output, which is already a dict
+
+        validated_data["seq_date"] = seq_date
+        validated_data["anno_contents"] = anno_contents
+        validated_data["anno_filename"] = anno_filename
+        validated_data["anno_date"] = anno_date
+        validated_data["strand_radio"] = strand_radio
+        validated_data["comment"] = comment or ""
 
         # Step 3: Generate unique submission ID
         submission_id = str(uuid.uuid4())
@@ -803,9 +955,10 @@ def submit_ship(
 
         # Step 5: Start async processing task
         logger.debug(f"Starting async submission processing for {submission_id}")
-        task_result = run_task(process_submission_task, submission_data, submission_id)
+        task_result = run_task(process_submission_task, validated_data, submission_id)
 
         # Store task ID for status checking
+        accession_assigned = None
         if hasattr(task_result, "id"):
             update_submission_status(
                 submission_id,
@@ -823,68 +976,138 @@ def submit_ship(
                 message=task_result.get("message", "Processing complete"),
                 result=task_result,
             )
+            if task_result.get("success"):
+                accession_assigned = task_result.get("accession")
 
         # Step 6: Show immediate feedback with submission ID
         modal = not is_open if not close_modal else False
+        # Step 6: Send email notifications
+        try:
+            # Send curator notification
+            send_curator_notification(submission_id, validated_data, accession_assigned)
+            # Send confirmation to submitter
+            if uploader:
+                send_submission_confirmation(
+                    uploader, submission_id, accession_assigned
+                )
+        except Exception as e:
+            logger.error(f"Failed to send email notifications: {str(e)}")
+
+        # Step 7: Show immediate feedback
+        loading = False
+        modal_open = True
+
         if hasattr(task_result, "id"):
             # Async processing
             message = html.Div(
                 [
-                    html.H4("Submission Queued!", className="mb-3"),
-                    dmc.Text(
-                        "Your submission is being processed in the background.",
-                        className="text-muted",
-                    ),
-                    dmc.Text(f"Submission ID: {submission_id}", className="text-muted"),
-                    html.Br(),
-                    dmc.Text(
-                        "You can close this dialog. Processing will continue.",
-                        className="text-muted small",
-                    ),
-                    html.Br(),
-                    dmc.Text(
-                        "Check the status below to see when processing is complete.",
-                        className="text-muted small",
+                    dmc.Alert(
+                        children=[
+                            dmc.Text(
+                                "✓ Your submission has been received and is being processed!",
+                                fw=600,
+                                size="lg",
+                            ),
+                            html.Br(),
+                            dmc.Text(
+                                f"Submission ID: {submission_id}", size="sm", c="dimmed"
+                            ),
+                            html.Br(),
+                            dmc.Text(
+                                "You'll receive a confirmation email shortly. Our curation team will review your submission.",
+                                size="sm",
+                            ),
+                        ],
+                        title="Submission Received",
+                        color="green",
+                        variant="light",
                     ),
                 ]
+            )
+            # Reset form
+            return (
+                modal_open,
+                message,
+                loading,
+                "",
+                "",
+                "",
+                "",
+                "",
+                None,
+                None,
+                "",  # Reset form fields
             )
         else:
             # Sync processing completed
             if task_result.get("success"):
-                message = html.Div(
-                    [
-                        html.H4("Successfully submitted!", className="mb-3"),
+                message = dmc.Alert(
+                    children=[
+                        dmc.Text("✓ Successfully submitted!", fw=600, size="lg"),
+                        html.Br(),
                         dmc.Text(
-                            f"Assigned accession: {task_result['accession']}",
-                            className="text-muted",
-                        ),
-                        dmc.Text(
-                            f"Review status: {'Needs review' if task_result['needs_review'] else 'Auto-approved'}",
-                            className="text-muted",
+                            f"Accession: {task_result['accession']}",
+                            size="md",
+                            fw=500,
+                            c="green",
                         ),
                         dmc.Text(
                             f"Filename: {task_result['filename']}",
-                            className="text-muted",
+                            size="sm",
+                            c="dimmed",
                         ),
+                        html.Br(),
                         dmc.Text(
-                            f"Uploaded by: {task_result['uploader']}",
-                            className="text-muted",
+                            "Your submission will be reviewed by our curation team. You'll receive an email confirmation.",
+                            size="sm",
                         ),
-                    ]
+                    ],
+                    title="Submission Complete",
+                    color="green",
+                    variant="light",
+                )
+                # Reset form on success
+                return (
+                    modal_open,
+                    message,
+                    loading,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    None,
+                    None,
+                    "",  # Reset form fields
                 )
             else:
-                message = html.Div(
-                    [
-                        html.H4("Submission Failed", className="text-danger mb-3"),
+                message = dmc.Alert(
+                    children=[
                         dmc.Text(
-                            task_result.get("user_message", "An error occurred"),
-                            className="text-muted",
+                            task_result.get(
+                                "user_message", "An error occurred during submission."
+                            ),
+                            size="sm",
                         ),
-                    ]
+                    ],
+                    title="Submission Failed",
+                    color="red",
+                    variant="light",
                 )
-
-        loading = False
-        return modal, message, loading
+                # Keep form filled on error
+                return (
+                    modal_open,
+                    message,
+                    loading,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                    dash.no_update,
+                )
 
     except WebValidationError as e:
         # Handle validation errors from web_submission_adapter
@@ -908,6 +1131,14 @@ def submit_ship(
             error_response["modal_open"],
             error_response["message"],
             error_response["loading"],
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
         )
 
     except Exception as e:
@@ -918,7 +1149,31 @@ def submit_ship(
             error_response["modal_open"],
             error_response["message"],
             error_response["loading"],
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
         )
+
+
+@callback(
+    Output("email-validation-message", "children"),
+    Input("uploader", "value"),
+    prevent_initial_call=True,
+)
+def validate_email_input(email):
+    """Provide real-time email validation feedback."""
+    if not email or email.strip() == "":
+        return ""
+
+    if validate_email(email):
+        return dmc.Text("✓ Valid email", size="xs", c="green")
+    else:
+        return dmc.Text("✗ Please enter a valid email address", size="xs", c="red")
 
 
 @callback(
@@ -965,6 +1220,19 @@ def update_fasta_details(seq_contents, seq_filename, fasta_prefill):
             except Exception as e:
                 logger.error(e)
 
+    try:
+        content_type, content_string = seq_contents.split(",")
+        query_string = base64.b64decode(content_string).decode("utf-8")
+        records = parse_fasta(query_string, seq_filename)
+        return create_fasta_display(records, seq_filename)
+    except Exception as e:
+        logger.error(e)
+        return dmc.Alert(
+            "There was an error processing this file. Please check the FASTA format.",
+            title="Error",
+            color="red",
+            variant="light",
+        )
     return html.Div(html.P(["Select a FASTA file to upload"]))
 
 
@@ -977,17 +1245,11 @@ def update_fasta_details(seq_contents, seq_filename, fasta_prefill):
 )
 def update_gff_details(anno_contents, anno_filename):
     if anno_contents is None:
-        return [
-            html.Div(["Select a GFF file to upload"]),
-        ]
-    else:
-        try:
-            children = parse_gff(anno_contents, anno_filename)
-            return children
 
         except Exception as e:
             logger.error(e)
             return html.Div(["There was an error processing this file."])
+    return html.Div(["Select a GFF file to upload"])
 
 
 @callback(
@@ -1079,4 +1341,30 @@ def check_submission_status(n_clicks, submission_id):
             ]
         )
 
+    try:
+        children = parse_gff(anno_contents, anno_filename)
+        # Wrap in success alert if it's not already formatted
+        if isinstance(children, (list, tuple)) and len(children) > 0:
+            return dmc.Alert(
+                children=[
+                    dmc.Text(f"✓ File: {anno_filename}", size="sm", fw=500),
+                    *(
+                        [children]
+                        if not isinstance(children, (list, tuple))
+                        else children
+                    ),
+                ],
+                title="GFF File Loaded Successfully",
+                color="green",
+                variant="light",
+            )
+        return children
+    except Exception as e:
+        logger.error(e)
+        return dmc.Alert(
+            "There was an error processing this file. Please check the format.",
+            title="Error",
+            color="red",
+            variant="light",
+        )
     return dmc.Stack(status_display, gap="xs")

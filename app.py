@@ -106,12 +106,14 @@ def initialize_app():
         cleanup_old_cache()
         update_ip_locations_task()
 
-        try:
-            logger.info("Rebuilding BLAST databases on startup...")
-            create_dbs()
-            logger.info("BLAST databases rebuilt successfully on startup")
-        except Exception as e:
-            logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        if not IS_DEV:
+            update_ip_locations()
+            try:
+                logger.info("Rebuilding BLAST databases on startup...")
+                create_dbs()
+                logger.info("BLAST databases rebuilt successfully on startup")
+            except Exception as e:
+                logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
 
         # Initialize Celery with Flask app context
         celery.conf.update(
