@@ -195,7 +195,7 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
             children=[
                 dmc.Paper(
                     children=[
-                        dmc.Title("📋 Pending Submissions", order=3, mb="md"),
+                        dmc.Title("Pending Submissions", order=3, mb="md"),
                         dmc.Alert(
                             "No pending submissions at this time.",
                             title="All Clear!",
@@ -206,6 +206,8 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
                     p="xl",
                     radius="md",
                     withBorder=True,
+                    mb="xl",
+                    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
                 )
             ],
             size="lg",
@@ -214,16 +216,16 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
     # Create submission cards
     cards = [create_submission_queue_card(sub) for sub in submissions]
 
-    return dmc.Container(
+    output = dmc.Container(
         children=[
             dmc.Paper(
                 children=[
                     dmc.Group(
                         [
-                            dmc.Title("📋 Pending Submissions", order=3),
+                            dmc.Title("Pending Submissions", order=3),
                             dmc.Badge(
                                 f"{len(submissions)} pending",
-                                color="orange",
+                                color="var(--mantine-color-orange-6)",
                                 variant="light",
                                 size="lg",
                             ),
@@ -242,10 +244,13 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
                 p="xl",
                 radius="md",
                 withBorder=True,
+                style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
             )
         ],
         size="lg",
     )
+
+    return output
 
 
 def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
@@ -263,7 +268,7 @@ def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
     if not submissions:
         return dmc.Card(
             children=[
-                dmc.Text("📋 Recent Submissions", fw=700, mb="xs"),
+                dmc.Text("Recent Submissions", fw=700, mb="xs"),
                 dmc.Text("No pending submissions", size="sm", c="dimmed"),
             ],
             withBorder=True,
@@ -305,7 +310,7 @@ def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
 
     return dmc.Card(
         children=[
-            dmc.Text("📋 Recent Submissions", fw=700, mb="md"),
+            dmc.Text("Recent Submissions", fw=700, mb="md"),
             dmc.Stack(items, gap="xs"),
             dmc.Text(
                 f"Showing {len(submissions)} of {len(get_pending_submissions())} pending",
