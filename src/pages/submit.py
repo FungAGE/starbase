@@ -240,6 +240,8 @@ dash.register_page(__name__)
 layout = dmc.Container(
     size="md",
     children=[
+        dcc.Location(id="submit-url", refresh=False),
+        dcc.Store(id="submit-fasta-prefill"),
         # Header Section
         dmc.Paper(
             children=[
@@ -275,6 +277,7 @@ layout = dmc.Container(
                                 [
                                     dmc.Title("Upload Files", order=2, mb="md"),
                                     # FASTA Upload
+                                    html.Div(id="submit-prefill-info"),
                                     dmc.Paper(
                                         children=[
                                             dmc.Text(
@@ -519,6 +522,88 @@ layout = dmc.Container(
 )
 
 
+@callback(
+    [
+        Output("submit-fasta-prefill", "data"),
+        Output("comment", "value"),
+        Output("evidence", "value"),
+        Output("submit-prefill-info", "children"),
+    ],
+    Input("submit-url", "search"),
+    prevent_initial_call=True,
+)
+def load_blast_prefill(search):
+    """Read blast prefill data from cache and populate the form."""
+    from urllib.parse import parse_qs
+    import json
+
+    if not search:
+        raise dash.exceptions.PreventUpdate
+
+    params = parse_qs(search.lstrip("?"))
+    blast_id = params.get("blast_id", [None])[0]
+    if not blast_id:
+        raise dash.exceptions.PreventUpdate
+
+    cached = cache.get(f"submit_prefill:{blast_id}")
+    if not cached:
+        raise dash.exceptions.PreventUpdate
+
+    prefill_data = json.loads(cached)
+    fasta_contents = prefill_data.get("fasta_contents")
+    fasta_filename = prefill_data.get("fasta_filename", "sequence_from_blast.fa")
+    comment = prefill_data.get("comment", "")
+
+    if not fasta_contents:
+        info_banner = dmc.Alert(
+            "Classification metadata pre-filled from BLAST, but no FASTA file was found. "
+            "Please upload the sequence manually.",
+            title="Partial Pre-fill from BLAST",
+            color="yellow",
+            variant="light",
+            mb="sm",
+        )
+        return None, comment, "Starbase BLAST", info_banner
+
+    try:
+        _ct, content_string = fasta_contents.split(",", 1)
+        fasta_text = base64.b64decode(content_string).decode("utf-8")
+        records = parse_fasta(fasta_text, fasta_filename)
+        n_seqs = len(records)
+    except Exception as e:
+        logger.error(f"Error decoding prefilled FASTA: {e}")
+        n_seqs = None
+
+    info_banner = dmc.Alert(
+        dmc.Stack(
+            [
+                dmc.Text(
+                    f"Sequence pre-filled from BLAST: {fasta_filename}"
+                    + (f" ({n_seqs} sequence{'s' if n_seqs != 1 else ''})" if n_seqs else ""),
+                    fw=500,
+                ),
+                dmc.Text(
+                    "You can upload a different file below to override it.",
+                    size="sm",
+                    c="dimmed",
+                ),
+            ],
+            gap="xs",
+        ),
+        title="Pre-filled from BLAST",
+        color="green",
+        variant="light",
+        mb="sm",
+    )
+
+    return (
+        {"contents": fasta_contents, "filename": fasta_filename},
+        comment,
+        "Starbase BLAST",
+        info_banner,
+    )
+
+
 # Function to insert a new submission into the database
 def insert_submission(
     seq_contents,
@@ -625,7 +710,10 @@ def create_fasta_display(records, filename):
         Input("submit-ship", "n_clicks"),
         Input("close", "n_clicks"),
     ],
-    [State("submit-modal", "is_open")],
+    [
+        State("submit-modal", "is_open"),
+        State("submit-fasta-prefill", "data"),
+    ],
 )
 def submit_ship(
     seq_contents,
@@ -646,6 +734,7 @@ def submit_ship(
     n_clicks,
     close_modal,
     is_open,
+    fasta_prefill,
 ):
     """
     Main submission callback with asynchronous processing.
@@ -662,6 +751,12 @@ def submit_ship(
         return modal, message, loading
 
     loading = True
+
+    # Use prefilled FASTA from BLAST session if no file was uploaded directly
+    if not seq_contents and fasta_prefill:
+        seq_contents = fasta_prefill.get("contents")
+        seq_filename = seq_filename or fasta_prefill.get("filename", "sequence_from_blast.fa")
+        seq_date = seq_date or datetime.datetime.now().timestamp()
 
     try:
         # Step 1: Validate input data (quick validation)
@@ -831,20 +926,46 @@ def submit_ship(
     [
         Input("submit-fasta-upload", "contents"),
         Input("submit-fasta-upload", "filename"),
+        Input("submit-fasta-prefill", "data"),
     ],
 )
-def update_fasta_details(seq_contents, seq_filename):
-    if seq_contents is None:
-        return html.Div(html.P(["Select a FASTA file to upload"]))
+def update_fasta_details(seq_contents, seq_filename, fasta_prefill):
+    # Manually uploaded file always takes priority
+    if seq_contents is not None:
+        try:
+            content_type, content_string = seq_contents.split(",")
+            query_string = base64.b64decode(content_string).decode("utf-8")
+            records = parse_fasta(query_string, seq_filename)
+            return create_fasta_display(records, seq_filename)
+        except Exception as e:
+            logger.error(e)
+            return html.Div(["There was an error processing this file."])
 
-    try:
-        content_type, content_string = seq_contents.split(",")
-        query_string = base64.b64decode(content_string).decode("utf-8")
-        records = parse_fasta(query_string, seq_filename)
-        return create_fasta_display(records, seq_filename)
-    except Exception as e:
-        logger.error(e)
-        return html.Div(["There was an error processing this file."])
+    # Show prefill details when no file has been manually uploaded
+    if fasta_prefill:
+        prefill_contents = fasta_prefill.get("contents")
+        prefill_filename = fasta_prefill.get("filename", "sequence_from_blast.fa")
+        if prefill_contents:
+            try:
+                _ct, content_string = prefill_contents.split(",", 1)
+                query_string = base64.b64decode(content_string).decode("utf-8")
+                records = parse_fasta(query_string, prefill_filename)
+                return html.Div(
+                    [
+                        html.H6(f"File name: {prefill_filename}"),
+                        html.H6(f"Number of sequences: {len(records)}"),
+                        dmc.Text(
+                            "Pre-filled from BLAST — upload a new file to override",
+                            size="xs",
+                            c="dimmed",
+                            mt="xs",
+                        ),
+                    ]
+                )
+            except Exception as e:
+                logger.error(e)
+
+    return html.Div(html.P(["Select a FASTA file to upload"]))
 
 
 @callback(

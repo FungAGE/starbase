@@ -136,6 +136,9 @@ layout = dmc.Container(
         dcc.Store(id="classification-stage", data="Upload a sequence"),
         # Tab stores
         dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
+        # Submit-to-portal prefill stores
+        dcc.Store(id="submit-prefill-id-store"),
+        html.Div(id="submit-prefill-trigger", style={"display": "none"}),
         # Interval for polling workflow state is no longer needed
         # but kept disabled for backward compatibility
         dcc.Interval(
@@ -2804,3 +2807,63 @@ def disable_interval_when_complete(workflow_state, blast_results):
     """Disable the interval when classification is complete"""
     # Always disable the interval since we're no longer using polling
     return True
+
+
+@callback(
+    Output("submit-prefill-id-store", "data"),
+    Input("blast-submit-portal-btn", "n_clicks"),
+    State("blast-fasta-upload", "contents"),
+    State("blast-fasta-upload", "filename"),
+    State("classification-data-store", "data"),
+    prevent_initial_call=True,
+)
+def prepare_submit_prefill(n_clicks, fasta_contents, fasta_filename, classification_data_dict):
+    """Store blast session data in cache and return a UUID for the submit page to fetch."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    import uuid as _uuid
+    import json
+
+    from src.config.cache import cache
+
+    prefill_id = str(_uuid.uuid4())
+
+    comment_lines = ["Classification results from Starbase BLAST:"]
+    if classification_data_dict:
+        field_labels = [
+            ("closest_match", "Closest match"),
+            ("family", "Family"),
+            ("navis", "Navis"),
+            ("haplotype", "Haplotype"),
+            ("confidence", "Confidence"),
+            ("match_details", "Details"),
+        ]
+        for key, label in field_labels:
+            val = classification_data_dict.get(key)
+            if val:
+                comment_lines.append(f"  {label}: {val}")
+
+    prefill_data = {
+        "fasta_contents": fasta_contents,
+        "fasta_filename": fasta_filename or "sequence_from_blast.fa",
+        "comment": "\n".join(comment_lines) if len(comment_lines) > 1 else "",
+    }
+
+    cache.set(f"submit_prefill:{prefill_id}", json.dumps(prefill_data), timeout=3600)
+    logger.info(f"Stored submit prefill data under key submit_prefill:{prefill_id}")
+    return prefill_id
+
+
+clientside_callback(
+    """
+    function(prefill_id) {
+        if (!prefill_id) return window.dash_clientside.no_update;
+        window.open('/submit?blast_id=' + prefill_id, '_blank');
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("submit-prefill-trigger", "children"),
+    Input("submit-prefill-id-store", "data"),
+    prevent_initial_call=True,
+)
