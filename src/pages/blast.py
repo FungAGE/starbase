@@ -178,28 +178,22 @@ layout = dmc.Container(
                                     dmc.Title("BLAST Search", order=1),
                                     dmc.Text(
                                         [
-                                            "This tools does two things: ",
+                                            "Search for ",
+                                            html.Span("Starships", style={"fontStyle": "italic"}),
+                                            " in an existing sequence. Once a search is submitted, this pipeline will: ",
                                             html.Ul(
                                                 [
                                                     html.Li(
                                                         [
-                                                            "Run BLAST against ",
-                                                            html.Span(
-                                                                "Starship",
-                                                                style={
-                                                                    "fontStyle": "italic"
-                                                                },
-                                                            ),
-                                                            " sequences in ",
-                                                            html.Span(
-                                                                "Starbase",
-                                                                className="logo-text",
-                                                            ),
+                                                            "Return results with best matches to existing ",
+                                                            html.Span("Starships", style={"fontStyle": "italic"}),
+                                                            ".",
                                                         ]
                                                     ),
                                                     html.Li(
                                                         [
-                                                            "Classify matches through exact/contained/similar detection, family assignment via captain gene similarity, and navis/haplotype classification. ",
+                                                            "Search for exact, contained, or highly similar matches to existing envtries in the database.",
+                                                            html.Li(html.Span(["If no match to an existing Starship is found, then the assignment of Starship family, navis, and haplotype is determined. ",
                                                             dmc.Button(
                                                                 "More info",
                                                                 id="classification-tools-more-info",
@@ -212,6 +206,7 @@ layout = dmc.Container(
                                                                     "minWidth": "auto",
                                                                 },
                                                             ),
+                                                            ])),
                                                         ]
                                                     ),
                                                 ],
