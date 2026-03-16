@@ -145,7 +145,9 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
                 title="Something went wrong",
                 children=dmc.Stack(
                     [
-                        dmc.Text("We couldn't complete your submission. Please try again."),
+                        dmc.Text(
+                            "We couldn't complete your submission. Please try again."
+                        ),
                         dmc.Text(
                             "If the problem continues, contact support.",
                             size="sm",
@@ -281,9 +283,7 @@ submission_info_card = dmc.Paper(
                 dmc.ListItem(dmc.Text("Duplicate checking and classification")),
                 dmc.ListItem(dmc.Text("Accession number assignment")),
                 dmc.ListItem(dmc.Text("Curator review")),
-                dmc.ListItem(
-                    dmc.Text("Inclusion in next database release")
-                ),
+                dmc.ListItem(dmc.Text("Inclusion in next database release")),
             ],
             type="ordered",
             size="sm",
@@ -421,13 +421,25 @@ submission_body = dmc.Paper(
                                 required=True,
                                 leftSection=DashIconify(icon="fas fa-envelope"),
                             ),
-                            dmc.Box(id="email-validation-message", style={"minHeight": "20px"}),
-                            dmc.TextInput(
+                            dmc.Box(
+                                id="email-validation-message",
+                                style={"minHeight": "20px"},
+                            ),
+                            dmc.Select(
                                 id="evidence",
                                 label="Annotation tool or method",
-                                placeholder="e.g., starfish, manual curation, BLAST",
+                                placeholder="Select method",
                                 required=True,
-                                description="Name the tool or pipeline you used to identify and annotate the Starship",
+                                description="Tool or pipeline used to identify and annotate the Starship",
+                                data=[
+                                    {"value": "starfish", "label": "starfish"},
+                                    {
+                                        "value": "manual curation",
+                                        "label": "manual curation",
+                                    },
+                                    {"value": "BLAST", "label": "BLAST"},
+                                    {"value": "other", "label": "other"},
+                                ],
                             ),
                             # Taxonomy Info
                             dmc.Group(
@@ -486,11 +498,15 @@ submission_body = dmc.Paper(
                                 value=1,
                                 children=[
                                     dmc.Radio(
-                                        label="Positive strand", value=1, color="var(--mantine-color-indigo-6)"
+                                        label="Positive strand",
+                                        value=1,
+                                        color="var(--mantine-color-indigo-6)",
                                     ),
                                     dmc.Space(h="sm"),
                                     dmc.Radio(
-                                        label="Negative strand", value=2, color="var(--mantine-color-indigo-6)"
+                                        label="Negative strand",
+                                        value=2,
+                                        color="var(--mantine-color-indigo-6)",
                                     ),
                                 ],
                             ),
@@ -625,7 +641,7 @@ def load_blast_prefill(search):
             variant="light",
             mb="sm",
         )
-        return None, comment, "Starbase BLAST", info_banner
+        return None, comment, "BLAST", info_banner
 
     try:
         _ct, content_string = fasta_contents.split(",", 1)
@@ -665,7 +681,7 @@ def load_blast_prefill(search):
     return (
         {"contents": fasta_contents, "filename": fasta_filename},
         comment,
-        "Starbase BLAST",
+        "BLAST",
         info_banner,
     )
 
@@ -959,9 +975,7 @@ def submit_ship(
                         size="lg",
                     ),
                     html.Br(),
-                    dmc.Text(
-                        f"Submission ID: {submission_id}", size="sm", c="dimmed"
-                    ),
+                    dmc.Text(f"Submission ID: {submission_id}", size="sm", c="dimmed"),
                     html.Br(),
                     dmc.Text(
                         "We'll email you when processing is complete. Our curation team will then review your submission.",
@@ -1131,7 +1145,9 @@ def validate_email_input(email):
         return dmc.Text("✓ Valid email", size="xs", c="var(--mantine-color-green-6)")
     else:
         return dmc.Text(
-            "Enter a valid email (e.g., name@example.com)", size="xs", c="var(--mantine-color-red-6)"
+            "Enter a valid email (e.g., name@example.com)",
+            size="xs",
+            c="var(--mantine-color-red-6)",
         )
 
 
