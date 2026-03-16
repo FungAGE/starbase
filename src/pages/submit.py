@@ -268,44 +268,44 @@ submission_info_card = dmc.Paper(
     children=[
         dmc.Stack(
             [
-            dmc.Text(
-                "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
-                size="md",
-                mb="md",
-            ),
-            dmc.Text(
-                "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
-                # TODO: "You'll receive a confirmation email once your submission is processed."
-                size="md",
-                mb="md",
-            ),
-            dmc.List(
-                [
-                    dmc.ListItem(dmc.Text("Sequence validation and parsing")),
-                    dmc.ListItem(dmc.Text("Duplicate checking and classification")),
-                    dmc.ListItem(dmc.Text("Accession number assignment")),
-                ],
-                type="ordered",
-                size="sm",
-                spacing="xs",
-                icon=dmc.ThemeIcon(
-                    DashIconify(icon="tabler:check", width=16),
-                    size="sm",
-                    variant="light",
-                    color="var(--mantine-color-indigo-6)",
+                dmc.Text(
+                    "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
+                    size="md",
+                    mb="md",
                 ),
-            ),
-            dmc.Text(
-                "Each submission will also go through a manual review. Submissions will be included in the next database release.",
-                size="sm",
-                mb="md",
-            ),
-            dmc.Alert(
-                "Complete all fields marked with * before submitting.",
-                color="var(--mantine-color-red-6)",
-                variant="light",
-                title="Required fields",
-            ),
+                dmc.Text(
+                    "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
+                    # TODO: "You'll receive a confirmation email once your submission is processed."
+                    size="md",
+                    mb="md",
+                ),
+                dmc.List(
+                    [
+                        dmc.ListItem(dmc.Text("Sequence validation and parsing")),
+                        dmc.ListItem(dmc.Text("Duplicate checking and classification")),
+                        dmc.ListItem(dmc.Text("Accession number assignment")),
+                    ],
+                    type="ordered",
+                    size="sm",
+                    spacing="xs",
+                    icon=dmc.ThemeIcon(
+                        DashIconify(icon="tabler:check", width=16),
+                        size="sm",
+                        variant="light",
+                        color="var(--mantine-color-indigo-6)",
+                    ),
+                ),
+                dmc.Text(
+                    "Each submission will also go through a manual review. Submissions will be included in the next database release.",
+                    size="sm",
+                    mb="md",
+                ),
+                dmc.Alert(
+                    "Complete all fields marked with * before submitting.",
+                    color="var(--mantine-color-red-6)",
+                    variant="light",
+                    title="Required fields",
+                ),
             ],
             gap="md",
         ),
@@ -439,7 +439,10 @@ contact_organism_section = dmc.Stack(
                                 required=True,
                                 leftSection=DashIconify(icon="fas fa-envelope"),
                             ),
-                            dmc.Box(id="email-validation-message", style={"minHeight": "20px"}),
+                            dmc.Box(
+                                id="email-validation-message",
+                                style={"minHeight": "20px"},
+                            ),
                             dmc.Select(
                                 id="evidence",
                                 label="Annotation tool or method",
@@ -448,7 +451,10 @@ contact_organism_section = dmc.Stack(
                                 description="Tool or pipeline used to identify and annotate the Starship",
                                 data=[
                                     {"value": "starfish", "label": "starfish"},
-                                    {"value": "manual curation", "label": "manual curation"},
+                                    {
+                                        "value": "manual curation",
+                                        "label": "manual curation",
+                                    },
                                     {"value": "BLAST", "label": "BLAST"},
                                     {"value": "other", "label": "other"},
                                 ],
@@ -593,16 +599,29 @@ notes_section = dmc.Accordion(
 
 # Sticky submit button
 submit_button_section = dmc.Box(
-    dmc.Center(
-        dmc.Button(
-            "Submit Starship",
-            id="submit-ship",
-            size="lg",
-            variant="filled",
-            color="indigo",
-            loading=False,
-            fullWidth=False,
-        ),
+    dmc.Stack(
+        [
+            dmc.Checkbox(
+                id="submit-consent-checkbox",
+                label="I understand that accepted submissions will be publicly available in the Starbase database",
+                checked=False,
+                color="indigo",
+            ),
+            dmc.Center(
+                dmc.Button(
+                    "Submit Starship",
+                    id="submit-ship",
+                    size="lg",
+                    variant="filled",
+                    color="indigo",
+                    loading=False,
+                    disabled=True,
+                    fullWidth=False,
+                ),
+            ),
+        ],
+        gap="md",
+        align="center",
     ),
     mt="xl",
     pt="md",
@@ -638,7 +657,7 @@ data_policy_card = dmc.Alert(
     dmc.Stack(
         [
             dmc.Text(
-                "This data is used solely to:",
+                "This database is an academic resource. Submitted data is used solely to:",
                 size="sm",
                 fw=500,
             ),
@@ -652,13 +671,13 @@ data_policy_card = dmc.Alert(
                     ),
                     dmc.ListItem(
                         dmc.Text(
-                            "Attribute your contribution",
+                            "Attribute your contribution — your name or identifier will be associated with the database entry, not your email address",
                             size="sm",
                         )
                     ),
                     dmc.ListItem(
                         dmc.Text(
-                            "Contact you about your submission (confirmation, curation questions).",
+                            "Contact you about your submission (confirmation and curation questions)",
                             size="sm",
                         )
                     ),
@@ -666,8 +685,14 @@ data_policy_card = dmc.Alert(
                 size="sm",
                 spacing="xs",
             ),
+            dmc.Divider(),
             dmc.Text(
-                "Your email is not published or shared.",
+                "Accepted submissions are included in public database releases and will be publicly accessible.",
+                size="sm",
+                fw=500,
+            ),
+            dmc.Text(
+                "Only submit sequences you are comfortable making publicly available. If your data is from unpublished work, consider whether public release is appropriate at this time.",
                 size="sm",
             ),
         ],
@@ -693,9 +718,7 @@ layout = dmc.Container(
                 ),
                 dmc.GridCol(
                     dmc.Stack(
-                        [data_policy_card,
-                        create_submission_queue(max_items=15)
-                        ],
+                        [data_policy_card, create_submission_queue(max_items=15)],
                         gap="md",
                     ),
                     span={"base": 12, "md": 6},
@@ -879,6 +902,14 @@ def create_fasta_display(records, filename):
         color="var(--mantine-color-green-6)",
         variant="light",
     )
+
+
+@callback(
+    Output("submit-ship", "disabled"),
+    Input("submit-consent-checkbox", "checked"),
+)
+def toggle_submit_button(checked):
+    return not bool(checked)
 
 
 @callback(

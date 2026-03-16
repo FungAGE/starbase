@@ -125,7 +125,7 @@ def _build_submission_email_html(
             <h3>Submission Details</h3>
             
             <div class="field">
-              <span class="label">Curator Email:</span>
+              <span class="label">Submitter Email:</span>
               <span class="value">{submission_data.get("uploader", "N/A")}</span>
             </div>
             
@@ -191,7 +191,7 @@ Submitted: {timestamp}
 
 SUBMISSION DETAILS
 ------------------
-Curator Email: {submission_data.get("uploader", "N/A")}
+Submitter Email: {submission_data.get("uploader", "N/A")}
 Evidence/Method: {submission_data.get("evidence", "N/A")}
 Organism: {submission_data.get("genus", "N/A")} {submission_data.get("species", "N/A")}
 Host Contig: {submission_data.get("hostchr", "N/A")}
