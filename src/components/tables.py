@@ -95,7 +95,10 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             if col["field"] in ["ship_accession_tag", "ship_accession_display"]:
                 col_def.update(
                     {
-                        "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
+                        "cellStyle": {
+                            "cursor": "pointer",
+                            "color": "var(--mantine-color-blue-7)",
+                        },
                         "cellClass": "clickable-cell",
                     }
                 )
@@ -200,7 +203,10 @@ def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
             ] or col.get("field") in ["accession_display", "ship_accession_display"]:
                 col_def.update(
                     {
-                        "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
+                        "cellStyle": {
+                            "cursor": "pointer",
+                            "color": "var(--mantine-color-blue-7)",
+                        },
                     }
                 )
 
@@ -425,7 +431,10 @@ def make_dl_table(df, id, table_columns):
                 {
                     "checkboxSelection": True,
                     "headerCheckboxSelection": True,
-                    "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
+                    "cellStyle": {
+                        "cursor": "pointer",
+                        "color": "var(--mantine-color-blue-7)",
+                    },
                     "width": 180,
                     "minWidth": 150,
                     "flex": 0,
@@ -434,7 +443,10 @@ def make_dl_table(df, id, table_columns):
         elif col["id"] in ["accession_tag", "accession_display"]:
             col_def.update(
                 {
-                    "cellStyle": {"cursor": "pointer", "color": "var(--mantine-color-blue-7)"},
+                    "cellStyle": {
+                        "cursor": "pointer",
+                        "color": "var(--mantine-color-blue-7)",
+                    },
                     "width": 180,
                     "minWidth": 150,
                     "flex": 0,
@@ -452,6 +464,7 @@ def make_dl_table(df, id, table_columns):
         "headerHeight": 48,
         "rowSelection": "multiple",
         "suppressRowClickSelection": True,  # Only select via checkbox
+        "suppressScrollOnNewData": True,  # Reduces layout thrashing that can cause forEachNodeAfterFilter errors
     }
 
     return html.Div(
