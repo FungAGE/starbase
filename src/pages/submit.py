@@ -335,85 +335,95 @@ submission_received_modal = dmc.Modal(
     ],
 )
 
-submission_body = dmc.Paper(
-    children=dmc.Stack(
-        [
-            dmc.Stack(
-                [
-                    # File Upload Section
-                    dmc.Stack(
-                        [
-                            dmc.Title("Upload Files", order=2, mb="md"),
-                            # FASTA Upload
-                            html.Div(id="submit-prefill-info"),
-                            dmc.Paper(
-                                children=[
-                                    dmc.Text(
-                                        [
-                                            "Starship Sequence ",
-                                            html.Span(
-                                                "*",
-                                                style={
-                                                    "color": "var(--mantine-color-red-6)"
-                                                },
-                                            ),
-                                        ],
-                                        fw=500,
-                                        mb="sm",
-                                    ),
-                                    create_file_upload(
-                                        upload_id="submit-fasta-upload",
-                                        output_id="submit-fasta-sequence-upload",
-                                        accept_types=[
-                                            ".fa",
-                                            ".fas",
-                                            ".fasta",
-                                            ".fna",
-                                        ],
-                                        placeholder_text="Choose a FASTA file (.fa, .fasta, .fna)",
-                                    ),
-                                    dcc.Loading(
-                                        id="loading-1",
-                                        type="circle",
-                                        children=html.Div(id="loading-output-1"),
+# Section: Upload (side-by-side)
+upload_section = dmc.Stack(
+    [
+        dmc.Title("Upload Files", order=2, mb="md"),
+        html.Div(id="submit-prefill-info"),
+        dmc.Grid(
+            [
+                dmc.GridCol(
+                    dmc.Paper(
+                        children=[
+                            dmc.Text(
+                                [
+                                    "Starship Sequence ",
+                                    html.Span(
+                                        "*",
+                                        style={"color": "var(--mantine-color-red-6)"},
                                     ),
                                 ],
-                                p="md",
-                                radius="md",
-                                withBorder=False,
+                                fw=500,
+                                mb="sm",
                             ),
-                            # GFF Upload
-                            dmc.Paper(
-                                children=[
-                                    dmc.Text(
-                                        "Gene Annotations (GFF3)",
-                                        fw=500,
-                                        mb="sm",
-                                    ),
-                                    create_file_upload(
-                                        upload_id="submit-upload-gff",
-                                        output_id="submit-output-gff-upload",
-                                        accept_types=[".gff", ".gff3", ".tsv"],
-                                        placeholder_text="Choose a GFF file (.gff, .gff3) — optional",
-                                    ),
-                                    dcc.Loading(
-                                        id="loading-2",
-                                        type="circle",
-                                        children=html.Div(id="loading-output-2"),
-                                    ),
-                                ],
-                                p="md",
-                                radius="md",
-                                withBorder=False,
+                            create_file_upload(
+                                upload_id="submit-fasta-upload",
+                                output_id="submit-fasta-sequence-upload",
+                                accept_types=[".fa", ".fas", ".fasta", ".fna"],
+                                placeholder_text="Choose a FASTA file (.fa, .fasta, .fna)",
+                            ),
+                            dcc.Loading(
+                                id="loading-1",
+                                type="circle",
+                                children=html.Div(
+                                    id="loading-output-1",
+                                    style={"minHeight": "60px"},
+                                ),
                             ),
                         ],
-                        gap="lg",
+                        p="md",
+                        radius="md",
+                        withBorder=False,
                     ),
-                    # Metadata Section
+                    span={"base": 12, "md": 6},
+                ),
+                dmc.GridCol(
+                    dmc.Paper(
+                        children=[
+                            dmc.Text("Gene Annotations (GFF3)", fw=500, mb="sm"),
+                            create_file_upload(
+                                upload_id="submit-upload-gff",
+                                output_id="submit-output-gff-upload",
+                                accept_types=[".gff", ".gff3", ".tsv"],
+                                placeholder_text="Choose a GFF file (.gff, .gff3) — optional",
+                            ),
+                            dcc.Loading(
+                                id="loading-2",
+                                type="circle",
+                                children=html.Div(
+                                    id="loading-output-2",
+                                    style={"minHeight": "60px"},
+                                ),
+                            ),
+                        ],
+                        p="md",
+                        radius="md",
+                        withBorder=False,
+                    ),
+                    span={"base": 12, "md": 6},
+                ),
+            ],
+        ),
+    ],
+    gap="md",
+)
+
+# Section: Contact & Organism (two-column)
+contact_organism_section = dmc.Stack(
+    [
+        dmc.Title("Metadata", order=2, mb="md"),
+        dmc.Grid(
+            [
+                dmc.GridCol(
                     dmc.Stack(
                         [
-                            dmc.Title("Metadata", order=2, mb="md"),
-                            # Curator Info
+                            dmc.Text(
+                                "Contact",
+                                size="sm",
+                                fw=600,
+                                c="dimmed",
+                                tt="uppercase",
+                            ),
                             dmc.TextInput(
                                 id="uploader",
                                 label="Your email",
@@ -421,10 +431,7 @@ submission_body = dmc.Paper(
                                 required=True,
                                 leftSection=DashIconify(icon="fas fa-envelope"),
                             ),
-                            dmc.Box(
-                                id="email-validation-message",
-                                style={"minHeight": "20px"},
-                            ),
+                            dmc.Box(id="email-validation-message", style={"minHeight": "20px"}),
                             dmc.Select(
                                 id="evidence",
                                 label="Annotation tool or method",
@@ -433,15 +440,26 @@ submission_body = dmc.Paper(
                                 description="Tool or pipeline used to identify and annotate the Starship",
                                 data=[
                                     {"value": "starfish", "label": "starfish"},
-                                    {
-                                        "value": "manual curation",
-                                        "label": "manual curation",
-                                    },
+                                    {"value": "manual curation", "label": "manual curation"},
                                     {"value": "BLAST", "label": "BLAST"},
                                     {"value": "other", "label": "other"},
                                 ],
                             ),
-                            # Taxonomy Info
+                        ],
+                        gap="md",
+                    ),
+                    span={"base": 12, "md": 6},
+                ),
+                dmc.GridCol(
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                "Organism",
+                                size="sm",
+                                fw=600,
+                                c="dimmed",
+                                tt="uppercase",
+                            ),
                             dmc.Group(
                                 [
                                     dmc.TextInput(
@@ -458,89 +476,149 @@ submission_body = dmc.Paper(
                                         required=True,
                                         style={"flex": 1},
                                     ),
-                                ]
-                            ),
-                            # Location Info
-                            dmc.TextInput(
-                                id="hostchr",
-                                label="Host contig or scaffold ID",
-                                placeholder="e.g., chr1, scaffold_001, NC_123456",
-                                description="The identifier from your genome assembly where this Starship was found",
-                                required=True,
-                            ),
-                            dmc.Group(
-                                [
-                                    dmc.NumberInput(
-                                        id="shipstart",
-                                        label="Start coordinate",
-                                        placeholder="e.g., 1200",
-                                        description="5' boundary of the Starship in the host assembly",
-                                        required=True,
-                                        min=1,
-                                        step=1,
-                                        style={"flex": 1},
-                                    ),
-                                    dmc.NumberInput(
-                                        id="shipend",
-                                        label="End coordinate",
-                                        placeholder="e.g., 20500",
-                                        description="3' boundary of the Starship in the host assembly",
-                                        required=True,
-                                        min=1,
-                                        step=1,
-                                        style={"flex": 1},
-                                    ),
-                                ]
-                            ),
-                            dmc.RadioGroup(
-                                id="strand-radios",
-                                label="Strand",
-                                value=1,
-                                children=[
-                                    dmc.Radio(
-                                        label="Positive strand",
-                                        value=1,
-                                        color="var(--mantine-color-indigo-6)",
-                                    ),
-                                    dmc.Space(h="sm"),
-                                    dmc.Radio(
-                                        label="Negative strand",
-                                        value=2,
-                                        color="var(--mantine-color-indigo-6)",
-                                    ),
                                 ],
-                            ),
-                            # Comments
-                            dmc.Textarea(
-                                id="comment",
-                                label="Notes (optional)",
-                                placeholder="e.g., unusual features, annotation notes, or host genome context",
-                                description="Any details that would help curators evaluate this submission",
-                                minRows=3,
-                                autosize=True,
-                                maxRows=6,
                             ),
                         ],
                         gap="md",
                     ),
-                    # Submit Button
-                    dmc.Center(
-                        dmc.Button(
-                            "Submit Starship",
-                            id="submit-ship",
-                            size="lg",
-                            variant="filled",
-                            color="var(--mantine-color-indigo-6)",
-                            loading=False,
-                            fullWidth=False,
-                        ),
-                        mt="md",
+                    span={"base": 12, "md": 6},
+                ),
+            ],
+        ),
+    ],
+    gap="md",
+)
+
+# Section: Location
+location_section = dmc.Stack(
+    [
+        dmc.Text(
+            "Location in host genome",
+            size="sm",
+            fw=600,
+            c="dimmed",
+            tt="uppercase",
+        ),
+        dmc.TextInput(
+            id="hostchr",
+            label="Host contig or scaffold ID",
+            placeholder="e.g., chr1, scaffold_001, NC_123456",
+            description="The identifier from your genome assembly where this Starship was found",
+            required=True,
+        ),
+        dmc.Grid(
+            [
+                dmc.GridCol(
+                    dmc.NumberInput(
+                        id="shipstart",
+                        label="Start coordinate",
+                        placeholder="e.g., 1200",
+                        description="5' boundary of the Starship in the host assembly",
+                        required=True,
+                        min=1,
+                        step=1,
                     ),
-                ],
-                gap="xl",
-            ),
+                    span={"base": 12, "sm": 6},
+                ),
+                dmc.GridCol(
+                    dmc.NumberInput(
+                        id="shipend",
+                        label="End coordinate",
+                        placeholder="e.g., 20500",
+                        description="3' boundary of the Starship in the host assembly",
+                        required=True,
+                        min=1,
+                        step=1,
+                    ),
+                    span={"base": 12, "sm": 6},
+                ),
+            ],
+        ),
+        dmc.RadioGroup(
+            id="strand-radios",
+            label="Strand",
+            value=1,
+            children=[
+                dmc.Radio(
+                    label="Positive strand",
+                    value=1,
+                    color="indigo",
+                ),
+                dmc.Space(h="sm"),
+                dmc.Radio(
+                    label="Negative strand",
+                    value=2,
+                    color="indigo",
+                ),
+            ],
+        ),
+    ],
+    gap="md",
+)
+
+# Section: Notes (progressive disclosure - collapsed by default)
+notes_section = dmc.Accordion(
+    variant="contained",
+    chevronPosition="right",
+    children=[
+        dmc.AccordionItem(
+            value="notes",
+            children=[
+                dmc.AccordionControl(
+                    dmc.Text("Add optional notes", size="sm", c="dimmed"),
+                ),
+                dmc.AccordionPanel(
+                    dmc.Textarea(
+                        id="comment",
+                        label="Notes",
+                        placeholder="e.g., unusual features, annotation notes, or host genome context",
+                        description="Any details that would help curators evaluate this submission",
+                        minRows=3,
+                        autosize=True,
+                        maxRows=6,
+                    ),
+                ),
+            ],
+        ),
+    ],
+)
+
+# Sticky submit button
+submit_button_section = dmc.Box(
+    dmc.Center(
+        dmc.Button(
+            "Submit Starship",
+            id="submit-ship",
+            size="lg",
+            variant="filled",
+            color="indigo",
+            loading=False,
+            fullWidth=False,
+        ),
+    ),
+    mt="xl",
+    pt="md",
+    style={
+        "position": "sticky",
+        "bottom": "var(--mantine-spacing-md)",
+        "backgroundColor": "var(--mantine-color-body)",
+        "zIndex": 10,
+    },
+)
+
+submission_body = dmc.Paper(
+    children=dmc.Stack(
+        [
+            upload_section,
+            dmc.Divider(),
+            contact_organism_section,
+            dmc.Divider(),
+            location_section,
+            dmc.Divider(),
+            notes_section,
+            submit_button_section,
         ],
-        gap=0,
+        gap="xl",
     ),
     p="xl",
     radius="md",
@@ -548,48 +626,24 @@ submission_body = dmc.Paper(
     style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
-submission_status_section = dmc.Paper(
-    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
-    children=[
-        dmc.Title("Submission Status", order=3, mb="md"),
-        dmc.Stack(
-            [
-                dmc.TextInput(
-                    id="status-submission-id",
-                    label="Submission ID",
-                    placeholder="e.g., abc123-def456-...",
-                    description="Paste the ID from your confirmation email to see processing status",
-                ),
-                dmc.Button(
-                    "Check status",
-                    id="check-status-btn",
-                    variant="light",
-                    size="sm",
-                    color="var(--mantine-color-indigo-6)",
-                    fullWidth=False,
-                    radius="md",
-                ),
-                dmc.Box(id="status-display", mt="md"),
-            ],
-            gap="sm",
-        ),
-    ],
-    p="xl",
-    radius="md",
-    withBorder=True,
-    mb="xl",
-)
-
-
 layout = dmc.Container(
     size="lg",
     children=[
         dcc.Location(id="submit-url", refresh=False),
         dcc.Store(id="submit-fasta-prefill"),
         submission_header,
-        submission_info_card,
-        # create_leaderboard(limit=10, title="Top Contributors"),
-        create_submission_queue(max_items=15),
+        dmc.Grid(
+            [
+                dmc.GridCol(
+                    submission_info_card,
+                    span={"base": 12, "md": 6},
+                ),
+                dmc.GridCol(
+                    create_submission_queue(max_items=15),
+                    span={"base": 12, "md": 6},
+                ),
+            ],
+        ),
         submission_body,
         submission_received_modal,
     ],
