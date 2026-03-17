@@ -118,7 +118,7 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
                             dmc.Group(
                                 [
                                     dmc.Text(
-                                        submission["filename"] or "Unknown",
+                                        f"#{submission['id']}",
                                         fw=600,
                                         size="md",
                                     ),
@@ -135,13 +135,13 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
                             dmc.Group(
                                 [
                                     dmc.Text(
-                                        f"🧬 {submission['genus']} {submission['species']}",
+                                        f"{submission['genus']} {submission['species']}",
                                         size="sm",
                                         c="dimmed",
                                     ),
                                     dmc.Text("•", size="sm", c="dimmed"),
                                     dmc.Text(
-                                        f"📧 {submission['submitter']}",
+                                        f"{submission['submitter']}",
                                         size="sm",
                                         c="dimmed",
                                     ),
@@ -232,12 +232,6 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
                         ],
                         justify="space-between",
                         mb="md",
-                    ),
-                    dmc.Text(
-                        "All submissions are reviewed by our curation team before being added to the public database.",
-                        size="sm",
-                        c="dimmed",
-                        mb="lg",
                     ),
                     dmc.Stack(cards, gap="sm"),
                 ],

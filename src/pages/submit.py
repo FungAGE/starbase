@@ -273,31 +273,10 @@ submission_info_card = dmc.Paper(
                     size="md",
                     mb="md",
                 ),
+                # TODO: "You'll receive a confirmation email once your submission is processed."
                 dmc.Text(
-                    "Each submission is processed by our automated pipeline, then manually reviewed by our curation team.",
-                    # TODO: "You'll receive a confirmation email once your submission is processed."
+                    "Each submission will be processed and assigned an accession number. It will also go through a manual review before being included in the next database release.",
                     size="md",
-                    mb="md",
-                ),
-                dmc.List(
-                    [
-                        dmc.ListItem(dmc.Text("Sequence validation and parsing")),
-                        dmc.ListItem(dmc.Text("Duplicate checking and classification")),
-                        dmc.ListItem(dmc.Text("Accession number assignment")),
-                    ],
-                    type="ordered",
-                    size="sm",
-                    spacing="xs",
-                    icon=dmc.ThemeIcon(
-                        DashIconify(icon="tabler:check", width=16),
-                        size="sm",
-                        variant="light",
-                        color="var(--mantine-color-indigo-6)",
-                    ),
-                ),
-                dmc.Text(
-                    "Each submission will also go through a manual review. Submissions will be included in the next database release.",
-                    size="sm",
                     mb="md",
                 ),
                 dmc.Alert(
@@ -579,7 +558,11 @@ notes_section = dmc.Accordion(
             value="notes",
             children=[
                 dmc.AccordionControl(
-                    dmc.Text("Add optional notes", size="sm", c="dimmed"),
+                    dmc.Text(
+                        "Add optional notes, i.e. linked publications, etc.",
+                        size="sm",
+                        c="dimmed",
+                    ),
                 ),
                 dmc.AccordionPanel(
                     dmc.Textarea(
