@@ -760,6 +760,7 @@ def load_blast_prefill(search):
     fasta_contents = prefill_data.get("fasta_contents")
     fasta_filename = prefill_data.get("fasta_filename", "sequence_from_blast.fa")
     comment = prefill_data.get("comment", "")
+    classification = prefill_data.get("classification")
 
     if not fasta_contents:
         info_banner = dmc.Alert(
@@ -769,7 +770,8 @@ def load_blast_prefill(search):
             variant="light",
             mb="sm",
         )
-        return None, comment, "BLAST", info_banner
+        partial_prefill = {"classification": classification} if classification else None
+        return partial_prefill, comment, "BLAST", info_banner
 
     try:
         _ct, content_string = fasta_contents.split(",", 1)
@@ -806,12 +808,53 @@ def load_blast_prefill(search):
         mb="sm",
     )
 
+    prefill_store = {"contents": fasta_contents, "filename": fasta_filename}
+    if classification:
+        prefill_store["classification"] = classification
+
     return (
-        {"contents": fasta_contents, "filename": fasta_filename},
+        prefill_store,
         comment,
         "BLAST",
         info_banner,
     )
+
+
+def _enrich_classification_from_db(classification: dict) -> dict:
+    """
+    When classification has closest_match but missing family/navis/haplotype,
+    look them up from the main DB and merge into the classification dict.
+    """
+    if not classification or not classification.get("closest_match"):
+        return classification
+
+    if (
+        classification.get("family")
+        and classification.get("navis")
+        and classification.get("haplotype")
+    ):
+        return classification
+
+    try:
+        from src.utils.submission_utils import lookup_classification_from_accession
+
+        looked_up = lookup_classification_from_accession(
+            classification["closest_match"]
+        )
+        if looked_up:
+            if not classification.get("family") and looked_up.get("family"):
+                classification = {**classification, "family": looked_up["family"]}
+            if not classification.get("navis") and looked_up.get("navis"):
+                classification = {**classification, "navis": looked_up["navis"]}
+            if not classification.get("haplotype") and looked_up.get("haplotype"):
+                classification = {
+                    **classification,
+                    "haplotype": looked_up["haplotype"],
+                }
+    except Exception as e:
+        logger.warning(f"Could not lookup classification from DB: {e}")
+
+    return classification
 
 
 # Function to insert a new submission into the database
@@ -833,24 +876,43 @@ def insert_submission(
     comment,
     accession=None,
     needs_review=False,
+    classification=None,
 ):
+    """
+    Insert a new submission record into the submissions table (queue).
+
+    Returns:
+        int: The database ID of the inserted submission, or None on failure.
+    """
     try:
-        _ct, content_string = seq_contents.split(",", 1)
-        seq_decoded = base64.b64decode(content_string).decode("utf-8")
-        seq_datetime_str = datetime.datetime.fromtimestamp(seq_date).strftime(
-            "%Y-%m-%d %H:%M:%S"
+        # Accept base64 seq_contents (data:xxx;base64,...) or raw sequence string
+        if "," in str(seq_contents) and "base64" in str(seq_contents):
+            _ct, content_string = seq_contents.split(",", 1)
+            seq_decoded = base64.b64decode(content_string).decode("utf-8")
+        else:
+            seq_decoded = seq_contents if isinstance(seq_contents, str) else ""
+
+        seq_datetime_str = (
+            datetime.datetime.fromtimestamp(seq_date).strftime("%Y-%m-%d %H:%M:%S")
+            if seq_date
+            else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
 
         anno_decoded = None
         anno_filename_val = None
         anno_datetime_str = None
-        if anno_contents:
-            _ct, content_string = anno_contents.split(",", 1)
-            anno_decoded = base64.b64decode(content_string).decode("utf-8")
+        if anno_contents and anno_date:
+            if "," in str(anno_contents) and "base64" in str(anno_contents):
+                _ct, content_string = anno_contents.split(",", 1)
+                anno_decoded = base64.b64decode(content_string).decode("utf-8")
             anno_filename_val = anno_filename
             anno_datetime_str = datetime.datetime.fromtimestamp(anno_date).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
+
+        # Enrich classification with family/navis/haplotype from main DB when closest_match is set
+        if classification:
+            classification = _enrich_classification_from_db(classification)
 
         with get_submissions_session() as session:
             submission = Submission(
@@ -871,11 +933,35 @@ def insert_submission(
                 comment=comment,
                 accession_tag=accession,
                 needs_review=needs_review,
+                classification_source=classification.get("source")
+                if classification
+                else None,
+                classification_family=classification.get("family")
+                if classification
+                else None,
+                classification_navis=classification.get("navis")
+                if classification
+                else None,
+                classification_haplotype=(
+                    classification["haplotype"].get("haplotype_name")
+                    if classification
+                    and isinstance(classification.get("haplotype"), dict)
+                    else (classification.get("haplotype") if classification else None)
+                ),
+                closest_match=classification.get("closest_match")
+                if classification
+                else None,
+                classification_confidence=classification.get("confidence")
+                if classification
+                else None,
             )
             session.add(submission)
             session.commit()
-            logger.debug(f"Successfully inserted submission for {seq_filename}")
-            return True
+            session.refresh(submission)
+            logger.debug(
+                f"Successfully inserted submission {submission.id} for {seq_filename}"
+            )
+            return submission.id
 
     except SQLAlchemyError as e:
         logger.error(f"Database error during submission: {str(e)}")
@@ -883,6 +969,42 @@ def insert_submission(
     except Exception as e:
         logger.error(f"Error processing submission: {str(e)}")
         raise
+
+
+def update_submission_record(
+    db_submission_id: int, accession: str = None, needs_review: bool = None
+):
+    """
+    Update a submission record with completion data.
+
+    Args:
+        db_submission_id: Database ID of the submission
+        accession: Assigned accession tag
+        needs_review: Whether the submission needs curator review
+    """
+    try:
+        from sqlalchemy import update
+        from src.database.models.schema import Submission
+
+        updates = {}
+        if accession is not None:
+            updates["accession_tag"] = accession
+        if needs_review is not None:
+            updates["needs_review"] = needs_review
+        if not updates:
+            return
+
+        with get_submissions_session() as session:
+            stmt = (
+                update(Submission)
+                .where(Submission.id == db_submission_id)
+                .values(**updates)
+            )
+            session.execute(stmt)
+            session.commit()
+            logger.debug(f"Updated submission {db_submission_id}: {updates}")
+    except Exception as e:
+        logger.error(f"Failed to update submission record {db_submission_id}: {str(e)}")
 
 
 def create_fasta_display(records, filename):
@@ -1052,14 +1174,45 @@ def submit_ship(
         validated_data["strand_radio"] = strand_radio
         validated_data["comment"] = comment or ""
 
+        if fasta_prefill and fasta_prefill.get("classification"):
+            validated_data["classification"] = fasta_prefill["classification"]
+
         # Step 3: Generate unique submission ID
         submission_id = str(uuid.uuid4())
         logger.info(f"Created submission {submission_id} for file {seq_filename}")
 
-        # Step 4: Create initial status
+        # Step 4: Insert into submissions table (queue) so it appears in the queue UI
+        shipstrand = "+" if (strand_radio or 1) == 1 else "-"
+        try:
+            db_submission_id = insert_submission(
+                seq_contents=seq_contents,
+                seq_filename=seq_filename,
+                seq_date=seq_date or datetime.datetime.now().timestamp(),
+                anno_contents=anno_contents,
+                anno_filename=anno_filename,
+                anno_date=anno_date,
+                uploader=uploader,
+                evidence=evidence,
+                genus=genus,
+                species=species,
+                hostchr=hostchr,
+                shipstart=shipstart,
+                shipend=shipend,
+                shipstrand=shipstrand,
+                comment=comment or "",
+                accession=None,
+                needs_review=True,
+                classification=validated_data.get("classification"),
+            )
+            validated_data["db_submission_id"] = db_submission_id
+        except Exception as e:
+            logger.warning(f"Failed to insert submission into queue (continuing): {e}")
+            validated_data["db_submission_id"] = None
+
+        # Step 5: Create initial status
         create_submission_status(submission_id, "queued")
 
-        # Step 5: Start async processing task
+        # Step 6: Start async processing task
         logger.debug(f"Starting async submission processing for {submission_id}")
         task_result = run_task(process_submission_task, validated_data, submission_id)
 
@@ -1085,7 +1238,7 @@ def submit_ship(
             if task_result.get("success"):
                 accession_assigned = task_result.get("accession")
 
-        # Step 6: Send email notifications
+        # Step 7: Send email notifications
         try:
             # Send curator notification
             send_curator_notification(submission_id, validated_data, accession_assigned)
@@ -1097,7 +1250,7 @@ def submit_ship(
         except Exception as e:
             logger.error(f"Failed to send email notifications: {str(e)}")
 
-        # Step 7: Show immediate feedback
+        # Step 8: Show immediate feedback
         loading = False
         modal_open = True
 

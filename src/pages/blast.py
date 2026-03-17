@@ -50,6 +50,7 @@ dash.register_page(__name__)
 
 logger = get_logger(__name__)
 
+
 def _make_matching_steps():
     """Build StepperStep components for sequence matching stages."""
     return [
@@ -179,34 +180,47 @@ layout = dmc.Container(
                                     dmc.Text(
                                         [
                                             "Search for ",
-                                            html.Span("Starships", style={"fontStyle": "italic"}),
+                                            html.Span(
+                                                "Starships",
+                                                style={"fontStyle": "italic"},
+                                            ),
                                             " in an existing sequence. Once a search is submitted, this pipeline will: ",
                                             html.Ul(
                                                 [
                                                     html.Li(
                                                         [
                                                             "Return results with best matches to existing ",
-                                                            html.Span("Starships", style={"fontStyle": "italic"}),
+                                                            html.Span(
+                                                                "Starships",
+                                                                style={
+                                                                    "fontStyle": "italic"
+                                                                },
+                                                            ),
                                                             ".",
                                                         ]
                                                     ),
                                                     html.Li(
                                                         [
                                                             "Search for exact, contained, or highly similar matches to existing envtries in the database.",
-                                                            html.Li(html.Span(["If no match to an existing Starship is found, then the assignment of Starship family, navis, and haplotype is determined. ",
-                                                            dmc.Button(
-                                                                "More info",
-                                                                id="classification-tools-more-info",
-                                                                variant="subtle",
-                                                                size="compact-xs",
-                                                                style={
-                                                                    "fontStyle": "italic",
-                                                                    "padding": "0 4px",
-                                                                    "height": "auto",
-                                                                    "minWidth": "auto",
-                                                                },
+                                                            html.Li(
+                                                                html.Span(
+                                                                    [
+                                                                        "If no match to an existing Starship is found, then the assignment of Starship family, navis, and haplotype is determined. ",
+                                                                        dmc.Button(
+                                                                            "More info",
+                                                                            id="classification-tools-more-info",
+                                                                            variant="subtle",
+                                                                            size="compact-xs",
+                                                                            style={
+                                                                                "fontStyle": "italic",
+                                                                                "padding": "0 4px",
+                                                                                "height": "auto",
+                                                                                "minWidth": "auto",
+                                                                            },
+                                                                        ),
+                                                                    ]
+                                                                )
                                                             ),
-                                                            ])),
                                                         ]
                                                     ),
                                                 ],
@@ -2807,12 +2821,17 @@ def disable_interval_when_complete(workflow_state, blast_results):
 @callback(
     Output("submit-prefill-id-store", "data"),
     Input("blast-submit-portal-btn", "n_clicks"),
-    State("blast-fasta-upload", "contents"),
-    State("blast-fasta-upload", "filename"),
-    State("classification-data-store", "data"),
+    [
+        State("blast-fasta-upload", "contents"),
+        State("blast-fasta-upload", "filename"),
+        State("blast-active-tab", "data"),
+        State("classification-data-store", "data"),
+    ],
     prevent_initial_call=True,
 )
-def prepare_submit_prefill(n_clicks, fasta_contents, fasta_filename, classification_data_dict):
+def prepare_submit_prefill(
+    n_clicks, fasta_contents, fasta_filename, active_tab_idx, classification_data_store
+):
     """Store blast session data in cache and return a UUID for the submit page to fetch."""
     if not n_clicks:
         raise PreventUpdate
@@ -2821,6 +2840,27 @@ def prepare_submit_prefill(n_clicks, fasta_contents, fasta_filename, classificat
     import json
 
     from src.config.cache import cache
+
+    # Prefer classification from pipeline state (has exact match, etc.); fallback to store
+    classification_data_dict = None
+    adapter = get_dash_adapter()
+    pipeline_state = adapter.pipeline_state
+    main_sequence_id = pipeline_state._active_sequence_id
+
+    if main_sequence_id:
+        try:
+            tab_idx = int(active_tab_idx) if active_tab_idx is not None else 0
+            tab_sequence_id = (
+                f"{main_sequence_id}_tab_{tab_idx}" if tab_idx > 0 else main_sequence_id
+            )
+            classification_data_dict = adapter.get_sequence_classification_for_ui(
+                tab_sequence_id
+            )
+        except (ValueError, IndexError, TypeError):
+            pass
+
+    if not classification_data_dict and classification_data_store:
+        classification_data_dict = classification_data_store
 
     prefill_id = str(_uuid.uuid4())
 
@@ -2843,6 +2883,7 @@ def prepare_submit_prefill(n_clicks, fasta_contents, fasta_filename, classificat
         "fasta_contents": fasta_contents,
         "fasta_filename": fasta_filename or "sequence_from_blast.fa",
         "comment": "\n".join(comment_lines) if len(comment_lines) > 1 else "",
+        "classification": classification_data_dict,
     }
 
     cache.set(f"submit_prefill:{prefill_id}", json.dumps(prefill_data), timeout=3600)

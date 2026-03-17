@@ -58,10 +58,10 @@ def get_pending_submissions() -> List[Dict[str, Any]]:
                     species,
                     accession_tag,
                     needs_review,
-                    created_at
+                    id as created_at
                 FROM submissions
                 WHERE needs_review = TRUE OR needs_review IS NULL
-                ORDER BY created_at DESC
+                ORDER BY id DESC
                 LIMIT 50
             """)
 

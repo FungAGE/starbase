@@ -409,12 +409,12 @@ def _process_submission_impl(
         from src.utils.web_submission_adapter import (
             validate_submission_data,
             process_submission_data,
-            perform_database_insertion,
+            process_submission_to_staging,
         )
         from src.pages.submit import update_submission_status
 
         logger.info(
-            f"Starting submission processing for file: {submission_data.get('seq_filename', 'unknown')}"
+            f"Starting submission processing for file: {submission_data.get('seq_filename', submission_data.get('filename', 'unknown'))}"
         )
 
         # Update status if we have a submission ID
@@ -423,20 +423,32 @@ def _process_submission_impl(
                 submission_id, "processing", 25, "Validating submission data..."
             )
 
-        # Step 1: Validate input data
-        logger.debug("Validating submission data")
-        validated_data = validate_submission_data(
-            submission_data["seq_contents"],
-            submission_data["seq_filename"],
-            submission_data["uploader"],
-            submission_data["evidence"],
-            submission_data["genus"],
-            submission_data["species"],
-            submission_data["hostchr"],
-            submission_data["shipstart"],
-            submission_data["shipend"],
-        )
-        validated_data["comment"] = submission_data.get("comment", "")
+        # Step 1: Validate input data (or use pre-validated data from submit_ship)
+        if "sequence" in submission_data and "seq_contents" not in submission_data:
+            # Already validated by submit_ship callback (has sequence, filename, etc.)
+            validated_data = submission_data
+        else:
+            # Raw form data: validate now
+            logger.debug("Validating submission data")
+            validated_data = validate_submission_data(
+                submission_data["seq_contents"],
+                submission_data["seq_filename"],
+                submission_data["uploader"],
+                submission_data["evidence"],
+                submission_data["genus"],
+                submission_data["species"],
+                submission_data["hostchr"],
+                submission_data["shipstart"],
+                submission_data["shipend"],
+            )
+            validated_data["comment"] = submission_data.get("comment", "")
+            if submission_data.get("classification"):
+                validated_data["classification"] = submission_data["classification"]
+            validated_data["seq_date"] = submission_data.get("seq_date")
+            validated_data["anno_contents"] = submission_data.get("anno_contents")
+            validated_data["anno_filename"] = submission_data.get("anno_filename")
+            validated_data["anno_date"] = submission_data.get("anno_date")
+            validated_data["strand_radio"] = submission_data.get("strand_radio")
 
         if submission_id:
             update_submission_status(
@@ -445,24 +457,17 @@ def _process_submission_impl(
 
         # Step 2: Process the data
         logger.debug("Processing submission data")
-        processed_data = process_submission_data(
-            validated_data, submission_data["strand_radio"]
-        )
+        strand_radio = validated_data.get("strand_radio", 1)
+        processed_data = process_submission_data(validated_data, strand_radio)
 
         if submission_id:
             update_submission_status(
-                submission_id, "processing", 75, "Inserting into database..."
+                submission_id, "processing", 75, "Processing submission..."
             )
 
-        # Step 3: Insert into database
-        logger.debug("Inserting submission into database")
-        result = perform_database_insertion(
-            processed_data,
-            submission_data.get("anno_contents"),
-            submission_data.get("anno_filename"),
-            submission_data.get("anno_date"),
-            submission_data.get("seq_date"),
-        )
+        # Step 3: Process to staging (submissions DB only; no main DB insert)
+        logger.debug("Processing submission to staging")
+        result = process_submission_to_staging(processed_data)
 
         logger.info(
             f"Successfully processed submission for {result['filename']} with accession {result['accession']}"
@@ -486,6 +491,20 @@ def _process_submission_impl(
                 "Submission completed successfully",
                 final_result,
             )
+
+        # Update submissions table (queue) with accession and needs_review
+        db_submission_id = submission_data.get("db_submission_id")
+        if db_submission_id:
+            try:
+                from src.pages.submit import update_submission_record
+
+                update_submission_record(
+                    db_submission_id,
+                    accession=result.get("accession"),
+                    needs_review=result.get("needs_review", True),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update submission queue record: {e}")
 
         return final_result
 
