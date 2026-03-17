@@ -8,7 +8,7 @@ from dash import Dash, html, dcc, _dash_renderer
 
 from src.config.settings import IS_DEV
 from src.components import navmenu
-from src.components.ui import create_feedback_button, create_database_version_indicator
+from src.components.ui import create_footer
 from src.config.cache import cache, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
@@ -24,7 +24,9 @@ server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
 
 server.config.update(
-    MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB limit
+    MAX_CONTENT_LENGTH=50
+    * 1024
+    * 1024,  # 50MB limit (BLAST accepts large FASTA uploads)
     CACHE_TYPE="SimpleCache",
     CACHE_DEFAULT_TIMEOUT=300,
     SEND_FILE_MAX_AGE_DEFAULT=0,
@@ -55,6 +57,7 @@ external_stylesheets = [
 ]
 
 external_scripts = [
+    "/assets/js/dash-fetch-error-handler.js",  # Show error when callback requests fail (413, timeout, etc.)
     "https://code.jquery.com/jquery-2.2.4.min.js",
     "https://cdn.jsdelivr.net/bootstrap/3.3.6/js/bootstrap.min.js",
     "https://cdn.jsdelivr.net/npm/tabulator-tables@6.2.5/dist/js/tabulator.min.js",
@@ -103,12 +106,14 @@ def initialize_app():
         cleanup_old_cache()
         update_ip_locations_task()
 
-        try:
-            logger.info("Rebuilding BLAST databases on startup...")
-            create_dbs()
-            logger.info("BLAST databases rebuilt successfully on startup")
-        except Exception as e:
-            logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        if not IS_DEV:
+            update_ip_locations()
+            try:
+                logger.info("Rebuilding BLAST databases on startup...")
+                create_dbs()
+                logger.info("BLAST databases rebuilt successfully on startup")
+            except Exception as e:
+                logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
 
         # Initialize Celery with Flask app context
         celery.conf.update(
@@ -128,24 +133,20 @@ def serve_app_layout():
                 html.Div(id="notifications-container"),
                 dcc.Location(id="url", refresh=False),
                 navmenu.navmenu(),
-                html.Div(dash.page_container),
                 html.Div(
-                    [
-                        create_feedback_button(),
-                        create_database_version_indicator(),
-                    ],
+                    dash.page_container,
                     style={
-                        "position": "fixed",
-                        "top": "50%",
-                        "right": "20px",
-                        "transform": "translateY(-50%)",
-                        "zIndex": "1000",
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "gap": "10px",
+                        "flex": "1",
+                        "paddingBottom": "3.5rem",  # Space for fixed footer
                     },
                 ),
-            ]
+                create_footer(),
+            ],
+            style={
+                "display": "flex",
+                "flexDirection": "column",
+                "minHeight": "100vh",
+            },
         )
     )
 

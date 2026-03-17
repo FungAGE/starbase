@@ -297,6 +297,125 @@ def check_sequence_duplicate(
         session.close()
 
 
+def lookup_classification_from_accession(
+    closest_match: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Look up family, navis, haplotype from main DB for a given accession (closest_match).
+
+    Used when classification has closest_match (e.g. exact BLAST match) but no
+    family/navis/haplotype - we fetch them from the matched record.
+
+    Returns:
+        Dict with family, navis, haplotype (or None if not found)
+    """
+    if not closest_match or not str(closest_match).strip():
+        return None
+
+    session = StarbaseSession()
+    try:
+        resolved = resolve_ship_by_accession(session, closest_match)
+        if not resolved:
+            return None
+
+        ship_id, _, _ = resolved
+        # Prefer joined_ships entry with classification (family/navis/haplotype)
+        joined = (
+            session.query(JoinedShips)
+            .filter(JoinedShips.ship_id == ship_id)
+            .filter(JoinedShips.ship_family_id.isnot(None))
+            .first()
+        )
+        if not joined:
+            joined = (
+                session.query(JoinedShips)
+                .filter(JoinedShips.ship_id == ship_id)
+                .first()
+            )
+        if not joined:
+            return None
+
+        result = {}
+        if joined.ship_family_id:
+            fam = (
+                session.query(FamilyNames)
+                .filter(FamilyNames.id == joined.ship_family_id)
+                .first()
+            )
+            if fam and fam.familyName:
+                result["family"] = fam.familyName
+        if joined.ship_navis_id:
+            nav = session.query(Navis).filter(Navis.id == joined.ship_navis_id).first()
+            if nav and nav.navis_name:
+                result["navis"] = nav.navis_name
+        if joined.ship_haplotype_id:
+            hap = (
+                session.query(Haplotype)
+                .filter(Haplotype.id == joined.ship_haplotype_id)
+                .first()
+            )
+            if hap and hap.haplotype_name:
+                result["haplotype"] = hap.haplotype_name
+
+        return result if result else None
+    finally:
+        session.close()
+
+
+def resolve_ship_by_accession(
+    session, closest_match: str
+) -> Optional[Tuple[int, str, Optional[int]]]:
+    """
+    Resolve closest_match (e.g. SSB000001.1) to (ship_id, accession_tag, accession_id).
+
+    Tries ship_accession_tag and ship_accession_display (with/without version suffix).
+    Returns None if not found.
+    """
+    if not closest_match or not str(closest_match).strip():
+        return None
+
+    acc = str(closest_match).strip()
+    # Try exact match on ship_accession_tag
+    sa = (
+        session.query(ShipAccessions)
+        .filter(ShipAccessions.ship_accession_tag == acc)
+        .first()
+    )
+    if not sa:
+        # Try without version suffix (SSB000001.1 -> SSB000001)
+        base = acc.split(".")[0] if "." in acc else acc
+        sa = (
+            session.query(ShipAccessions)
+            .filter(ShipAccessions.ship_accession_tag == base)
+            .first()
+        )
+    if not sa:
+        sa = (
+            session.query(ShipAccessions)
+            .filter(ShipAccessions.ship_accession_display == acc)
+            .first()
+        )
+    if not sa:
+        return None
+
+    ship = session.query(Ships).filter(Ships.id == sa.ship_id).first()
+    if not ship:
+        return None
+
+    accession_tag = None
+    accession_id = None
+    if ship.accession_id:
+        a = session.query(Accessions).filter(Accessions.id == ship.accession_id).first()
+        if a:
+            accession_tag = a.accession_tag
+            accession_id = a.id
+
+    if not accession_tag and sa.ship_accession_tag:
+        accession_tag = sa.ship_accession_tag
+
+    return (ship.id, accession_tag, accession_id) if accession_tag else None
+
+
 # ============================================================================
 # DATABASE INSERTION
 # ============================================================================
@@ -397,7 +516,10 @@ class SubmissionProcessor:
         self, data: Dict[str, Any], duplicate_info: DuplicateInfo
     ) -> Tuple[int, str]:
         """
-        Insert submission data into database with proper foreign key relationships.
+        Insert submission data into the MAIN starbase database (Ships, Accessions, etc.).
+
+        NOTE: This is for promotion of reviewed/validated submissions from staging to main.
+        New web submissions go to the submissions DB only via process_submission_to_staging.
 
         1. Determine if we need to create a new ship or reuse existing
         2. Assign accession
@@ -417,10 +539,56 @@ class SubmissionProcessor:
 
         try:
             clean_seq = clean_sequence(data["sequence"])
+            ship = None
+            accession = None
+            ship_id = None
+            accession_tag = None
 
-            if duplicate_info.is_duplicate and duplicate_info.different_taxon:
-                ship_id = duplicate_info.existing_ship_id
-                ship = session.query(Ships).filter(Ships.id == ship_id).first()
+            # Skip assign_accession when we have trusted exact match from BLAST
+            classification = data.get("classification")
+            if (
+                classification
+                and classification.get("source") == "exact"
+                and classification.get("closest_match")
+            ):
+                resolved = resolve_ship_by_accession(
+                    session, classification["closest_match"]
+                )
+                if resolved:
+                    cand_ship_id, cand_accession_tag, cand_accession_id = resolved
+                    ship = session.query(Ships).filter(Ships.id == cand_ship_id).first()
+                    if ship:
+                        query_md5 = generate_md5_hash(clean_seq)
+                        query_md5_rc = generate_md5_hash(revcomp(clean_seq))
+                        if (
+                            (ship.md5 and ship.md5 == query_md5)
+                            or (ship.rev_comp_md5 and ship.rev_comp_md5 == query_md5)
+                            or (ship.md5 and ship.md5 == query_md5_rc)
+                            or (ship.rev_comp_md5 and ship.rev_comp_md5 == query_md5_rc)
+                        ):
+                            ship_id = cand_ship_id
+                            accession_tag = cand_accession_tag
+                            if cand_accession_id:
+                                accession = (
+                                    session.query(Accessions)
+                                    .filter(Accessions.id == cand_accession_id)
+                                    .first()
+                                )
+                            logger.info(
+                                f"Using exact match from BLAST: {classification['closest_match']}"
+                            )
+                            if ship.accession_id:
+                                accession = (
+                                    session.query(Accessions)
+                                    .filter(Accessions.id == ship.accession_id)
+                                    .first()
+                                )
+
+            if not (ship_id and accession_tag):
+                # No exact-match skip; use normal duplicate or create-new path
+                if duplicate_info.is_duplicate and duplicate_info.different_taxon:
+                    ship_id = duplicate_info.existing_ship_id
+                    ship = session.query(Ships).filter(Ships.id == ship_id).first()
 
                 if ship.accession_id:
                     accession = (
@@ -477,12 +645,13 @@ class SubmissionProcessor:
             )
             genome_id = self._get_or_create_genome(session, data, taxonomy_id)
 
+            acc_id = (
+                accession.id if accession else (ship.accession_id if ship else None)
+            )
             joined_ship = JoinedShips(
                 starshipID=data["starshipID"],
                 ship_id=ship_id,
-                accession_id=accession.id
-                if not duplicate_info.different_taxon
-                else ship.accession_id,
+                accession_id=acc_id,
                 evidence=data["evidence"],
                 source=data["source"],
                 curated_status=data.get("curated_status", "uncurated"),
@@ -498,10 +667,8 @@ class SubmissionProcessor:
             session.add(joined_ship)
             session.flush()
 
-            if data.get("gff_entries"):
-                self._add_gff_entries(
-                    session, data["gff_entries"], accession.id, ship_id
-                )
+            if data.get("gff_entries") and acc_id:
+                self._add_gff_entries(session, data["gff_entries"], acc_id, ship_id)
 
             self._create_starship_features(
                 session, data, ship_id, data.get("captain_id")

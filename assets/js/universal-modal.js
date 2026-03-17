@@ -46,7 +46,7 @@ if (typeof window.UniversalModal === 'undefined') {
                         background: white;
                         padding: 20px;
                         margin: 0;
-                        border-bottom: 1px solid #dee2e6;
+                        border-bottom: 1px solid var(--mantine-color-gray-3);
                         z-index: 1;
                         border-radius: 8px 8px 0 0;
                         box-sizing: border-box;
@@ -54,7 +54,7 @@ if (typeof window.UniversalModal === 'undefined') {
                         overflow: hidden;
                     ">
                         <span id="universal-modal-close" style="
-                            color: #868e96;
+                            color: var(--mantine-color-gray-6);
                             float: right;
                             font-size: 28px;
                             font-weight: bold;
@@ -186,6 +186,11 @@ if (typeof window.UniversalModal === 'undefined') {
                 margin-bottom: 0;
             }
 
+            .modal-grid-span-full {
+                grid-column: 1 / -1;
+                width: 100%;
+            }
+
             .modal-row {
                 display: flex;
                 justify-content: center;
@@ -205,7 +210,7 @@ if (typeof window.UniversalModal === 'undefined') {
 
             .modal-row:hover {
                 background: rgba(255, 255, 255, 0.9);
-                border-color: #dee2e6;
+                border-color: var(--mantine-color-gray-3);
                 transform: translateY(-1px);
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             }
@@ -258,7 +263,7 @@ if (typeof window.UniversalModal === 'undefined') {
             }
 
             .modal-link {
-                color: #228be6;
+                color: var(--mantine-primary-color-6);
                 text-decoration: none;
                 font-weight: 500;
             }
@@ -326,6 +331,10 @@ if (typeof window.UniversalModal === 'undefined') {
         document.body.style.overflow = 'auto';
     }
 
+    static hasValue(v) {
+        return v != null && v !== '' && String(v).trim() !== 'N/A';
+    }
+
     // Static method to render modal content from structured data
     static renderAccessionModal(data) {
         let html = '';
@@ -345,11 +354,15 @@ if (typeof window.UniversalModal === 'undefined') {
         // Wrapper for better centering
         html += '<div class="modal-container">';
 
-        // Treat null, undefined, empty string, or "N/A" as no value (omit row)
-        const hasValue = (v) => v != null && v !== '' && String(v).trim() !== 'N/A';
+        const hasValue = (v) => this.hasValue(v);
+        const isValidAccession = (id) => {
+            if (!id || typeof id !== 'string') return false;
+            const s = id.trim();
+            return /^[A-Za-z]{2,}_?\d{6,}(\.\d+)?$/i.test(s);
+        };
 
         // Starship Information section
-        if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || hasValue(data.element_position) || hasValue(data.element_length)) {
+        if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || (data.genomes && data.genomes.length > 0)) {
             html += `
                 <div class="modal-section">
                     <div class="section-title">Starship Information</div>
@@ -379,46 +392,77 @@ if (typeof window.UniversalModal === 'undefined') {
                                     <span class="modal-badge badge-blue">${data.genomes_present}</span>
                                 </div>
                             ` : ''}
-                            ${hasValue(data.element_position) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Element Position:</span>
-                                    <span class="modal-value">${data.element_position}</span>
-                                </div>
-                            ` : ''}
-                            ${hasValue(data.element_length) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Size:</span>
-                                    <span class="modal-value">${data.element_length} bp</span>
-                                </div>
-                            ` : ''}
                         </div>
-                    </div>
-                </div>
-            `;
-        }
+                        ${(data.genomes && data.genomes.length > 0) ? data.genomes.map((genome, i) => {
+                            const hasAssemblyAccession = hasValue(genome.assembly_accession);
+                            const hasGenomeSource = hasValue(genome.genome_source);
+                            const source = (genome.genome_source || '').toLowerCase();
 
-        // Data Quality section
-        if (hasValue(data.curated_status) || (data.quality_tags && data.quality_tags.length > 0)) {
-            html += `
-                <div class="modal-section">
-                    <div class="section-title">Data Quality</div>
-                    <div class="section-content">
-                        <div class="modal-grid">
-                            ${hasValue(data.curated_status) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Curation Status:</span>
-                                    <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
-                                </div>
-                            ` : ''}
-                            ${data.quality_tags && data.quality_tags.length > 0 ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Quality Tags:</span>
-                                    <div class="quality-tags">
-                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
+                            let genomeUrl = null;
+                            let sequenceViewerUrl = null;
+                            if (hasAssemblyAccession && hasGenomeSource) {
+                                if (source === 'jgi') {
+                                    genomeUrl = `https://mycocosm.jgi.doe.gov/${genome.assembly_accession}/${genome.assembly_accession}.home.html`;
+                                } else if (source === 'ncbi') {
+                                    genomeUrl = `https://www.ncbi.nlm.nih.gov/datasets/genome/${genome.assembly_accession}/`;
+                                }
+                                if ((source === 'jgi' || source === 'ncbi') && hasValue(genome.contig_id) && isValidAccession(genome.contig_id) && hasValue(genome.element_position)) {
+                                    const posMatch = (genome.element_position || '').match(/^(\d+)\s*-\s*(\d+)$/);
+                                    if (posMatch) {
+                                        sequenceViewerUrl = `https://www.ncbi.nlm.nih.gov/projects/sviewer/?id=${genome.contig_id}&from=${posMatch[1]}&to=${posMatch[2]}`;
+                                    }
+                                }
+                            }
+
+                            const sectionTitle = hasAssemblyAccession && hasGenomeSource
+                                ? `Genome: ${genome.assembly_accession}`
+                                : hasAssemblyAccession ? genome.assembly_accession
+                                : hasGenomeSource ? genome.genome_source
+                                : (data.genomes.length === 1 ? 'Genome' : `Genome ${i + 1}`);
+                            const sectionTitleHtml = genomeUrl && hasAssemblyAccession && hasGenomeSource
+                                ? `Genome: <a href="${genomeUrl}" target="_blank" class="modal-link">${genome.assembly_accession}</a>`
+                                : sectionTitle;
+
+                            return `
+                            <div class="modal-section" style="margin-top: 20px;">
+                                <div class="section-title">${sectionTitleHtml}</div>
+                                <div class="section-content">
+                                    <div class="modal-grid">
+                                    ${hasValue(genome.assembly_accession) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Assembly Accession:</span>
+                                            <span class="modal-value">${genomeUrl ? `<a href="${genomeUrl}" target="_blank" class="modal-link">${genome.assembly_accession}</a>` : genome.assembly_accession}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(genome.genome_source) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Genome Source:</span>
+                                            <span class="modal-value">${genome.genome_source}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(genome.contig_id) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Contig ID:</span>
+                                            <span class="modal-value">${sequenceViewerUrl ? `<a href="${sequenceViewerUrl}" target="_blank" class="modal-link">${genome.contig_id}</a>` : genome.contig_id}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(genome.element_position) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Element Position:</span>
+                                            <span class="modal-value">${genome.element_position}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${hasValue(genome.element_length) ? `
+                                        <div class="modal-row">
+                                            <span class="modal-label">Size:</span>
+                                            <span class="modal-value">${genome.element_length} bp</span>
+                                        </div>
+                                    ` : ''}
                                     </div>
                                 </div>
-                            ` : ''}
-                        </div>
+                            </div>
+                            `;
+                        }).join('') : ''}
                     </div>
                 </div>
             `;
@@ -463,29 +507,25 @@ if (typeof window.UniversalModal === 'undefined') {
             `;
         }
 
-        // Genome details section
-        if (hasValue(data.assembly_accession) || hasValue(data.genome_source) || hasValue(data.contig_id)) {
+        // Data Quality section
+        if (hasValue(data.curated_status) || (data.quality_tags && data.quality_tags.length > 0)) {
             html += `
                 <div class="modal-section">
-                    <div class="section-title">Genome Details</div>
+                    <div class="section-title">Data Quality</div>
                     <div class="section-content">
                         <div class="modal-grid">
-                            ${hasValue(data.assembly_accession) ? `
+                            ${hasValue(data.curated_status) ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Assembly Accession:</span>
-                                    <span class="modal-value">${data.assembly_accession}</span>
+                                    <span class="modal-label">Curation Status:</span>
+                                    <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
                                 </div>
                             ` : ''}
-                            ${hasValue(data.genome_source) ? `
+                            ${data.quality_tags && data.quality_tags.length > 0 ? `
                                 <div class="modal-row">
-                                    <span class="modal-label">Genome Source:</span>
-                                    <span class="modal-value">${data.genome_source}</span>
-                                </div>
-                            ` : ''}
-                            ${hasValue(data.contig_id) ? `
-                                <div class="modal-row">
-                                    <span class="modal-label">Contig ID:</span>
-                                    <span class="modal-value">${data.contig_id}</span>
+                                    <span class="modal-label">Quality Tags:</span>
+                                    <div class="quality-tags">
+                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
+                                    </div>
                                 </div>
                             ` : ''}
                         </div>
@@ -497,6 +537,46 @@ if (typeof window.UniversalModal === 'undefined') {
         // Close the modal container wrapper
         html += '</div>';
 
+        return html;
+    }
+
+    // Static method to render group accession (SSA) modal content - different layout from ship modal
+    static renderGroupAccessionModal(data) {
+        let html = '';
+
+        // Handle error case
+        if (data.error) {
+            return `
+                <div class="modal-container">
+                    <div class="alert alert-red">
+                        <div style="font-weight: 600; margin-bottom: 8px;">Error</div>
+                        <div>${data.error}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const hasValue = (v) => this.hasValue(v);
+
+        html += '<div class="modal-container">';
+        html += '<div class="modal-section">';
+        html += '<div class="section-title">Group Information</div>';
+        html += '<div class="section-content"><div class="modal-grid">';
+
+        if (hasValue(data.familyName)) {
+            html += `<div class="modal-row"><span class="modal-label">Starship Family:</span><span class="modal-value">${data.familyName}</span></div>`;
+        }
+        if (hasValue(data.genomes_present)) {
+            html += `<div class="modal-row"><span class="modal-label">Genomes Present:</span><span class="modal-badge badge-blue">${data.genomes_present}</span></div>`;
+        }
+        if (hasValue(data.navis_name)) {
+            html += `<div class="modal-row"><span class="modal-label">Starship Navis:</span><span class="modal-value">${data.navis_name}</span></div>`;
+        }
+        if (hasValue(data.haplotype_name)) {
+            html += `<div class="modal-row"><span class="modal-label">Haplotype:</span><span class="modal-value">${data.haplotype_name}</span></div>`;
+        }
+
+        html += '</div></div></div></div>';
         return html;
     }
     };  // Close the class definition
@@ -514,11 +594,10 @@ if (typeof window.showUniversalModal === 'undefined') {
     };
 }
 
-// Function to show accession modal with data fetching - only create if not already exists
-if (typeof window.showAccessionModal === 'undefined') {
-    window.showAccessionModal = async function(accessionId) {
+if (typeof window.showShipAccessionModal === 'undefined') {
+    window.showShipAccessionModal = async function(ssbId) {
         try {
-            const response = await fetch(`/api/accession/accession_details/${accessionId}`);
+            const response = await fetch(`/api/accession/accession_details/${ssbId}`);
             const data = await response.json();
 
             if (data.error) {
@@ -526,14 +605,42 @@ if (typeof window.showAccessionModal === 'undefined') {
                 return;
             }
 
-            const title = data.title || `Starship Accession: ${accessionId}`;
+            const title = data.title || `Ship Accession: ${ssbId}`;
             const content = window.UniversalModal.renderAccessionModal(data);
             window.showUniversalModal(title, content);
         } catch (error) {
-            console.error('Error fetching accession details:', error);
+            console.error('Error fetching ship accession details:', error);
             window.showUniversalModal('Error', window.UniversalModal.renderAccessionModal({
-                error: `Error loading details for ${accessionId}. Details: ${error.message}`
+                error: `Error loading details for ${ssbId}. Details: ${error.message}`
             }));
         }
     };
+}
+
+if (typeof window.showGroupAccessionModal === 'undefined') {
+    window.showGroupAccessionModal = async function(ssaId) {
+        try {
+            const response = await fetch(`/api/accession/accession_details/${ssaId}`);
+            const data = await response.json();
+
+            if (data.error) {
+                window.showUniversalModal('Error', window.UniversalModal.renderGroupAccessionModal(data));
+                return;
+            }
+
+            const title = data.title || `Group Accession: ${ssaId}`;
+            const content = window.UniversalModal.renderGroupAccessionModal(data);
+            window.showUniversalModal(title, content);
+        } catch (error) {
+            console.error('Error fetching group accession details:', error);
+            window.showUniversalModal('Error', window.UniversalModal.renderGroupAccessionModal({
+                error: `Error loading details for ${ssaId}. Details: ${error.message}`
+            }));
+        }
+    };
+}
+
+// Backward compatibility: showAccessionModal treats as ship accession (SSB)
+if (typeof window.showAccessionModal === 'undefined') {
+    window.showAccessionModal = window.showShipAccessionModal;
 }

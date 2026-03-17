@@ -135,7 +135,7 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             seq_list, n_seqs, error = parse_fasta_from_text(
                 query_text_input, max_sequences=max_sequences
             )
-            if error and isinstance(error, dmc.Alert) and error.color == "red":
+            if error and isinstance(error, dmc.Alert) and error.color == "var(--mantine-color-red-6)":
                 logger.error(f"Error parsing text input: {error}")
                 return None, None, None, error
         elif query_file_contents:
@@ -146,7 +146,7 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             if (
                 warning_or_error
                 and isinstance(warning_or_error, dmc.Alert)
-                and warning_or_error.color == "red"
+                and warning_or_error.color == "var(--mantine-color-red-6)"
             ):
                 logger.error(f"Error parsing file contents: {warning_or_error}")
                 return None, None, None, warning_or_error
@@ -325,7 +325,7 @@ def seq_processing_error_alert(error):
     return dmc.Alert(
         title="Error Processing Sequence",
         children=error,
-        color="red",
+        color="var(--mantine-color-red-6)",
         variant="filled",
     )
 
@@ -345,7 +345,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid Input",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="Please enter a valid FASTA sequence.",
                 ),
             )
@@ -364,7 +364,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="FASTA Parse Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="Could not parse the input as FASTA format. Please check the sequence format.",
                 ),
             )
@@ -376,7 +376,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty Sequence",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="No valid sequence was found in the input.",
                 ),
             )
@@ -406,7 +406,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty Sequence",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="The sequence appears to be empty.",
                 ),
             )
@@ -420,7 +420,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
             None,
             dmc.Alert(
                 title="Invalid Format",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 children="The input sequence appears to be incorrectly formatted.",
             ),
         )
@@ -462,7 +462,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="No File Contents",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="Please select a valid FASTA file.",
                 ),
             )
@@ -475,7 +475,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid File Format",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="The file content appears to be corrupted. Please try uploading again.",
                 ),
             )
@@ -488,7 +488,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid File Format",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="The file content is not in the expected format.",
                 ),
             )
@@ -505,7 +505,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Decoding Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="Could not decode the file contents. Please ensure you're uploading a valid FASTA file.",
                 ),
             )
@@ -520,7 +520,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="FASTA Parse Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="Could not parse the file as FASTA format. Please check the file format.",
                 ),
             )
@@ -533,7 +533,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty FASTA File",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="No sequences were found in the uploaded file.",
                 ),
             )
@@ -563,7 +563,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
         if warning:
             warning_alert = dmc.Alert(
                 title="Sequence Limit Applied",
-                color="yellow",
+                color="var(--mantine-color-yellow-6)",
                 variant="light",
                 children=warning,
             )
@@ -578,7 +578,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
             None,
             dmc.Alert(
                 title="Error Processing File",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 children=[
                     "An unexpected error occurred while processing the file. ",
                     "Please try refreshing the page and uploading again.",
@@ -672,15 +672,14 @@ def clean_contigIDs(string):
     """Removing omes from contigIDs."""
     if string is None:
         return None
-    else:
-        parts = string.split("_", 1)
-        if len(parts) > 1:
-            prefix = parts[0]
-            suffix = parts[1]
-            if 7 <= len(prefix) <= 9:
-                return suffix
-            else:
-                return string
+    parts = string.split("_", 1)
+    if len(parts) > 1:
+        prefix = parts[0]
+        suffix = parts[1]
+        if 7 <= len(prefix) <= 9:
+            return suffix
+        return string
+    return string
 
 
 def sanitize_header(header: str) -> str:
@@ -711,7 +710,7 @@ def extract_accession(accession: str) -> str:
     return base_accession
 
 
-def create_ncbi_style_header(row, type_ship=False):
+def create_ncbi_style_header(row):
     try:
 
         def safe_get(key):
@@ -785,7 +784,8 @@ def create_ncbi_style_header(row, type_ship=False):
         else:
             genomic_location = ""
 
-        if type_ship:
+        type_ship = safe_get("type_ship")
+        if type_ship and str(type_ship) == "1":
             # generate a count of the number of genomes for each group accession
             # TODO: the field `n_genomes` does not exist yet, so count how many ships have the same group accession
             n_genomes = fetch_ships(

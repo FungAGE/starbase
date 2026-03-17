@@ -160,20 +160,6 @@ def create_accordion_item(df, papers, category):
         )
 
 
-modal = dmc.Modal(
-    id="wiki-modal",
-    opened=False,
-    centered=True,
-    overlayProps={"blur": 3},
-    size="lg",
-    children=[
-        dmc.Title(id="wiki-modal-title", order=3),
-        dmc.Space(h="md"),
-        html.Div(id="wiki-modal-content"),
-    ],
-)
-
-
 def load_initial_data():
     """Load initial data for the page"""
     try:
@@ -199,9 +185,17 @@ table_columns = [
         "name": "Group Accession (SSA)",
         "id": "accession_display",
         "deletable": False,
-        "selectable": False,
+        "selectable": True,
         "presentation": "markdown",
+        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
     },
+    # {
+    #     "name": "Type Ship",
+    #     "id": "type_ship",
+    #     "deletable": False,
+    #     "selectable": False,
+    #     "presentation": "markdown",
+    # },
     {
         "name": "Starship Family",
         "id": "familyName",
@@ -210,7 +204,7 @@ table_columns = [
         "presentation": "markdown",
     },
     {
-        "name": "Species",
+        "name": "Strain",
         "id": "name",
         "deletable": False,
         "selectable": False,
@@ -313,12 +307,14 @@ main_card = dmc.Paper(
                     "Reset",
                     id="reset-search",
                     variant="outline",
+                    color="indigo",
                     leftSection=DashIconify(icon="tabler:refresh"),
                 ),
                 dmc.Button(
                     "Search",
                     id="apply-search",
                     variant="filled",
+                    color="indigo",
                     leftSection=DashIconify(icon="tabler:search"),
                 ),
             ],
@@ -426,8 +422,8 @@ info_table_paper = dmc.Paper(
                                     ]
                                 ),
                                 id="download-all-btn",
-                                variant="gradient",
-                                gradient={"from": "indigo", "to": "cyan"},
+                                variant="filled",
+                                color="indigo",
                                 leftSection=html.I(className="bi bi-cloud-download"),
                                 size="md",
                                 loaderProps={"variant": "dots", "color": "white"},
@@ -443,8 +439,8 @@ info_table_paper = dmc.Paper(
                                     ]
                                 ),
                                 id="download-selected-btn",
-                                variant="gradient",
-                                gradient={"from": "teal", "to": "lime"},
+                                variant="light",
+                                color="indigo",
                                 leftSection=html.I(className="bi bi-download"),
                                 size="md",
                                 loaderProps={"variant": "dots", "color": "white"},
@@ -480,18 +476,6 @@ info_table_paper = dmc.Paper(
                         ),
                     ],
                 ),
-                dmc.Modal(
-                    id="accession-modal",
-                    opened=False,
-                    centered=True,
-                    overlayProps={"blur": 3},
-                    size="lg",
-                    children=[
-                        dmc.Title(id="modal-title", order=3),
-                        dmc.Space(h="md"),
-                        html.Div(id="modal-content"),
-                    ],
-                ),
                 html.Div(
                     id="dl-table-container",
                     children=make_dl_table(
@@ -520,7 +504,6 @@ info_table_paper = dmc.Paper(
 layout = dmc.Container(
     fluid=True,
     children=[
-        modal,
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="meta-data", data=load_initial_data()),
         dcc.Store(id="filtered-meta-data"),
@@ -703,7 +686,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             return (
                 dmc.Alert(
                     "No results match your search criteria.",
-                    color="blue",
+                    color="var(--mantine-color-blue-6)",
                     variant="filled",
                 ),
                 placeholder_show,
@@ -719,7 +702,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             return (
                 dmc.Alert(
                     "No results match your search criteria.",
-                    color="blue",
+                    color="var(--mantine-color-blue-6)",
                     variant="filled",
                 ),
                 placeholder_show,
@@ -760,7 +743,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
         return (
             dmc.Alert(
                 f"An error occurred while loading the results: {str(e)}",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             ),
             placeholder_show,
@@ -1021,7 +1004,7 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
         logger.error(f"Error in update_search_sunburst: {str(e)}")
         return dmc.Alert(
             f"An error occurred while creating the plot: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
 
@@ -1035,7 +1018,7 @@ def generate_download_helper(rows, curated, dereplicate):
             raise ValueError("No rows selected for download")
 
         def _base_accession(row):
-            tag = row.get("accession_tag") or row.get("ship_accession_tag")
+            tag = row.get("ship_accession_tag")
             if tag is None or (isinstance(tag, float) and pd.isna(tag)):
                 return None
             return re.sub(pattern=r"\..*", repl="", string=str(tag))
@@ -1059,7 +1042,7 @@ def generate_download_helper(rows, curated, dereplicate):
         for _, row in dl_df.drop_duplicates(
             subset=["ship_accession_display", "sequence"]
         ).iterrows():
-            header = create_ncbi_style_header(row, type_ship=True)
+            header = create_ncbi_style_header(row)
             # Skip if header creation failed (returns None)
             if header is None:
                 logger.warning(
@@ -1123,7 +1106,7 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
         return None, dmc.Notification(
             title="Error",
             message="No sequences found for download",
-            color="red",
+            color="var(--mantine-color-red-6)",
             id="dl-download-notify",
             action="show",
             autoClose=5000,
@@ -1143,7 +1126,7 @@ def generate_download_all(dl_all_clicks, table_data, curated, dereplicate):
     return download_data, dmc.Notification(
         title="Success",
         message=download_message,
-        color="green",
+        color="var(--mantine-color-green-6)",
         id="dl-download-notify",
         action="show",
         autoClose=5000,
@@ -1175,8 +1158,8 @@ def generate_download_selected(
     selected_data = [
         row
         for row in table_data
-        if row.get("accession_tag")
-        in [selected.get("accession_tag") for selected in selected_rows]
+        if row.get("ship_accession_tag")
+        in [selected.get("ship_accession_tag") for selected in selected_rows]
     ]
 
     download_data, num_sequences = generate_download_helper(
@@ -1187,7 +1170,7 @@ def generate_download_selected(
         return None, dmc.Notification(
             title="Error",
             message="No sequences found for selected rows",
-            color="red",
+            color="var(--mantine-color-red-6)",
             id="dl-download-notify",
             action="show",
             autoClose=5000,
@@ -1196,7 +1179,7 @@ def generate_download_selected(
     return download_data, dmc.Notification(
         title="Success",
         message=f"Downloading {num_sequences} sequences",
-        color="green",
+        color="var(--mantine-color-green-6)",
         id="dl-download-notify",
         action="show",
         autoClose=5000,
@@ -1222,25 +1205,47 @@ clientside_callback(
         }
 
         let accession = null;
+        let isShipColumn = false;
+        let isGroupColumn = false;
+
+        const shipCols = ['ship_accession_tag', 'ship_accession_display'];
+        const groupCols = ['accession_tag', 'accession_display'];
 
         // Handle AG Grid cell clicks
-        if (cellClicked && (cellClicked.colId === 'ship_accession_tag' || cellClicked.colId === 'ship_accession_display')) {
-            accession = cellClicked.value;
+        if (cellClicked) {
+            if (shipCols.includes(cellClicked.colId)) {
+                accession = cellClicked.value;
+                isShipColumn = true;
+            } else if (groupCols.includes(cellClicked.colId)) {
+                accession = cellClicked.value;
+                isGroupColumn = true;
+            }
         }
         // Handle DataTable active cell
-        else if (activeCell && (activeCell.column_id === 'ship_accession_tag' || activeCell.column_id === 'ship_accession_display')) {
+        else if (activeCell) {
             const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
             if (tableData && actualRowIdx < tableData.length) {
-                accession = tableData[actualRowIdx][activeCell.column_id];
+                if (shipCols.includes(activeCell.column_id)) {
+                    accession = tableData[actualRowIdx][activeCell.column_id];
+                    isShipColumn = true;
+                } else if (groupCols.includes(activeCell.column_id)) {
+                    accession = tableData[actualRowIdx][activeCell.column_id];
+                    isGroupColumn = true;
+                }
             }
         }
 
         if (accession) {
-            // Clean and standardize the accession tag
-            accession = accession.toString().trim().split('/').pop().trim();
-
-            // Show the universal modal
-            showAccessionModal(accession);
+            let parts = accession.toString().trim().split('/').map(s => s.trim()).filter(Boolean);
+            if (isShipColumn) {
+                let ssbPart = parts.find(p => p.startsWith('SSB'));
+                accession = ssbPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
+                showShipAccessionModal(accession);
+            } else if (isGroupColumn) {
+                let ssaPart = parts.find(p => p.startsWith('SSA'));
+                accession = ssaPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
+                showGroupAccessionModal(accession);
+            }
         }
 
         return window.dash_clientside.no_update;

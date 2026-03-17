@@ -23,7 +23,12 @@ from src.components.ui import (
     create_file_upload,
 )
 from src.database.sql_manager import fetch_meta_data
-from src.utils.classification_utils import WORKFLOW_STAGES
+from src.utils.classification_utils import (
+    WORKFLOW_STAGES,
+    MATCHING_STAGES,
+    CLASSIFICATION_STAGES,
+    CLASSIFICATION_TOOLS_INFO,
+)
 from src.tasks import (
     run_blast_search_task,
     run_classification_workflow_sync,
@@ -45,36 +50,66 @@ dash.register_page(__name__)
 
 logger = get_logger(__name__)
 
+
+def _make_matching_steps():
+    """Build StepperStep components for sequence matching stages."""
+    return [
+        dmc.StepperStep(
+            label=stage["label"],
+            description=stage["id"].replace("_", " ").title(),
+        )
+        for stage in MATCHING_STAGES
+    ]
+
+
+def _make_classification_steps():
+    """Build StepperStep components for classification stages."""
+    return [
+        dmc.StepperStep(
+            label=stage["label"],
+            description=stage["id"].replace("_", " ").title(),
+        )
+        for stage in CLASSIFICATION_STAGES
+    ]
+
+
 progress_section = dmc.Stack(
     [
-        dmc.Group(
+        dmc.Stack(
             [
-                dbc.Progress(
-                    id="classification-progress",
-                    value=0,
-                    color="blue",
-                    animated=True,
-                    striped=True,
-                    style={
-                        "width": "100%",
-                        "marginBottom": "5px",
-                    },
+                dmc.Text("Sequence matching", size="sm", fw=600, c="dimmed"),
+                dmc.Stepper(
+                    id="matching-stepper",
+                    active=0,
+                    color="var(--mantine-color-blue-6)",
+                    orientation="horizontal",
+                    size="sm",
+                    children=_make_matching_steps(),
                 ),
-            ]
+            ],
+            gap="xs",
         ),
-        dmc.Group(
+        dmc.Stack(
             [
-                dmc.Text(
-                    "Classification Status:",
-                    size="lg",
-                    fw=500,
+                dmc.Text("Classification", size="sm", fw=600, c="dimmed"),
+                dmc.Stepper(
+                    id="classification-stepper",
+                    active=0,
+                    color="var(--mantine-color-blue-6)",
+                    orientation="horizontal",
+                    size="sm",
+                    children=_make_classification_steps(),
                 ),
-                dmc.Text(
-                    id="classification-stage-display",
-                    size="lg",
-                    c="blue",
-                ),
-            ]
+            ],
+            gap="xs",
+            id="classification-stepper-section",
+            style={"display": "none"},
+        ),
+        dmc.Text(
+            id="classification-error-display",
+            size="sm",
+            c="var(--mantine-color-red-6)",
+            style={"display": "none"},
         ),
     ],
     gap="md",
@@ -102,6 +137,9 @@ layout = dmc.Container(
         dcc.Store(id="classification-stage", data="Upload a sequence"),
         # Tab stores
         dcc.Store(id="blast-active-tab", data=0),  # Store active tab index
+        # Submit-to-portal prefill stores
+        dcc.Store(id="submit-prefill-id-store"),
+        html.Div(id="submit-prefill-trigger", style={"display": "none"}),
         # Interval for polling workflow state is no longer needed
         # but kept disabled for backward compatibility
         dcc.Interval(
@@ -109,6 +147,25 @@ layout = dmc.Container(
             interval=500,
             disabled=True,  # Always disabled
             max_intervals=0,  # Never trigger
+        ),
+        dmc.Modal(
+            id="classification-tools-modal",
+            opened=False,
+            centered=True,
+            overlayProps={"blur": 3},
+            size="lg",
+            title="Classification workflow tools",
+            children=[
+                dmc.Space(h="md"),
+                dcc.Markdown(CLASSIFICATION_TOOLS_INFO.strip()),
+                dmc.Space(h="md"),
+                dmc.Group(
+                    dmc.Button(
+                        "Close", id="classification-tools-modal-close", variant="light"
+                    ),
+                    justify="flex-end",
+                ),
+            ],
         ),
         dmc.Space(h=20),
         dmc.Grid(
@@ -122,15 +179,51 @@ layout = dmc.Container(
                                     dmc.Title("BLAST Search", order=1),
                                     dmc.Text(
                                         [
-                                            "Search protein/nucleotide sequences for ",
+                                            "Search for ",
                                             html.Span(
                                                 "Starships",
                                                 style={"fontStyle": "italic"},
                                             ),
-                                            " and ",
-                                            html.Span(
-                                                "Starship-associated genes",
-                                                style={"fontStyle": "italic"},
+                                            " in an existing sequence. Once a search is submitted, this pipeline will: ",
+                                            html.Ul(
+                                                [
+                                                    html.Li(
+                                                        [
+                                                            "Return results with best matches to existing ",
+                                                            html.Span(
+                                                                "Starships",
+                                                                style={
+                                                                    "fontStyle": "italic"
+                                                                },
+                                                            ),
+                                                            ".",
+                                                        ]
+                                                    ),
+                                                    html.Li(
+                                                        [
+                                                            "Search for exact, contained, or highly similar matches to existing envtries in the database.",
+                                                            html.Li(
+                                                                html.Span(
+                                                                    [
+                                                                        "If no match to an existing Starship is found, then the assignment of Starship family, navis, and haplotype is determined. ",
+                                                                        dmc.Button(
+                                                                            "More info",
+                                                                            id="classification-tools-more-info",
+                                                                            variant="subtle",
+                                                                            size="compact-xs",
+                                                                            style={
+                                                                                "fontStyle": "italic",
+                                                                                "padding": "0 4px",
+                                                                                "height": "auto",
+                                                                                "minWidth": "auto",
+                                                                            },
+                                                                        ),
+                                                                    ]
+                                                                )
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ],
                                             ),
                                         ],
                                         c="dimmed",
@@ -180,13 +273,15 @@ layout = dmc.Container(
                                                             ),
                                                         ),
                                                         withBorder=False,
-                                                        shadow="sm",
+                                                        shadow="none",
                                                         radius="md",
                                                         style={"cursor": "pointer"},
                                                     ),
                                                     html.Div(
                                                         id="upload-error-message",
-                                                        style={"color": "red"},
+                                                        style={
+                                                            "color": "var(--mantine-color-red-6)"
+                                                        },
                                                     ),
                                                 ],
                                                 gap="md",
@@ -260,11 +355,8 @@ layout = dmc.Container(
                                                 dmc.Button(
                                                     "Submit BLAST",
                                                     id="submit-button",
-                                                    variant="gradient",
-                                                    gradient={
-                                                        "from": "indigo",
-                                                        "to": "cyan",
-                                                    },
+                                                    variant="filled",
+                                                    color="indigo",
                                                     size="lg",
                                                     loading=False,
                                                     loaderProps={
@@ -301,7 +393,7 @@ layout = dmc.Container(
                                     loaderProps={
                                         "variant": "oval",
                                         "size": "xl",
-                                        "color": "blue",
+                                        "color": "var(--mantine-color-blue-6)",
                                     },
                                     zIndex=10,
                                 ),
@@ -331,9 +423,11 @@ layout = dmc.Container(
                                                                 "textAlign": "left",
                                                             },
                                                         ),
-                                                    ]
+                                                    ],
+                                                    style={"alignSelf": "stretch"},
                                                 ),
                                             ],
+                                            style={"alignItems": "stretch"},
                                         ),
                                     ],
                                 ),
@@ -372,7 +466,7 @@ def update_file_details(seq_content, seq_filename):
     Immediately process the file to show a summary.
     Will display an error related to file problems in the upload area.
     - show and error and block submission if:
-        - file is too large (over 10 MB)
+        - file is too large (over 50 MB)
         - file is not a valid FASTA format
         - file contains no sequences
         - file parsing fails for any reason
@@ -394,7 +488,7 @@ def update_file_details(seq_content, seq_filename):
 
     try:
         try:
-            max_size = 10 * 1024 * 1024  # 10 MB
+            max_size = 50 * 1024 * 1024  # 50 MB
             content_type, content_string = seq_content.split(",")
             decoded = base64.b64decode(content_string)
             file_size = len(decoded)
@@ -403,17 +497,17 @@ def update_file_details(seq_content, seq_filename):
             error_alert = dmc.Alert(
                 title="Invalid File Format",
                 children="The file appears to be corrupted or in an unsupported format.",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
             return True, "Error", None, upload_details, error_alert
 
         if file_size > max_size:
-            error_msg = f"The file '{seq_filename}' exceeds the 10 MB limit."
+            error_msg = f"The file '{seq_filename}' exceeds the 50 MB limit."
             error_alert = dmc.Alert(
                 title="File Too Large",
                 children=error_msg,
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
             return True, "Error", None, upload_details, error_alert
@@ -439,7 +533,7 @@ def update_file_details(seq_content, seq_filename):
                 else dmc.Alert(
                     title="Error Processing File",
                     children=error,
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     variant="filled",
                 )
             )
@@ -449,7 +543,7 @@ def update_file_details(seq_content, seq_filename):
             error_alert = dmc.Alert(
                 title="Parsing Error",
                 children="Failed to parse sequences from the file.",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
             return True, "Error", None, upload_details, error_alert
@@ -464,7 +558,10 @@ def update_file_details(seq_content, seq_filename):
                             f"Found {n_seqs} sequences in the file",
                             html.Span(
                                 " (maximum of 10 will be processed)",
-                                style={"color": "orange", "fontStyle": "italic"}
+                                style={
+                                    "color": "var(--mantine-color-orange-6)",
+                                    "fontStyle": "italic",
+                                }
                                 if n_seqs > 10
                                 else {"display": "none"},
                             ),
@@ -503,7 +600,7 @@ def update_file_details(seq_content, seq_filename):
         error_alert = dmc.Alert(
             title="Error Processing File",
             children=f"An unexpected error occurred: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
         return True, "Error", None, upload_details, error_alert
@@ -537,6 +634,25 @@ def clear_file_on_text_input(text_value, current_file_contents):
     if text_value and len(text_value.strip()) > 10 and current_file_contents:
         return None, html.Div(html.P(["Select a FASTA file to upload"]))
     raise PreventUpdate
+
+
+@callback(
+    Output("classification-tools-modal", "opened"),
+    [
+        Input("classification-tools-more-info", "n_clicks"),
+        Input("classification-tools-modal-close", "n_clicks"),
+    ],
+    prevent_initial_call=True,
+)
+def toggle_classification_tools_modal(open_clicks, close_clicks):
+    """Open modal when 'More info' is clicked, close when Close button is clicked."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    trigger_id = ctx.triggered_id
+    if trigger_id == "classification-tools-more-info":
+        return True
+    return False
 
 
 # Add the clientside callback to immediately set button loading state
@@ -874,7 +990,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
                         else dmc.Alert(
                             title="Error Processing File",
                             children=error,
-                            color="red",
+                            color="var(--mantine-color-red-6)",
                             variant="filled",
                         )
                     )
@@ -939,7 +1055,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         error_alert = dmc.Alert(
             title="No Input Provided",
             children="Please enter a sequence or upload a FASTA file.",
-            color="yellow",
+            color="var(--mantine-color-yellow-6)",
             variant="filled",
         )
         return None, "No input provided", error_alert, None, n_clicks
@@ -949,7 +1065,7 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         error_alert = dmc.Alert(
             title="Error Processing Input",
             children=f"An unexpected error occurred: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
         return None, str(e), error_alert, None, n_clicks
@@ -1242,11 +1358,14 @@ def process_multiple_sequences(
                 blast_data.blast_content = sequence_analysis.blast_result.blast_content
                 blast_data.blast_file = sequence_analysis.blast_result.blast_file
                 blast_data.fasta_file = sequence_analysis.blast_result.fasta_file
+                blast_data.blast_df = sequence_analysis.blast_result.blast_hits
                 blast_data.seq_type = sequence_analysis.sequence_type.value
                 blast_data.processed = sequence_analysis.is_complete()
 
                 # Update the blast data again with the complete information
                 pipeline_state.update_blast_data(sequence_id, blast_data)
+
+        sequence_length = len(sequence_analysis.sequence or "")
 
         # Create workflow state using the submission ID
         workflow_state = WorkflowState(
@@ -1261,7 +1380,6 @@ def process_multiple_sequences(
         # Ensure the sequence ID is properly set
         logger.debug(f"Created workflow state with task_id: {workflow_state.task_id}")
 
-        sequence_length = len(sequence_analysis.sequence or "")
         skip_classification = (
             sequence_length < 5000
             or sequence_analysis.has_error()
@@ -1738,7 +1856,7 @@ def render_tab_content(active_tab, blast_data_dict):
             return dmc.Alert(
                 title="Error",
                 children="Invalid tab format",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
 
@@ -1794,7 +1912,7 @@ def render_tab_content(active_tab, blast_data_dict):
             return dmc.Alert(
                 title="Error",
                 children=f"No results found for sequence {tab_idx + 1}. Please try clicking on this tab again to reprocess.",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 variant="filled",
             )
 
@@ -1861,7 +1979,7 @@ def render_tab_content(active_tab, blast_data_dict):
         return dmc.Alert(
             title="Error Rendering Tab",
             children=f"An unexpected error occurred while rendering this tab: {str(e)}",
-            color="red",
+            color="var(--mantine-color-red-6)",
             variant="filled",
         )
 
@@ -2009,6 +2127,30 @@ clientside_callback(
                         
                         // BlasterJS should now display clean accession numbers
                         const buttons = container.querySelectorAll('.alignment-table-description');
+
+                        // Sync the max-width of the parent output stack to the blast table's
+                        // natural rendered width so all sibling components share the same width.
+                        const syncMaxWidthToTable = () => {
+                            const firstTable = container.querySelector('table');
+                            if (!firstTable) return;
+                            const tableWidth = firstTable.offsetWidth;
+                            if (tableWidth <= 0) return;
+                            // Walk up to the dmc.Stack that holds classification-output,
+                            // progress section, and the blast container wrapper.
+                            const outerStack = container.closest('#right-column-content > div');
+                            if (outerStack) {
+                                outerStack.style.maxWidth = tableWidth + 'px';
+                            }
+                        };
+
+                        syncMaxWidthToTable();
+
+                        // Re-sync if the table resizes (e.g. window resize, tab switch)
+                        const firstTable = container.querySelector('table');
+                        if (firstTable) {
+                            const ro = new ResizeObserver(syncMaxWidthToTable);
+                            ro.observe(firstTable);
+                        }
                     }, 100);
                 } catch (blasterError) {
                     container.innerHTML += "<div style='color:red;'>Error initializing BLAST viewer: " + blasterError + "</div>";
@@ -2183,11 +2325,32 @@ clientside_callback(
                             tables.forEach(function(table) {
                                 table.style.marginLeft = '0';
                                 table.style.textAlign = 'left';
-                                                          });
-                              
-                              // BlasterJS should now display clean accession numbers
-                              const buttons = container.querySelectorAll('.alignment-table-description');
-                          }, 100);                        
+                            });
+
+                            // BlasterJS should now display clean accession numbers
+                            const buttons = container.querySelectorAll('.alignment-table-description');
+
+                            // Sync the max-width of the parent output stack to the blast table's
+                            // natural rendered width so all sibling components share the same width.
+                            const syncMaxWidthToTable = () => {
+                                const firstTable = container.querySelector('table');
+                                if (!firstTable) return;
+                                const tableWidth = firstTable.offsetWidth;
+                                if (tableWidth <= 0) return;
+                                const outerStack = container.closest('#right-column-content > div');
+                                if (outerStack) {
+                                    outerStack.style.maxWidth = tableWidth + 'px';
+                                }
+                            };
+
+                            syncMaxWidthToTable();
+
+                            const firstTable = container.querySelector('table');
+                            if (firstTable) {
+                                const ro = new ResizeObserver(syncMaxWidthToTable);
+                                ro.observe(firstTable);
+                            }
+                        }, 100);                        
                     } catch (error) {
                         console.error("Error initializing BlasterJS:", error);
                         container.innerHTML += `<div style="color:red;padding:10px;">Error initializing BLAST viewer: ${error.toString()}</div>`;
@@ -2489,7 +2652,7 @@ def _create_enriched_classification(
     # Look up metadata
     try:
         if meta_df is not None and not meta_df.empty:
-            meta_match = meta_df[meta_df["accession_display"] == match_accession]
+            meta_match = meta_df[meta_df["ship_accession_display"] == match_accession]
             if not meta_match.empty:
                 logger.debug(f"Found metadata for {match_accession}")
 
@@ -2540,10 +2703,34 @@ def _create_enriched_classification(
     return classification_data
 
 
+def _stage_to_matching_index(stage_id: str) -> int:
+    """Map stage id to matching stepper index (0-2)."""
+    for i, s in enumerate(MATCHING_STAGES):
+        if s["id"] == stage_id:
+            return i
+    return 0
+
+
+def _stage_to_classification_index(stage_id: str) -> int:
+    """Map stage id to classification stepper index (0-2)."""
+    for i, s in enumerate(CLASSIFICATION_STAGES):
+        if s["id"] == stage_id:
+            return i
+    return 0
+
+
+def _is_classification_stage(stage_id: str) -> bool:
+    """True if stage is family, navis, or haplotype."""
+    return stage_id in ("family", "navis", "haplotype")
+
+
 @callback(
     [
-        Output("classification-progress", "value"),
-        Output("classification-stage-display", "children"),
+        Output("matching-stepper", "active"),
+        Output("classification-stepper", "active"),
+        Output("classification-stepper-section", "style"),
+        Output("classification-error-display", "children"),
+        Output("classification-error-display", "style"),
         Output("classification-progress-section", "style"),
     ],
     Input("workflow-state-store", "data"),
@@ -2554,87 +2741,67 @@ def update_classification_progress(workflow_state_dict):
     """Update the classification progress UI based on workflow state"""
     if not workflow_state_dict or not isinstance(workflow_state_dict, dict):
         logger.warning("Invalid workflow state type or empty")
-        return 0, "No workflow data", {"display": "none"}
+        return 0, 0, {"display": "none"}, "", {"display": "none"}, {"display": "none"}
 
     workflow_state = WorkflowState.from_dict(workflow_state_dict)
 
     # Only show if we have a valid state with a status
     status = workflow_state.status
     if not status or status == "pending" or not workflow_state.task_id:
-        return 0, "", {"display": "none"}
+        return 0, 0, {"display": "none"}, "", {"display": "none"}, {"display": "none"}
 
-    # Calculate progress percentage
-    progress = 0
-    if workflow_state.complete:
-        progress = 100
-    elif (
-        workflow_state.current_stage_idx is not None
-        and workflow_state.current_stage_idx is not None
-    ):
-        try:
-            stage_idx = int(workflow_state.current_stage_idx)
-            total_stages = len(WORKFLOW_STAGES)
+    current_stage = workflow_state.current_stage
 
-            # Safely get the stage progress
-            current_stage = workflow_state.current_stage
-            stages_dict = workflow_state.stages
-
-            if current_stage and current_stage in stages_dict:
-                stage_data = stages_dict[current_stage]
-                stage_progress = (
-                    stage_data.get("progress", 0) if isinstance(stage_data, dict) else 0
-                )
-            else:
-                stage_progress = 0
-
-            # Calculate overall progress: stage contribution + progress within stage
-            progress = int(
-                (stage_idx / total_stages) * 100 + (stage_progress / total_stages)
-            )
-            # Ensure progress is within valid range
-            progress = max(0, min(100, progress))
-        except (ValueError, ZeroDivisionError, TypeError) as e:
-            logger.error(f"Error calculating progress: {e}")
-            progress = 0
-
-    # Get current stage label
-    if workflow_state.error:
-        stage_text = f"Error: {workflow_state.error}"
-    elif workflow_state.complete:
-        if workflow_state.found_match:
-            match_stage = workflow_state.match_stage or "unknown"
-            stage_text = f"Complete - {match_stage.capitalize()} match found"
-        else:
-            stage_text = "Classification complete"
+    # Matching stepper: show current step, or all complete when in classification phase
+    if current_stage and _is_classification_stage(current_stage):
+        matching_active = len(MATCHING_STAGES)  # All matching steps complete
     else:
-        current_stage = workflow_state.current_stage
-        if current_stage:
-            # Find the stage label
-            stage_label = None
-            for stage in WORKFLOW_STAGES:
-                if stage["id"] == current_stage:
-                    stage_label = stage["label"]
-                    break
+        matching_active = (
+            _stage_to_matching_index(current_stage) if current_stage else 0
+        )
 
-            stage_text = stage_label if stage_label else f"Processing {current_stage}"
-        else:
-            stage_text = "Starting classification..."
+    # Classification stepper active (0-2) - only relevant when in classification phase
+    classification_active = (
+        _stage_to_classification_index(current_stage) if current_stage else 0
+    )
+
+    # Show classification stepper only after matching steps complete + no match found
+    show_classification_stepper = (
+        current_stage is not None and _is_classification_stage(current_stage)
+    )
+    classification_section_style = (
+        {"display": "block"} if show_classification_stepper else {"display": "none"}
+    )
+
+    # Error display
+    error_children = ""
+    error_style = {"display": "none"}
+    if workflow_state.error:
+        error_children = f"Error: {workflow_state.error}"
+        error_style = {"display": "block"}
 
     # Hide the progress section if classification is complete
     if workflow_state.complete:
-        style = {"display": "none"}
+        section_style = {"display": "none"}
     else:
-        # Show section if classification is in progress
-        style = (
+        section_style = (
             {"display": "block"}
             if status and status != "pending"
             else {"display": "none"}
         )
 
     logger.debug(
-        f"Progress update: progress={progress}, text='{stage_text}', style={style}"
+        f"Stepper update: matching={matching_active}, classification={classification_active}, "
+        f"show_classification={show_classification_stepper}, style={section_style}"
     )
-    return progress, stage_text, style
+    return (
+        matching_active,
+        classification_active,
+        classification_section_style,
+        error_children,
+        error_style,
+        section_style,
+    )
 
 
 @callback(
@@ -2649,3 +2816,90 @@ def disable_interval_when_complete(workflow_state, blast_results):
     """Disable the interval when classification is complete"""
     # Always disable the interval since we're no longer using polling
     return True
+
+
+@callback(
+    Output("submit-prefill-id-store", "data"),
+    Input("blast-submit-portal-btn", "n_clicks"),
+    [
+        State("blast-fasta-upload", "contents"),
+        State("blast-fasta-upload", "filename"),
+        State("blast-active-tab", "data"),
+        State("classification-data-store", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def prepare_submit_prefill(
+    n_clicks, fasta_contents, fasta_filename, active_tab_idx, classification_data_store
+):
+    """Store blast session data in cache and return a UUID for the submit page to fetch."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    import uuid as _uuid
+    import json
+
+    from src.config.cache import cache
+
+    # Prefer classification from pipeline state (has exact match, etc.); fallback to store
+    classification_data_dict = None
+    adapter = get_dash_adapter()
+    pipeline_state = adapter.pipeline_state
+    main_sequence_id = pipeline_state._active_sequence_id
+
+    if main_sequence_id:
+        try:
+            tab_idx = int(active_tab_idx) if active_tab_idx is not None else 0
+            tab_sequence_id = (
+                f"{main_sequence_id}_tab_{tab_idx}" if tab_idx > 0 else main_sequence_id
+            )
+            classification_data_dict = adapter.get_sequence_classification_for_ui(
+                tab_sequence_id
+            )
+        except (ValueError, IndexError, TypeError):
+            pass
+
+    if not classification_data_dict and classification_data_store:
+        classification_data_dict = classification_data_store
+
+    prefill_id = str(_uuid.uuid4())
+
+    comment_lines = ["Classification results from Starbase BLAST:"]
+    if classification_data_dict:
+        field_labels = [
+            ("closest_match", "Closest match"),
+            ("family", "Family"),
+            ("navis", "Navis"),
+            ("haplotype", "Haplotype"),
+            ("confidence", "Confidence"),
+            ("match_details", "Details"),
+        ]
+        for key, label in field_labels:
+            val = classification_data_dict.get(key)
+            if val:
+                comment_lines.append(f"  {label}: {val}")
+
+    prefill_data = {
+        "fasta_contents": fasta_contents,
+        "fasta_filename": fasta_filename or "sequence_from_blast.fa",
+        "comment": "\n".join(comment_lines) if len(comment_lines) > 1 else "",
+        "classification": classification_data_dict,
+    }
+
+    cache.set(f"submit_prefill:{prefill_id}", json.dumps(prefill_data), timeout=3600)
+    logger.info(f"Stored submit prefill data under key submit_prefill:{prefill_id}")
+    return prefill_id
+
+
+clientside_callback(
+    """
+    function(prefill_id) {
+        if (!prefill_id) return window.dash_clientside.no_update;
+        window.open('/submit?blast_id=' + prefill_id, '_blank');
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("submit-prefill-trigger", "children"),
+    Input("submit-prefill-id-store", "data"),
+    prevent_initial_call=True,
+)

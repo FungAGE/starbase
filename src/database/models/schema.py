@@ -49,6 +49,7 @@ class Ships(Base):
     header = Column(String)
     rev_comp_md5 = Column(String)
     accession_id = Column(Integer, ForeignKey("accessions.id"))
+    type_ship = Column(String)
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="ships")
@@ -192,6 +193,9 @@ class Navis(Base):
     navis_name = Column(String)
     previous_navis_name = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    activity = Column(
+        Integer, default=1, nullable=True
+    )  # 0 = inactive, don't show in modals
 
     # Relationships
     family = relationship("FamilyNames")
@@ -204,6 +208,9 @@ class Haplotype(Base):
     previous_haplotype_name = Column(String)
     navis_id = Column(Integer, ForeignKey("navis_names.id"))
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    activity = Column(
+        Integer, default=1, nullable=True
+    )  # 0 = inactive, don't show in modals
 
     # Relationships
     family = relationship("FamilyNames")
@@ -304,5 +311,13 @@ class Submission(Base):
     shipend = Column(Integer, nullable=True)
     shipstrand = Column(String(10), nullable=True)
     comment = Column(Text, nullable=True)
+    ship_accession_tag = Column(String(50), nullable=True)
     accession_tag = Column(String(50), nullable=True)
     needs_review = Column(Boolean, default=False, nullable=True)
+    # Classification from BLAST prefill (optional)
+    classification_source = Column(String(50), nullable=True)
+    classification_family = Column(String(100), nullable=True)
+    classification_navis = Column(String(100), nullable=True)
+    classification_haplotype = Column(String(100), nullable=True)
+    closest_match = Column(String(50), nullable=True)
+    classification_confidence = Column(String(20), nullable=True)

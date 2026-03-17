@@ -40,7 +40,7 @@ title = dmc.Paper(
                         html.Span(
                             "starbase: ",
                             className="logo-text",
-                            style={"color": "white"},
+                            style={"color": "var(--mantine-color-white)"},
                         ),
                         "A Database and Toolkit for Exploration of ",
                         html.Span("Starship", style={"fontStyle": "italic"}),
@@ -69,7 +69,7 @@ title = dmc.Paper(
     p={"base": "md", "sm": "lg", "md": "xl"},
     radius="md",
     style={
-        "backgroundColor": "#2C2E33",
+        "background": "linear-gradient(135deg, var(--mantine-color-dark-8) 50%, var(--mantine-color-indigo-9) 100%)",
         "marginBottom": "2rem",
     },
     className="responsive-group",
@@ -82,13 +82,13 @@ working = {
 }
 
 
-def create_feature_button(label, href, icon):
+def create_feature_button(label, href, icon, primary=False):
     return dmc.Anchor(
         dmc.Button(
             label,
             leftSection=DashIconify(icon=icon),
-            variant="gradient",
-            gradient={"from": "indigo", "to": "cyan"},
+            variant="filled" if primary else "light",
+            color="indigo",
             size="lg",
             radius="md",
             fullWidth=False,
@@ -99,9 +99,10 @@ def create_feature_button(label, href, icon):
     )
 
 
-working_buttons = [
-    create_feature_button("BLAST Search", "/blast", "mdi:dna"),
+feature_buttons = [
+    create_feature_button("BLAST Search", "/blast", "mdi:dna", primary=True),
     create_feature_button("Browse Wiki and Download", "/wiki", "mdi:book-open-variant"),
+    create_feature_button("Synteny Viewer", "/synteny", "mdi:view-sequential"),
     create_feature_button(
         html.Span(
             [
@@ -111,21 +112,6 @@ working_buttons = [
         ),
         "/submit",
         "mdi:database-plus",
-    ),
-]
-
-not_working = [
-    html.Span(
-        ["Synteny/Genome Browser"],
-    ),
-    html.Span(
-        [
-            html.Span(
-                "starfish",
-                className="logo-text",
-            ),
-            " webserver",
-        ],
     ),
 ]
 
@@ -141,6 +127,7 @@ starship_card = dmc.Paper(
             ),
             order=2,
             mb="md",
+            c="indigo",
         ),
         dmc.Grid(
             [
@@ -176,7 +163,11 @@ starship_card = dmc.Paper(
                                 dmc.Anchor(
                                     "here",
                                     href="https://en.wikipedia.org/wiki/Starship_(genetics)",
-                                    style={"textDecoration": "none"},
+                                    style={
+                                        "textDecoration": "none",
+                                        "color": "var(--mantine-color-indigo-6)",
+                                        "fontWeight": 500,
+                                    },
                                 ),
                                 ".",
                             ],
@@ -204,6 +195,7 @@ starship_card = dmc.Paper(
     p="xl",
     radius="md",
     withBorder=True,
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 
@@ -224,9 +216,10 @@ working_features_card = dmc.Paper(
                             ],
                             order=2,
                             mb="md",
+                            c="indigo",
                         ),
                         dmc.Stack(
-                            working_buttons,
+                            feature_buttons,
                             gap="md",
                             align="center",
                             justify="center",
@@ -245,18 +238,10 @@ working_features_card = dmc.Paper(
                                     "starbase",
                                     className="logo-text",
                                 ),
-                                " are still under active development. We plan on implementing:",
+                                " are still under active development.",
                             ],
                             order=2,
                             mb="md",
-                        ),
-                        dmc.List(
-                            [
-                                dmc.ListItem(dmc.Text(item, c="dimmed"))
-                                for item in not_working
-                            ],
-                            size="lg",
-                            spacing="sm",
                         ),
                     ],
                     justify="space-between",
@@ -273,6 +258,7 @@ working_features_card = dmc.Paper(
     withBorder=True,
     mb="xl",
     h="100%",
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 accession_card = dmc.Paper(
@@ -289,6 +275,7 @@ accession_card = dmc.Paper(
             ),
             order=2,
             mb="md",
+            c="indigo",
         ),
         dmc.Text(
             [
@@ -324,7 +311,8 @@ accession_card = dmc.Paper(
         dmc.Space(h=20),
         dmc.Alert(
             "Classification/group accessions are SSA. Individual sequence accessions are SSB accessions.",
-            color="blue",
+            color="indigo",
+            variant="light",
             radius="md",
             mb="md",
         ),
@@ -345,6 +333,7 @@ accession_card = dmc.Paper(
     radius="md",
     withBorder=True,
     h="100%",
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 # Database version card for the hero section
@@ -358,7 +347,7 @@ db_version_card = dmc.Paper(
                         DashIconify(
                             icon="mdi:database",
                             width=24,
-                            color="#868E96",
+                            color="var(--mantine-color-gray-6)",
                         ),
                         dmc.Text(
                             "Current Version:",
@@ -372,7 +361,7 @@ db_version_card = dmc.Paper(
                 dmc.Title(
                     get_database_version(),
                     order=3,
-                    style={"fontSize": "1.5rem", "color": "#228be6"},
+                    style={"fontSize": "1.5rem", "color": "var(--mantine-primary-color-6)"},
                 ),
                 dmc.Divider(my="sm"),
                 dmc.Group(
@@ -380,7 +369,7 @@ db_version_card = dmc.Paper(
                         DashIconify(
                             icon="mdi:cog",
                             width=20,
-                            color="#868E96",
+                            color="var(--mantine-color-gray-6)",
                         ),
                         dmc.Text(
                             "Schema Version:",
@@ -408,15 +397,16 @@ db_version_card = dmc.Paper(
     radius="md",
     withBorder=True,
     h="100%",
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 
 def create_hero_section():
     return dmc.Container(
         [
-            dmc.Space(h=20),
+            dmc.Space(h="lg"),
             dmc.Center(title),
-            dmc.Space(h=40),
+            dmc.Space(h="xl"),
             dmc.Grid(
                 [
                     dmc.GridCol(starship_card, span={"base": 12, "md": 12}),
@@ -454,6 +444,7 @@ def create_features_section():
         size="xl",
         py="xl",
         flex=True,
+        style={"backgroundColor": "var(--mantine-color-indigo-0)"},
     )
 
 
@@ -471,6 +462,7 @@ def create_publications_section():
                         ),
                         order=2,
                         mb="md",
+                        c="indigo",
                     ),
                     html.Div(make_paper_table(), style={"width": "100%"}),
                 ],
@@ -493,7 +485,7 @@ total_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:dna",
                     width=30,
-                    color="#868E96",
+                    color="var(--mantine-color-indigo-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
@@ -540,7 +532,7 @@ curated_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:check-circle",
                     width=24,
-                    color="#2F9E44",
+                    color="var(--mantine-color-green-8)",
                     style={"width": "clamp(20px, 3vw, 28px)"},
                 ),
                 dmc.Text(
@@ -563,7 +555,7 @@ curated_starships_info = dmc.Stack(
         dmc.Title(
             f"{stats['curated_starships']:,}",
             order=3,
-            c="green",
+            c="var(--mantine-color-green-6)",
             style={
                 "fontSize": "clamp(1.4rem, 2vw, 1.8rem)",
                 "textAlign": "center",
@@ -582,7 +574,7 @@ uncurated_starships_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:clock",
                     width=24,
-                    color="#E8590C",
+                    color="var(--mantine-color-orange-8)",
                     style={"width": "clamp(20px, 3vw, 28px)"},
                 ),
                 dmc.Text(
@@ -605,7 +597,7 @@ uncurated_starships_info = dmc.Stack(
         dmc.Title(
             f"{stats['uncurated_starships']:,}",
             order=3,
-            c="orange",
+            c="var(--mantine-color-orange-6)",
             style={
                 "fontSize": "clamp(1.4rem, 2vw, 1.8rem)",
                 "textAlign": "center",
@@ -624,7 +616,7 @@ species_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:mushroom",
                     width=30,
-                    color="#868E96",
+                    color="var(--mantine-color-gray-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
@@ -666,7 +658,7 @@ family_info = dmc.Stack(
                 DashIconify(
                     icon="mdi:family-tree",
                     width=30,
-                    color="#868E96",
+                    color="var(--mantine-color-gray-6)",
                     style={"width": "clamp(24px, 4vw, 36px)"},
                 ),
                 dmc.Text(
@@ -710,7 +702,7 @@ family_info = dmc.Stack(
 
 stats_section = dmc.Paper(
     [
-        dmc.Title("Database Statistics", order=2, mb="xl"),
+        dmc.Title("Database Statistics", order=2, mb="xl", c="indigo"),
         dmc.SimpleGrid(
             [
                 dmc.Stack(
@@ -757,6 +749,7 @@ stats_section = dmc.Paper(
     radius="md",
     shadow="sm",
     withBorder=True,
+    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
 )
 
 

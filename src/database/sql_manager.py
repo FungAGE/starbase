@@ -36,8 +36,8 @@ def fetch_meta_data(curated=False, accessions=None):
     """
     from src.config.cache import cache
 
-    # Always cache the full dataset with a fixed key
-    cache_key = "fetch_meta_data:full_dataset"
+    # Always cache the full dataset with a fixed key (bump version when schema changes)
+    cache_key = "fetch_meta_data:full_dataset:v2"
 
     accession_mode = _get_accession_mode(accessions)
 
@@ -57,9 +57,9 @@ def fetch_meta_data(curated=False, accessions=None):
                     sa.ship_accession_display,
                     t.taxID, t.strain, t.`order`, t.family, t.name,
                     sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
-                    f.familyName, f.type_element_reference, n.navis_name, h.haplotype_name,
+                    f.familyName, f.type_element_reference, n.navis_name, n.activity as navis_activity, h.haplotype_name, h.activity as haplotype_activity,
                     g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                    s.md5, s.rev_comp_md5,
+                    s.md5, s.rev_comp_md5, s.type_ship,
                     a.accession_tag, a.version_tag, a.accession_display
                 FROM joined_ships j
                 LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
@@ -185,11 +185,13 @@ def fetch_ships(
                 t.name, t.family, t.`order`,
                 f.familyName, n.navis_name, h.haplotype_name,
                 g.assembly_accession, c.captainID,
-                a.accession_tag, a.version_tag, a.accession_display
+                a.accession_tag, a.version_tag, a.accession_display,
+                s.type_ship
                 """
 
         base_query += """
             FROM joined_ships j
+            LEFT JOIN ships s ON s.id = j.ship_id
             LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
             LEFT JOIN taxonomy t ON j.tax_id = t.id
             LEFT JOIN family_names f ON j.ship_family_id = f.id
@@ -262,6 +264,7 @@ def fetch_ships(
                 sm.navis_name,
                 sm.haplotype_name,
                 sm.assembly_accession,
+                sm.type_ship,
                 s.sequence,
                 s.md5,
                 s.rev_comp_md5,
@@ -293,6 +296,7 @@ def fetch_ships(
                 sm.navis_name,
                 sm.haplotype_name,
                 sm.assembly_accession,
+                sm.type_ship,
                 sm.captainID
             FROM ships_with_metadata sm"""
 

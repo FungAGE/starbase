@@ -6,8 +6,21 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
+def ensure_type_ship_column():
+    """Add type_ship column to ships table if it doesn't exist."""
+    with get_starbase_session() as session:
+        result = session.execute(text("PRAGMA table_info(ships)"))
+        columns = [row[1] for row in result]
+        if "type_ship" not in columns:
+            session.execute(text("ALTER TABLE ships ADD COLUMN type_ship VARCHAR"))
+            logger.info("Added type_ship column to ships table")
+
+
 def create_database_indexes():
     """Create indexes to optimize database queries"""
+
+    # Ensure type_ship column exists (for type ship selection logic)
+    ensure_type_ship_column()
 
     # Check if indexes already exist by querying sqlite_master
     existing_indexes_query = """

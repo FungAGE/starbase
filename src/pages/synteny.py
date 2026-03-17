@@ -14,14 +14,14 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__, path="/synteny")
 
-SEQUENCE_COLORS = ["blue", "green", "orange", "grape"]
+SEQUENCE_COLORS = ["var(--mantine-color-blue-6)", "var(--mantine-color-green-6)", "var(--mantine-color-orange-6)", "var(--mantine-color-grape-6)"]
 
 GENE_CATEGORY_COLORS = {
-    "captain": "#e74c3c",
-    "nlr": "#3498db",
-    "plp": "#2ecc71",
-    "fre": "#f39c12",
-    "other": "#95a5a6",
+    "captain": "var(--mantine-color-red-6)",
+    "nlr": "var(--mantine-color-blue-6)",
+    "plp": "var(--mantine-color-green-6)",
+    "fre": "var(--mantine-color-orange-6)",
+    "other": "var(--mantine-color-gray-5)",
 }
 
 GENE_CATEGORY_LABELS = {
@@ -104,6 +104,7 @@ layout = dmc.Container(
                                                         "Reset",
                                                         id="synteny-reset-search",
                                                         variant="outline",
+                                                        color="indigo",
                                                         leftSection=DashIconify(
                                                             icon="tabler:refresh"
                                                         ),
@@ -113,6 +114,7 @@ layout = dmc.Container(
                                                         "Search",
                                                         id="synteny-apply-search",
                                                         variant="filled",
+                                                        color="indigo",
                                                         leftSection=DashIconify(
                                                             icon="tabler:search"
                                                         ),
@@ -152,11 +154,12 @@ layout = dmc.Container(
                                                     dmc.Title(
                                                         "Selected for Comparison",
                                                         order=3,
+                                                        c="indigo",
                                                     ),
                                                     dmc.Badge(
                                                         id="synteny-selected-count",
                                                         children="0 / 4",
-                                                        color="blue",
+                                                        color="indigo",
                                                         variant="filled",
                                                     ),
                                                 ],
@@ -174,7 +177,7 @@ layout = dmc.Container(
                                                 "Clear All",
                                                 id="synteny-clear-selected",
                                                 variant="subtle",
-                                                color="red",
+                                                color="var(--mantine-color-red-6)",
                                                 size="sm",
                                                 leftSection=DashIconify(
                                                     icon="tabler:trash"
@@ -234,6 +237,7 @@ layout = dmc.Container(
                                                                         id="synteny-show-links",
                                                                         label="Display synteny links",
                                                                         checked=True,
+                                                                        color="indigo",
                                                                     ),
                                                                 ],
                                                                 gap="sm",
@@ -314,8 +318,8 @@ layout = dmc.Container(
                                     dmc.Button(
                                         dmc.Text("Generate Visualization", size="lg"),
                                         id="synteny-update-button",
-                                        variant="gradient",
-                                        gradient={"from": "indigo", "to": "cyan"},
+                                        variant="filled",
+                                        color="indigo",
                                         leftSection=html.I(className="bi bi-diagram-3"),
                                         fullWidth=True,
                                     ),
@@ -349,10 +353,10 @@ layout = dmc.Container(
                                                     "display": "flex",
                                                     "alignItems": "center",
                                                     "justifyContent": "center",
-                                                    "color": "#6c757d",
+                                                    "color": "var(--mantine-color-gray-6)",
                                                     "fontSize": "16px",
-                                                    "backgroundColor": "#f8f9fa",
-                                                    "border": "1px solid #dee2e6",
+                                                    "backgroundColor": "var(--mantine-color-gray-0)",
+                                                    "border": "1px solid var(--mantine-color-gray-3)",
                                                     "borderRadius": "4px",
                                                 },
                                             ),
@@ -383,7 +387,7 @@ layout = dmc.Container(
                                                             "Clear",
                                                             id="synteny-clear-viz",
                                                             variant="light",
-                                                            color="red",
+                                                            color="var(--mantine-color-red-6)",
                                                             leftSection=html.I(
                                                                 className="bi bi-x-circle"
                                                             ),
@@ -462,9 +466,10 @@ layout = dmc.Container(
 @callback(
     Output("synteny-available-ships", "data"),
     Input("synteny-url", "pathname"),
+    Input("synteny-url", "search"),
 )
 @handle_callback_error
-def load_available_ships(pathname):
+def load_available_ships(pathname, search):
     if pathname != "/synteny":
         return no_update
 
@@ -492,7 +497,46 @@ def load_available_ships(pathname):
         return []
 
 
-# ── Populate autocomplete options from available ships ─────────────────────────
+# ── Auto-select ship from URL query parameter (?accession=SSB...) ──────────────
+@callback(
+    Output("synteny-selected-ships", "data", allow_duplicate=True),
+    Input("synteny-available-ships", "data"),
+    State("synteny-url", "search"),
+    State("synteny-selected-ships", "data"),
+    prevent_initial_call=True,
+)
+@handle_callback_error
+def autoselect_ship_from_url(available_ships, search, current_selected):
+    """When arriving from blast page with ?accession=SSBxxxxxx, auto-select that ship."""
+    if not search or not available_ships:
+        raise PreventUpdate
+
+    from urllib.parse import parse_qs
+
+    params = parse_qs(search.lstrip("?"))
+    accession = params.get("accession", [None])[0]
+    if not accession:
+        raise PreventUpdate
+
+    match = next(
+        (s for s in available_ships if s.get("ship_accession_display", "").lower() == accession.lower()),
+        None,
+    )
+    if not match:
+        logger.info(f"Accession {accession} from URL not found in available ships")
+        raise PreventUpdate
+
+    ship_id = int(match["value"])
+    current_selected = current_selected or []
+
+    if any(s["id"] == ship_id for s in current_selected):
+        raise PreventUpdate
+
+    logger.info(f"Auto-selecting ship {accession} (id={ship_id}) from URL parameter")
+    return current_selected + [{"id": ship_id, "label": match["label"]}]
+
+
+
 @callback(
     [
         Output("synteny-taxa-search", "data"),
@@ -607,7 +651,7 @@ def display_search_results(filtered_ships, selected_ships):
     if not filtered_ships:
         return dmc.Alert(
             "No sequences found matching your search criteria.",
-            color="blue",
+            color="var(--mantine-color-blue-6)",
             variant="light",
         )
 
@@ -638,7 +682,7 @@ def display_search_results(filtered_ships, selected_ships):
                             ),
                             id={"type": "synteny-add-ship", "index": ship_id},
                             variant="subtle",
-                            color="green" if already_added else "blue",
+                            color="var(--mantine-color-green-6)" if already_added else "var(--mantine-color-blue-6)",
                             disabled=disabled,
                             size="sm",
                         ),
@@ -756,7 +800,7 @@ def display_selected_ships(selected_ships):
                         DashIconify(icon="tabler:x"),
                         id={"type": "synteny-remove-ship", "index": str(ship["id"])},
                         variant="subtle",
-                        color="red",
+                        color="var(--mantine-color-red-6)",
                         size="sm",
                     ),
                 ],
@@ -1007,7 +1051,7 @@ clientside_callback(
                 container.style.display = 'flex';
                 container.style.alignItems = 'center';
                 container.style.justifyContent = 'center';
-                container.style.color = '#6c757d';
+                container.style.color = 'var(--mantine-color-gray-6)';
                 container.style.fontSize = '16px';
             }
             return ["", {"display": "none"}];
@@ -1049,22 +1093,22 @@ clientside_callback(
                                 if (panel) {
                                     let html = '<div style="font-family: system-ui; font-size: 13px;">';
                                     html += '<div style="margin-bottom: 16px;">';
-                                    html += '<div style="font-size: 18px; font-weight: bold; color: #228be6; margin-bottom: 4px;">';
+                                    html += '<div style="font-size: 18px; font-weight: bold; color: var(--mantine-primary-color-6); margin-bottom: 4px;">';
                                     html += (gene.label || gene.name || 'Unknown Gene');
                                     html += '</div>';
                                     if (gene.metadata.category_label) {
                                         const categoryColors = {
-                                            'captain': '#e74c3c', 'nlr': '#3498db',
-                                            'plp': '#2ecc71', 'fre': '#f39c12', 'other': '#95a5a6'
+                                            'captain': 'var(--mantine-color-red-6)', 'nlr': 'var(--mantine-color-blue-6)',
+                                            'plp': 'var(--mantine-color-green-6)', 'fre': 'var(--mantine-color-orange-6)', 'other': 'var(--mantine-color-gray-5)'
                                         };
-                                        const bgColor = categoryColors[gene.metadata.category] || '#95a5a6';
+                                        const bgColor = categoryColors[gene.metadata.category] || 'var(--mantine-color-gray-5)';
                                         html += '<span style="display: inline-block; background: ' + bgColor + '; color: white; ';
                                         html += 'padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">';
                                         html += gene.metadata.category_label + '</span>';
                                     }
                                     html += '</div>';
-                                    html += '<div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
-                                    html += '<div style="font-weight: bold; margin-bottom: 8px; color: #495057;">📍 Genomic Location</div>';
+                                    html += '<div style="background: var(--mantine-color-gray-0); padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
+                                    html += '<div style="font-weight: bold; margin-bottom: 8px; color: var(--mantine-color-gray-7);">📍 Genomic Location</div>';
                                     html += '<div style="font-size: 12px;">';
                                     html += '<div style="margin-bottom: 4px;"><strong>Position:</strong> ' +
                                         gene.start.toLocaleString() + ' - ' + gene.end.toLocaleString() + '</div>';
@@ -1073,14 +1117,14 @@ clientside_callback(
                                     html += '<div><strong>Strand:</strong> ' + (gene.strand > 0 ? 'Forward (+)' : 'Reverse (-)') + '</div>';
                                     html += '</div></div>';
                                     if (gene.metadata) {
-                                        html += '<div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
-                                        html += '<div style="font-weight: bold; margin-bottom: 8px; color: #495057;">🏷️ Primary Annotation</div>';
+                                        html += '<div style="background: var(--mantine-color-gray-0); padding: 12px; border-radius: 6px; margin-bottom: 12px;">';
+                                        html += '<div style="font-weight: bold; margin-bottom: 8px; color: var(--mantine-color-gray-7);">🏷️ Primary Annotation</div>';
                                         html += '<div style="font-size: 12px;">';
                                         const primaryFields = ['Target_ID', 'Alias', 'SeqID', 'product', 'Name', 'type', 'source'];
                                         for (const key of primaryFields) {
                                             if (gene.metadata[key] && gene.metadata[key] !== '.' && gene.metadata[key] !== '') {
                                                 html += '<div style="margin-bottom: 4px;"><strong>' + key + ':</strong> ';
-                                                html += '<span style="font-family: monospace; background: #e9ecef; padding: 1px 4px; border-radius: 3px;">';
+                                                html += '<span style="font-family: monospace; background: var(--mantine-color-gray-2); padding: 1px 4px; border-radius: 3px;">';
                                                 html += gene.metadata[key] + '</span></div>';
                                             }
                                         }
@@ -1093,8 +1137,8 @@ clientside_callback(
                                             gene.metadata[k] !== ''
                                         );
                                         if (additionalAttrs.length > 0) {
-                                            html += '<div style="background: #f8f9fa; padding: 12px; border-radius: 6px;">';
-                                            html += '<div style="font-weight: bold; margin-bottom: 8px; color: #495057;">📋 Additional Attributes</div>';
+                                            html += '<div style="background: var(--mantine-color-gray-0); padding: 12px; border-radius: 6px;">';
+                                            html += '<div style="font-weight: bold; margin-bottom: 8px; color: var(--mantine-color-gray-7);">📋 Additional Attributes</div>';
                                             html += '<div style="font-size: 12px;">';
                                             for (const key of additionalAttrs) {
                                                 html += '<div style="margin-bottom: 4px;"><strong>' + key + ':</strong> ' + gene.metadata[key] + '</div>';
@@ -1145,11 +1189,11 @@ clientside_callback(
                             .attr('class', 'gene-tooltip')
                             .style('position', 'absolute')
                             .style('background', 'rgba(255, 255, 255, 0.98)')
-                            .style('color', '#212529')
+                            .style('color', 'var(--mantine-color-dark-7)')
                             .style('padding', '12px')
                             .style('border-radius', '6px')
                             .style('box-shadow', '0 4px 12px rgba(0,0,0,0.15)')
-                            .style('border', '1px solid #dee2e6')
+                            .style('border', '1px solid var(--mantine-color-gray-3)')
                             .style('pointer-events', 'none')
                             .style('opacity', 0)
                             .style('z-index', 10000)
@@ -1159,20 +1203,20 @@ clientside_callback(
                             .on('mouseenter', function(event, d) {
                                 if (d && d.metadata) {
                                     let html = '<div style="font-size: 12px; line-height: 1.5;">';
-                                    html += '<div style="font-weight: bold; font-size: 13px; margin-bottom: 6px; color: #228be6;">';
+                                    html += '<div style="font-weight: bold; font-size: 13px; margin-bottom: 6px; color: var(--mantine-primary-color-6);">';
                                     html += (d.label || d.name || 'Unknown Gene') + '</div>';
                                     if (d.metadata.category_label) {
                                         const categoryColors = {
-                                            'captain': '#e74c3c', 'nlr': '#3498db',
-                                            'plp': '#2ecc71', 'fre': '#f39c12', 'other': '#95a5a6'
+                                            'captain': 'var(--mantine-color-red-6)', 'nlr': 'var(--mantine-color-blue-6)',
+                                            'plp': 'var(--mantine-color-green-6)', 'fre': 'var(--mantine-color-orange-6)', 'other': 'var(--mantine-color-gray-5)'
                                         };
-                                        const bgColor = categoryColors[d.metadata.category] || '#95a5a6';
+                                        const bgColor = categoryColors[d.metadata.category] || 'var(--mantine-color-gray-5)';
                                         html += '<div style="margin-bottom: 6px;">';
                                         html += '<span style="background: ' + bgColor + '; color: white; padding: 2px 6px; ';
                                         html += 'border-radius: 10px; font-size: 10px; font-weight: 600;">';
                                         html += d.metadata.category_label + '</span></div>';
                                     }
-                                    html += '<div style="border-top: 1px solid #dee2e6; padding-top: 6px; margin-top: 6px;">';
+                                    html += '<div style="border-top: 1px solid var(--mantine-color-gray-3); padding-top: 6px; margin-top: 6px;">';
                                     html += '<strong>Position:</strong> ' + d.start.toLocaleString() + ' - ' + d.end.toLocaleString();
                                     html += ' (' + (d.end - d.start).toLocaleString() + ' bp)<br/>';
                                     html += '<strong>Strand:</strong> ' + (d.strand > 0 ? 'Forward (+)' : 'Reverse (-)') + '<br/>';
@@ -1189,7 +1233,7 @@ clientside_callback(
                                         html += '<strong>Type:</strong> ' + d.metadata.type + '<br/>';
                                     }
                                     html += '</div>';
-                                    html += '<div style="margin-top: 6px; font-size: 10px; color: #6c757d; font-style: italic;">Click for full details</div>';
+                                    html += '<div style="margin-top: 6px; font-size: 10px; color: var(--mantine-color-gray-6); font-style: italic;">Click for full details</div>';
                                     html += '</div>';
                                     tooltip.html(html)
                                         .style('left', (event.pageX + 15) + 'px')

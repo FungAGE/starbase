@@ -4,7 +4,6 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
 from src.config.logging import get_logger
-from src.components.data import safe_get_value, safe_get_position
 from src.database.sql_manager import get_database_version
 
 logger = get_logger(__name__)
@@ -12,125 +11,12 @@ logger = get_logger(__name__)
 
 def curated_switch(text="Only search curated Starships", size="sm"):
     """Create a switch component for toggling curated-only searches."""
-    return dmc.Switch(id="curated-input", label=text, size=size, checked=True)
+    return dmc.Switch(id="curated-input", label=text, size=size, checked=True, color="indigo")
 
 
 def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
     """Create a switch component for toggling dereplicated-only searches."""
-    return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True)
-
-
-def create_quality_tag_badges(quality_tags):
-    """
-    Create badge components for quality tags.
-
-    Args:
-        quality_tags (list): List of tag strings in format "tag_type" or "tag_type:tag_value"
-
-    Returns:
-        list: List of dmc.Badge components
-    """
-    if not quality_tags:
-        return []
-
-    # Define colors for different tag types
-    tag_colors = {
-        "incomplete": "orange",
-        "fragmented": "red",
-        "partial": "yellow",
-        "nested": "grape",
-        "verified": "teal",
-        "high_quality": "green",
-        "low_quality": "red",
-        "default": "gray",
-    }
-
-    badges = []
-    for tag in quality_tags:
-        # Parse tag_type and tag_value if present
-        if ":" in tag:
-            tag_type, tag_value = tag.split(":", 1)
-            display_text = f"{tag_type}: {tag_value}"
-        else:
-            tag_type = tag
-            display_text = tag_type
-
-        # Get color for this tag type
-        color = tag_colors.get(tag_type.lower(), tag_colors["default"])
-
-        badges.append(
-            dmc.Badge(
-                display_text,
-                color=color,
-                variant="light",
-                size="xs",
-            )
-        )
-
-    return badges
-
-
-def create_genome_cards(df):
-    """
-    Create a list of card components, one per genome, to avoid wide tables
-    that overflow small viewports.
-    """
-    cards = []
-    for i in range(len(df)):
-        header_value = safe_get_value(df, "assembly_accession", i, default="")
-        if not header_value or header_value == "N/A":
-            header_value = f"Genome {i + 1}"
-
-        genome_source = safe_get_value(df, "genomeSource", i, default="N/A")
-        contig_id = safe_get_value(df, "contigID", i, default="N/A")
-        position = safe_get_position(df, "elementBegin", "elementEnd", i, default="N/A")
-        length_bp = safe_get_value(
-            df,
-            "elementLength",
-            i,
-            default="N/A",
-            format_func=lambda x: f"{int(float(x))} bp",
-        )
-
-        cards.append(
-            dmc.Paper(
-                p="md",
-                withBorder=True,
-                radius="sm",
-                children=[
-                    dmc.Text(header_value, fw=700, mb=6),
-                    dmc.Stack(
-                        gap="xs",
-                        children=[
-                            dmc.Group(
-                                [
-                                    dmc.Text("Genome Source:", fw=700),
-                                    dmc.Text(genome_source),
-                                ]
-                            ),
-                            dmc.Group(
-                                [dmc.Text("ContigID:", fw=700), dmc.Text(contig_id)]
-                            ),
-                            *(
-                                [
-                                    dmc.Group(
-                                        [
-                                            dmc.Text("Element Position:", fw=700),
-                                            dmc.Text(position),
-                                        ]
-                                    )
-                                ]
-                                if position != "N/A"
-                                else []
-                            ),
-                            dmc.Group([dmc.Text("Size:", fw=700), dmc.Text(length_bp)]),
-                        ],
-                    ),
-                ],
-            )
-        )
-
-    return cards
+    return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True, color="indigo")
 
 
 download_ships_button = dmc.Anchor(
@@ -138,7 +24,7 @@ download_ships_button = dmc.Anchor(
         [
             dmc.Group(
                 [
-                    DashIconify(icon="mdi:download"),
+                    DashIconify(icon="mdi:download", color="indigo"),
                     dmc.Stack(
                         [
                             dmc.Text("Download Starships", style={"display": "block"}),
@@ -166,11 +52,11 @@ download_ships_button = dmc.Anchor(
             ),
         ],
         id="navigate-to-download-btn",
-        variant="gradient",
-        gradient={"from": "indigo", "to": "cyan"},
+        variant="filled",
+        color="indigo",
         size="lg",
         radius="md",
-        fullWidth=True,
+        fullWidth=False,
         styles={
             "root": {
                 "minHeight": "auto",
@@ -186,7 +72,7 @@ download_ships_button = dmc.Anchor(
     href="/download",
     style={
         "textDecoration": "none",
-        "width": "100%",
+        "width": "auto",
         "display": "block",
     },
 )
@@ -201,7 +87,13 @@ download_ships_card = dmc.Paper(
                     "starbase",
                     className="logo-text",
                 ),
-                " data on our GitHub repo (currently private). We are currently in the process of migrating to a new back-end, which will provide more options for data export",
+                " data on our ",
+                html.A(
+                    "GitHub repo",
+                    href="https://github.com/FungAGE/starbase",
+                    target="_blank",
+                ),
+                ". This is a work in progress, and we are currently in the process of migrating to a new back-end, which will provide more options for data export.",
             ],
             size="lg",
             c="dimmed",
@@ -225,12 +117,14 @@ def create_file_upload(
     icon: str = "mdi:file-upload",
     **kwargs,
 ) -> dmc.Stack:
-    return dmc.Stack(
-        [
-            dmc.Center(DashIconify(icon=icon, width=40, height=40, color="#228be6")),
-            dcc.Upload(
-                id=upload_id,
-                children=dmc.Stack(
+    return dcc.Upload(
+        id=upload_id,
+        children=dmc.Stack(
+            [
+                dmc.Center(
+                    DashIconify(icon=icon, width=40, height=40, color="var(--mantine-color-indigo-7)")
+                ),
+                dmc.Stack(
                     [
                         html.Div(
                             id=output_id,
@@ -245,17 +139,19 @@ def create_file_upload(
                     align="center",
                     gap="xs",
                 ),
-                className="upload-box",
-                **kwargs,
-            ),
-            dmc.Progress(
-                id=f"{upload_id}-progress",
-                value=0,
-                animated=True,
-                style={"display": "none"},
-            ),
-        ],
-        gap="md",
+                dmc.Progress(
+                    id=f"{upload_id}-progress",
+                    value=0,
+                    animated=True,
+                    style={"display": "none"},
+                    c="var(--mantine-primary-color-6)",
+                ),
+            ],
+            className="upload-box",
+            style={"boxShadow": "none"},
+            **kwargs,
+            gap="md",
+        ),
     )
 
 
@@ -272,9 +168,9 @@ def create_feedback_button():
                 dmc.Button(
                     "Report it on GitHub",
                     variant="light",
-                    color="blue",
+                    color="var(--mantine-color-blue-6)",
                     size="sm",
-                    leftSection=DashIconify(icon="octicon:mark-github-16", width=20),
+                    leftSection=DashIconify(icon="octicon:mark-github-16", width=20, color="indigo"),
                 ),
                 href="https://github.com/FungAGE/starbase/issues",
                 target="_blank",
@@ -289,7 +185,7 @@ def create_feedback_button():
 
 
 def create_database_version_indicator():
-    """Create a database version indicator for the bottom-left corner"""
+    """Create a database version indicator (legacy notification - use create_footer instead)."""
     try:
         db_version = get_database_version()
         version_text = f"v{db_version}" if db_version != "unknown" else "Unknown"
@@ -301,15 +197,15 @@ def create_database_version_indicator():
         title="Database Version",
         id="db-version-notify",
         action="show",
-        autoClose=30000,  # Auto-close after 30 seconds (longer than feedback button)
-        color="blue",
+        autoClose=30000,
+        color="var(--mantine-color-blue-6)",
         radius="md",
         message=[
             dmc.Stack(
                 [
                     dmc.Group(
                         [
-                            DashIconify(icon="mdi:database", width=16, color="white"),
+                            DashIconify(icon="mdi:database", width=16, color="var(--mantine-color-white)"),
                             dmc.Text(
                                 version_text,
                                 size="sm",
@@ -332,3 +228,79 @@ def create_database_version_indicator():
             "color": "white",
         },
     )
+
+
+def create_footer():
+    """Create app footer with database version and feedback link."""
+    try:
+        db_version = get_database_version()
+        version_text = f"v{db_version}" if db_version != "unknown" else "Unknown"
+    except Exception as e:
+        logger.error(f"Error fetching database version: {str(e)}")
+        version_text = "Error"
+
+    return html.Footer(
+        dmc.Group(
+            [
+                dmc.Group(
+                    [
+                        DashIconify(icon="mdi:database", width=16, color="var(--mantine-color-gray-6)"),
+                        dmc.Text(version_text, size="sm", c="dimmed"),
+                    ],
+                    gap="xs",
+                    align="center",
+                ),
+                dmc.Anchor(
+                    "Report an issue",
+                    href="https://github.com/FungAGE/starbase/issues",
+                    target="_blank",
+                    size="sm",
+                    c="dimmed",
+                    style={"textDecoration": "none"},
+                ),
+            ],
+            justify="space-between",
+            align="center",
+            p="md",
+            style={
+                "borderTop": "1px solid var(--mantine-color-indigo-2)",
+                "backgroundColor": "var(--mantine-color-indigo-0)",
+            },
+        ),
+        style={
+            "position": "fixed",
+            "bottom": 0,
+            "left": 0,
+            "right": 0,
+            "zIndex": 100,
+        },
+    )
+
+
+source_code_card = dmc.Paper(
+    children=[
+        dmc.Stack(
+            [
+                dmc.Text(
+                    [
+                        "The source code for ",
+                        html.Span("starbase", className="logo-text"),
+                        " webserver will soon be available on GitHub",
+                    ],
+                    size="lg",
+                ),
+                dmc.Image(
+                    src="assets/images/starbase-map.png",
+                    fit="contain",
+                    className="auto-resize-750",
+                ),
+            ],
+            gap="xl",
+        ),
+    ],
+    p="xl",
+    radius="md",
+    withBorder=True,
+    h="100%",
+    shadow="sm",
+)

@@ -24,6 +24,9 @@ from src.utils.submission_utils import (
     validate_submission,
     check_sequence_duplicate,
 )
+from src.utils.seq_utils import clean_sequence
+from src.utils.classification_utils import assign_accession
+from src.database.sql_manager import fetch_ships
 
 logger = get_logger(__name__)
 
@@ -231,6 +234,20 @@ def process_submission_data(
         "duplicate_info": duplicate_info,
     }
 
+    # Map BLAST classification from prefill to processor schema
+    classification = validated_data.get("classification")
+    if classification:
+        processed_data["classification"] = classification
+        if classification.get("family"):
+            processed_data["ship_family"] = classification["family"]
+        if classification.get("navis"):
+            processed_data["ship_navis"] = classification["navis"]
+        h = classification.get("haplotype")
+        if h:
+            processed_data["ship_haplotype"] = (
+                h.get("haplotype_name") if isinstance(h, dict) else h
+            )
+
     # Validate using submission_utils validator
     is_valid, validation_errors = validate_submission(processed_data)
 
@@ -238,6 +255,67 @@ def process_submission_data(
         raise WebValidationError("; ".join(validation_errors))
 
     return processed_data
+
+
+def process_submission_to_staging(processed_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process submission for staging only (submissions DB). Does NOT insert into main DB.
+
+    Validates, checks duplicates, assigns display accession. Used for new web submissions.
+    Main DB integration (SubmissionProcessor) is for the future promotion flow.
+
+    Args:
+        processed_data: Output from process_submission_data()
+
+    Returns:
+        Dict with accession, needs_review, filename, uploader (same shape as perform_database_insertion)
+
+    Raises:
+        WebValidationError: If exact duplicate same taxon
+    """
+    duplicate_info = processed_data.get("duplicate_info")
+
+    if duplicate_info and duplicate_info.is_duplicate:
+        if not duplicate_info.different_taxon:
+            raise WebValidationError(
+                f"This sequence already exists in the database "
+                f"(Accession: {duplicate_info.existing_accession}). "
+                f"Duplicate submissions from the same organism are not allowed.",
+                "sequence",
+            )
+        # Duplicate different taxon: use existing accession for display
+        accession_tag = duplicate_info.existing_accession or "Pending"
+        needs_review = True
+        logger.info(
+            f"Duplicate sequence from different taxon - staging only "
+            f"(existing: {duplicate_info.existing_accession})"
+        )
+    else:
+        # New sequence or BLAST exact match
+        clean_seq = clean_sequence(processed_data["sequence"])
+        classification = processed_data.get("classification")
+
+        if (
+            classification
+            and classification.get("source") == "exact"
+            and classification.get("closest_match")
+        ):
+            accession_tag = classification["closest_match"]
+            needs_review = True
+            logger.info(f"Using BLAST exact match for display: {accession_tag}")
+        else:
+            existing_ships = fetch_ships(with_sequence=True)
+            accession_tag, needs_review = assign_accession(clean_seq, existing_ships)
+
+    return {
+        "success": True,
+        "ship_id": None,
+        "accession": accession_tag,
+        "needs_review": needs_review,
+        "filename": processed_data.get("starshipID"),
+        "uploader": processed_data.get("curator"),
+        "warnings": [],
+    }
 
 
 def perform_database_insertion(
