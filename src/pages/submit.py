@@ -698,6 +698,19 @@ data_policy_card = dmc.Alert(
     mb="md",
 )
 
+sidebar = dmc.Box(
+    dmc.Stack(
+        [data_policy_card, create_submission_queue(max_items=15)],
+        gap="md",
+    ),
+    style={
+        "position": "sticky",
+        "top": "var(--mantine-spacing-md)",
+        "maxHeight": "calc(100vh - 2rem)",
+        "overflowY": "auto",
+    },
+)
+
 layout = dmc.Container(
     size="lg",
     children=[
@@ -707,19 +720,18 @@ layout = dmc.Container(
         dmc.Grid(
             [
                 dmc.GridCol(
-                    submission_info_card,
-                    span={"base": 12, "md": 6},
+                    dmc.Stack(
+                        [submission_info_card, submission_body],
+                        gap="xl",
+                    ),
+                    span={"base": 12, "md": 8},
                 ),
                 dmc.GridCol(
-                    dmc.Stack(
-                        [data_policy_card, create_submission_queue(max_items=15)],
-                        gap="md",
-                    ),
-                    span={"base": 12, "md": 6},
+                    sidebar,
+                    span={"base": 12, "md": 4},
                 ),
             ],
         ),
-        submission_body,
         submission_received_modal,
     ],
     style={
