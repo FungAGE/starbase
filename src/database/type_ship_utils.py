@@ -39,10 +39,14 @@ COMPLETENESS_COLUMNS = [
 
 def _count_non_null(row: pd.Series, columns: list) -> int:
     """Count how many of the given columns are non-NULL in the row."""
-    return sum(1 for c in columns if c in row.index and pd.notna(row.get(c)) and row[c] is not None)
+    return sum(
+        1
+        for c in columns
+        if c in row.index and pd.notna(row.get(c)) and row[c] is not None
+    )
 
 
-def _select_type_ship_for_group(group_df: pd.DataFrame, seed: int | None = None) -> int | None:
+def _select_type_ship_for_group(group_df: pd.DataFrame, seed: int = 42):
     """
     Select the single best ship_id from a group of JoinedShips with the same accession_tag.
 
@@ -56,7 +60,9 @@ def _select_type_ship_for_group(group_df: pd.DataFrame, seed: int | None = None)
     df = group_df.copy()
 
     # 1. Most non-NULL completeness columns (higher = better)
-    df["_completeness"] = df.apply(lambda r: _count_non_null(r, COMPLETENESS_COLUMNS), axis=1)
+    df["_completeness"] = df.apply(
+        lambda r: _count_non_null(r, COMPLETENESS_COLUMNS), axis=1
+    )
     max_completeness = df["_completeness"].max()
     df = df[df["_completeness"] == max_completeness]
     if len(df) == 1:
@@ -92,7 +98,7 @@ def _select_type_ship_for_group(group_df: pd.DataFrame, seed: int | None = None)
     return int(df["ship_id"].iloc[idx])
 
 
-def compute_type_ship_ship_ids(seed: int | None = None) -> Set[int]:
+def compute_type_ship_ship_ids(seed: int = 42) -> Set[int]:
     """
     Compute the set of ship_ids that should have type_ship="1".
 
@@ -143,7 +149,11 @@ def compute_type_ship_ship_ids(seed: int | None = None) -> Set[int]:
         )
         return g.iloc[[0]]
 
-    df = df.groupby(["accession_tag", "ship_id"], group_keys=False).apply(best_row_per_ship).reset_index(drop=True)
+    df = (
+        df.groupby(["accession_tag", "ship_id"], group_keys=False)
+        .apply(best_row_per_ship)
+        .reset_index(drop=True)
+    )
 
     type_ship_ids = set()
     for accession_tag, group in df.groupby("accession_tag"):
@@ -154,13 +164,15 @@ def compute_type_ship_ship_ids(seed: int | None = None) -> Set[int]:
     return type_ship_ids
 
 
-def update_type_ship_in_db(seed: int | None = None) -> int:
+def update_type_ship_in_db(seed: int = 42):
     """
     Update ships.type_ship in the database based on the selection criteria.
 
     Sets type_ship="1" for type ships, type_ship="0" for others in the same accession groups.
     Ships not in JoinedShips with an accession are left unchanged.
 
+    Args:
+        seed: Random seed for tie-breaking (optional, for reproducibility)
     Returns:
         Number of ships updated to type_ship="1".
     """
@@ -199,3 +211,7 @@ def update_type_ship_in_db(seed: int | None = None) -> int:
             session.rollback()
             logger.error(f"Error updating type_ship: {e}")
             raise
+
+
+if __name__ == "__main__":
+    update_type_ship_in_db()
