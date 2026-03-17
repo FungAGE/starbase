@@ -189,6 +189,13 @@ table_columns = [
         "presentation": "markdown",
         "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
     },
+    # {
+    #     "name": "Type Ship",
+    #     "id": "type_ship",
+    #     "deletable": False,
+    #     "selectable": False,
+    #     "presentation": "markdown",
+    # },
     {
         "name": "Starship Family",
         "id": "familyName",
@@ -197,7 +204,7 @@ table_columns = [
         "presentation": "markdown",
     },
     {
-        "name": "Species",
+        "name": "Strain",
         "id": "name",
         "deletable": False,
         "selectable": False,
