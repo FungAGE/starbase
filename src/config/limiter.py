@@ -1,3 +1,5 @@
+import os
+
 from flask import request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -7,10 +9,15 @@ from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
-# TODO: Consider using a different storage_uri for production
+# Use Redis for rate limiting in production when available (shared across workers)
+_redis_url = os.getenv("REDIS_URL") or os.getenv("CELERY_BROKER_URL")
+_storage_uri = _redis_url if (_redis_url and "redis" in _redis_url) else "memory://"
+if _storage_uri != "memory://":
+    logger.info("Using Redis for rate limiting")
+
 limiter = Limiter(
     get_remote_address,
-    storage_uri="memory://",
+    storage_uri=_storage_uri,
     default_limits=["500 per minute", "10000 per hour"],
     strategy="fixed-window-elastic-expiry",
 )

@@ -123,7 +123,7 @@ PAGE_MAPPING = ",".join(PAGES)
 
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
-MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # GenBank files path
 GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")

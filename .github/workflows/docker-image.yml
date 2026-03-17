@@ -51,7 +51,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            MAINTENANCE_TOKEN=${{ secrets.MAINTENANCE_TOKEN }}
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
             IPSTACK_API_KEY=${{ secrets.IPSTACK_API_KEY }}
       - name: Remove old packages
         uses: actions/delete-package-versions@v5
