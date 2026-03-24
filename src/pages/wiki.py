@@ -234,12 +234,47 @@ main_card = dmc.Paper(
         ),
         dmc.Text(
             [
-                "Search and explore the characteristics of different ",
-                html.Span("Starship", style={"fontStyle": "italic"}),
-                " families",
+                "Explore the ",
+                html.Span("Starships", style={"fontStyle": "italic"}),
+                " within ",
+                html.Span("starbase", className="logo-text"),
+                ":",
             ],
-            c="dimmed",
             size="lg",
+        ),
+        dmc.List(
+            [
+                dmc.ListItem(
+                    [
+                        "Search by taxonomy and ",
+                        html.Span("Starship family", style={"fontStyle": "italic"}),
+                    ]
+                ),
+                dmc.ListItem(
+                    [
+                        "Optionally limit to curated or dereplicated ",
+                        html.Span("Starships", style={"fontStyle": "italic"}),
+                    ]
+                ),
+                dmc.ListItem(
+                    "Search terms will filter the table and taxonomic visualization"
+                ),
+                dmc.ListItem(
+                    [
+                        "Click rows to select ",
+                        html.Span("Starships", style={"fontStyle": "italic"}),
+                        " for download or...",
+                    ]
+                ),
+                dmc.ListItem(
+                    [
+                        "Download all ",
+                        html.Span("Starships", style={"fontStyle": "italic"}),
+                        " or selected rows",
+                    ]
+                ),
+            ],
+            size="md",
         ),
         dmc.Space(h="md"),
         dmc.Group(
@@ -255,7 +290,10 @@ main_card = dmc.Paper(
                 ),
                 dmc.Autocomplete(
                     id="family-search",
-                    label="Starship Family",
+                    label=[
+                        html.Span("Starship", style={"fontStyle": "italic"}),
+                        " Family",
+                    ],
                     placeholder="Search by family...",
                     data=[],
                     limit=20,
@@ -329,6 +367,16 @@ main_card = dmc.Paper(
 taxonomic_distribution_card = dmc.Paper(
     children=[
         dmc.Title("Taxonomic Distribution", order=2, mb="md"),
+        dmc.Text(
+            [
+                "The taxonomic distribution of the selected ",
+                html.Span("Starships", style={"fontStyle": "italic"}),
+                ".",
+            ],
+            size="sm",
+            c="dimmed",
+        ),
+        dmc.Space(h="md"),
         dbc.Spinner(
             children=html.Div(
                 id="search-sunburst-plot",
@@ -369,6 +417,12 @@ starship_families_card = dmc.Paper(
             order=2,
             mb="md",
         ),
+        dmc.Text(
+            "Expand each section to view summary statistics for each starship family.",
+            c="dimmed",
+            size="md",
+        ),
+        dmc.Space(h="md"),
         dbc.Spinner(
             children=html.Div(
                 id="accordion",
@@ -385,8 +439,7 @@ starship_families_card = dmc.Paper(
     withBorder=True,
     mb="xl",
     style={
-        "minHeight": "200px",
-        "maxHeight": "calc(100vh - 200px)",
+        "minHeight": "350px",
         "height": "auto",
         "overflowY": "auto",
     },
@@ -639,7 +692,7 @@ def create_accordion(cached_meta, cached_papers):
             children=accordion_items,
             id="category-accordion",
             always_open=False,
-            active_item=[],
+            active_item=unique_categories[0],
         )
     except Exception as e:
         logger.error(f"Error occurred while creating the accordion: {str(e)}")
