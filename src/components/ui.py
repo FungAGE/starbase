@@ -9,6 +9,16 @@ from src.database.sql_manager import get_database_version
 logger = get_logger(__name__)
 
 
+
+def _i(*children):
+    """italic text"""
+    return html.Span(list(children), className="fst-italic")
+
+
+def _lt(*children):
+    """text with Strasua font"""
+    return html.Span(list(children), className="logo-text")
+
 def curated_switch(text="Only search curated Starships", size="sm"):
     """Create a switch component for toggling curated-only searches."""
     return dmc.Switch(id="curated-input", label=text, size=size, checked=True, color="indigo")
