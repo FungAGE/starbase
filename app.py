@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, request
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -9,7 +11,7 @@ from dash import Dash, html, dcc, _dash_renderer
 from src.config.settings import IS_DEV
 from src.components import navmenu
 from src.components.ui import create_footer
-from src.config.cache import cache, cleanup_old_cache
+from src.config.cache import cache, cleanup_old_cache, cache_dir
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
@@ -23,17 +25,31 @@ server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
 
-server.config.update(
-    MAX_CONTENT_LENGTH=50
+# Use filesystem cache in production (shared across workers); SimpleCache for dev
+cache_config = {
+    "MAX_CONTENT_LENGTH": 50
     * 1024
     * 1024,  # 50MB limit (BLAST accepts large FASTA uploads)
-    CACHE_TYPE="SimpleCache",
-    CACHE_DEFAULT_TIMEOUT=300,
-    SEND_FILE_MAX_AGE_DEFAULT=0,
-    COMPRESS_MIMETYPES=["text/html", "text/css", "application/javascript"],
-    COMPRESS_LEVEL=6,
-    COMPRESS_ALGORITHM=["gzip", "br"],
-)
+    "CACHE_TYPE": "SimpleCache" if IS_DEV else "filesystem",
+    "CACHE_DEFAULT_TIMEOUT": 300,
+    "SEND_FILE_MAX_AGE_DEFAULT": 0,
+    "COMPRESS_MIMETYPES": ["text/html", "text/css", "application/javascript"],
+    "COMPRESS_LEVEL": 6,
+    "COMPRESS_ALGORITHM": ["gzip", "br"],
+}
+if not IS_DEV:
+    cache_config["CACHE_DIR"] = cache_dir
+    cache_config["CACHE_THRESHOLD"] = 1000
+    cache_config["CACHE_KEY_PREFIX"] = "starbase"
+    secret_key = os.getenv("SECRET_KEY")
+    if secret_key:
+        server.config["SECRET_KEY"] = secret_key
+    else:
+        logger.warning(
+            "SECRET_KEY not set. Flask sessions may be insecure. Set SECRET_KEY in production."
+        )
+
+server.config.update(cache_config)
 
 cache.init_app(server)
 limiter.init_app(server)
@@ -107,7 +123,6 @@ def initialize_app():
         update_ip_locations_task()
 
         if not IS_DEV:
-            update_ip_locations()
             try:
                 logger.info("Rebuilding BLAST databases on startup...")
                 create_dbs()
@@ -115,13 +130,13 @@ def initialize_app():
             except Exception as e:
                 logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
 
-        # Initialize Celery with Flask app context
-        celery.conf.update(
-            task_always_eager=False,  # Ensure tasks run asynchronously
-            task_eager_propagates=True,
-        )
-
-        logger.info("Celery initialized successfully")
+        # Initialize Celery with Flask app context (when available)
+        if celery is not None:
+            celery.conf.update(
+                task_always_eager=False,  # Ensure tasks run asynchronously
+                task_eager_propagates=True,
+            )
+            logger.info("Celery initialized successfully")
 
 
 def serve_app_layout():
@@ -169,4 +184,4 @@ with server.app_context():
     initialize_app()
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=IS_DEV)

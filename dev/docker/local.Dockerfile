@@ -10,13 +10,13 @@ LABEL deployment.type="local-testing"
 
 # Build arguments (passed from docker-compose)
 ARG IPSTACK_API_KEY
-ARG MAINTENANCE_TOKEN
+ARG SECRET_KEY
 
 # Environment variables (mimicking Kubernetes pod environment)
 ENV USER=starbase
 ENV HOME=/home/$USER
 ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
-ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
+ENV SECRET_KEY=$SECRET_KEY
 
 # Kubernetes-like environment variables
 ENV KUBERNETES_SERVICE_HOST=127.0.0.1

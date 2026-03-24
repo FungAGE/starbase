@@ -9,7 +9,7 @@ services:
       dockerfile: dev/docker/local.Dockerfile
       args:
         - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
-        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+        - SECRET_KEY=${SECRET_KEY:-}
     image: starbase:local-pod
     container_name: starbase-local-pod
     hostname: starbase-local-pod
@@ -53,7 +53,7 @@ services:
       
       # API keys
       - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
-      - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+      - SECRET_KEY=${SECRET_KEY:-}
       
       # URLs
       - HOME_URL=${HOME_URL:-/}

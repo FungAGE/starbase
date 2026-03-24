@@ -65,7 +65,6 @@ else
         --timeout-keep-alive=5 \
         --timeout-graceful-shutdown=30 \
         --limit-max-requests=1000 \
-        --limit-max-request-body=52428800 \
         --no-access-log \
         app:server
 fi
