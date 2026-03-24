@@ -361,6 +361,15 @@ if (typeof window.UniversalModal === 'undefined') {
             return /^[A-Za-z]{2,}_?\d{6,}(\.\d+)?$/i.test(s);
         };
 
+        let starshipSizeBp = null;
+        if (data.genomes && data.genomes.length > 0) {
+            if (data.genomes.length === 1) {
+                if (hasValue(data.genomes[0].element_length)) {
+                    starshipSizeBp = String(data.genomes[0].element_length);
+                }
+            } 
+        }
+
         // Starship Information section
         if (hasValue(data.familyName) || hasValue(data.genomes_present) || hasValue(data.navis_name) || hasValue(data.haplotype_name) || (data.genomes && data.genomes.length > 0)) {
             html += `
@@ -368,6 +377,12 @@ if (typeof window.UniversalModal === 'undefined') {
                     <div class="section-title">Starship Information</div>
                     <div class="section-content">
                         <div class="modal-grid">
+                            ${starshipSizeBp ? `
+                                <div class="modal-row">
+                                    <span class="modal-label">Size:</span>
+                                    <span class="modal-value">${starshipSizeBp} bp</span>
+                                </div>
+                            ` : ''}
                             ${hasValue(data.familyName) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Family:</span>
@@ -386,7 +401,7 @@ if (typeof window.UniversalModal === 'undefined') {
                                     <span class="modal-value">${data.haplotype_name}</span>
                                 </div>
                             ` : ''}
-                            ${hasValue(data.genomes_present) ? `
+                            ${hasValue(data.genomes_present) && data.genomes_present > 1 ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Genomes Present:</span>
                                     <span class="modal-badge badge-blue">${data.genomes_present}</span>
@@ -412,6 +427,16 @@ if (typeof window.UniversalModal === 'undefined') {
                                         sequenceViewerUrl = `https://www.ncbi.nlm.nih.gov/projects/sviewer/?id=${genome.contig_id}&from=${posMatch[1]}&to=${posMatch[2]}`;
                                     }
                                 }
+                            }
+
+                            const hasGenomeSectionContent =
+                                hasValue(genome.assembly_accession) ||
+                                hasValue(genome.genome_source) ||
+                                hasValue(genome.contig_id) ||
+                                hasValue(genome.element_position) ||
+                                (!starshipSizeBp && hasValue(genome.element_length));
+                            if (!hasGenomeSectionContent) {
+                                return '';
                             }
 
                             const sectionTitle = hasAssemblyAccession && hasGenomeSource
@@ -452,7 +477,7 @@ if (typeof window.UniversalModal === 'undefined') {
                                             <span class="modal-value">${genome.element_position}</span>
                                         </div>
                                     ` : ''}
-                                    ${hasValue(genome.element_length) ? `
+                                    ${!starshipSizeBp && hasValue(genome.element_length) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Size:</span>
                                             <span class="modal-value">${genome.element_length} bp</span>
