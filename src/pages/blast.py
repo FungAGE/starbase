@@ -18,10 +18,7 @@ from src.utils.seq_utils import (
 from src.utils.blast_utils import create_no_matches_alert
 
 
-from src.components.ui import (
-    curated_switch,
-    create_file_upload,
-)
+from src.components.ui import curated_switch, create_file_upload, _i
 from src.database.sql_manager import fetch_meta_data
 from src.utils.classification_utils import (
     WORKFLOW_STAGES,
@@ -180,22 +177,14 @@ layout = dmc.Container(
                                     dmc.Text(
                                         [
                                             "Search for ",
-                                            html.Span(
-                                                "Starships",
-                                                style={"fontStyle": "italic"},
-                                            ),
+                                            _i("Starships"),
                                             " in an existing sequence. Once a search is submitted, this pipeline will: ",
                                             html.Ul(
                                                 [
                                                     html.Li(
                                                         [
                                                             "Return results with best matches to existing ",
-                                                            html.Span(
-                                                                "Starships",
-                                                                style={
-                                                                    "fontStyle": "italic"
-                                                                },
-                                                            ),
+                                                            _i("Starships"),
                                                             ".",
                                                         ]
                                                     ),
@@ -306,11 +295,8 @@ layout = dmc.Container(
                                                                                 text=html.Div(
                                                                                     [
                                                                                         "Only search curated ",
-                                                                                        html.Span(
-                                                                                            "Starships",
-                                                                                            style={
-                                                                                                "fontStyle": "italic"
-                                                                                            },
+                                                                                        _i(
+                                                                                            "Starships"
                                                                                         ),
                                                                                     ]
                                                                                 ),

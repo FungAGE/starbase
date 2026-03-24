@@ -9,7 +9,6 @@ from src.database.sql_manager import get_database_version
 logger = get_logger(__name__)
 
 
-
 def _i(*children):
     """italic text"""
     return html.Span(list(children), className="fst-italic")
@@ -19,14 +18,19 @@ def _lt(*children):
     """text with Strasua font"""
     return html.Span(list(children), className="logo-text")
 
+
 def curated_switch(text="Only search curated Starships", size="sm"):
     """Create a switch component for toggling curated-only searches."""
-    return dmc.Switch(id="curated-input", label=text, size=size, checked=True, color="indigo")
+    return dmc.Switch(
+        id="curated-input", label=text, size=size, checked=True, color="indigo"
+    )
 
 
 def dereplicated_switch(text="Only search dereplicated Starships", size="sm"):
     """Create a switch component for toggling dereplicated-only searches."""
-    return dmc.Switch(id="dereplicated-input", label=text, size=size, checked=True, color="indigo")
+    return dmc.Switch(
+        id="dereplicated-input", label=text, size=size, checked=True, color="indigo"
+    )
 
 
 download_ships_button = dmc.Anchor(
@@ -39,13 +43,7 @@ download_ships_button = dmc.Anchor(
                         [
                             dmc.Text("Download Starships", style={"display": "block"}),
                             dmc.Text(
-                                [
-                                    "from the latest version of ",
-                                    html.Span(
-                                        "starbase",
-                                        className="logo-text",
-                                    ),
-                                ],
+                                ["from the latest version of ", _lt("starbase")],
                                 style={"display": "block"},
                             ),
                         ],
@@ -93,10 +91,7 @@ download_ships_card = dmc.Paper(
         dmc.Text(
             [
                 "We have been maintaining ",
-                html.Span(
-                    "starbase",
-                    className="logo-text",
-                ),
+                _lt("starbase"),
                 " data on our ",
                 html.A(
                     "GitHub repo",
@@ -132,7 +127,12 @@ def create_file_upload(
         children=dmc.Stack(
             [
                 dmc.Center(
-                    DashIconify(icon=icon, width=40, height=40, color="var(--mantine-color-indigo-7)")
+                    DashIconify(
+                        icon=icon,
+                        width=40,
+                        height=40,
+                        color="var(--mantine-color-indigo-7)",
+                    )
                 ),
                 dmc.Stack(
                     [
@@ -180,7 +180,9 @@ def create_feedback_button():
                     variant="light",
                     color="var(--mantine-color-blue-6)",
                     size="sm",
-                    leftSection=DashIconify(icon="octicon:mark-github-16", width=20, color="indigo"),
+                    leftSection=DashIconify(
+                        icon="octicon:mark-github-16", width=20, color="indigo"
+                    ),
                 ),
                 href="https://github.com/FungAGE/starbase/issues",
                 target="_blank",
@@ -215,7 +217,11 @@ def create_database_version_indicator():
                 [
                     dmc.Group(
                         [
-                            DashIconify(icon="mdi:database", width=16, color="var(--mantine-color-white)"),
+                            DashIconify(
+                                icon="mdi:database",
+                                width=16,
+                                color="var(--mantine-color-white)",
+                            ),
                             dmc.Text(
                                 version_text,
                                 size="sm",
@@ -254,7 +260,11 @@ def create_footer():
             [
                 dmc.Group(
                     [
-                        DashIconify(icon="mdi:database", width=16, color="var(--mantine-color-gray-6)"),
+                        DashIconify(
+                            icon="mdi:database",
+                            width=16,
+                            color="var(--mantine-color-gray-6)",
+                        ),
                         dmc.Text(version_text, size="sm", c="dimmed"),
                     ],
                     gap="xs",
@@ -294,7 +304,7 @@ source_code_card = dmc.Paper(
                 dmc.Text(
                     [
                         "The source code for ",
-                        html.Span("starbase", className="logo-text"),
+                        _lt("starbase"),
                         " webserver will soon be available on GitHub",
                     ],
                     size="lg",

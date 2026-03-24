@@ -31,6 +31,8 @@ from src.utils.seq_utils import clean_contigIDs, create_ncbi_style_header
 from src.components.ui import (
     curated_switch,
     dereplicated_switch,
+    _i,
+    _lt,
 )
 from src.components.callbacks import handle_callback_error
 from src.config.logging import get_logger
@@ -179,7 +181,6 @@ table_columns = [
         "deletable": False,
         "selectable": True,
         "presentation": "markdown",
-        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
     },
     {
         "name": "Group Accession (SSA)",
@@ -187,7 +188,6 @@ table_columns = [
         "deletable": False,
         "selectable": True,
         "presentation": "markdown",
-        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
     },
     # {
     #     "name": "Type Ship",
@@ -223,10 +223,7 @@ main_card = dmc.Paper(
     children=[
         dmc.Title(
             [
-                html.Span(
-                    "starbase ",
-                    className="logo-text",
-                ),
+                _lt("starbase"),
                 " Wiki",
             ],
             order=1,
@@ -234,10 +231,10 @@ main_card = dmc.Paper(
         ),
         dmc.Text(
             [
-                "Explore the ",
-                html.Span("Starships", style={"fontStyle": "italic"}),
-                " within ",
-                html.Span("starbase", className="logo-text"),
+                "Explore ",
+                _i("Starship"),
+                " diversity within ",
+                _lt("starbase"),
                 ":",
             ],
             size="lg",
@@ -247,13 +244,13 @@ main_card = dmc.Paper(
                 dmc.ListItem(
                     [
                         "Search by taxonomy and ",
-                        html.Span("Starship family", style={"fontStyle": "italic"}),
+                        _i("Starship family"),
                     ]
                 ),
                 dmc.ListItem(
                     [
                         "Optionally limit to curated or dereplicated ",
-                        html.Span("Starships", style={"fontStyle": "italic"}),
+                        _i("Starships"),
                     ]
                 ),
                 dmc.ListItem(
@@ -262,15 +259,14 @@ main_card = dmc.Paper(
                 dmc.ListItem(
                     [
                         "Click rows to select ",
-                        html.Span("Starships", style={"fontStyle": "italic"}),
+                        _i("Starships"),
                         " for download or...",
                     ]
                 ),
                 dmc.ListItem(
                     [
                         "Download all ",
-                        html.Span("Starships", style={"fontStyle": "italic"}),
-                        " or selected rows",
+                        _i("Starships"),
                     ]
                 ),
             ],
@@ -286,18 +282,18 @@ main_card = dmc.Paper(
                     placeholder="Search across family, genus, etc.",
                     data=[],
                     limit=20,
-                    style={"flex": "1", "minWidth": "200px"},
+                    style={"flex": 1, "minWidth": "12.5rem"},
                 ),
                 dmc.Autocomplete(
                     id="family-search",
                     label=[
-                        html.Span("Starship", style={"fontStyle": "italic"}),
+                        _i("Starship"),
                         " Family",
                     ],
                     placeholder="Search by family...",
                     data=[],
                     limit=20,
-                    style={"flex": "1", "minWidth": "200px"},
+                    style={"flex": 1, "minWidth": "12.5rem"},
                 ),
             ],
         ),
@@ -311,10 +307,7 @@ main_card = dmc.Paper(
                             text=html.Div(
                                 [
                                     "Only show curated ",
-                                    html.Span(
-                                        "Starships",
-                                        style={"fontStyle": "italic"},
-                                    ),
+                                    _i("Starships"),
                                 ]
                             ),
                             size="md",
@@ -323,10 +316,7 @@ main_card = dmc.Paper(
                             text=html.Div(
                                 [
                                     "Only show dereplicated ",
-                                    html.Span(
-                                        "Starships",
-                                        style={"fontStyle": "italic"},
-                                    ),
+                                    _i("Starships"),
                                 ]
                             ),
                             size="md",
@@ -370,10 +360,10 @@ taxonomic_distribution_card = dmc.Paper(
         dmc.Text(
             [
                 "The taxonomic distribution of the selected ",
-                html.Span("Starships", style={"fontStyle": "italic"}),
+                _i("Starships"),
                 ".",
             ],
-            size="sm",
+            size="lg",
             c="dimmed",
         ),
         dmc.Space(h="md"),
@@ -387,7 +377,7 @@ taxonomic_distribution_card = dmc.Paper(
                     "display": "flex",
                     "alignItems": "center",
                     "justifyContent": "center",
-                    "minHeight": "300px",
+                    "minHeight": "18.75rem",
                 },
             ),
             color="primary",
@@ -405,22 +395,18 @@ taxonomic_distribution_card = dmc.Paper(
 starship_families_card = dmc.Paper(
     children=[
         dmc.Title(
-            html.Div(
-                [
-                    html.Span(
-                        "Starship",
-                        style={"fontStyle": "italic"},
-                    ),
-                    " Families",
-                ]
-            ),
+            [_i("Starship"), " Families"],
             order=2,
             mb="md",
         ),
         dmc.Text(
-            "Expand each section to view summary statistics for each starship family.",
+            [
+                "Expand each section to view summary statistics for each ",
+                _i("Starship"),
+                " family.",
+            ],
             c="dimmed",
-            size="md",
+            size="lg",
         ),
         dmc.Space(h="md"),
         dbc.Spinner(
@@ -439,7 +425,7 @@ starship_families_card = dmc.Paper(
     withBorder=True,
     mb="xl",
     style={
-        "minHeight": "350px",
+        "minHeight": "21.875rem",
         "height": "auto",
         "overflowY": "auto",
     },
@@ -454,7 +440,7 @@ info_table_paper = dmc.Paper(
                 dmc.Text(
                     [
                         "Select individual ",
-                        html.Span("Starships", style={"fontStyle": "italic"}),
+                        _i("Starships"),
                         " or download the complete dataset",
                     ],
                     size="lg",
@@ -468,16 +454,13 @@ info_table_paper = dmc.Paper(
                                 html.Div(
                                     [
                                         "Download All ",
-                                        html.Span(
-                                            "Starships",
-                                            style={"fontStyle": "italic"},
-                                        ),
+                                        _i("Starships"),
                                     ]
                                 ),
                                 id="download-all-btn",
                                 variant="filled",
                                 color="indigo",
-                                leftSection=html.I(className="bi bi-cloud-download"),
+                                leftSection=DashIconify(icon="tabler:cloud-download"),
                                 size="md",
                                 loaderProps={"variant": "dots", "color": "white"},
                             ),
@@ -485,16 +468,13 @@ info_table_paper = dmc.Paper(
                                 html.Div(
                                     [
                                         "Download Selected ",
-                                        html.Span(
-                                            "Starships",
-                                            style={"fontStyle": "italic"},
-                                        ),
+                                        _i("Starships"),
                                     ]
                                 ),
                                 id="download-selected-btn",
                                 variant="light",
                                 color="indigo",
-                                leftSection=html.I(className="bi bi-download"),
+                                leftSection=DashIconify(icon="tabler:download"),
                                 size="md",
                                 loaderProps={"variant": "dots", "color": "white"},
                             ),
@@ -521,11 +501,10 @@ info_table_paper = dmc.Paper(
                         dmc.Text(
                             [
                                 "Click rows to select ",
-                                html.Span("Starships", style={"fontStyle": "italic"}),
+                                _i("Starships"),
                             ],
                             size="sm",
                             c="dimmed",
-                            style={"fontStyle": "italic"},
                         ),
                     ],
                 ),
@@ -546,11 +525,10 @@ info_table_paper = dmc.Paper(
     withBorder=True,
     mb="xl",
     style={
-        "minHeight": "calc(100vh - 120px)",
+        "minHeight": "calc(100vh - 7.5rem)",
         "height": "auto",
         "maxHeight": "none",
         "overflowY": "visible",
-        "marginBottom": "2rem",
     },
 )
 
@@ -571,7 +549,7 @@ layout = dmc.Container(
                         dbc.Spinner(
                             children=html.Div(
                                 id="search-results",
-                                style={"minHeight": "300px"},
+                                style={"minHeight": "18.75rem"},
                                 children=[
                                     html.Div(
                                         id="search-results-placeholder",
@@ -739,7 +717,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             return (
                 dmc.Alert(
                     "No results match your search criteria.",
-                    color="var(--mantine-color-blue-6)",
+                    color="indigo",
                     variant="filled",
                 ),
                 placeholder_show,
@@ -755,7 +733,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
             return (
                 dmc.Alert(
                     "No results match your search criteria.",
-                    color="var(--mantine-color-blue-6)",
+                    color="indigo",
                     variant="filled",
                 ),
                 placeholder_show,
@@ -1034,7 +1012,7 @@ def update_search_sunburst(filtered_meta, meta_data, curated, dereplicate):
             figure=sunburst_figure,
             style={
                 "width": "100%",
-                "height": "600px",  # Fixed height in container
+                "height": "37.5rem",
             },
             config={
                 "responsive": True,

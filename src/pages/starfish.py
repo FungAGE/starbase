@@ -3,6 +3,7 @@ import warnings
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
+from src.components.ui import _lt
 
 warnings.filterwarnings("ignore")
 
@@ -15,18 +16,12 @@ layout = html.Div(
                 html.H1(
                     [
                         "Annotate Starships with ",
-                        html.Span(
-                            "starfish",
-                            className="logo-text",
-                        ),
+                        _lt("starfish"),
                     ]
                 ),
                 html.P(
                     [
-                        html.Span(
-                            "starfish",
-                            className="logo-text",
-                        ),
+                        _lt("starfish"),
                         " is a modular toolkit for giant mobile element annotation. Built primarily for annotating Starship elements in fungal genomes, it can be easily adapted to find any large mobile element (≥6kb) that shares the same basic architecture as a fungal Starship or a bacterial integrative and conjugative element: a 'captain' gene with zero or more 'cargo genes downstream of its 3' end. It is particularly well suited for annotating low-copy number elements in a content independent manner.",
                     ]
                 ),
@@ -42,10 +37,7 @@ layout = html.Div(
                 html.H1(
                     [
                         "Run ",
-                        html.Span(
-                            "starfish",
-                            className="logo-text",
-                        ),
+                        _lt("starfish"),
                         " on your genome",
                     ]
                 ),
@@ -82,10 +74,7 @@ layout = html.Div(
                 dbc.Button(
                     [
                         "Launch ",
-                        html.Span(
-                            "starfish",
-                            className="logo-text",
-                        ),
+                        _lt("starfish"),
                     ],
                     id="starfish",
                     n_clicks=0,

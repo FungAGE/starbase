@@ -12,7 +12,7 @@ from src.database.sql_manager import (
     get_database_version,
     get_alembic_schema_version,
 )
-
+from src.components.ui import _i, _lt
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,13 +37,9 @@ title = dmc.Paper(
                 ),
                 dmc.Title(
                     [
-                        html.Span(
-                            "starbase: ",
-                            className="logo-text",
-                            style={"color": "var(--mantine-color-white)"},
-                        ),
+                        _lt("starbase: "),
                         "A Database and Toolkit for Exploration of ",
-                        html.Span("Starship", style={"fontStyle": "italic"}),
+                        _i("Starship"),
                         " Elements in Fungi",
                     ],
                     order=1,
@@ -107,7 +103,7 @@ feature_buttons = [
         html.Span(
             [
                 "Submit to ",
-                html.Span("Starbase", className="logo-text"),
+                _i("Starbase"),
             ]
         ),
         "/submit",
@@ -121,7 +117,7 @@ starship_card = dmc.Paper(
             html.Span(
                 [
                     "What is a ",
-                    html.Span("Starship", style={"fontStyle": "italic"}),
+                    _i("Starship"),
                     "?",
                 ]
             ),
@@ -135,30 +131,17 @@ starship_card = dmc.Paper(
                     [
                         dmc.Text(
                             [
-                                html.Span("Starships", style={"fontStyle": "italic"}),
+                                _i("Starships"),
                                 " are novel family of class II DNA transposons, endemic to Pezizomycotina. ",
-                                html.Span("Starships", style={"fontStyle": "italic"}),
+                                _i("Starships"),
                                 " can be extremely large (~20-700kb), making up to 2% of fungal genomes. These elements replicate within the host genome via tyrosine recombinases (captain genes). They can also pick up and carry relevant genetic 'cargo', including genes for metal resistance in ",
-                                html.Span(
-                                    "Paecilomyces",
-                                    style={"fontStyle": "italic"},
-                                ),
+                                _i("Paecilomyces"),
                                 ", and enable the transfer of formaldehyde resistance in ",
-                                html.Span(
-                                    "Aspergillus nidulans",
-                                    style={
-                                        "fontStyle": "italic",
-                                    },
-                                ),
+                                _i("Aspergillus nidulans"),
                                 " and ",
-                                html.Span(
-                                    "Penicillium chrysogenum.",
-                                    style={
-                                        "fontStyle": "italic",
-                                    },
-                                ),
+                                _i("Penicillium chrysogenum."),
                                 " Read more about ",
-                                html.Span("Starships", style={"fontStyle": "italic"}),
+                                _i("Starships"),
                                 " ",
                                 dmc.Anchor(
                                     "here",
@@ -208,10 +191,7 @@ working_features_card = dmc.Paper(
                         dmc.Title(
                             [
                                 "What can I currently use ",
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                ),
+                                _lt("starbase"),
                                 " for?",
                             ],
                             order=2,
@@ -234,10 +214,7 @@ working_features_card = dmc.Paper(
                         dmc.Title(
                             [
                                 "Most functions of ",
-                                html.Span(
-                                    "starbase",
-                                    className="logo-text",
-                                ),
+                                _lt("starbase"),
                                 " are still under active development.",
                             ],
                             order=2,
@@ -266,10 +243,7 @@ accession_card = dmc.Paper(
         dmc.Title(
             html.Div(
                 [
-                    html.Span(
-                        "starbase",
-                        className="logo-text",
-                    ),
+                    _lt("starbase"),
                     " Accessions",
                 ]
             ),
@@ -280,20 +254,16 @@ accession_card = dmc.Paper(
         dmc.Text(
             [
                 "To maintain data integrity, we employ an accessioning framework within ",
-                html.Span(
-                    "starbase", className="logo-text", style={"fontWeight": "bold"}
-                ),
+                _lt("starbase"),
                 ". ",
-                html.Span(
-                    "starbase", className="logo-text", style={"fontWeight": "bold"}
-                ),
+                _lt("starbase"),
                 " similar to NCBI-styled accessions. These accessions consist of a ",
                 html.Span(
                     "unique six-digit numerical identifier",
                     style={"fontWeight": "bold"},
                 ),
                 " and provide a standardized nomenclature for keeping track of ",
-                html.Span("Starships", style={"fontStyle": "italic"}),
+                _i("Starships"),
                 ". Accessions may represent 1) a ",
                 html.Span("group", style={"fontWeight": "bold"}),
                 " of highly similar Starship(s), that may be present in ",
@@ -361,7 +331,10 @@ db_version_card = dmc.Paper(
                 dmc.Title(
                     get_database_version(),
                     order=3,
-                    style={"fontSize": "1.5rem", "color": "var(--mantine-primary-color-6)"},
+                    style={
+                        "fontSize": "1.5rem",
+                        "color": "var(--mantine-primary-color-6)",
+                    },
                 ),
                 dmc.Divider(my="sm"),
                 dmc.Group(
@@ -457,7 +430,7 @@ def create_publications_section():
                         html.Div(
                             [
                                 "Publications Characterizing ",
-                                html.Span("Starships", style={"fontStyle": "italic"}),
+                                _i("Starships"),
                             ]
                         ),
                         order=2,
@@ -491,10 +464,7 @@ total_starships_info = dmc.Stack(
                 dmc.Text(
                     [
                         "Total ",
-                        html.Span(
-                            "Starships",
-                            style={"fontStyle": "italic"},
-                        ),
+                        _i("Starships"),
                     ],
                     size="lg",
                     c="dimmed",
@@ -663,10 +633,7 @@ family_info = dmc.Stack(
                 ),
                 dmc.Text(
                     [
-                        html.Span(
-                            "Starship",
-                            style={"fontStyle": "italic"},
-                        ),
+                        _i("Starship"),
                         " Families",
                     ],
                     size="lg",
