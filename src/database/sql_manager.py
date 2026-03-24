@@ -306,9 +306,6 @@ def fetch_ships(
         try:
             df = pd.read_sql_query(query, session.bind)
 
-            if df.empty:
-                logger.warning("Fetched ships DataFrame is empty.")
-
             if (
                 with_sequence
                 and dereplicate
