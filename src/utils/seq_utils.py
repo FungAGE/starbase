@@ -135,7 +135,11 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             seq_list, n_seqs, error = parse_fasta_from_text(
                 query_text_input, max_sequences=max_sequences
             )
-            if error and isinstance(error, dmc.Alert) and error.color == "var(--mantine-color-red-6)":
+            if (
+                error
+                and isinstance(error, dmc.Alert)
+                and error.color == "var(--mantine-color-red-6)"
+            ):
                 logger.error(f"Error parsing text input: {error}")
                 return None, None, None, error
         elif query_file_contents:
@@ -846,8 +850,10 @@ def write_fasta(sequences: Dict[str, str], fasta_path: str):
     """
     with open(fasta_path, "w") as fasta_file:
         for name, sequence in sequences.items():
-            # Strip any leading ">" to avoid duplication, then add exactly one
-            clean_name = name.lstrip(">")
+            if name is None or (isinstance(name, float) and pd.isna(name)):
+                logger.warning("Skipping FASTA record with missing id")
+                continue
+            clean_name = str(name).lstrip(">")
             # Also clean non-ASCII characters that might cause BLAST issues
             clean_name = clean_name.encode("ascii", errors="ignore").decode()
             fasta_file.write(f">{clean_name}\n{sequence}\n")
