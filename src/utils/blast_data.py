@@ -556,6 +556,9 @@ class WorkflowState:
     current_stage_idx: int = 0
     fetch_ship_params: FetchShipParams = field(default_factory=FetchShipParams)
     fetch_captain_params: FetchCaptainParams = field(default_factory=FetchCaptainParams)
+    stop_after_family: bool = False
+    pipeline_entry: str = "full"
+    skip_exact_due_to_length: Optional[bool] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert WorkflowState to dictionary for JSON serialization."""
@@ -574,6 +577,9 @@ class WorkflowState:
             "current_stage_idx": self.current_stage_idx,
             "fetch_ship_params": self.fetch_ship_params.to_dict(),
             "fetch_captain_params": self.fetch_captain_params.to_dict(),
+            "stop_after_family": self.stop_after_family,
+            "pipeline_entry": self.pipeline_entry,
+            "skip_exact_due_to_length": self.skip_exact_due_to_length,
         }
 
     @classmethod
@@ -603,6 +609,9 @@ class WorkflowState:
             current_stage_idx=data.get("current_stage_idx", 0),
             fetch_ship_params=fetch_ship_params,
             fetch_captain_params=fetch_captain_params,
+            stop_after_family=data.get("stop_after_family", False),
+            pipeline_entry=data.get("pipeline_entry", "full"),
+            skip_exact_due_to_length=data.get("skip_exact_due_to_length"),
         )
 
     def set_classification(self, classification_data: "ClassificationData") -> None:

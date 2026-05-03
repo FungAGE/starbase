@@ -25,6 +25,7 @@ from src.utils.classification_utils import (
     MATCHING_STAGES,
     CLASSIFICATION_STAGES,
     CLASSIFICATION_TOOLS_INFO,
+    length_classification_tier,
 )
 from src.tasks import (
     run_blast_search_task,
@@ -1352,6 +1353,7 @@ def process_multiple_sequences(
                 pipeline_state.update_blast_data(sequence_id, blast_data)
 
         sequence_length = len(sequence_analysis.sequence or "")
+        tier = length_classification_tier(sequence_length)
 
         # Create workflow state using the submission ID
         workflow_state = WorkflowState(
@@ -1361,20 +1363,22 @@ def process_multiple_sequences(
             },
             workflow_started=False,
             task_id=sequence_id,
+            stop_after_family=(tier == "family_only"),
+            pipeline_entry=tier,
         )
 
         # Ensure the sequence ID is properly set
         logger.debug(f"Created workflow state with task_id: {workflow_state.task_id}")
 
         skip_classification = (
-            sequence_length < 5000
+            tier == "none"
             or sequence_analysis.has_error()
             or not sequence_analysis.blast_result
             or not sequence_analysis.blast_result.blast_content
         )
 
         logger.debug(
-            f"Classification decision: skip={skip_classification}, seq_length={sequence_length}"
+            f"Classification decision: skip={skip_classification}, seq_length={sequence_length}, tier={tier}"
         )
 
         classification_data = None
@@ -1481,7 +1485,7 @@ def process_additional_sequence(
         - Checks if each sequence has already been processed
         - Processes each sequence using existing logic
         - Uses the new unified approach for each tab
-        - Checks if each sequence should get classification workflow (≥5000bp)
+        - Classification workflow by length tier (>1000 bp; see length_classification_tier)
         - Adds each sequence to centralized state for classification
         - Sets up BLAST data in centralized state
         - Sets up workflow state
@@ -1650,8 +1654,9 @@ def process_additional_sequence(
                     "No perfect BLAST matches found, will run full classification"
                 )
 
+        tier = length_classification_tier(sequence_length)
         should_classify = (
-            sequence_length >= 5000
+            tier != "none"
             and not analysis.has_error()
             and analysis.blast_result
             and analysis.blast_result.blast_content
@@ -1720,6 +1725,8 @@ def process_additional_sequence(
                     },
                     task_id=tab_sequence_id,
                     workflow_started=False,
+                    stop_after_family=(tier == "family_only"),
+                    pipeline_entry=tier,
                 )
                 workflow_state.fetch_ship_params = FetchShipParams(
                     curated=False, with_sequence=True, dereplicate=True
@@ -1778,7 +1785,7 @@ def process_additional_sequence(
         else:
             if not should_classify:
                 logger.debug(
-                    f"Skipping classification for tab {tab_idx} - sequence too short ({sequence_length}bp)"
+                    f"Skipping classification for tab {tab_idx} - tier={tier}, length={sequence_length}bp"
                 )
             else:
                 logger.debug(

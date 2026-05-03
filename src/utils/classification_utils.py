@@ -65,18 +65,127 @@ classifcation pipeline that should be used:
 
 # Define our workflow stages with their colors
 WORKFLOW_STAGES = [
-    {"id": "exact", "label": "Checking for exact matches", "color": "var(--mantine-color-red-6)"},
-    {"id": "contained", "label": "Checking for contained matches", "color": "var(--mantine-color-orange-6)"},
-    {"id": "similar", "label": "Checking for similar matches", "color": "var(--mantine-color-yellow-6)"},
+    {
+        "id": "exact",
+        "label": "Checking for exact matches",
+        "color": "var(--mantine-color-red-6)",
+    },
+    {
+        "id": "contained",
+        "label": "Checking for contained matches",
+        "color": "var(--mantine-color-orange-6)",
+    },
+    {
+        "id": "similar",
+        "label": "Checking for similar matches",
+        "color": "var(--mantine-color-yellow-6)",
+    },
     # {"id": "denovo", "label": "Running denovo annotation", "color": "pink"},
-    {"id": "family", "label": "Running family classification", "color": "var(--mantine-color-green-6)"},
-    {"id": "navis", "label": "Running navis classification", "color": "var(--mantine-color-blue-6)"},
+    {
+        "id": "family",
+        "label": "Running family classification",
+        "color": "var(--mantine-color-green-6)",
+    },
+    {
+        "id": "navis",
+        "label": "Running navis classification",
+        "color": "var(--mantine-color-blue-6)",
+    },
     {"id": "haplotype", "label": "Running haplotype classification", "color": "violet"},
 ]
 
 # Split into sequence matching vs classification steps
-MATCHING_STAGES = [s for s in WORKFLOW_STAGES if s["id"] in ("exact", "contained", "similar")]
-CLASSIFICATION_STAGES = [s for s in WORKFLOW_STAGES if s["id"] in ("family", "navis", "haplotype")]
+MATCHING_STAGES = [
+    s for s in WORKFLOW_STAGES if s["id"] in ("exact", "contained", "similar")
+]
+CLASSIFICATION_STAGES = [
+    s for s in WORKFLOW_STAGES if s["id"] in ("family", "navis", "haplotype")
+]
+
+# Length bands for blast classification workflow (bp)
+CLASSIFICATION_MIN_BP_NONE = 1000
+CLASSIFICATION_MIN_BP_FAMILY_ONLY = 3000
+CLASSIFICATION_MIN_BP_FULL_PIPELINE = 5000
+
+# Weak BLAST: skip exact/contained/similar; family-first then stop (tune as needed)
+BLAST_WEAK_PIDENT_BELOW = 60.0
+BLAST_WEAK_EVALUE_ABOVE = 1e-3
+BLAST_WEAK_QUERY_COVERAGE_BELOW = 0.25
+
+
+def length_classification_tier(query_len: int) -> str:
+    """Classify query length: none | family_only | skip_exact | full."""
+    if query_len <= CLASSIFICATION_MIN_BP_NONE:
+        return "none"
+    if query_len < CLASSIFICATION_MIN_BP_FAMILY_ONLY:
+        return "family_only"
+    if query_len < CLASSIFICATION_MIN_BP_FULL_PIPELINE:
+        return "skip_exact"
+    return "full"
+
+
+def _query_length_from_fasta(fasta: str) -> int:
+    """Total length of all sequences in a FASTA file or FASTA string."""
+    sequences = load_fasta_to_dict(fasta)
+    if not sequences:
+        return len(fasta) if isinstance(fasta, str) and not os.path.isfile(fasta) else 0
+    return sum(len(s) for s in sequences.values() if s is not None)
+
+
+def _min_ship_sequence_length(ships_df: pd.DataFrame) -> Optional[int]:
+    if ships_df is None or ships_df.empty or "sequence" not in ships_df.columns:
+        return None
+    lengths = ships_df["sequence"].dropna().astype(str).str.len()
+    if lengths.empty:
+        return None
+    return int(lengths.min())
+
+
+def _summarize_top_blast_hit(
+    blast_df: pd.DataFrame, query_len: int
+) -> Optional[Dict[str, Any]]:
+    if blast_df is None or blast_df.empty:
+        return None
+    if not all(c in blast_df.columns for c in ("evalue", "pident")):
+        return None
+    sorted_df = blast_df.sort_values(["evalue", "pident"], ascending=[True, False])
+    row = sorted_df.iloc[0]
+    pident = float(row["pident"])
+    evalue = float(row["evalue"])
+    qcov = 0.0
+    if query_len > 0:
+        qs = row.get("query_start")
+        qe = row.get("query_end")
+        if qs is not None and qe is not None:
+            qstart = int(qs) if not pd.isna(qs) else 0
+            qend = int(qe) if not pd.isna(qe) else 0
+            if qend >= qstart:
+                qcov = (qend - qstart + 1) / query_len
+        if qcov == 0.0 and "aln_length" in row:
+            aln = row.get("aln_length")
+            aln_i = int(aln) if aln is not None and not pd.isna(aln) else 0
+            qcov = aln_i / query_len
+    return {"pident": pident, "evalue": evalue, "query_coverage": qcov}
+
+
+def _blast_is_weak(summary: Optional[Dict[str, Any]]) -> bool:
+    if summary is None:
+        return True
+    if summary["pident"] < BLAST_WEAK_PIDENT_BELOW:
+        return True
+    if summary["evalue"] > BLAST_WEAK_EVALUE_ABOVE:
+        return True
+    if summary["query_coverage"] < BLAST_WEAK_QUERY_COVERAGE_BELOW:
+        return True
+    return False
+
+
+def _mark_stage_skipped(workflow_state: WorkflowState, stage_id: str) -> None:
+    if stage_id not in workflow_state.stages:
+        workflow_state.stages[stage_id] = {}
+    workflow_state.stages[stage_id]["progress"] = 100
+    workflow_state.stages[stage_id]["status"] = "skipped"
+
 
 CLASSIFICATION_TOOLS_INFO = """
 **Initial search**
@@ -90,6 +199,12 @@ CLASSIFICATION_TOOLS_INFO = """
 **Family assignment**
 - **DIAMOND**: For nucleotide input, translates and searches against captain (tyrosine recombinase) protein database to extract the captain gene.
 - **HMMER** (hmmsearch): Profile HMM search against captain gene models to assign Starship family.
+
+**Length-based routing (blast page)**
+- Sequences ≤1000 bp: classification workflow is not run.
+- 1000–3000 bp: family classification only (navis/haplotype skipped).
+- 3000–5000 bp: exact match skipped; contained, similar, family, navis, haplotype run (unless BLAST is weak).
+- ≥5000 bp: full pipeline; exact may be skipped if the query is shorter than every ship in the database or if BLAST hits are weak (then family-first, navis/haplotype skipped).
 
 **Navis classification**
 - **MMseqs2** (easy-cluster): Clusters the query captain sequence with existing classified captains to assign navis (sequence cluster) identity.
@@ -1761,6 +1876,55 @@ def run_classification_workflow(
         if blast_data.blast_df and isinstance(blast_data.blast_df, pd.DataFrame):
             blast_data.blast_df = blast_data.blast_df.to_dict("records")
 
+        query_len = _query_length_from_fasta(fasta_path)
+        tier = length_classification_tier(query_len)
+        min_ship_len = _min_ship_sequence_length(ships_df)
+
+        blast_df_for_summary = None
+        if blast_data.blast_df:
+            blast_df_for_summary = (
+                pd.DataFrame(blast_data.blast_df)
+                if isinstance(blast_data.blast_df, list)
+                else blast_data.blast_df
+            )
+        top_blast_summary = (
+            _summarize_top_blast_hit(blast_df_for_summary, query_len)
+            if blast_df_for_summary is not None
+            and (
+                isinstance(blast_df_for_summary, pd.DataFrame)
+                and not blast_df_for_summary.empty
+            )
+            else None
+        )
+        weak_blast = (
+            tier in ("skip_exact", "full")
+            and query_len >= CLASSIFICATION_MIN_BP_FAMILY_ONLY
+            and _blast_is_weak(top_blast_summary)
+        )
+        stop_after_family = (
+            getattr(workflow_state, "stop_after_family", False)
+            or tier == "family_only"
+            or weak_blast
+        )
+        workflow_state.pipeline_entry = tier
+        skip_exact_len = (
+            tier == "full" and min_ship_len is not None and query_len < min_ship_len
+        )
+        workflow_state.skip_exact_due_to_length = skip_exact_len
+
+        run_exact = tier == "full" and not weak_blast and not skip_exact_len
+        run_contained_similar = tier in ("skip_exact", "full") and not weak_blast
+
+        if tier == "none":
+            for stage in WORKFLOW_STAGES:
+                sid = stage["id"]
+                if sid not in workflow_state.stages:
+                    workflow_state.stages[sid] = {}
+                _mark_stage_skipped(workflow_state, sid)
+            workflow_state.complete = True
+            workflow_state.found_match = False
+            return workflow_state
+
         for i, stage in enumerate(WORKFLOW_STAGES):
             stage_id = stage["id"]
 
@@ -1774,6 +1938,9 @@ def run_classification_workflow(
             logger.debug(f"Processing stage {i + 1}/{len(WORKFLOW_STAGES)}: {stage_id}")
 
             if stage_id == "exact":
+                if not run_exact:
+                    _mark_stage_skipped(workflow_state, stage_id)
+                    continue
                 logger.debug("Running exact match check")
 
                 result = check_exact_match(
@@ -1800,6 +1967,9 @@ def run_classification_workflow(
                     return workflow_state
 
             if stage_id == "contained":
+                if not run_contained_similar:
+                    _mark_stage_skipped(workflow_state, stage_id)
+                    continue
                 logger.debug("Running contained match check")
                 result = check_contained_match(
                     fasta=blast_data.fasta_file,
@@ -1847,6 +2017,9 @@ def run_classification_workflow(
                     return workflow_state
 
             if stage_id == "similar":
+                if not run_contained_similar:
+                    _mark_stage_skipped(workflow_state, stage_id)
+                    continue
                 logger.debug("Running similarity match check")
                 result, similarities = check_similar_match(
                     fasta=blast_data.fasta_file,
@@ -1889,7 +2062,6 @@ def run_classification_workflow(
                     logger.debug(f"Found family classification: {family_name}")
                     workflow_state.stages[stage_id]["progress"] = 70
                     workflow_state.stages[stage_id]["status"] = "complete"
-                    workflow_state.complete = True
                     workflow_state.found_match = True
                     workflow_state.match_stage = "family"
 
@@ -1917,7 +2089,11 @@ def run_classification_workflow(
 
                     workflow_state.set_classification(classification_data)
                     logger.debug(f"Family classification result: {classification_data}")
-                    return workflow_state
+                    if stop_after_family:
+                        workflow_state.complete = True
+                        return workflow_state
+                    workflow_state.complete = False
+                    continue
                 else:
                     # Handle the case where no HMMER hits were found
                     logger.debug(
@@ -1929,11 +2105,18 @@ def run_classification_workflow(
                     workflow_state.found_match = False
                     workflow_state.match_stage = "family"
                     workflow_state.error = "No hits found"
-                    workflow_state.complete = True
-                    return workflow_state
+                    if stop_after_family:
+                        workflow_state.complete = True
+                        return workflow_state
+                    workflow_state.complete = False
+                    continue
 
             if stage_id == "navis":
+                if stop_after_family:
+                    _mark_stage_skipped(workflow_state, stage_id)
+                    continue
                 logger.debug("Running navis classification")
+                result = None
                 if captains_df.empty:
                     logger.warning("No captain data available for navis classification")
                     workflow_state.stages[stage_id]["progress"] = 80
@@ -1959,6 +2142,9 @@ def run_classification_workflow(
                     return workflow_state
 
             if stage_id == "haplotype":
+                if stop_after_family:
+                    _mark_stage_skipped(workflow_state, stage_id)
+                    continue
                 logger.debug("Running haplotype classification")
                 if captains_df.empty or ships_df.empty:
                     logger.warning("Missing data for haplotype classification")
@@ -2366,7 +2552,6 @@ def create_classification_output(workflow_state=None, classification_data=None):
         matching_steps = [
             dmc.StepperStep(
                 label=stage["label"],
-                description=stage["id"].replace("_", " ").title(),
                 loading=(not in_classification and i == matching_active),
             )
             for i, stage in enumerate(MATCHING_STAGES)
@@ -2376,7 +2561,6 @@ def create_classification_output(workflow_state=None, classification_data=None):
         classification_steps = [
             dmc.StepperStep(
                 label=stage["label"],
-                description=stage["id"].replace("_", " ").title(),
                 loading=(in_classification and i == classification_active),
             )
             for i, stage in enumerate(CLASSIFICATION_STAGES)
