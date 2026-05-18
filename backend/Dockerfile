@@ -34,13 +34,12 @@ RUN wget https://github.com/conda-forge/miniforge/releases/download/25.3.0-3/Min
 
 ENV PATH=$HOME/miniconda/bin:$PATH
 
-# Same env as monolith until backend/environment.yaml is split out
-COPY environment.yaml .
-RUN mamba env create -y -f environment.yaml && \
+COPY backend/environment.yaml backend/environment.yaml
+RUN mamba env create -y -f backend/environment.yaml && \
     mamba clean -afy
 
-ENV PATH=$HOME/miniconda/envs/starbase/bin:$HOME/miniconda/bin:$PATH
-ENV CONDA_DEFAULT_ENV=starbase
+ENV PATH=$HOME/miniconda/envs/starbase-backend/bin:$HOME/miniconda/bin:$PATH
+ENV CONDA_DEFAULT_ENV=starbase-backend
 
 RUN mkdir -p $HOME/src/database/db && \
     chown -R $USER:$USER $HOME && \
