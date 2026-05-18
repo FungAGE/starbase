@@ -1,0 +1,136 @@
+# Starbase compute backend — production deployment on institute machine.
+# Build from repo root: docker compose -f backend/docker-compose.yaml up -d
+#
+# Prerequisites on host:
+#   - SQLite files + BLAST/HMMER data accessible at DATA_DIR on host
+#   - .env file in repo root (or export vars before running)
+#
+# Required env vars (set in .env or environment):
+#   BACKEND_API_KEY   - shared secret, sent by frontend as X-API-Key header
+#   DATA_DIR          - absolute host path containing starbase.sqlite + BLAST dirs
+#
+# Optional:
+#   IPSTACK_API_KEY, MAINTENANCE_TOKEN
+#   BACKEND_PORT      - default 8001
+#   UVICORN_WORKERS   - default 4
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: starbase_backend_redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    image: starbase-backend:latest
+    container_name: starbase_backend
+    ports:
+      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
+    environment:
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - PYTHONUNBUFFERED=1
+      - SQLALCHEMY_WARN_20=1
+      - SQLALCHEMY_SILENCE_UBER_WARNING=1
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - BACKEND_PORT=${BACKEND_PORT:-8001}
+      - BACKEND_API_KEY=${BACKEND_API_KEY}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+      - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    volumes:
+      # DATA_DIR on host mapped to the path settings.py expects inside container.
+      # Override DATA_DIR_CONTAINER if you change settings.py defaults.
+      - ${DATA_DIR}:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${BACKEND_PORT:-8001}/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  celery-worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: starbase-backend:latest
+    container_name: starbase_backend_celery_worker
+    environment:
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - BACKEND_API_KEY=${BACKEND_API_KEY}
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+    volumes:
+      - ${DATA_DIR}:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    entrypoint: ["python"]
+    command: ["manage_celery.py", "worker"]
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  celery-beat:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: starbase-backend:latest
+    container_name: starbase_backend_celery_beat
+    environment:
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - BACKEND_API_KEY=${BACKEND_API_KEY}
+    volumes:
+      - ${DATA_DIR}:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    entrypoint: ["python"]
+    command: ["manage_celery.py", "beat"]
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    name: starbase_backend_network
