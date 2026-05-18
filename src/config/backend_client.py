@@ -1,0 +1,272 @@
+"""
+HTTP client for the starbase compute backend (FastAPI on institute machine).
+
+All calls are synchronous (httpx sync client) so they drop in where
+sql_manager calls currently live — no async plumbing needed in Dash callbacks.
+
+Configuration (env vars):
+    BACKEND_API_URL   - base URL, e.g. http://100.x.y.z:8001 or http://backend:8001
+                        When unset, BackendClient.is_configured() returns False.
+    BACKEND_API_KEY   - shared secret sent as X-API-Key header (optional but recommended)
+    BACKEND_TIMEOUT   - per-request timeout in seconds (default 60)
+    BACKEND_BLAST_TIMEOUT - timeout for BLAST/HMMER calls in seconds (default 360)
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import httpx
+
+from src.config.logging import get_logger
+
+logger = get_logger(__name__)
+
+_BACKEND_API_URL = os.getenv("BACKEND_API_URL", "").rstrip("/")
+_BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "")
+_DEFAULT_TIMEOUT = float(os.getenv("BACKEND_TIMEOUT", "60"))
+_BLAST_TIMEOUT = float(os.getenv("BACKEND_BLAST_TIMEOUT", "360"))
+
+_MAX_RETRIES = 3
+_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _build_headers() -> dict[str, str]:
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if _BACKEND_API_KEY:
+        headers["X-API-Key"] = _BACKEND_API_KEY
+    return headers
+
+
+def _client(timeout: float = _DEFAULT_TIMEOUT) -> httpx.Client:
+    """Return a configured httpx.Client. Caller is responsible for .close() / context manager."""
+    return httpx.Client(
+        base_url=_BACKEND_API_URL,
+        headers=_build_headers(),
+        timeout=timeout,
+        follow_redirects=True,
+    )
+
+
+def is_configured() -> bool:
+    """Return True when BACKEND_API_URL is set — i.e. backend split is active."""
+    return bool(_BACKEND_API_URL)
+
+
+def _request(
+    method: str,
+    path: str,
+    *,
+    json: Any = None,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> Any:
+    """
+    Execute a request with simple linear retry on transient errors.
+
+    Returns parsed JSON payload on success.
+    Raises httpx.HTTPStatusError on non-retriable 4xx, RuntimeError on exhausted retries.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            with _client(timeout) as client:
+                response = client.request(method, path, json=json)
+                if response.status_code in _RETRY_STATUS_CODES and attempt < _MAX_RETRIES:
+                    logger.warning(
+                        "Backend %s %s → %s, retry %d/%d",
+                        method,
+                        path,
+                        response.status_code,
+                        attempt,
+                        _MAX_RETRIES,
+                    )
+                    continue
+                response.raise_for_status()
+                return response.json()
+        except httpx.TimeoutException as exc:
+            last_exc = exc
+            logger.warning(
+                "Backend %s %s timed out (attempt %d/%d)", method, path, attempt, _MAX_RETRIES
+            )
+        except httpx.HTTPStatusError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "Backend %s %s error (attempt %d/%d): %s", method, path, attempt, _MAX_RETRIES, exc
+            )
+
+    raise RuntimeError(
+        f"Backend request {method} {path} failed after {_MAX_RETRIES} attempts"
+    ) from last_exc
+
+
+# ── Data endpoints ──────────────────────────────────────────────────────────
+
+
+def fetch_meta_data(curated: bool = False, accession_tags=None) -> list[dict]:
+    return _request("POST", "/api/data/meta", json={
+        "curated": curated,
+        "accession_tags": accession_tags,
+    })
+
+
+def fetch_paper_data() -> list[dict]:
+    return _request("GET", "/api/data/papers")
+
+
+def fetch_ships(
+    accession_tags=None,
+    curated: bool = False,
+    dereplicate: bool = True,
+    with_sequence: bool = False,
+) -> list[dict]:
+    return _request("POST", "/api/data/ships", json={
+        "accession_tags": accession_tags,
+        "curated": curated,
+        "dereplicate": dereplicate,
+        "with_sequence": with_sequence,
+    })
+
+
+def fetch_ship_table(
+    curated: bool = True,
+    with_sequence: bool = False,
+    with_gff_entries: bool = False,
+) -> list[dict]:
+    return _request("POST", "/api/data/ship-table", json={
+        "curated": curated,
+        "with_sequence": with_sequence,
+        "with_gff_entries": with_gff_entries,
+    })
+
+
+def fetch_accession_ship(accession_tag: str) -> dict:
+    return _request("GET", f"/api/data/accession/{accession_tag}/ship")
+
+
+def fetch_captains(
+    accession_tags=None,
+    curated: bool = False,
+    dereplicate: bool = True,
+    with_sequence: bool = False,
+) -> list[dict]:
+    return _request("POST", "/api/data/captains", json={
+        "accession_tags": accession_tags,
+        "curated": curated,
+        "dereplicate": dereplicate,
+        "with_sequence": with_sequence,
+    })
+
+
+def fetch_captain_tree() -> str:
+    result = _request("GET", "/api/data/captain-tree")
+    return result["newick"]
+
+
+def fetch_sf_data() -> list[dict]:
+    return _request("GET", "/api/data/sf-data")
+
+
+def get_database_version() -> str:
+    result = _request("GET", "/api/data/database-version")
+    return result["semantic_version"]
+
+
+def set_database_version(
+    semantic_version: str, description: str = "", created_by: str = "manual"
+) -> bool:
+    _request("POST", "/api/data/database-version", json={
+        "semantic_version": semantic_version,
+        "description": description,
+        "created_by": created_by,
+    })
+    return True
+
+
+def get_alembic_schema_version() -> str:
+    result = _request("GET", "/api/data/alembic-version")
+    return result["revision"]
+
+
+def get_database_stats() -> dict:
+    return _request("GET", "/api/data/stats")
+
+
+def add_quality_tag(
+    joined_ship_id: int,
+    tag_type: str,
+    tag_value: str | None = None,
+    created_by: str = "api",
+) -> int:
+    result = _request("POST", "/api/data/quality-tags", json={
+        "joined_ship_id": joined_ship_id,
+        "tag_type": tag_type,
+        "tag_value": tag_value,
+        "created_by": created_by,
+    })
+    return result["id"]
+
+
+def remove_quality_tag(joined_ship_id: int, tag_type: str) -> bool:
+    result = _request("POST", "/api/data/quality-tags/remove", json={
+        "joined_ship_id": joined_ship_id,
+        "tag_type": tag_type,
+    })
+    return result["removed"]
+
+
+def get_quality_tags(joined_ship_id: int) -> list[dict]:
+    return _request("GET", f"/api/data/joined-ships/{joined_ship_id}/quality-tags")
+
+
+# ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
+
+
+def blast_search(
+    query_header: str,
+    query_seq: str,
+    query_type: str = "nucl",
+    eval_threshold: float = 0.01,
+    curated: bool | None = None,
+) -> dict | None:
+    result = _request(
+        "POST",
+        "/api/blast/search",
+        json={
+            "query_header": query_header,
+            "query_seq": query_seq,
+            "query_type": query_type,
+            "eval_threshold": eval_threshold,
+            "curated": curated,
+        },
+        timeout=_BLAST_TIMEOUT,
+    )
+    if not result.get("ok"):
+        logger.warning("Backend BLAST search failed: %s", result.get("error"))
+        return None
+    return result.get("result")
+
+
+def hmmer_search(
+    query_header: str,
+    query_seq: str,
+    query_type: str = "nucl",
+    eval_threshold: float = 0.01,
+) -> dict | None:
+    result = _request(
+        "POST",
+        "/api/blast/hmmer",
+        json={
+            "query_header": query_header,
+            "query_seq": query_seq,
+            "query_type": query_type,
+            "eval_threshold": eval_threshold,
+        },
+        timeout=_BLAST_TIMEOUT,
+    )
+    if not result.get("ok"):
+        logger.warning("Backend HMMER search failed: %s", result.get("error"))
+        return None
+    return result.get("result")
