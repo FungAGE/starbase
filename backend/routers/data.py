@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.dependencies import CacheContext, RequireApiKey
-from src.database import sql_manager
+from src.database import sql_manager_impl as sql_manager
 
 router = APIRouter(prefix="/api/data", tags=["data"], dependencies=[RequireApiKey, CacheContext])
 
