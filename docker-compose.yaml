@@ -31,6 +31,7 @@ services:
         - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
         - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
     image: starbase-backend:latest
+    pull_policy: never
     container_name: starbase_backend
     environment:
       - PYTHONPATH=/home/starbase
@@ -68,6 +69,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     image: starbase-backend:latest
+    pull_policy: never
     container_name: starbase_celery_worker
     environment:
       - PYTHONPATH=/home/starbase
@@ -92,6 +94,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     image: starbase-backend:latest
+    pull_policy: never
     container_name: starbase_celery_beat
     environment:
       - PYTHONPATH=/home/starbase
@@ -118,6 +121,7 @@ services:
         - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
         - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
     image: starbase-frontend:latest
+    pull_policy: never
     container_name: starbase_app
     ports:
       - "8000:8000"
@@ -156,6 +160,7 @@ services:
   # ── Tests (frontend image, profile: testing) ────────────────────────────────
   unit-tests:
     image: starbase-frontend:latest
+    pull_policy: never
     container_name: starbase_tests
     depends_on:
       - app

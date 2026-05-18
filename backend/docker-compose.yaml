@@ -1,12 +1,16 @@
 # Starbase compute backend — production deployment on institute machine.
-# Build from repo root: docker compose -f backend/docker-compose.yaml up -d
 #
-# Prerequisites on host:
-#   - SQLite files + BLAST/HMMER data accessible at DATA_DIR on host
-#   - .env file in repo root (or export vars before running)
+# This compose file uses a pre-built image from GHCR.
+# Build + push happens via .github/workflows/docker-image.yml on push to main.
 #
-# Required env vars (set in .env or environment):
-#   BACKEND_API_KEY   - shared secret, sent by frontend as X-API-Key header
+# Usage:
+#   export BACKEND_IMAGE=ghcr.io/<org>/starbase-backend:<timestamp-tag>
+#   docker compose -f backend/docker-compose.yaml pull
+#   docker compose -f backend/docker-compose.yaml up -d
+#
+# Required env vars (.env in repo root or exported):
+#   BACKEND_IMAGE     - full GHCR image reference, e.g. ghcr.io/fungagelab/starbase-backend:20260518-120000
+#   BACKEND_API_KEY   - shared secret; frontend sends as X-API-Key header
 #   DATA_DIR          - absolute host path containing starbase.sqlite + BLAST dirs
 #
 # Optional:
@@ -32,13 +36,7 @@ services:
         max-file: "3"
 
   backend:
-    build:
-      context: ..
-      dockerfile: backend/Dockerfile
-      args:
-        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
-        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
-    image: starbase-backend:latest
+    image: ${BACKEND_IMAGE}
     container_name: starbase_backend
     ports:
       - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
@@ -57,8 +55,6 @@ services:
       - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
       - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
     volumes:
-      # DATA_DIR on host mapped to the path settings.py expects inside container.
-      # Override DATA_DIR_CONTAINER if you change settings.py defaults.
       - ${DATA_DIR}:/home/starbase/src/database/db:rw
     depends_on:
       redis:
@@ -79,10 +75,7 @@ services:
         max-file: "5"
 
   celery-worker:
-    build:
-      context: ..
-      dockerfile: backend/Dockerfile
-    image: starbase-backend:latest
+    image: ${BACKEND_IMAGE}
     container_name: starbase_backend_celery_worker
     environment:
       - PYTHONPATH=/home/starbase
@@ -106,10 +99,7 @@ services:
         max-file: "5"
 
   celery-beat:
-    build:
-      context: ..
-      dockerfile: backend/Dockerfile
-    image: starbase-backend:latest
+    image: ${BACKEND_IMAGE}
     container_name: starbase_backend_celery_beat
     environment:
       - PYTHONPATH=/home/starbase
