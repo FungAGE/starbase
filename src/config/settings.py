@@ -5,20 +5,21 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 DATA_DIR = os.environ.get("DATA_DIR", "")
 
-# Create required directories
-REQUIRED_DIRS = [
-    os.path.join(DATA_DIR),
-    os.path.join(PROJECT_ROOT, "src", "database", "cache"),
-    os.path.join(DATA_DIR, "ships", "fna", "blastdb"),
-    os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb"),
-    os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),
-    os.path.join(DATA_DIR, "captain", "tyr", "fna", "hmm"),
-    os.path.join(DATA_DIR, "captain", "tyr", "faa", "hmm"),
-    os.path.join(DATA_DIR, "ships", "gbks"),
-]
-
-for directory in REQUIRED_DIRS:
-    os.makedirs(directory, exist_ok=True)
+# Only create data directories when DATA_DIR is meaningful (backend / monolith).
+# Frontend image has no local DB; skip creation to avoid empty-path side effects.
+if DATA_DIR:
+    REQUIRED_DIRS = [
+        DATA_DIR,
+        os.path.join(PROJECT_ROOT, "src", "database", "cache"),
+        os.path.join(DATA_DIR, "ships", "fna", "blastdb"),
+        os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb"),
+        os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),
+        os.path.join(DATA_DIR, "captain", "tyr", "fna", "hmm"),
+        os.path.join(DATA_DIR, "captain", "tyr", "faa", "hmm"),
+        os.path.join(DATA_DIR, "ships", "gbks"),
+    ]
+    for _dir in REQUIRED_DIRS:
+        os.makedirs(_dir, exist_ok=True)
 
 # Database paths
 DB_PATHS = {
