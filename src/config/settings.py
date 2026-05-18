@@ -3,17 +3,7 @@ import os
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
-# Try potential database directories in order of preference
-potential_db_dirs = [
-    os.path.join(PROJECT_ROOT, "src", "database", "db"),
-    os.path.join(PROJECT_ROOT, "database", "db"),
-    os.path.join(PROJECT_ROOT, "db"),
-]
-
-# Use the first valid directory path, or default to the last option
-DATA_DIR = next(
-    (path for path in potential_db_dirs if path is not None), potential_db_dirs[-1]
-)
+DATA_DIR = os.environ.get("DATA_DIR", "")
 
 # Create required directories
 REQUIRED_DIRS = [
@@ -107,6 +97,13 @@ METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
 MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")
+
+# Backend API (compute split)
+# BACKEND_API_URL: base URL of the FastAPI backend, e.g. http://100.x.y.z:8001 (Tailscale)
+#                  or http://backend:8001 (local docker-compose).
+#                  When set, sql_manager routes all DB/BLAST calls over HTTP.
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "")
+BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY", "")
 
 # GenBank files path
 GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
