@@ -1,9 +1,7 @@
 import logging
 import warnings
-import os
+from src.config.settings import IS_DEV
 
-ENV = os.getenv("ENVIRONMENT", "development")
-IS_DEV = ENV.lower() == "development"
 DEFAULT_LOG_LEVEL = logging.DEBUG if IS_DEV else logging.INFO
 
 logging.basicConfig(

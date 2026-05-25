@@ -45,48 +45,46 @@ def get_pending_submissions() -> List[Dict[str, Any]]:
         List of pending submission dicts
     """
     try:
-        session = get_submissions_session()
+        with get_submissions_session() as session:
+            # Query for submissions that need review or are pending
+            query = text("""
+                SELECT 
+                    id,
+                    seq_filename,
+                    seq_date,
+                    uploader,
+                    evidence,
+                    genus,
+                    species,
+                    accession_tag,
+                    needs_review,
+                    id as created_at
+                FROM submissions
+                WHERE needs_review = TRUE OR needs_review IS NULL
+                ORDER BY id DESC
+                LIMIT 50
+            """)
 
-        # Query for submissions that need review or are pending
-        query = text("""
-            SELECT 
-                id,
-                seq_filename,
-                seq_date,
-                uploader,
-                evidence,
-                genus,
-                species,
-                accession_tag,
-                needs_review,
-                created_at
-            FROM submissions
-            WHERE needs_review = TRUE OR needs_review IS NULL
-            ORDER BY created_at DESC
-            LIMIT 50
-        """)
+            result = session.execute(query)
+            submissions = []
 
-        result = session.execute(query)
-        submissions = []
+            for row in result:
+                submissions.append(
+                    {
+                        "id": row.id,
+                        "filename": row.seq_filename,
+                        "date": row.seq_date,
+                        "submitter": anonymize_email(row.uploader),
+                        "evidence": row.evidence,
+                        "genus": row.genus,
+                        "species": row.species,
+                        "accession": row.accession_tag,
+                        "needs_review": row.needs_review,
+                        "created_at": row.created_at,
+                    }
+                )
 
-        for row in result:
-            submissions.append(
-                {
-                    "id": row.id,
-                    "filename": row.seq_filename,
-                    "date": row.seq_date,
-                    "submitter": anonymize_email(row.uploader),
-                    "evidence": row.evidence,
-                    "genus": row.genus,
-                    "species": row.species,
-                    "accession": row.accession_tag,
-                    "needs_review": row.needs_review,
-                    "created_at": row.created_at,
-                }
-            )
-
-        session.close()
-        return submissions
+            return submissions
 
     except Exception as e:
         logger.error(f"Error fetching pending submissions: {str(e)}")
@@ -120,7 +118,7 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
                             dmc.Group(
                                 [
                                     dmc.Text(
-                                        submission["filename"] or "Unknown",
+                                        f"#{submission['id']}",
                                         fw=600,
                                         size="md",
                                     ),
@@ -137,13 +135,13 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
                             dmc.Group(
                                 [
                                     dmc.Text(
-                                        f"🧬 {submission['genus']} {submission['species']}",
+                                        f"{submission['genus']} {submission['species']}",
                                         size="sm",
                                         c="dimmed",
                                     ),
                                     dmc.Text("•", size="sm", c="dimmed"),
                                     dmc.Text(
-                                        f"📧 {submission['submitter']}",
+                                        f"{submission['submitter']}",
                                         size="sm",
                                         c="dimmed",
                                     ),
@@ -197,7 +195,7 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
             children=[
                 dmc.Paper(
                     children=[
-                        dmc.Title("📋 Pending Submissions", order=3, mb="md"),
+                        dmc.Title("Pending Submissions", order=3, mb="md"),
                         dmc.Alert(
                             "No pending submissions at this time.",
                             title="All Clear!",
@@ -208,6 +206,8 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
                     p="xl",
                     radius="md",
                     withBorder=True,
+                    mb="xl",
+                    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
                 )
             ],
             size="lg",
@@ -216,16 +216,16 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
     # Create submission cards
     cards = [create_submission_queue_card(sub) for sub in submissions]
 
-    return dmc.Container(
+    output = dmc.Container(
         children=[
             dmc.Paper(
                 children=[
                     dmc.Group(
                         [
-                            dmc.Title("📋 Pending Submissions", order=3),
+                            dmc.Title("Pending Submissions", order=3),
                             dmc.Badge(
                                 f"{len(submissions)} pending",
-                                color="orange",
+                                color="var(--mantine-color-orange-6)",
                                 variant="light",
                                 size="lg",
                             ),
@@ -233,21 +233,18 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
                         justify="space-between",
                         mb="md",
                     ),
-                    dmc.Text(
-                        "All submissions are reviewed by our curation team before being added to the public database.",
-                        size="sm",
-                        c="dimmed",
-                        mb="lg",
-                    ),
                     dmc.Stack(cards, gap="sm"),
                 ],
                 p="xl",
                 radius="md",
                 withBorder=True,
+                style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
             )
         ],
         size="lg",
     )
+
+    return output
 
 
 def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
@@ -265,7 +262,7 @@ def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
     if not submissions:
         return dmc.Card(
             children=[
-                dmc.Text("📋 Recent Submissions", fw=700, mb="xs"),
+                dmc.Text("Recent Submissions", fw=700, mb="xs"),
                 dmc.Text("No pending submissions", size="sm", c="dimmed"),
             ],
             withBorder=True,
@@ -307,7 +304,7 @@ def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
 
     return dmc.Card(
         children=[
-            dmc.Text("📋 Recent Submissions", fw=700, mb="md"),
+            dmc.Text("Recent Submissions", fw=700, mb="md"),
             dmc.Stack(items, gap="xs"),
             dmc.Text(
                 f"Showing {len(submissions)} of {len(get_pending_submissions())} pending",

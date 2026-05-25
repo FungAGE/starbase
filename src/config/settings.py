@@ -1,5 +1,8 @@
 import os
 
+# Development mode
+IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
+
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _DEFAULT_DB_DIR = os.path.join(PROJECT_ROOT, "src", "database", "db")
@@ -12,7 +15,7 @@ BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY", "")
 # DATA_DIR: SQLite + BLAST data on the compute backend (institute machine).
 # FRONTEND_DATA_DIR: lightweight local DBs (submissions, telemetry) on the Serve pod / dev host.
 DATA_DIR = os.environ.get("DATA_DIR", "")
-FRONTEND_DATA_DIR = os.environ.get("FRONTEND_DATA_DIR", _DEFAULT_DB_DIR)
+FRONTEND_DATA_DIR = os.environ.get("FRONTEND_DATA_DIR") or _DEFAULT_DB_DIR
 _local_db_root = FRONTEND_DATA_DIR if BACKEND_API_URL else (DATA_DIR or _DEFAULT_DB_DIR)
 _compute_data_root = DATA_DIR or _DEFAULT_DB_DIR
 
@@ -124,9 +127,23 @@ SYNTENY_URL = os.getenv("SYNTENY_URL", "/synteny")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 
+# Define valid pages
+PAGES = {
+    HOME_URL,
+    WIKI_URL,
+    BLAST_URL,
+    ABOUT_URL,
+    SYNTENY_URL,
+    SUBMIT_URL,
+    METRICS_URL,
+}
+
+PAGE_MAPPING = ",".join(PAGES)
+
+
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
-MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # Cache settings
 CACHE_TIMEOUT = (

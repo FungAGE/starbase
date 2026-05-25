@@ -17,12 +17,13 @@ from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def create_error_alert(error_message, title="Error"):
     """Create a standardized error alert component"""
     return dmc.Alert(
         title=title,
         children=error_message,
-        color="red",
+        color="var(--mantine-color-red-6)",
         variant="filled",
         withCloseButton=True,
     )
@@ -33,14 +34,15 @@ def run_blast(
 ):
     try:
         # Add input size check
-        max_input_size = 10 * 1024 * 1024  # 10MB
+        max_input_size = 50 * 1024 * 1024  # 50MB
         if os.path.getsize(query_fasta) > max_input_size:
             logger.error(
                 f"Input FASTA file too large: {os.path.getsize(query_fasta)} bytes"
             )
             return None
 
-        blast_db = get_blast_db(db_type="blast", query_type="nucl", curated=curated)
+        # when query_type is protein, we are using a limited database of just annotated genes within starships
+        blast_db = get_blast_db(db_type="blast", query_type=query_type, curated=curated)
         blast_type = "blastn" if query_type == "nucl" else "tblastn"
 
         blast_cmd = [
@@ -358,8 +360,8 @@ def blast_download_button(blast_file=None):
                 dmc.Button(
                     "Download BLAST Results",
                     id="blast-dl-button",
-                    variant="gradient",
-                    gradient={"from": "indigo", "to": "cyan"},
+                    variant="filled",
+                    color="indigo",
                     size="lg",
                     leftSection=[html.I(className="bi bi-download")],
                     # Store the file path in a data attribute if needed
@@ -589,7 +591,7 @@ def make_captain_alert(family, aln_length, evalue, search_type):
                     c="dimmed",
                 ),
             ],
-            color="blue",
+            color="var(--mantine-color-blue-6)",
             variant="light",
             withCloseButton=False,
             style={
@@ -672,7 +674,7 @@ def create_no_matches_alert():
                 type="ordered",
             ),
         ],
-        color="yellow",
+        color="var(--mantine-color-yellow-6)",
         variant="light",
         withCloseButton=False,
         style={

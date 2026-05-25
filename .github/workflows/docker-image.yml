@@ -57,7 +57,7 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
           build-args: |
-            MAINTENANCE_TOKEN=${{ secrets.MAINTENANCE_TOKEN }}
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
             IPSTACK_API_KEY=${{ secrets.IPSTACK_API_KEY }}
 
       # ── Backend ─────────────────────────────────────────────────────────────

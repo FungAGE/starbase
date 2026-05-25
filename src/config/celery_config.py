@@ -1,9 +1,7 @@
 import os
 import logging
 
-# Determine environment
-ENV = os.getenv("ENVIRONMENT", "development")
-IS_DEV = ENV.lower() == "development"
+from src.config.settings import IS_DEV
 
 # Check if Celery should be enabled (default to False for single-pod deployments)
 CELERY_ENABLED = os.getenv("CELERY_ENABLED", "false").lower() == "true"
@@ -15,6 +13,7 @@ celery = None
 try:
     from celery import Celery
     from celery.schedules import crontab
+
     CELERY_AVAILABLE = True
 except ImportError:
     # Celery not installed - will run tasks directly
@@ -27,7 +26,9 @@ except ImportError:
 if CELERY_AVAILABLE:
     # Redis configuration
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+    CELERY_RESULT_BACKEND = os.getenv(
+        "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
+    )
 
     # Configure Celery loggers immediately - before app initialization
     if not IS_DEV:
@@ -48,7 +49,7 @@ else:
     def crontab(*args, **kwargs):
         """Dummy crontab function when Celery is not available"""
         return None
-    
+
     CELERY_BROKER_URL = None
     CELERY_RESULT_BACKEND = None
 
@@ -97,47 +98,18 @@ if CELERY_AVAILABLE and celery:
 
     # Configure periodic tasks
     celery.conf.beat_schedule = {
-        "update-ip-locations-hourly": {
-            "task": "src.telemetry.tasks.update_ip_locations",
-            "schedule": crontab(minute=0),  # Every hour at minute 0
+        "health-check-every-5min": {
+            "task": "src.telemetry.routes.health",
+            "schedule": crontab(hour=0),  # Every 1 hour at midnight
         },
-        "refresh-telemetry-every-15min": {
-            "task": "src.telemetry.tasks.refresh_telemetry",
-            "schedule": crontab(minute="*/15"),  # Every 15 minutes
-        },
-        "check-cache-status-every-5min": {
-            "task": "src.telemetry.tasks.check_cache_status",
-            "schedule": crontab(minute="*/5"),  # Every 5 minutes
-        },
-        "cleanup-cache-hourly": {
-            "task": "src.tasks.cleanup_cache_task",
-            "schedule": crontab(minute=0),  # Every hour at minute 0
+        "update-ip-locations-daily": {
+            "task": "src.telemetry.tasks.update_ip_locations_task",
+            "schedule": crontab(hour=0),  # Every day at midnight
         },
     }
 
     # This ensures tasks are properly registered
     celery.autodiscover_tasks(["src.tasks", "src.telemetry"])
-
-    # Explicitly import task modules to ensure registration
-    try:
-        import src.tasks
-        import src.telemetry.tasks
-        print("Task modules imported successfully")
-    except ImportError as e:
-        print(f"Warning: Could not import task modules: {e}")
-
-    # Import tasks after celery app is created to avoid circular imports
-    def _import_tasks():
-        """Import tasks to ensure they're registered with Celery."""
-        try:
-            import src.tasks
-            import src.telemetry.tasks
-            print("Task modules imported successfully")
-        except ImportError as e:
-            print(f"Warning: Could not import task modules: {e}")
-
-    # Import tasks
-    _import_tasks()
 
     # Final adjustment to ensure loggers are properly set
     # This needs to run after autodiscover_tasks
@@ -156,15 +128,15 @@ if CELERY_AVAILABLE and celery:
 def run_task(task_func, *args, **kwargs):
     """
     Run a task either via Celery (if enabled) or directly (if disabled).
-    
+
     For single-pod deployments, set CELERY_ENABLED=false to run tasks directly.
     For distributed deployments with Redis, set CELERY_ENABLED=true.
-    
+    If Celery fails, log error and run directly as fallback
     Args:
         task_func: The Celery task function to run
         *args: Positional arguments to pass to the task
         **kwargs: Keyword arguments to pass to the task
-    
+
     Returns:
         AsyncResult if Celery is enabled, None otherwise
     """
@@ -172,12 +144,8 @@ def run_task(task_func, *args, **kwargs):
         try:
             return task_func.apply_async(args=args, kwargs=kwargs)
         except Exception as e:
-            # If Celery fails, log error and run directly as fallback
             logger = logging.getLogger(__name__)
             logger.warning(f"Celery task failed, running directly: {str(e)}")
-            # Run the actual function (not the task wrapper)
             return task_func(*args, **kwargs)
     else:
-        # Run task directly (synchronously)
-        # For telemetry tasks, this is fine as they're fast
         return task_func(*args, **kwargs)

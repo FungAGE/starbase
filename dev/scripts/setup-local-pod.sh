@@ -151,7 +151,7 @@ build_image() {
     # Build the image using local.Dockerfile
     docker build -f dev/docker/local.Dockerfile -t starbase:local-pod \
         --build-arg IPSTACK_API_KEY="${IPSTACK_API_KEY:-}" \
-        --build-arg MAINTENANCE_TOKEN="${MAINTENANCE_TOKEN:-}" \
+        --build-arg SECRET_KEY="${SECRET_KEY:-}" \
         .
     
     print_success "Docker image built successfully"

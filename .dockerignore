@@ -5,3 +5,5 @@ alembic.ini
 .cache
 src/database/db.tar.gz
 src/database/db/
+src/database/logs/
+src/database/cache/

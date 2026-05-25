@@ -16,40 +16,43 @@ def truncate_string(s, length=40):
 
 
 def table_loading_alert():
+    """Loading state alert - uses theme primary color."""
     return html.Div(
         dmc.Alert(
-            title="No Data Available",
-            children="Waiting for data to load...",
-            color="blue",
+            title="Loading",
+            children="Loading data...",
+            color="indigo",
             variant="light",
-            icon=[DashIconify(icon="line-md:loading-loop")],
+            icon=[DashIconify(icon="line-md:loading-loop", color="indigo")],
         ),
-        style={"padding": "20px"},
+        style={"padding": "var(--mantine-spacing-lg)"},
     )
 
 
 def table_no_results_alert():
+    """Empty state alert."""
     return html.Div(
         dmc.Alert(
             title="No Results Found",
             children="The query returned no results.",
-            color="yellow",
+            color="gray",
             variant="light",
-            icon=[DashIconify(icon="clarity:empty-line")],
+            icon=[DashIconify(icon="clarity:empty-line", color="indigo")],
         ),
-        style={"padding": "20px"},
+        style={"padding": "var(--mantine-spacing-lg)"},
     )
 
 
 def table_error(e):
+    """Error state alert."""
     return html.Div(
         dmc.Alert(
             title="Error",
-            children=f"Failed to create table: {str(e)}",
-            color="red",
-            variant="filled",
+            children="Failed to load table. Please try again.",
+            color="var(--mantine-color-red-6)",
+            variant="light",
         ),
-        style={"padding": "20px"},
+        style={"padding": "var(--mantine-spacing-lg)"},
     )
 
 
@@ -71,13 +74,8 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         else:
             df = pd.DataFrame()
 
-    # If we have accession_display column, use it for display but keep accession_tag for functionality
-    if isinstance(df, pd.DataFrame) and "accession_display" in df.columns:
-        # Create a display copy where accession_tag is replaced with accession_display
-        display_df = df.copy()
-        display_df["accession_tag"] = display_df["accession_display"]
-    else:
-        display_df = df
+    # If we have display columns, use them for display but keep original tags for functionality
+    display_df = df.copy() if isinstance(df, pd.DataFrame) else df
 
     # Create column definitions
     if columns:
@@ -93,11 +91,14 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 "flex": 1,
             }
 
-            # Add special styling for accession_tag
-            if col["field"] == "accession_tag":
+            # Add special styling for accession_tag and ship_accession_tag
+            if col["field"] in ["ship_accession_tag", "ship_accession_display"]:
                 col_def.update(
                     {
-                        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                        "cellStyle": {
+                            "cursor": "pointer",
+                            "color": "var(--mantine-color-blue-7)",
+                        },
                         "cellClass": "clickable-cell",
                     }
                 )
@@ -105,7 +106,9 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
             grid_columns.append(col_def)
     else:
         grid_columns = [
-            {"field": col} for col in display_df.columns if col != "accession_display"
+            {"field": col}
+            for col in display_df.columns
+            if col not in ["accession_display", "ship_accession_display"]
         ]
 
     # Simplified stable grid options
@@ -145,15 +148,15 @@ def make_ship_table(df, id, columns=None, select_rows=False, pg_sz=None):
         style={
             "width": "100%",
             "height": "500px",  # Fixed height for stability
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
+            "border": "1px solid var(--mantine-color-gray-3)",
+            "borderRadius": "var(--mantine-radius-sm)",
         },
         persistence=True,
         persistence_type="memory",
     )
 
 
-def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
+def make_synteny_table(df, id, columns=None, select_rows=False, pg_sz=None):
     """
     Specific table constructor for ship data using AG Grid.
     """
@@ -166,14 +169,6 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
             )
         else:
             df = pd.DataFrame()
-
-    # If we have accession_display column, use it for display but keep accession_tag for functionality
-    if isinstance(df, pd.DataFrame) and "accession_display" in df.columns:
-        # Create a display copy where accession_tag is replaced with accession_display
-        display_df = df.copy()
-        display_df["accession_tag"] = display_df["accession_display"]
-    else:
-        display_df = df
 
     # Convert column format to AG Grid format
     if columns:
@@ -201,11 +196,17 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                     }
                 )
 
-            # Add special styling for accession_tag
-            if col.get("id") == "accession_tag" or col.get("field") == "accession_tag":
+            # Add special styling for accession_tag and ship_accession_tag
+            if col.get("id") in [
+                "accession_display",
+                "ship_accession_display",
+            ] or col.get("field") in ["accession_display", "ship_accession_display"]:
                 col_def.update(
                     {
-                        "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                        "cellStyle": {
+                            "cursor": "pointer",
+                            "color": "var(--mantine-color-blue-7)",
+                        },
                     }
                 )
 
@@ -217,8 +218,8 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
                 "headerName": col.replace("_", " ").title(),
                 "sortable": True,
             }
-            for col in display_df.columns
-            if col != "accession_display"
+            for col in df.columns
+            if col not in ["accession_tag", "ship_accession_tag"]
         ]
 
     # Simplified grid options
@@ -242,11 +243,7 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
     return dag.AgGrid(
         id=id,
         columnDefs=grid_columns,
-        rowData=(
-            display_df.to_dict("records")
-            if isinstance(display_df, pd.DataFrame)
-            else display_df
-        ),
+        rowData=(df.to_dict("records") if isinstance(df, pd.DataFrame) else df),
         defaultColDef={
             "resizable": True,
             "minWidth": 100,
@@ -256,8 +253,8 @@ def make_pgv_table(df, id, columns=None, select_rows=False, pg_sz=None):
         style={
             "width": "100%",
             "height": "450px",  # Increased height for better usability
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
+            "border": "1px solid var(--mantine-color-gray-3)",
+            "borderRadius": "var(--mantine-radius-sm)",
         },
     )
 
@@ -300,7 +297,7 @@ def make_paper_table():
                 if pd.notnull(row["DOI"]) and row["DOI"]
                 else ""
             )
-            
+
             # Cell styles with truncation
             title_style = {
                 "padding": "12px",
@@ -309,7 +306,7 @@ def make_paper_table():
                 "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap",
             }
-            
+
             author_style = {
                 "padding": "12px",
                 "maxWidth": "250px",
@@ -317,19 +314,19 @@ def make_paper_table():
                 "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap",
             }
-            
+
             year_style = {
                 "textAlign": "center",
                 "padding": "12px",
                 "whiteSpace": "nowrap",
             }
-            
+
             doi_style = {
                 "textAlign": "center",
                 "padding": "12px",
                 "whiteSpace": "nowrap",
             }
-            
+
             rows.append(
                 html.Tr(
                     [
@@ -346,7 +343,7 @@ def make_paper_table():
                         ),
                         html.Td(doi_cell, style=doi_style),
                     ],
-                    style={"borderBottom": "1px solid #dee2e6"}
+                    style={"borderBottom": "1px solid var(--mantine-color-gray-3)"},
                 )
             )
 
@@ -355,19 +352,37 @@ def make_paper_table():
         dmc.Table(
             [
                 html.Thead(
-                    html.Tr([
-                        html.Th("Title", style={"minWidth": "200px"}),
-                        html.Th("Year", style={"textAlign": "center", "minWidth": "80px"}),
-                        html.Th("Authors", style={"minWidth": "150px"}),
-                        html.Th("DOI", style={"textAlign": "center", "minWidth": "120px"}),
-                    ]),
-                    style={"borderBottom": "1px solid #dee2e6"}
+                    html.Tr(
+                        [
+                            html.Th("Title", style={"minWidth": "200px"}),
+                            html.Th(
+                                "Year",
+                                style={"textAlign": "center", "minWidth": "80px"},
+                            ),
+                            html.Th("Authors", style={"minWidth": "150px"}),
+                            html.Th(
+                                "DOI",
+                                style={"textAlign": "center", "minWidth": "120px"},
+                            ),
+                        ]
+                    ),
+                    style={"borderBottom": "1px solid var(--mantine-color-gray-3)"},
                 ),
-                html.Tbody(rows if rows else [
-                    html.Tr([
-                        html.Td("No publications found", colSpan=4, style={"textAlign": "center", "color": "#868e96"})
-                    ])
-                ]),
+                html.Tbody(
+                    rows
+                    if rows
+                    else [
+                        html.Tr(
+                            [
+                                html.Td(
+                                    "No publications found",
+                                    colSpan=4,
+                                    style={"textAlign": "center", "color": "#868e96"},
+                                )
+                            ]
+                        )
+                    ]
+                ),
             ],
             striped=True,
             highlightOnHover=True,
@@ -378,8 +393,9 @@ def make_paper_table():
         style={
             "width": "100%",
             "overflowX": "auto",
-        }
+        },
     )
+
 
 def make_dl_table(df, id, table_columns):
     """
@@ -393,13 +409,7 @@ def make_dl_table(df, id, table_columns):
     if df is None or (isinstance(df, list) and len(df) == 0):
         row_data = []
     elif isinstance(df, pd.DataFrame):
-        # If we have accession_display column, use it for display but keep accession_tag for functionality
-        if "accession_display" in df.columns:
-            display_df = df.copy()
-            display_df["accession_tag"] = display_df["accession_display"]
-            row_data = display_df.to_dict("records")
-        else:
-            row_data = df.to_dict("records")
+        row_data = df.to_dict("records")
     else:
         row_data = df  # Assume it's already in records format
 
@@ -413,13 +423,30 @@ def make_dl_table(df, id, table_columns):
             "filter": True,
         }
 
-        # Add checkbox and special styling to accession columns
-        if col["id"] in ["accession_tag", "accession_display"]:
+        if col["id"] in [
+            "ship_accession_tag",
+            "ship_accession_display",
+        ]:
             col_def.update(
                 {
                     "checkboxSelection": True,
                     "headerCheckboxSelection": True,
-                    "cellStyle": {"cursor": "pointer", "color": "#1976d2"},
+                    "cellStyle": {
+                        "cursor": "pointer",
+                        "color": "var(--mantine-color-blue-7)",
+                    },
+                    "width": 180,
+                    "minWidth": 150,
+                    "flex": 0,
+                }
+            )
+        elif col["id"] in ["accession_tag", "accession_display"]:
+            col_def.update(
+                {
+                    "cellStyle": {
+                        "cursor": "pointer",
+                        "color": "var(--mantine-color-blue-7)",
+                    },
                     "width": 180,
                     "minWidth": 150,
                     "flex": 0,
@@ -437,6 +464,7 @@ def make_dl_table(df, id, table_columns):
         "headerHeight": 48,
         "rowSelection": "multiple",
         "suppressRowClickSelection": True,  # Only select via checkbox
+        "suppressScrollOnNewData": True,  # Reduces layout thrashing that can cause forEachNodeAfterFilter errors
     }
 
     return html.Div(
@@ -453,8 +481,8 @@ def make_dl_table(df, id, table_columns):
             style={
                 "width": "100%",
                 "height": "600px",  # Fixed height for better stability
-                "border": "1px solid #dee2e6",
-                "borderRadius": "4px",
+                "border": "1px solid var(--mantine-color-gray-3)",
+                "borderRadius": "var(--mantine-radius-sm)",
             },
             persistence=True,
             persistence_type="memory",
@@ -502,8 +530,8 @@ def make_wiki_table(n_ships, max_size, min_size):
         style={
             "width": "100%",
             "height": "192px",
-            "border": "1px solid #dee2e6",
-            "borderRadius": "4px",
+            "border": "1px solid var(--mantine-color-gray-3)",
+            "borderRadius": "var(--mantine-radius-sm)",
         },
         persistence=True,
         persistence_type="memory",

@@ -1,9 +1,9 @@
 from src.config.database import (
-    Base,
     starbase_engine,
     submissions_engine,
     telemetry_engine,
 )
+from src.database.models.schema import Base
 
 
 def init_databases():

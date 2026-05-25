@@ -20,23 +20,15 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
-
 def _to_df(records: list[dict] | None) -> pd.DataFrame:
     if not records:
         return pd.DataFrame()
     return pd.DataFrame.from_records(records)
 
 
-# ── data functions ───────────────────────────────────────────────────────────
-
-def fetch_meta_data(curated: bool = False, accession_tags=None) -> pd.DataFrame:
-    records = backend_client.fetch_meta_data(curated=curated, accession_tags=accession_tags)
-    return _to_df(records)
-
-
-def fetch_paper_data() -> pd.DataFrame:
-    return _to_df(backend_client.fetch_paper_data())
+def _resolve_accession_tags(accession_tags=None, accessions=None):
+    """Accept both ``accession_tags`` (API/split) and ``accessions`` (legacy call sites)."""
+    return accession_tags if accession_tags is not None else accessions
 
 
 def dereplicate_sequences(df: pd.DataFrame) -> pd.DataFrame:
@@ -59,14 +51,28 @@ def dereplicate_sequences(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[indices_to_keep]
 
 
+def fetch_meta_data(
+    curated: bool = False, accession_tags=None, accessions=None
+) -> pd.DataFrame:
+    tags = _resolve_accession_tags(accession_tags, accessions)
+    records = backend_client.fetch_meta_data(curated=curated, accession_tags=tags)
+    return _to_df(records)
+
+
+def fetch_paper_data() -> pd.DataFrame:
+    return _to_df(backend_client.fetch_paper_data())
+
+
 def fetch_ships(
     accession_tags=None,
+    accessions=None,
     curated: bool = False,
     dereplicate: bool = True,
     with_sequence: bool = False,
 ) -> pd.DataFrame:
+    tags = _resolve_accession_tags(accession_tags, accessions)
     records = backend_client.fetch_ships(
-        accession_tags=accession_tags,
+        accession_tags=tags,
         curated=curated,
         dereplicate=dereplicate,
         with_sequence=with_sequence,
@@ -99,12 +105,14 @@ def fetch_accession_ship(accession_tag: str) -> dict[str, pd.DataFrame | None]:
 
 def fetch_captains(
     accession_tags=None,
+    accessions=None,
     curated: bool = False,
     dereplicate: bool = True,
     with_sequence: bool = False,
 ) -> pd.DataFrame:
+    tags = _resolve_accession_tags(accession_tags, accessions)
     records = backend_client.fetch_captains(
-        accession_tags=accession_tags,
+        accession_tags=tags,
         curated=curated,
         dereplicate=dereplicate,
         with_sequence=with_sequence,

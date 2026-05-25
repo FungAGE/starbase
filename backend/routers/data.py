@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.dependencies import CacheContext, RequireApiKey
+from backend.dependencies import RequireApiKey
 from src.database import sql_manager_impl as sql_manager
 
-router = APIRouter(prefix="/api/data", tags=["data"], dependencies=[RequireApiKey, CacheContext])
+router = APIRouter(prefix="/api/data", tags=["data"], dependencies=[RequireApiKey])
 
 
-def _df_to_records(df: pd.DataFrame | None) -> list[dict[str, Any]] | None:
+def _df_to_records(df: Optional[pd.DataFrame]) -> Optional[List[Dict[str, Any]]]:
     if df is None:
         return None
     if df.empty:
@@ -26,7 +26,7 @@ def _df_to_records(df: pd.DataFrame | None) -> list[dict[str, Any]] | None:
 
 class FetchMetaBody(BaseModel):
     curated: bool = False
-    accession_tags: str | list[str] | None = None
+    accession_tags: Optional[Union[str, List[str]]] = None
 
 
 @router.post("/meta")
@@ -44,7 +44,7 @@ def fetch_papers() -> list[dict[str, Any]]:
 
 
 class FetchShipsBody(BaseModel):
-    accession_tags: list[str] | None = None
+    accession_tags: Optional[List[str]] = None
     curated: bool = False
     dereplicate: bool = True
     with_sequence: bool = False
@@ -89,7 +89,7 @@ def fetch_accession_ship(accession_tag: str) -> dict[str, Any]:
 
 
 class FetchCaptainsBody(BaseModel):
-    accession_tags: list[str] | None = None
+    accession_tags: Optional[List[str]] = None
     curated: bool = False
     dereplicate: bool = True
     with_sequence: bool = False
@@ -151,7 +151,7 @@ def database_stats() -> dict[str, Any]:
 class AddQualityTagBody(BaseModel):
     joined_ship_id: int
     tag_type: str
-    tag_value: str | None = None
+    tag_value: Optional[str] = None
     created_by: str = "api"
 
 
@@ -180,7 +180,7 @@ def remove_quality_tag(body: RemoveQualityTagBody) -> dict[str, bool]:
 @router.get("/joined-ships/{joined_ship_id}/quality-tags")
 def get_quality_tags(joined_ship_id: int) -> list[dict[str, Any]]:
     tags = sql_manager.get_quality_tags(joined_ship_id)
-    out: list[dict[str, Any]] = []
+    out: List[Dict[str, Any]] = []
     for t in tags:
         row = dict(t)
         ca = row.get("created_at")

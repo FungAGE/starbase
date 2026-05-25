@@ -4,17 +4,17 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
-    Table,
+    Text,
     DateTime,
-    Boolean,
     VARCHAR,
-    DateTime,
+    Boolean,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 metadata = Base.metadata
+
 
 class Accessions(Base):
     __tablename__ = "accessions"
@@ -28,6 +28,18 @@ class Accessions(Base):
     joined_ship = relationship("JoinedShips", back_populates="accession", uselist=False)
 
 
+class ShipAccessions(Base):
+    __tablename__ = "ship_accessions"
+    id = Column(Integer, primary_key=True)
+    ship_accession_tag = Column(String, unique=True, nullable=False)
+    ship_version_tag = Column(Integer, nullable=False, default=1)
+    ship_id = Column(Integer, ForeignKey("ships.id"), unique=True, nullable=False)
+    ship_accession_display = Column(String, nullable=True)
+
+    # Relationships
+    ship = relationship("Ships", back_populates="ship_accession")
+
+
 class Ships(Base):
     __tablename__ = "ships"
     id = Column(Integer, primary_key=True)
@@ -37,9 +49,13 @@ class Ships(Base):
     header = Column(String)
     rev_comp_md5 = Column(String)
     accession_id = Column(Integer, ForeignKey("accessions.id"))
+    type_ship = Column(String)
 
     # Relationships
     accession_obj = relationship("Accessions", back_populates="ships")
+    ship_accession = relationship(
+        "ShipAccessions", back_populates="ship", uselist=False
+    )
 
 
 class Captains(Base):
@@ -67,7 +83,10 @@ class Genome(Base):
     biosample = Column(String(50))
     acquisition_date = Column(Integer)
     assembly_accession = Column(String(50))
-    taxonomy_id = relationship("Taxonomy", back_populates="genomes")
+    taxonomy_id = Column(Integer, ForeignKey("taxonomy.id"))
+
+    # Relationships
+    taxonomy = relationship("Taxonomy", back_populates="genomes")
 
 
 class StarshipFeatures(Base):
@@ -126,6 +145,7 @@ class Papers(Base):
     typePaper = Column(String)
     shortCitation = Column(String)
 
+
 class FamilyNames(Base):
     __tablename__ = "family_names"
     id = Column(Integer, primary_key=True)
@@ -139,6 +159,7 @@ class FamilyNames(Base):
     otherFamilyID = Column(String)
     paper_id = Column(Integer, ForeignKey("papers.id"))
 
+
 class Taxonomy(Base):
     __tablename__ = "taxonomy"
     id = Column(Integer, primary_key=True)
@@ -150,9 +171,7 @@ class Taxonomy(Base):
     subkingdom = Column(String)
     phylum = Column(String)
     subphylum = Column(String)
-    class_ = Column(
-        String, name="class"
-    )  # Using class_ as class is a reserved keyword
+    class_ = Column(String, name="class")  # Using class_ as class is a reserved keyword
     subclass = Column(VARCHAR)
     order = Column(VARCHAR)
     suborder = Column(VARCHAR)
@@ -174,9 +193,13 @@ class Navis(Base):
     navis_name = Column(String)
     previous_navis_name = Column(String)
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    activity = Column(
+        Integer, default=1, nullable=True
+    )  # 0 = inactive, don't show in modals
 
     # Relationships
     family = relationship("FamilyNames")
+
 
 class Haplotype(Base):
     __tablename__ = "haplotype_names"
@@ -185,6 +208,9 @@ class Haplotype(Base):
     previous_haplotype_name = Column(String)
     navis_id = Column(Integer, ForeignKey("navis_names.id"))
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
+    activity = Column(
+        Integer, default=1, nullable=True
+    )  # 0 = inactive, don't show in modals
 
     # Relationships
     family = relationship("FamilyNames")
@@ -212,14 +238,16 @@ class Gff(Base):
 class JoinedShips(Base):
     __tablename__ = "joined_ships"
     id = Column(Integer, primary_key=True)
-    starshipID = Column(String, nullable=False)  # Every ship needs an ID (duplicates allowed)
+    starshipID = Column(
+        String, nullable=False
+    )  # Every ship needs an ID (duplicates allowed)
     evidence = Column(String)
     source = Column(String)
     curated_status = Column(String)
-    
+
     # Direct link to accession (when sequence data is available)
     accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=True)
-    
+
     # Links to classification and annotation data
     ship_id = Column(Integer, ForeignKey("ships.id"))
     ship_family_id = Column(Integer, ForeignKey("family_names.id"))
@@ -240,7 +268,9 @@ class JoinedShips(Base):
     captain = relationship("Captains")
     navis = relationship("Navis")
     haplotype = relationship("Haplotype")
-    quality_tags = relationship("ShipQualityTags", back_populates="joined_ship", cascade="all, delete-orphan")
+    quality_tags = relationship(
+        "ShipQualityTags", back_populates="joined_ship", cascade="all, delete-orphan"
+    )
 
 
 class ShipQualityTags(Base):
@@ -248,14 +278,46 @@ class ShipQualityTags(Base):
     id = Column(Integer, primary_key=True)
     joined_ship_id = Column(Integer, ForeignKey("joined_ships.id"), nullable=False)
     tag_type = Column(String(50), nullable=False)
-    tag_value = Column(String(100), nullable=True)  # Optional: for tags that need values
+    tag_value = Column(
+        String(100), nullable=True
+    )  # Optional: for tags that need values
     created_at = Column(DateTime, nullable=False, server_default="CURRENT_TIMESTAMP")
     created_by = Column(String(50), nullable=True, default="auto")
-    
+
     # Relationships
     joined_ship = relationship("JoinedShips", back_populates="quality_tags")
-    
+
     # Unique constraint to prevent duplicate tags per ship
-    __table_args__ = (
-        {"sqlite_autoincrement": True},
-    )
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+
+class Submission(Base):
+    """Submission records in the submissions database (queue for processing)."""
+
+    __tablename__ = "submissions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    seq_contents = Column(Text, nullable=False)
+    seq_filename = Column(String(255), nullable=False)
+    seq_date = Column(String(50), nullable=True)
+    anno_contents = Column(Text, nullable=True)
+    anno_filename = Column(String(255), nullable=True)
+    anno_date = Column(String(50), nullable=True)
+    uploader = Column(String(255), nullable=True)
+    evidence = Column(String(100), nullable=True)
+    genus = Column(String(255), nullable=True)
+    species = Column(String(255), nullable=True)
+    hostchr = Column(String(255), nullable=True)
+    shipstart = Column(Integer, nullable=True)
+    shipend = Column(Integer, nullable=True)
+    shipstrand = Column(String(10), nullable=True)
+    comment = Column(Text, nullable=True)
+    ship_accession_tag = Column(String(50), nullable=True)
+    accession_tag = Column(String(50), nullable=True)
+    needs_review = Column(Boolean, default=False, nullable=True)
+    # Classification from BLAST prefill (optional)
+    classification_source = Column(String(50), nullable=True)
+    classification_family = Column(String(100), nullable=True)
+    classification_navis = Column(String(100), nullable=True)
+    classification_haplotype = Column(String(100), nullable=True)
+    closest_match = Column(String(50), nullable=True)
+    classification_confidence = Column(String(20), nullable=True)

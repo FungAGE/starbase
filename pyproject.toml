@@ -1,6 +1,0 @@
-[project]
-name = "ruff-pre-commit"
-version = "0.0.0"
-dependencies = [
-    "ruff==0.11.5",
-]

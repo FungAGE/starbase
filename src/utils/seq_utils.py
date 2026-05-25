@@ -9,9 +9,10 @@ from Bio.SeqUtils import nt_search
 from Bio import SeqIO
 from dash import html
 import dash_mantine_components as dmc
-from typing import Dict
+from typing import Dict, Union
 import os
 from src.config.logging import get_logger
+from src.database.sql_manager import fetch_ships
 
 logger = get_logger(__name__)
 
@@ -134,7 +135,11 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             seq_list, n_seqs, error = parse_fasta_from_text(
                 query_text_input, max_sequences=max_sequences
             )
-            if error and isinstance(error, dmc.Alert) and error.color == "red":
+            if (
+                error
+                and isinstance(error, dmc.Alert)
+                and error.color == "var(--mantine-color-red-6)"
+            ):
                 logger.error(f"Error parsing text input: {error}")
                 return None, None, None, error
         elif query_file_contents:
@@ -145,7 +150,7 @@ def check_input(query_text_input, query_file_contents, max_sequences=10):
             if (
                 warning_or_error
                 and isinstance(warning_or_error, dmc.Alert)
-                and warning_or_error.color == "red"
+                and warning_or_error.color == "var(--mantine-color-red-6)"
             ):
                 logger.error(f"Error parsing file contents: {warning_or_error}")
                 return None, None, None, warning_or_error
@@ -235,24 +240,16 @@ def translate_seq(seq):
         frames.append(rev)
     return frames
 
-def revcomp(seq: str) -> str:
+
+def revcomp(seq: Union[str, Seq]) -> str:
     """
     Reverse complement a sequence. Able to handle both strings and Seq objects.
     """
     if seq is None:
         return None
 
-    # Ensure seq is a string
-    if not isinstance(seq, str):
-        seq = str(seq)
-
-    if type(seq) == str:
-        rv_comp_seq = Seq(seq).reverse_complement()
-    elif type(seq) == Seq:
-        rv_comp_seq = seq.reverse_complement()
-    else:
-        return None
-    return str(rv_comp_seq)
+    seq_obj = Seq(seq) if not isinstance(seq, Seq) else seq
+    return str(seq_obj.reverse_complement())
 
 
 def find_longest_orf(aa_seq, min_length=50):
@@ -332,7 +329,7 @@ def seq_processing_error_alert(error):
     return dmc.Alert(
         title="Error Processing Sequence",
         children=error,
-        color="red",
+        color="var(--mantine-color-red-6)",
         variant="filled",
     )
 
@@ -352,7 +349,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid Input",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="Please enter a valid FASTA sequence.",
                 ),
             )
@@ -371,7 +368,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="FASTA Parse Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="Could not parse the input as FASTA format. Please check the sequence format.",
                 ),
             )
@@ -383,7 +380,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty Sequence",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="No valid sequence was found in the input.",
                 ),
             )
@@ -413,7 +410,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty Sequence",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="The sequence appears to be empty.",
                 ),
             )
@@ -427,7 +424,7 @@ def parse_fasta_from_text(text, format="fasta", max_sequences=10):
             None,
             dmc.Alert(
                 title="Invalid Format",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 children="The input sequence appears to be incorrectly formatted.",
             ),
         )
@@ -469,7 +466,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="No File Contents",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="Please select a valid FASTA file.",
                 ),
             )
@@ -482,7 +479,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid File Format",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="The file content appears to be corrupted. Please try uploading again.",
                 ),
             )
@@ -495,7 +492,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Invalid File Format",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="The file content is not in the expected format.",
                 ),
             )
@@ -512,7 +509,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Decoding Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="Could not decode the file contents. Please ensure you're uploading a valid FASTA file.",
                 ),
             )
@@ -527,7 +524,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="FASTA Parse Error",
-                    color="red",
+                    color="var(--mantine-color-red-6)",
                     children="Could not parse the file as FASTA format. Please check the file format.",
                 ),
             )
@@ -540,7 +537,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
                 None,
                 dmc.Alert(
                     title="Empty FASTA File",
-                    color="yellow",
+                    color="var(--mantine-color-yellow-6)",
                     children="No sequences were found in the uploaded file.",
                 ),
             )
@@ -570,7 +567,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
         if warning:
             warning_alert = dmc.Alert(
                 title="Sequence Limit Applied",
-                color="yellow",
+                color="var(--mantine-color-yellow-6)",
                 variant="light",
                 children=warning,
             )
@@ -585,7 +582,7 @@ def parse_fasta_from_file(contents, max_sequences=10):
             None,
             dmc.Alert(
                 title="Error Processing File",
-                color="red",
+                color="var(--mantine-color-red-6)",
                 children=[
                     "An unexpected error occurred while processing the file. ",
                     "Please try refreshing the page and uploading again.",
@@ -679,15 +676,14 @@ def clean_contigIDs(string):
     """Removing omes from contigIDs."""
     if string is None:
         return None
-    else:
-        parts = string.split("_", 1)
-        if len(parts) > 1:
-            prefix = parts[0]
-            suffix = parts[1]
-            if 7 <= len(prefix) <= 9:
-                return suffix
-            else:
-                return string
+    parts = string.split("_", 1)
+    if len(parts) > 1:
+        prefix = parts[0]
+        suffix = parts[1]
+        if 7 <= len(prefix) <= 9:
+            return suffix
+        return string
+    return string
 
 
 def sanitize_header(header: str) -> str:
@@ -697,16 +693,30 @@ def sanitize_header(header: str) -> str:
         header = f">{header}"  # Add exactly one ">" at start
         # Replace non-breaking spaces and remove non-ASCII characters
         header = (
-            header.replace('\xa0', ' ')
-                .replace('\u00A0', ' ')
-                .replace('\u200b', '')  # zero-width space, if present
-                .encode('ascii', errors='ignore')
-                .decode()
+            header.replace("\xa0", " ")
+            .replace("\u00a0", " ")
+            .replace("\u200b", "")  # zero-width space, if present
+            .encode("ascii", errors="ignore")
+            .decode()
         )
     return header
 
-def create_ncbi_style_header(row, count=1):
+
+def extract_accession(accession: str) -> str:
+    """
+    extract an accession from a fasta header
+    will strip ">" from the beginning of the accession if present
+    """
+    accession = str(accession).strip("[]").split("/")[-1].strip()
+    if accession.startswith(">"):
+        accession = accession[1:]
+    base_accession = accession.split(".")[0] if "." in accession else accession
+    return base_accession
+
+
+def create_ncbi_style_header(row):
     try:
+
         def safe_get(key):
             """
             Helper function to safely get value from row (handles both dict and Series)
@@ -731,75 +741,77 @@ def create_ncbi_style_header(row, count=1):
 
         clean_contig = clean_contigIDs(safe_get("contigID"))
 
-        # safe get values from row    
+        # safe get values from row
         # Use accession_display if available, otherwise combine accession_tag and version_tag
-        accession_display = safe_get("accession_display")
-        version_tag = safe_get("version_tag")
-        accession_tag = safe_get("accession_tag")
-        starshipID = safe_get("starshipID")
+        ship_accession_display = safe_get("ship_accession_display")
+        group_accession_display = safe_get("accession_display")
+        # n_genomes = safe_get("n_genomes") # TODO: add this back in when we have it
         element_begin = safe_get("elementBegin")
         element_end = safe_get("elementEnd")
 
-        if accession_display:
-            accession_with_version = accession_display
-        elif version_tag and version_tag != "":
-            accession_with_version = f"{accession_tag}.{version_tag}"
-        else:
-            accession_with_version = accession_tag
-
-        # Ensure accession_with_version is never None - provide fallback
-        if not accession_with_version:
-            starshipID_fallback = starshipID if starshipID else "unknown"
-            accession_with_version = f"unknown_accession [starshipID={starshipID_fallback}]"
-
         # Collect taxonomic information in a single consolidated field
-        tax_field_mapping = {
-            "organism": "name",
-            "order": "order",
-            "family": "family"
-        }
-        tax_pairs = [f"{key}={safe_get(field)}" for key, field in tax_field_mapping.items() if safe_get(field)]
+        tax_field_mapping = {"organism": "name", "order": "order", "family": "family"}
+        tax_pairs = [
+            f"{key}={safe_get(field)}"
+            for key, field in tax_field_mapping.items()
+            if safe_get(field)
+        ]
         tax_info = f"[taxonomy: {';'.join(tax_pairs)}] " if tax_pairs else ""
-        
+
         assembly = format_field("assembly_accession", "[assembly={}] ")
 
         # Collect starship classification information in a single consolidated field
         starship_classification_field_mapping = {
             "familyName": "familyName",
             "navis_name": "navis_name",
-            "haplotype_name": "haplotype_name"
+            "haplotype_name": "haplotype_name",
         }
-        starship_classification_pairs = [f"{key}={safe_get(field)}" for key, field in starship_classification_field_mapping.items() if safe_get(field)]
-        starship_classification_info = f"[starship_classification: {';'.join(starship_classification_pairs)}] " if starship_classification_pairs else ""
-        
+        starship_classification_pairs = [
+            f"{key}={safe_get(field)}"
+            for key, field in starship_classification_field_mapping.items()
+            if safe_get(field)
+        ]
+        starship_classification_info = (
+            f"[starship_classification: {';'.join(starship_classification_pairs)}] "
+            if starship_classification_pairs
+            else ""
+        )
 
         if (
             clean_contig is not None
             and element_begin is not None
             and element_end is not None
         ):
-            genomic_location = f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
+            genomic_location = (
+                f"[genomic_location: {clean_contig}:{element_begin}-{element_end}]"
+            )
         else:
             genomic_location = ""
 
-        if count > 1:
-            # we need a way to tell different sequences apart that have the same accession
-            # Handle None starshipID gracefully
-            starshipID_str = starshipID if starshipID else "unknown"
-            accession_with_version = accession_with_version + f" [starshipID={starshipID_str}] [n_genomes={count}]"
+        type_ship = safe_get("type_ship")
+        if type_ship and str(type_ship) == "1":
+            # generate a count of the number of genomes for each group accession
+            # TODO: the field `n_genomes` does not exist yet, so count how many ships have the same group accession
+            n_genomes = fetch_ships(
+                accessions=[group_accession_display], with_sequence=False
+            ).shape[0]
+            header = f"{ship_accession_display} {group_accession_display} [n_genomes={n_genomes}]"
+        else:
+            header = f"{ship_accession_display} {group_accession_display}"
 
         header = (
-                f"{accession_with_version} "
-                + tax_info
-                + starship_classification_info
-                + assembly
-                + genomic_location
-            )
+            header
+            + tax_info
+            + starship_classification_info
+            + assembly
+            + genomic_location
+        )
+
         sanitized_header = sanitize_header(header)
         return sanitized_header
     except Exception as e:
         logger.warning(
-            f"Failed to create NCBI-style header for {row.get('accession_tag', 'unknown') if isinstance(row, dict) else 'unknown'}: {str(e)}"
+            f"Failed to create NCBI-style header for {row.get('ship_accession_display', 'unknown') if isinstance(row, dict) else 'unknown'}: {str(e)}"
         )
         return None
 
@@ -817,7 +829,7 @@ def write_temp_fasta(header, sequence):
     else:
         logger.error("Sequence is not a string or Seq object")
         return None
-    
+
     try:
         cleaned_query_seq = SeqRecord(seq_obj, id=header, description="")
         tmp_query_fasta = tempfile.NamedTemporaryFile(suffix=".fa", delete=False).name
@@ -838,10 +850,12 @@ def write_fasta(sequences: Dict[str, str], fasta_path: str):
     """
     with open(fasta_path, "w") as fasta_file:
         for name, sequence in sequences.items():
-            # Strip any leading ">" to avoid duplication, then add exactly one
-            clean_name = name.lstrip(">")
+            if name is None or (isinstance(name, float) and pd.isna(name)):
+                logger.warning("Skipping FASTA record with missing id")
+                continue
+            clean_name = str(name).lstrip(">")
             # Also clean non-ASCII characters that might cause BLAST issues
-            clean_name = clean_name.encode('ascii', errors='ignore').decode()
+            clean_name = clean_name.encode("ascii", errors="ignore").decode()
             fasta_file.write(f">{clean_name}\n{sequence}\n")
 
 
@@ -883,14 +897,16 @@ def write_combined_fasta(
     """
     try:
         # Create a new DataFrame that includes the new sequence
-        new_row = pd.DataFrame({
-            sequence_col: [new_sequence],
-            id_col if id_col else 'index': ['query_sequence']
-        })
-        
+        new_row = pd.DataFrame(
+            {
+                sequence_col: [new_sequence],
+                id_col if id_col else "index": ["query_sequence"],
+            }
+        )
+
         # Combine the new sequence with existing sequences
         combined_sequences = pd.concat([new_row, existing_sequences], ignore_index=True)
-        
+
         # Use write_multi_fasta to write the combined sequences
         write_multi_fasta(combined_sequences, fasta_path, sequence_col, id_col)
 
@@ -933,9 +949,11 @@ def create_tmp_fasta_dir(fasta: str, existing_ships: pd.DataFrame) -> str:
     logger.debug(f"Created temporary dir for FASTA files: {tmp_fasta_dir}")
     return tmp_fasta_dir
 
+
 def generate_random_sequence(length: int = 1000, seq_type: str = "nucl") -> str:
     """Generate a random sequence of the given length."""
     import random
+
     if seq_type == "nucl":
         return "".join(random.choices("ATGC", k=length))
     elif seq_type == "prot":

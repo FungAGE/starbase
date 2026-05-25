@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -20,7 +20,7 @@ def _run_blast_search(
     query_type: str,
     *,
     eval_threshold: float,
-    curated: bool | None,
+    curated: Optional[bool],
 ):
     fn = run_blast_search_task
     if hasattr(fn, "apply"):
@@ -50,9 +50,7 @@ def _run_hmmer_search(
             args=(query_header, query_seq, query_type),
             kwargs={"eval_threshold": eval_threshold},
         ).get(timeout=360)
-    return fn(
-        query_header, query_seq, query_type, eval_threshold=eval_threshold
-    )
+    return fn(query_header, query_seq, query_type, eval_threshold=eval_threshold)
 
 
 router = APIRouter(
@@ -73,7 +71,7 @@ class BlastSearchBody(BaseModel):
     query_seq: str = Field(..., description="Raw sequence string")
     query_type: Literal["nucl", "prot"] = "nucl"
     eval_threshold: float = 0.01
-    curated: bool | None = None
+    curated: Optional[bool] = None
 
 
 @router.post("/search")

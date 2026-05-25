@@ -7,20 +7,18 @@ Edited by Kartik Chundru to crop the FASTA sequence between the first and last a
 Usage:
     gff_to_genbank.py <GFF annotation file> <FASTA sequence file>
 """
+
 from __future__ import print_function
 
 import sys
-import tempfile
 import logging
-from pathlib import Path
 
 from Bio import SeqIO
-from Bio import Seq
 from Bio import SeqFeature
-from Bio.SeqRecord import SeqRecord
 from BCBio import GFF
 
 logger = logging.getLogger(__name__)
+
 
 def main(gff_file, fasta_file, output_file=None):
     """Convert a GFF file to GenBank format using sequence from a FASTA file"""
@@ -28,7 +26,7 @@ def main(gff_file, fasta_file, output_file=None):
         # Convert to strings in case Path objects are passed
         gff_file = str(gff_file)
         fasta_file = str(fasta_file)
-        
+
         if output_file is None:
             output_file = gff_file.rsplit(".", 1)[0] + ".gb"
         else:
@@ -66,9 +64,9 @@ def main(gff_file, fasta_file, output_file=None):
         except Exception as e:
             logger.error(f"Error writing GenBank file: {str(e)}")
             raise
-        
+
         return output_file
-        
+
     except Exception as e:
         logger.error(f"Error converting GFF to GenBank: {str(e)}")
         raise
@@ -82,13 +80,15 @@ def _fix_ncbi_id(fasta_iter):
             logger.warning(f"Shortening NCBI name {rec.id} to {new_id}")
             rec.id = new_id
             rec.name = new_id
-        
+
         # Shorten feature name length
         for i in range(len(rec.features)):
             if len(rec.features[i].type) > 15:
                 old_type = rec.features[i].type
                 rec.features[i].type = rec.features[i].type[0:15]
-                logger.debug(f"Shortened feature type from {old_type} to {rec.features[i].type}")
+                logger.debug(
+                    f"Shortened feature type from {old_type} to {rec.features[i].type}"
+                )
         yield rec
 
 
@@ -99,10 +99,10 @@ def _check_gff(gff_iterator):
         if not rec.seq or str(rec.seq).count("N") == len(rec.seq):
             logger.warning(f"Record {rec.id} has unknown sequence")
             continue
-            
+
         # Add required GenBank annotations
         rec.annotations["molecule_type"] = "DNA"
-        
+
         yield rec
 
 
@@ -126,10 +126,12 @@ def _extract_regions(gff_iterator):
                     SeqFeature.ExactPosition(rec.features[i].location.end - loc),
                     strand=rec.features[i].strand,
                 )
-                
+
                 # Update sub-feature locations
                 for j in range(len(rec.features[i].sub_features)):
-                    rec.features[i].sub_features[j].location = SeqFeature.FeatureLocation(
+                    rec.features[i].sub_features[
+                        j
+                    ].location = SeqFeature.FeatureLocation(
                         SeqFeature.ExactPosition(
                             rec.features[i].sub_features[j].location.start - loc
                         ),
@@ -142,10 +144,10 @@ def _extract_regions(gff_iterator):
             # Extract sequence region
             rec.seq = rec.seq[loc:endloc]
             rec.annotations["molecule_type"] = "DNA"
-            
+
             logger.debug(f"Successfully processed record {rec.id}")
             yield rec
-            
+
         except Exception as e:
             logger.error(f"Error processing record {rec.id}: {str(e)}")
             continue
@@ -165,7 +167,7 @@ def _flatten_features(rec):
                     # Fix protein translations for CDS features
                     if curf.type == "CDS":
                         curf = _fix_cds_translation(curf, rec.seq)
-                    
+
                     out.append(curf)
                     if len(curf.sub_features) > 0:
                         nextf.extend(curf.sub_features)
@@ -182,7 +184,7 @@ def _fix_cds_translation(feature, sequence):
     try:
         # Extract the CDS sequence
         cds_seq = feature.extract(sequence)
-        
+
         # Try strict translation first (with start/stop codons)
         try:
             protein_seq = cds_seq.translate(table=1, cds=True)  # Standard genetic code
@@ -190,20 +192,22 @@ def _fix_cds_translation(feature, sequence):
             # If strict translation fails, try lenient translation
             # This allows CDS features that don't have proper start/stop codons
             protein_seq = cds_seq.translate(table=1, to_stop=True)
-        
+
         # Update the translation qualifier
-        if 'translation' not in feature.qualifiers:
-            feature.qualifiers['translation'] = [str(protein_seq)]
+        if "translation" not in feature.qualifiers:
+            feature.qualifiers["translation"] = [str(protein_seq)]
         else:
             # Replace existing translation with correct one
-            feature.qualifiers['translation'] = [str(protein_seq)]
-            
+            feature.qualifiers["translation"] = [str(protein_seq)]
+
         logger.debug(f"Updated translation for CDS at {feature.location}")
-        
+
     except Exception as e:
-        logger.warning(f"Could not fix translation for CDS at {feature.location}: {str(e)}")
+        logger.warning(
+            f"Could not fix translation for CDS at {feature.location}: {str(e)}"
+        )
         # Keep the original feature if translation fails
-        
+
     return feature
 
 
@@ -211,14 +215,14 @@ if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     if len(sys.argv) != 3:
         logger.error("Incorrect number of arguments")
         print("Usage: gff2genbank.py <gff_file> <fasta_file>")
         sys.exit(1)
-        
+
     try:
         main(sys.argv[1], sys.argv[2])
     except Exception as e:

@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from src.config.database import StarbaseSession, SubmissionsSession, TelemetrySession
+from src.config.database import StarbaseSession, SubmissionSession, TelemetrySession
 
 from src.config.logging import get_logger
 
@@ -15,7 +15,7 @@ def get_starbase_session():
         session.commit()
     except Exception as e:
         session.rollback()
-        logger.error(f"Database error: {e}")
+        logger.error(f"starbase session error: {e}")
         raise
     finally:
         session.close()
@@ -24,13 +24,13 @@ def get_starbase_session():
 @contextmanager
 def get_submissions_session():
     """Context manager for submissions database sessions"""
-    session = SubmissionsSession()
+    session = SubmissionSession()
     try:
         yield session
         session.commit()
     except Exception as e:
         session.rollback()
-        logger.error(f"Database error: {e}")
+        logger.error(f"submissions session error: {e}")
         raise
     finally:
         session.close()
@@ -45,7 +45,7 @@ def get_telemetry_session():
         session.commit()
     except Exception as e:
         session.rollback()
-        logger.error(f"Database error: {e}")
+        logger.error(f"telemetry session error: {e}")
         raise
     finally:
         session.close()

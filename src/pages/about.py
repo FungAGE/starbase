@@ -4,9 +4,12 @@ import dash
 import dash_mantine_components as dmc
 from dash import html
 
+from src.components.ui import download_ships_card, source_code_card, _i, _lt
+
 warnings.filterwarnings("ignore")
 
 dash.register_page(__name__)
+
 
 card_dict = {
     "aaron": {
@@ -20,10 +23,7 @@ card_dict = {
         "img": "assets/images/adrian.jpg",
         "role": html.P(
             [
-                html.Span(
-                    "starbase",
-                    className="logo-text",
-                ),
+                _i("starbase"),
                 " developer",
             ],
         ),
@@ -34,10 +34,7 @@ card_dict = {
         "img": "assets/images/emile.png",
         "role": html.P(
             [
-                html.Span(
-                    "starfish",
-                    className="logo-text",
-                ),
+                _i("starfish"),
                 " developer",
                 html.Br(),
                 "Gluck-Thaler lab group leader",
@@ -109,13 +106,13 @@ layout = dmc.Container(
         dmc.Paper(
             children=[
                 dmc.Title(
-                    ["About ", html.Span("starbase", className="logo-text")],
+                    ["About ", _lt("starbase")],
                     order=1,
                     mb="md",
                 ),
                 dmc.Text(
                     [
-                        html.Span("starbase", className="logo-text"),
+                        _lt("starbase"),
                         " was developed by the ",
                         dmc.Anchor(
                             "FungAGE lab",
@@ -151,31 +148,13 @@ layout = dmc.Container(
             withBorder=False,
             mb="xl",
         ),
-        # Source Code Section
-        dmc.Paper(
-            children=[
-                dmc.Stack(
-                    [
-                        dmc.Text(
-                            [
-                                "The source code for ",
-                                html.Span("starbase", className="logo-text"),
-                                " webserver will soon be available on GitHub",
-                            ],
-                            size="lg",
-                        ),
-                        dmc.Image(
-                            src="assets/images/starbase-map.png",
-                            fit="contain",
-                            className="auto-resize-750",
-                        ),
-                    ],
-                    gap="xl",
-                ),
+        dmc.Grid(
+            [
+                dmc.GridCol(download_ships_card, span={"lg": 6, "md": 6, "sm": 12}),
+                dmc.GridCol(source_code_card, span={"lg": 6, "md": 6, "sm": 12}),
             ],
-            p="xl",
-            radius="md",
-            withBorder=True,
+            gutter="xl",
+            align="stretch",
         ),
     ],
     py="xl",
