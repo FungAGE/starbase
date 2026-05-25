@@ -21,7 +21,7 @@
 services:
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: starbase_backend_redis
     restart: always
     healthcheck:

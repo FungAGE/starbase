@@ -2,7 +2,7 @@ services:
 
   # ── Redis: frontend response cache ─────────────────────────────────────────
   redis-frontend:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: starbase_redis_frontend
     restart: always
     healthcheck:
@@ -13,7 +13,7 @@ services:
 
   # ── Redis: Celery broker/backend (backend side) ─────────────────────────────
   redis-backend:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: starbase_redis_backend
     restart: always
     healthcheck:
@@ -33,6 +33,8 @@ services:
     image: starbase-backend:latest
     pull_policy: never
     container_name: starbase_backend
+    ports:
+      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
     environment:
       - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1
