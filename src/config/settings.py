@@ -2,12 +2,25 @@ import os
 
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+_DEFAULT_DB_DIR = os.path.join(PROJECT_ROOT, "src", "database", "db")
 
+# Backend API (compute split) — read early; drives path layout below.
+# BACKEND_API_URL: e.g. http://100.x.y.z:8001 (Tailscale) or http://backend:8001 (compose).
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "")
+BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY", "")
+
+# DATA_DIR: SQLite + BLAST data on the compute backend (institute machine).
+# FRONTEND_DATA_DIR: lightweight local DBs (submissions, telemetry) on the Serve pod / dev host.
 DATA_DIR = os.environ.get("DATA_DIR", "")
+FRONTEND_DATA_DIR = os.environ.get("FRONTEND_DATA_DIR", _DEFAULT_DB_DIR)
+_local_db_root = FRONTEND_DATA_DIR if BACKEND_API_URL else (DATA_DIR or _DEFAULT_DB_DIR)
+_compute_data_root = DATA_DIR or _DEFAULT_DB_DIR
 
-# Only create data directories when DATA_DIR is meaningful (backend / monolith).
-# Frontend image has no local DB; skip creation to avoid empty-path side effects.
-if DATA_DIR:
+# Create directories: full tree on backend/monolith; only local DB dir on split frontend.
+if BACKEND_API_URL:
+    os.makedirs(_local_db_root, exist_ok=True)
+    os.makedirs(os.path.join(PROJECT_ROOT, "src", "database", "cache"), exist_ok=True)
+elif DATA_DIR:
     REQUIRED_DIRS = [
         DATA_DIR,
         os.path.join(PROJECT_ROOT, "src", "database", "cache"),
@@ -23,50 +36,61 @@ if DATA_DIR:
 
 # Database paths
 DB_PATHS = {
-    "starbase": os.path.join(DATA_DIR, "starbase.sqlite"),
-    "submissions": os.path.join(DATA_DIR, "submissions.sqlite"),
-    "telemetry": os.path.join(DATA_DIR, "telemetry.sqlite"),
+    "starbase": os.path.join(_compute_data_root, "starbase.sqlite"),
+    "submissions": os.path.join(_local_db_root, "submissions.sqlite"),
+    "telemetry": os.path.join(_local_db_root, "telemetry.sqlite"),
 }
 
-# BLAST database paths
+# BLAST database paths (backend / monolith only)
 BLAST_DB_PATHS = {
     "ship": {
         "all": {
-            "nucl": os.path.join(DATA_DIR, "ships", "fna", "blastdb", "ships_all.fa")
+            "nucl": os.path.join(
+                _compute_data_root, "ships", "fna", "blastdb", "ships_all.fa"
+            )
         },
         "curated": {
             "nucl": os.path.join(
-                DATA_DIR, "ships", "fna", "blastdb", "ships_curated.fa"
+                _compute_data_root, "ships", "fna", "blastdb", "ships_curated.fa"
             )
         },
     },
     "gene": {
         "tyr": {
             "nucl": os.path.join(
-                DATA_DIR, "captain", "tyr", "fna", "blastdb", "captains.fna"
+                _compute_data_root, "captain", "tyr", "fna", "blastdb", "captains.fna"
             ),
             "prot": os.path.join(
-                DATA_DIR, "captain", "tyr", "faa", "blastdb", "captains.faa"
+                _compute_data_root, "captain", "tyr", "faa", "blastdb", "captains.faa"
             ),
             "hmm": {
                 "nucl": os.path.join(
-                    DATA_DIR, "captain", "tyr", "fna", "hmm", "combined.hmm"
+                    _compute_data_root,
+                    "captain",
+                    "tyr",
+                    "fna",
+                    "hmm",
+                    "combined.hmm",
                 ),
                 "prot": os.path.join(
-                    DATA_DIR, "captain", "tyr", "faa", "hmm", "combined.hmm"
+                    _compute_data_root,
+                    "captain",
+                    "tyr",
+                    "faa",
+                    "hmm",
+                    "combined.hmm",
                 ),
             },
         },
     },
 }
 
-# GBK paths
-GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
+GBK_PATH = os.path.join(_compute_data_root, "ships", "gbks")
 
 # Phylogeny paths
 PHYLOGENY_PATHS = {
     "tree": os.path.join(
-        DATA_DIR,
+        _compute_data_root,
         "captain",
         "tyr",
         "faa",
@@ -74,7 +98,7 @@ PHYLOGENY_PATHS = {
         "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
     ),
     "msa": os.path.join(
-        DATA_DIR,
+        _compute_data_root,
         "captain",
         "tyr",
         "faa",
@@ -82,7 +106,12 @@ PHYLOGENY_PATHS = {
         "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
     ),
     "clades": os.path.join(
-        DATA_DIR, "captain", "tyr", "faa", "tree", "superfam-clades.tsv"
+        _compute_data_root,
+        "captain",
+        "tyr",
+        "faa",
+        "tree",
+        "superfam-clades.tsv",
     ),
 }
 
@@ -98,16 +127,6 @@ METRICS_URL = os.getenv("METRICS_URL", "/metrics")
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
 MAINTENANCE_TOKEN = os.environ.get("MAINTENANCE_TOKEN")
-
-# Backend API (compute split)
-# BACKEND_API_URL: base URL of the FastAPI backend, e.g. http://100.x.y.z:8001 (Tailscale)
-#                  or http://backend:8001 (local docker-compose).
-#                  When set, sql_manager routes all DB/BLAST calls over HTTP.
-BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "")
-BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY", "")
-
-# GenBank files path
-GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
 
 # Cache settings
 CACHE_TIMEOUT = (
