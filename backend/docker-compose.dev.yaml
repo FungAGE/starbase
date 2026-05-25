@@ -1,0 +1,110 @@
+# Local backend stack (build from source, no GHCR image required).
+#
+# Use on the institute machine or your dev box when testing the split architecture.
+# The frontend connects via BACKEND_API_URL (localhost or Tailscale IP).
+#
+# Usage (from repo root):
+#   cp dev/config/env.template .env   # set BACKEND_API_KEY, DATA_DIR
+#   docker compose -f backend/docker-compose.dev.yaml up -d --build
+#   curl http://localhost:8001/health
+#
+# Required in .env:
+#   BACKEND_API_KEY   - shared secret for X-API-Key
+#   DATA_DIR          - absolute path to starbase.sqlite + BLAST dirs (default below)
+
+services:
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: starbase_backend_redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    image: starbase-backend:local
+    pull_policy: never
+    container_name: starbase_backend
+    ports:
+      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
+    environment:
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - PYTHONUNBUFFERED=1
+      - SQLALCHEMY_WARN_20=1
+      - SQLALCHEMY_SILENCE_UBER_WARNING=1
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - BACKEND_DEV_MODE=${BACKEND_DEV_MODE:-false}
+      - BACKEND_PORT=${BACKEND_PORT:-8001}
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+      - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    volumes:
+      - ${DATA_DIR:-../src/database/db}:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${BACKEND_PORT:-8001}/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  celery-worker:
+    image: starbase-backend:local
+    pull_policy: never
+    container_name: starbase_backend_celery_worker
+    environment:
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+    volumes:
+      - ${DATA_DIR:-../src/database/db}:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    entrypoint: ["python"]
+    command: ["manage_celery.py", "worker"]
+    restart: unless-stopped
+
+  celery-beat:
+    image: starbase-backend:local
+    pull_policy: never
+    container_name: starbase_backend_celery_beat
+    environment:
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+    volumes:
+      - ${DATA_DIR:-../src/database/db}:/home/starbase/src/database/db:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+    entrypoint: ["python"]
+    command: ["manage_celery.py", "beat"]
+    restart: unless-stopped
+
+networks:
+  default:
+    name: starbase_backend_network
