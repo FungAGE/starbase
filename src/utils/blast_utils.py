@@ -41,7 +41,8 @@ def run_blast(
             )
             return None
 
-        blast_db = get_blast_db(db_type="blast", query_type="nucl", curated=curated)
+        # when query_type is protein, we are using a limited database of just annotated genes within starships
+        blast_db = get_blast_db(db_type="blast", query_type=query_type, curated=curated)
         blast_type = "blastn" if query_type == "nucl" else "tblastn"
 
         blast_cmd = [
