@@ -4,6 +4,7 @@ import json
 from typing import Dict, Any
 
 from src.config.cache import cache, cleanup_old_cache
+from src.config import backend_client
 from src.telemetry.utils import update_ip_locations
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
@@ -70,6 +71,15 @@ else:
 
 def _run_blast_search_impl(query_header, query_seq, query_type, eval_threshold=0.01, curated=None):
     """Implementation of BLAST search task"""
+    if backend_client.is_configured():
+        return backend_client.blast_search(
+            query_header=query_header,
+            query_seq=query_seq,
+            query_type=query_type,
+            eval_threshold=eval_threshold,
+            curated=curated,
+        )
+
     # Write sequence to temporary FASTA file
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
     tmp_blast = tempfile.NamedTemporaryFile(suffix=".blast", delete=True).name
@@ -134,6 +144,14 @@ else:
 
 def _run_hmmer_search_impl(query_header, query_seq, query_type, eval_threshold=0.01):
     """Implementation of HMMER search task"""
+    if backend_client.is_configured():
+        return backend_client.hmmer_search(
+            query_header=query_header,
+            query_seq=query_seq,
+            query_type=query_type,
+            eval_threshold=eval_threshold,
+        )
+
     tmp_query_fasta = write_temp_fasta(query_header, query_seq)
 
     results_dict, protein_filename = run_hmmer(

@@ -103,23 +103,34 @@ if os.environ.get("DEV_MODE"):
 
 def initialize_app():
     """Initialize app components and perform setup tasks."""
+    from src.config import backend_client
+
     with server.app_context():
-        from src.database.migrations import create_database_indexes
-        from src.database.blastdb import create_dbs
         from src.config.celery_config import celery
 
-        # Always run these
-        create_database_indexes()
         cleanup_old_cache()
 
-        if not IS_DEV:
-            update_ip_locations()
-            try:
-                logger.info("Rebuilding BLAST databases on startup...")
-                create_dbs()
-                logger.info("BLAST databases rebuilt successfully on startup")
-            except Exception as e:
-                logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        if not backend_client.is_configured():
+            from src.database.migrations import create_database_indexes
+            from src.database.blastdb import create_dbs
+
+            create_database_indexes()
+
+            if not IS_DEV:
+                update_ip_locations()
+                try:
+                    logger.info("Rebuilding BLAST databases on startup...")
+                    create_dbs()
+                    logger.info("BLAST databases rebuilt successfully on startup")
+                except Exception as e:
+                    logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        else:
+            from src.config.settings import BACKEND_API_URL
+
+            logger.info(
+                "Backend split active (%s); skipping local starbase/BLAST init",
+                BACKEND_API_URL,
+            )
 
         # Initialize Celery with Flask app context
         celery.conf.update(
