@@ -16,8 +16,6 @@ import time
 import requests
 from functools import lru_cache
 import ipaddress
-from functools import wraps
-from dash.exceptions import PreventUpdate
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 from sqlalchemy import text
@@ -840,38 +838,3 @@ def get_blast_limit_info(ip_address):
     except Exception as e:
         logger.error(f"Error getting BLAST limit info: {str(e)}")
         return {"remaining": 0, "limit": 10, "submissions": 10}
-
-
-def blast_limit_decorator(f):
-    """Decorator to limit BLAST operations per user"""
-
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        try:
-            client_ip = get_client_ip()
-
-            # Skip rate limiting for development IPs
-            if is_development_ip(client_ip):
-                return f(*args, **kwargs)
-
-            # Only check limits for BLAST-related endpoints
-            if request.path == "/api/blast-submit":
-                limit_info = get_blast_limit_info(client_ip)
-
-                if limit_info["remaining"] <= 0:
-                    logger.warning(f"BLAST limit exceeded for IP: {client_ip}")
-                    raise PreventUpdate("Hourly BLAST limit exceeded")
-
-                # Log the BLAST request
-                logger.debug(f"BLAST submission from IP: {client_ip}")
-                log_request(client_ip, "/api/blast-submit")
-
-            return f(*args, **kwargs)
-
-        except PreventUpdate:
-            raise
-        except Exception as e:
-            logger.error(f"Error in blast_limit_decorator: {str(e)}")
-            raise
-
-    return wrapped
