@@ -120,7 +120,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+.env*
 .venv
 env/
 venv/
@@ -192,3 +192,12 @@ tests/test_data/real_*
 # Keep small test files tracked
 !tests/test_data/small_*
 !tests/test_data/mock_*
+
+
+starbase-validation/
+
+examples/
+docs/
+
+.cursorignore
+.agent-docs/
