@@ -2514,13 +2514,36 @@ def create_classification_output(workflow_state=None, classification_data=None):
             classification_data = None
 
     # No valid classification data - check workflow state
-    # Handle workflow_state as either object or dictionary
     workflow_complete = False
+    workflow_error = None
+    workflow_status = None
+    pipeline_entry = None
+    found_match = False
     if workflow_state:
         if hasattr(workflow_state, "complete"):
             workflow_complete = workflow_state.complete
+            workflow_error = workflow_state.error
+            workflow_status = workflow_state.status
+            pipeline_entry = workflow_state.pipeline_entry
+            found_match = workflow_state.found_match
         elif isinstance(workflow_state, dict):
             workflow_complete = workflow_state.get("complete", False)
+            workflow_error = workflow_state.get("error")
+            workflow_status = workflow_state.get("status")
+            pipeline_entry = workflow_state.get("pipeline_entry")
+            found_match = workflow_state.get("found_match", False)
+
+    if workflow_error or workflow_status == "failed":
+        from src.utils.blast_utils import create_classification_failed_alert
+
+        return html.Div(
+            [
+                classification_title,
+                create_classification_failed_alert(
+                    workflow_error or "Classification workflow failed."
+                ),
+            ]
+        )
 
     # Check if workflow is still running
     if workflow_state and not workflow_complete:
@@ -2619,8 +2642,18 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 dmc.Stack(stepper_stack, gap="sm"),
             ]
         )
-    else:
-        # Workflow is complete but no classification available
+
+    if pipeline_entry == "none":
+        from src.utils.blast_utils import create_classification_skipped_alert
+
+        return html.Div(
+            [
+                classification_title,
+                create_classification_skipped_alert(min_bp=CLASSIFICATION_MIN_BP_NONE),
+            ]
+        )
+
+    if workflow_complete and not found_match:
         return html.Div(
             [
                 classification_title,
@@ -2632,3 +2665,16 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 ),
             ]
         )
+
+    # Workflow is complete but no classification available
+    return html.Div(
+        [
+            classification_title,
+            dmc.Alert(
+                title="No Classification Available",
+                children="Could not classify this sequence with any available method.",
+                color="var(--mantine-color-yellow-6)",
+                variant="light",
+            ),
+        ]
+    )
