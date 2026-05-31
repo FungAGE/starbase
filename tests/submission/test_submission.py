@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import datetime
 from src.database.sql_engine import get_submissions_session
 from src.database.models.schema import Submission
@@ -8,6 +10,7 @@ from src.config.logging import get_logger
 logger = get_logger(__name__)
 
 
+@pytest.mark.integration
 def test_create_new_submission():
     """Test creating and saving a new submission record"""
     # Create a session from the sessionmaker

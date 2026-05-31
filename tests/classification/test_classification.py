@@ -1,3 +1,4 @@
+import pytest
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.classification_utils import (
     assign_accession,
@@ -29,6 +30,7 @@ def test_exact_match(test_ships_df, test_sequence, test_sequence_revcomp):
     )  # Updated to match actual database data with version
 
 
+@pytest.mark.integration
 def test_contained_match(test_ships_df, test_contained_sequence):
     """Test contained sequence matching."""
     # Test contained match - should return SSA002851 as it's longer
@@ -36,6 +38,7 @@ def test_contained_match(test_ships_df, test_contained_sequence):
     assert result == "SSA002851.1"  # Now matches the longer sequence
 
 
+@pytest.mark.integration
 def test_similar_match(test_ships_df, test_similar_sequence):
     """Test similar sequence matching using k-mer comparison."""
     # Test similar match
@@ -45,6 +48,7 @@ def test_similar_match(test_ships_df, test_similar_sequence):
     assert result == "SSA002851.1"
 
 
+@pytest.mark.integration
 def test_family_match(test_ships_df, test_sequence):
     """Test family matching using hmmer."""
     family_result, protein_file = classify_family(
@@ -53,6 +57,7 @@ def test_family_match(test_ships_df, test_sequence):
     assert family_result == "Prometheus"
 
 
+@pytest.mark.integration
 def test_navis_match(test_captains_df):
     """Test navis matching using hmmer."""
     sequence = test_captains_df.iloc[0]["sequence"]
@@ -62,6 +67,7 @@ def test_navis_match(test_captains_df):
     assert navis_result == "Phoenix"
 
 
+@pytest.mark.integration
 def test_haplotype_match(
     test_haplotype_ships_df, test_haplotype_sequence, test_similarities
 ):
@@ -96,6 +102,7 @@ def test_assign_accession_exact_match(test_ships_df, test_sequence):
     assert needs_review is False
 
 
+@pytest.mark.integration
 def test_assign_accession_contained_match(test_ships_df, test_contained_sequence):
     """Test full workflow with contained match."""
     accession, needs_review = assign_accession(
@@ -105,6 +112,7 @@ def test_assign_accession_contained_match(test_ships_df, test_contained_sequence
     assert needs_review is True
 
 
+@pytest.mark.integration
 def test_assign_accession_similar_match(test_ships_df, test_similar_sequence):
     """Test full workflow with similar match."""
     accession, needs_review = assign_accession(
@@ -114,6 +122,7 @@ def test_assign_accession_similar_match(test_ships_df, test_similar_sequence):
     assert needs_review is True
 
 
+@pytest.mark.integration
 def test_assign_accession_new(test_ships_df):
     """Test full workflow with new sequence."""
     accession, needs_review = assign_accession("TTTTTTTT", existing_ships=test_ships_df)
