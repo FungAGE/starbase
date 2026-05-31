@@ -53,6 +53,25 @@ dash.register_page(__name__)
 logger = get_logger(__name__)
 
 
+def _log_blast_pipeline_event(event, **fields):
+    """Log a structured BLAST/classification pipeline event for observability."""
+    parts = [f"blast_pipeline event={event}", f"pid={os.getpid()}"]
+    for key, value in sorted(fields.items()):
+        if value is not None:
+            parts.append(f"{key}={value}")
+    logger.info(" | ".join(parts))
+
+
+def _get_blast_submission_id():
+    """Return the session-scoped BLAST submission id, if available."""
+    try:
+        from flask import session
+
+        return session.get("blast_submission_id") if session else None
+    except ImportError:
+        return None
+
+
 def _make_matching_steps():
     """Build StepperStep components for sequence matching stages."""
     return [
@@ -1260,13 +1279,30 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
         else:
             analysis.set_error(blast_result.error)
 
-        logger.info(f"Completed processing sequence {sequence_id}")
+        hit_count = (
+            len(blast_result.blast_hits) if blast_result.blast_hits is not None else 0
+        )
+        _log_blast_pipeline_event(
+            "sequence_processed",
+            sequence_id=sequence_id,
+            seq_length=len(query_seq),
+            blast_success=not bool(blast_result.error),
+            blast_error=blast_result.error,
+            hit_count=hit_count,
+            has_blast_content=bool(blast_result.blast_content),
+        )
         return analysis
 
     except Exception as e:
         error_message = f"Error in process_single_sequence: {e}"
         logger.error(error_message)
         analysis.set_error(error_message)
+        _log_blast_pipeline_event(
+            "sequence_failed",
+            sequence_id=sequence_id,
+            seq_length=len(query_seq),
+            blast_error=error_message,
+        )
         return analysis
 
 
@@ -1316,17 +1352,20 @@ def process_multiple_sequences(
         raise PreventUpdate
 
     # Bind this submission to a session-scoped ID so all workers can find state in Redis
+    blast_submission_id = None
     try:
         from flask import session
         import uuid
 
-        session["blast_submission_id"] = str(uuid.uuid4())
+        blast_submission_id = str(uuid.uuid4())
+        session["blast_submission_id"] = blast_submission_id
         session.modified = True
     except Exception:
         pass
 
     adapter = get_dash_adapter()
     sequence_id = str(submission_id)
+    cache_key = adapter.pipeline_state._cache_key
 
     try:
         if not seq_list and file_contents:
@@ -1360,6 +1399,15 @@ def process_multiple_sequences(
         pipeline_state = adapter.pipeline_state
         # Start a new submission - this clears any old state
         sequence_state = pipeline_state.start_new_submission(sequence_id)
+
+        _log_blast_pipeline_event(
+            "submission_started",
+            submission_id=sequence_id,
+            blast_submission_id=blast_submission_id,
+            cache_backed=bool(cache_key),
+            cache_key=cache_key,
+            sequence_count=len(seq_list),
+        )
 
         first_seq = seq_list[0]
         logger.debug(
@@ -1443,12 +1491,6 @@ def process_multiple_sequences(
             or not sequence_analysis.blast_result.blast_content
         )
 
-        logger.debug(
-            f"Classification decision: skip={skip_classification}, seq_length={sequence_length}, tier={tier}, "
-            f"hits={len(sequence_analysis.blast_result.blast_hits) if sequence_analysis.blast_result and sequence_analysis.blast_result.blast_hits else 0}, "
-            f"pid={os.getpid()}"
-        )
-
         if sequence_analysis.has_error():
             workflow_state.status = "failed"
             workflow_state.complete = True
@@ -1471,6 +1513,39 @@ def process_multiple_sequences(
         elif skip_classification:
             workflow_state.status = "complete"
             workflow_state.complete = True
+
+        skip_reason = None
+        if skip_classification:
+            if tier == "none":
+                skip_reason = "tier_none"
+            elif sequence_analysis.has_error():
+                skip_reason = "blast_error"
+            elif (
+                not sequence_analysis.blast_result
+                or not sequence_analysis.blast_result.blast_content
+            ):
+                skip_reason = "no_blast_content"
+            else:
+                skip_reason = "other"
+
+        hit_count = (
+            len(sequence_analysis.blast_result.blast_hits)
+            if sequence_analysis.blast_result
+            and sequence_analysis.blast_result.blast_hits
+            else 0
+        )
+        _log_blast_pipeline_event(
+            "classification_decision",
+            submission_id=sequence_id,
+            blast_submission_id=blast_submission_id,
+            skip_classification=skip_classification,
+            skip_reason=skip_reason,
+            tier=tier,
+            seq_length=sequence_length,
+            hit_count=hit_count,
+            workflow_status=workflow_state.status,
+            workflow_error=workflow_state.error,
+        )
 
         classification_data = None
         if not skip_classification:
@@ -1500,7 +1575,14 @@ def process_multiple_sequences(
 
         store_data = adapter.sync_all_stores(sequence_id)
 
-        logger.debug(f"Completed unified sequence processing for {sequence_id}")
+        _log_blast_pipeline_event(
+            "submission_complete",
+            submission_id=sequence_id,
+            blast_submission_id=blast_submission_id,
+            cache_backed=bool(pipeline_state._cache_key),
+            workflow_status=workflow_state.status,
+            classification_scheduled=classification_data is not None,
+        )
         return (
             store_data["workflow_state"],
             store_data["classification_data"],
@@ -2660,6 +2742,13 @@ def update_classification_workflow_state(
         raise PreventUpdate
 
     try:
+        _log_blast_pipeline_event(
+            "classification_started",
+            sequence_id=sequence_id,
+            blast_submission_id=_get_blast_submission_id(),
+            cache_backed=bool(pipeline_state._cache_key),
+            cache_key=pipeline_state._cache_key,
+        )
         logger.debug("Running classification workflow via centralized state")
 
         # Get current state from centralized pipeline
@@ -2682,6 +2771,12 @@ def update_classification_workflow_state(
         blast_data = sequence_state.blast_data
         if not blast_data:
             logger.error(f"No BLAST data found for {sequence_id}")
+            _log_blast_pipeline_event(
+                "classification_aborted",
+                sequence_id=sequence_id,
+                blast_submission_id=_get_blast_submission_id(),
+                reason="no_blast_data",
+            )
             raise PreventUpdate
 
         # Get metadata
@@ -2763,12 +2858,29 @@ def update_classification_workflow_state(
                     )
                     pipeline_state._maybe_persist()
 
+        _log_blast_pipeline_event(
+            "classification_complete",
+            sequence_id=sequence_id,
+            blast_submission_id=_get_blast_submission_id(),
+            found_match=updated_workflow_state.found_match,
+            match_stage=updated_workflow_state.match_stage,
+            match_result=updated_workflow_state.match_result,
+            workflow_error=updated_workflow_state.error,
+        )
+
         # Return synchronized data from centralized state
         store_data = adapter.sync_all_stores(sequence_id)
         return store_data["workflow_state"], False, store_data["blast_data"]
 
     except Exception as e:
         logger.error(f"Error in unified workflow state update: {e}")
+
+        _log_blast_pipeline_event(
+            "classification_failed",
+            sequence_id=sequence_id,
+            blast_submission_id=_get_blast_submission_id(),
+            error=str(e),
+        )
 
         # Update error state in centralized system
         workflow_state.error = str(e)
