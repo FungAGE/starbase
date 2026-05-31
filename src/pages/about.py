@@ -4,7 +4,7 @@ import dash
 import dash_mantine_components as dmc
 from dash import html
 
-from src.components.ui import download_ships_card, source_code_card
+from src.components.ui import download_ships_card, source_code_card, _i, _lt
 
 warnings.filterwarnings("ignore")
 
@@ -23,10 +23,7 @@ card_dict = {
         "img": "assets/images/adrian.jpg",
         "role": html.P(
             [
-                html.Span(
-                    "starbase",
-                    className="logo-text",
-                ),
+                _i("starbase"),
                 " developer",
             ],
         ),
@@ -37,10 +34,7 @@ card_dict = {
         "img": "assets/images/emile.png",
         "role": html.P(
             [
-                html.Span(
-                    "starfish",
-                    className="logo-text",
-                ),
+                _i("starfish"),
                 " developer",
                 html.Br(),
                 "Gluck-Thaler lab group leader",
@@ -112,13 +106,13 @@ layout = dmc.Container(
         dmc.Paper(
             children=[
                 dmc.Title(
-                    ["About ", html.Span("starbase", className="logo-text")],
+                    ["About ", _lt("starbase")],
                     order=1,
                     mb="md",
                 ),
                 dmc.Text(
                     [
-                        html.Span("starbase", className="logo-text"),
+                        _lt("starbase"),
                         " was developed by the ",
                         dmc.Anchor(
                             "FungAGE lab",

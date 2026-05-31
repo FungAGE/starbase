@@ -14,7 +14,7 @@ import re
 from src.database.sql_engine import get_submissions_session
 from src.database.models.schema import Submission
 from sqlalchemy.exc import SQLAlchemyError
-from src.components.ui import create_file_upload
+from src.components.ui import create_file_upload, _i, _lt
 
 from src.config.logging import get_logger
 from src.config.cache import cache
@@ -256,9 +256,9 @@ dash.register_page(__name__)
 submission_header = dmc.Title(
     [
         "Submission of Candidate ",
-        html.Span("Starship", style={"fontStyle": "italic"}),
+        _i("Starship"),
         " Sequences to ",
-        html.Span("starbase", className="logo-text"),
+        _lt("starbase"),
     ],
     order=1,
     mb="md",

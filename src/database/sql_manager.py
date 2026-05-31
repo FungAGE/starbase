@@ -306,9 +306,6 @@ def fetch_ships(
         try:
             df = pd.read_sql_query(query, session.bind)
 
-            if df.empty:
-                logger.warning("Fetched ships DataFrame is empty.")
-
             if (
                 with_sequence
                 and dereplicate
@@ -455,6 +452,12 @@ def fetch_captains(
         curated (bool, optional): If True, only fetch curated ships.
         dereplicate (bool, optional): If True, only return one entry per accession tag. Defaults to True.
         with_sequence (bool, optional): If True, fetch sequence data. Defaults to False.
+            Rows are restricted to ``sequence IS NOT NULL`` (no captain sequence ⇒ not useful
+            for mmseqs). When True, ``accession_display`` uses COALESCE over SSA/SSB tags,
+            ``starshipID``, and ``captain_<id>`` because those join columns can still be NULL
+            even when a captain sequence exists—those NULLs broke FASTA filenames / dict keys,
+            not missing captains.
+
     Returns:
         pd.DataFrame: DataFrame containing captain data
     """
@@ -504,7 +507,14 @@ def fetch_captains(
             cm.version_tag,
             cm.ship_accession_display,
             cm.accession_tag,
-            cm.accession_display,
+            COALESCE(
+                NULLIF(TRIM(COALESCE(CAST(cm.accession_display AS TEXT), '')), ''),
+                NULLIF(TRIM(COALESCE(CAST(cm.accession_tag AS TEXT), '')), ''),
+                NULLIF(TRIM(COALESCE(CAST(cm.ship_accession_display AS TEXT), '')), ''),
+                NULLIF(TRIM(COALESCE(CAST(cm.ship_accession_tag AS TEXT), '')), ''),
+                NULLIF(TRIM(COALESCE(CAST(cm.starshipID AS TEXT), '')), ''),
+                'captain_' || CAST(cm.captain_id AS TEXT)
+            ) AS accession_display,
             cm.curated_status,
             cm.starshipID,
             cm.captain_id,

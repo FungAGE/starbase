@@ -1,6 +1,8 @@
 import dash_bootstrap_components as dbc
 from dash import html
 
+from src.components.ui import _lt
+
 from src.config.settings import (
     HOME_URL,
     WIKI_URL,
@@ -63,7 +65,7 @@ def navmenu(buttons_disabled=False):
     navbar = dbc.NavbarSimple(
         children=navbar_content,
         brand=dbc.NavbarBrand(
-            html.Span("starbase", className="logo-text"),
+            _lt("starbase"),
             className="ms-2",
         ),
         brand_href=HOME_URL,

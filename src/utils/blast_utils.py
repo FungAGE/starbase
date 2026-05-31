@@ -41,7 +41,8 @@ def run_blast(
             )
             return None
 
-        blast_db = get_blast_db(db_type="blast", query_type="nucl", curated=curated)
+        # when query_type is protein, we are using a limited database of just annotated genes within starships
+        blast_db = get_blast_db(db_type="blast", query_type=query_type, curated=curated)
         blast_type = "blastn" if query_type == "nucl" else "tblastn"
 
         blast_cmd = [
@@ -233,14 +234,22 @@ def parse_hmmer(hmmer_output_file):
 
 
 # parse blast xml output to tsv
-def parse_blast_xml(xml):
-    parsed_file = tempfile.NamedTemporaryFile(suffix=".blast.parsed.txt").name
+def parse_blast_xml(xml_source):
+    """Parse BLAST XML from a file path or XML string. Returns path to TSV file."""
+    from io import StringIO
+
+    parsed_file = tempfile.NamedTemporaryFile(
+        suffix=".blast.parsed.txt", delete=False
+    ).name
+    if os.path.isfile(xml_source):
+        record = SearchIO.read(xml_source, "blast-xml")
+    else:
+        record = SearchIO.read(StringIO(xml_source), "blast-xml")
     with open(parsed_file, "w") as tsv_file:
         # Add quotes around field names to ensure proper parsing
         tsv_file.write(
             '"query_id"\t"hit_IDs"\t"aln_length"\t"query_start"\t"query_end"\t"gaps"\t"query_seq"\t"subject_seq"\t"evalue"\t"bitscore"\t"pident"\n'
         )
-        record = SearchIO.read(xml, "blast-xml")
         for hit in record:
             for hsp in hit:
                 try:
@@ -638,9 +647,80 @@ def process_captain_results(captain_results_dict=None, evalue=None):
         return html.Div(create_error_alert("Failed to process captain results"))
 
 
+def create_blast_error_alert(message, retry_hint=None):
+    """Red alert for BLAST processing failures."""
+    children = [dmc.Text(message)]
+    if retry_hint:
+        children.extend([dmc.Space(h=10), dmc.Text(retry_hint, size="sm", c="dimmed")])
+    return dmc.Alert(
+        title="BLAST Search Failed",
+        children=children,
+        color="var(--mantine-color-red-6)",
+        variant="filled",
+        withCloseButton=False,
+        style={
+            "width": "100%",
+            "margin": "0 auto",
+            "@media (min-width: 768px)": {"width": "50%"},
+        },
+    )
+
+
+def create_classification_skipped_alert(min_bp=1000):
+    """Info alert when sequence is too short for classification."""
+    return dmc.Alert(
+        title="Classification Not Available",
+        children=(
+            f"Automated classification requires sequences longer than {min_bp} bp. "
+            "BLAST results are still shown below."
+        ),
+        color="var(--mantine-color-blue-6)",
+        variant="light",
+        withCloseButton=False,
+        style={
+            "width": "100%",
+            "margin": "0 auto",
+            "@media (min-width: 768px)": {"width": "50%"},
+        },
+    )
+
+
+def create_classification_failed_alert(message):
+    """Red alert for classification workflow failures."""
+    return dmc.Alert(
+        title="Classification Failed",
+        children=message,
+        color="var(--mantine-color-red-6)",
+        variant="filled",
+        withCloseButton=False,
+        style={
+            "width": "100%",
+            "margin": "0 auto",
+            "@media (min-width: 768px)": {"width": "50%"},
+        },
+    )
+
+
+def resolve_blast_result_status(sequence_results, top_level_error=None):
+    """Return (status, error_message) for BLAST display logic.
+
+    status is one of: failed, success, no_hits, loading
+    """
+    if not sequence_results:
+        sequence_results = {}
+    error = sequence_results.get("error") or top_level_error
+    if error:
+        return "failed", error
+    if sequence_results.get("blast_content"):
+        return "success", None
+    if sequence_results.get("processed"):
+        return "no_hits", None
+    return "loading", None
+
+
 def create_no_matches_alert():
     return dmc.Alert(
-        title="No Matches Found",
+        title="No Database Matches",
         children=[
             dmc.Text("Your sequence did not match any Starships in our database."),
             dmc.Space(h=10),
