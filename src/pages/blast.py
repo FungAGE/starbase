@@ -15,7 +15,11 @@ from src.utils.seq_utils import (
     write_temp_fasta,
     seq_processing_error_alert,
 )
-from src.utils.blast_utils import create_no_matches_alert
+from src.utils.blast_utils import (
+    create_no_matches_alert,
+    create_blast_error_alert,
+    resolve_blast_result_status,
+)
 
 
 from src.components.ui import curated_switch, create_file_upload, _i
@@ -730,16 +734,26 @@ def create_blast_container(sequence_results, tab_id=None):
         sequence_results: The BLAST results data
         tab_id: Optional ID suffix for creating unique container IDs in a tabbed interface
     """
-    blast_content = sequence_results.get("blast_content")
-    if not blast_content:
-        return html.Div(
+    status, error_msg = resolve_blast_result_status(sequence_results or {})
+
+    blast_title = dmc.Title(
+        "BLAST Results",
+        order=2,
+        style={"marginTop": "15px", "marginBottom": "20px"},
+    )
+
+    if status == "failed":
+        return html.Div([blast_title, create_blast_error_alert(error_msg)])
+
+    if status == "no_hits":
+        return html.Div([blast_title, create_no_matches_alert()])
+
+    if status == "loading":
+        return dmc.Stack(
             [
-                dmc.Title(
-                    "BLAST Results",
-                    order=2,
-                    style={"marginTop": "15px", "marginBottom": "20px"},
-                ),
-                create_no_matches_alert(),
+                blast_title,
+                dmc.Center(dmc.Loader(size="xl")),
+                dmc.Text("Loading BLAST results...", size="lg"),
             ]
         )
 
@@ -813,10 +827,7 @@ def process_metadata(curated):
 def process_blast_results(blast_results_dict, active_tab_idx):
     """
     Process the BLAST results for the active tab.
-    - If we have direct blast_content, use it without reading file
-    - If no blast_file, return empty blast text with warning
-    - If we have blast_file, read it and pass the raw BLAST text directly for BlasterJS
-    - If there's an error, return empty blast text
+    Returns blast_text, error, and status for clientside rendering.
     Note: there is a 5MB limit on the size of the BLAST output.
     """
     if not blast_results_dict:
@@ -827,22 +838,22 @@ def process_blast_results(blast_results_dict, active_tab_idx):
         BlastData.from_dict(blast_results_dict) if blast_results_dict else None
     )
 
-    if (
-        len(blast_results.sequence_results) == 1
-        and "0" in blast_results.sequence_results
-    ):
+    seq_results_dict = blast_results.sequence_results
+    if not isinstance(seq_results_dict, dict):
+        seq_results_dict = {}
+
+    if len(seq_results_dict) == 1 and "0" in seq_results_dict:
         tab_idx = "0"
         logger.debug(f"Single sequence detected, using tab index: {tab_idx}")
     else:
         tab_idx = str(active_tab_idx or 0)
         logger.debug(f"Processing BLAST results for tab index: {tab_idx}")
 
-    sequence_results = blast_results.sequence_results.get(tab_idx)
+    sequence_results = seq_results_dict.get(tab_idx)
     if not sequence_results:
-        # Fallback: try to get the first available sequence result
-        if blast_results.sequence_results:
-            first_key = next(iter(blast_results.sequence_results.keys()))
-            sequence_results = blast_results.sequence_results[first_key]
+        if seq_results_dict:
+            first_key = next(iter(seq_results_dict.keys()))
+            sequence_results = seq_results_dict[first_key]
             logger.warning(
                 f"No sequence results for tab index {tab_idx}, using first available: {first_key}"
             )
@@ -850,38 +861,54 @@ def process_blast_results(blast_results_dict, active_tab_idx):
             logger.warning("No sequence results available at all")
             return None
 
-    blast_results_file = sequence_results.get("blast_file")
+    status, error_msg = resolve_blast_result_status(
+        sequence_results, blast_results.error
+    )
+    if status == "failed":
+        return {"blast_text": "", "error": error_msg, "status": "failed"}
+    if status == "no_hits":
+        return {"blast_text": "", "error": None, "status": "no_hits"}
+    if status == "loading":
+        return None
+
     blast_content = sequence_results.get("blast_content")
+    blast_results_file = sequence_results.get("blast_file")
 
     if blast_content:
         logger.debug(f"Using direct blast_content for tab {tab_idx}")
-        return {"blast_text": blast_content}
+        return {"blast_text": blast_content, "error": None, "status": "success"}
 
     if not blast_results_file:
         logger.warning(f"No blast file in sequence results for tab {tab_idx}")
-        return {"blast_text": ""}
+        return {"blast_text": "", "error": None, "status": "no_hits"}
 
     logger.debug(f"Reading BLAST file: {blast_results_file}")
     try:
         if not os.path.exists(blast_results_file):
             logger.error(f"BLAST file does not exist: {blast_results_file}")
-            return {"blast_text": ""}
+            return {
+                "blast_text": "",
+                "error": "BLAST results file is missing",
+                "status": "failed",
+            }
 
         with open(blast_results_file, "r") as f:
-            blast_results = f.read()
+            file_content = f.read()
 
-        results_size = len(blast_results)
+        results_size = len(file_content)
         logger.debug(f"Read BLAST results, size: {results_size} bytes")
         if results_size > 5 * 1024 * 1024:
             logger.warning(f"BLAST results too large: {results_size} bytes")
-            return {"blast_text": "BLAST results too large to display"}
+            return {
+                "blast_text": "BLAST results too large to display",
+                "error": None,
+                "status": "success",
+            }
 
-        data = {"blast_text": blast_results}
-
-        return data
+        return {"blast_text": file_content, "error": None, "status": "success"}
     except Exception as e:
         logger.error(f"Error processing BLAST results: {str(e)}")
-        return {"blast_text": ""}
+        return {"blast_text": "", "error": str(e), "status": "failed"}
 
 
 ########################################################
@@ -2092,48 +2119,77 @@ def update_active_tab(active_tab):
 # Define the clientside JavaScript function directly in the callback
 clientside_callback(
     """
-    function(data, active_tab_idx) {        
-        // Check if we have valid data
-        if (!data || !data.blast_text) {
+    function(data, active_tab_idx) {
+        const renderStatusMessage = (container, data) => {
+            const titleHtml = '<h2 style="margin-top:15px;margin-bottom:20px;text-align:left;width:100%;">BLAST Results</h2>';
+            if (data.error || data.status === 'failed') {
+                const msg = data.error || 'BLAST search failed. Please try again.';
+                container.innerHTML = titleHtml +
+                    '<div style="padding:16px;background:#fa5252;color:white;border-radius:8px;margin-bottom:16px;">' +
+                    '<strong>BLAST Search Failed</strong><br/>' + msg + '</div>';
+                container.dataset.initialized = 'error';
+                return true;
+            }
+            if (data.status === 'no_hits') {
+                container.innerHTML = titleHtml +
+                    '<div style="padding:16px;background:#fff3bf;color:#862e00;border-radius:8px;margin-bottom:16px;">' +
+                    '<strong>No Database Matches</strong><br/>' +
+                    'Your sequence did not match any Starships in our database.</div>';
+                container.dataset.initialized = 'true';
+                return true;
+            }
+            return false;
+        };
+
+        const findBlastContainer = (containerId, maxAttempts, attempt) => {
+            let container = document.getElementById(containerId);
+            if (!container && attempt < maxAttempts) {
+                return null;
+            }
+            if (!container) {
+                container = document.getElementById('blast-container');
+            }
+            if (!container) {
+                const containers = document.getElementsByClassName('blast-container');
+                if (containers.length > 0) {
+                    container = containers[0];
+                }
+            }
+            return container;
+        };
+
+        if (!data) {
+            return window.dash_clientside.no_update;
+        }
+
+        const hasTerminalStatus = data.error || data.status === 'failed' || data.status === 'no_hits';
+        if (!data.blast_text && !hasTerminalStatus) {
             return window.dash_clientside.no_update;
         }
         
         try {            
-            // Find the correct container based on active tab
             let containerId = active_tab_idx !== null ? 
                 `blast-container-${active_tab_idx}` : 'blast-container';
             
-            // Create a function that will attempt to initialize BlasterJS
             const initializeBlasterJS = (attempts = 0, maxAttempts = 5) => {
-                // Use standard ID selector
-                let container = document.getElementById(containerId);
+                let container = findBlastContainer(containerId, maxAttempts, attempts);
                 
-                // If no container is found and we haven't exceeded max attempts, retry
                 if (!container && attempts < maxAttempts) {
                     setTimeout(() => initializeBlasterJS(attempts + 1, maxAttempts), 100);
                     return;
                 }
                 
-                // If still no container after max attempts, try fallback options
                 if (!container) {
-                    // Try to find the default container first since this is likely a single sequence view
-                    container = document.getElementById('blast-container');
-                    
-                    if (!container) {
-                        // If still not found, try to find a container with class blast-container 
-                        let containers = document.getElementsByClassName('blast-container');
-                        if (containers.length > 0) {
-                            container = containers[0];
-                        } else {
-                            console.error("No blast containers found in the DOM");
-                            return;
-                        }
-                    }
+                    console.error("No blast containers found in the DOM");
+                    return;
                 }
-                // Clear existing content first
+
                 container.innerHTML = '';
+
+                if (renderStatusMessage(container, data)) {
+                    return;
+                }
                 
-                // If we have empty or invalid blast text, show a message
                 if (!data.blast_text || !data.blast_text.trim() || data.blast_text === "BLAST results too large to display") {
                     let messageText = data.blast_text === "BLAST results too large to display" ?
                         "The BLAST results are too large to display in the browser." :
@@ -2143,7 +2199,6 @@ clientside_callback(
                     return;
                 }
                 
-                // Create the title element
                 const titleElement = document.createElement('h2');
                 titleElement.innerHTML = 'BLAST Results';
                 titleElement.style.marginTop = '15px';
@@ -2265,6 +2320,27 @@ clientside_callback(
 clientside_callback(
     """
     function(active_tab, blast_data) {
+        const renderStatusMessage = (container, data) => {
+            const titleHtml = '<h2 style="margin-top:15px;margin-bottom:20px;text-align:left;width:100%;">BLAST Results</h2>';
+            if (data.error || data.status === 'failed') {
+                const msg = data.error || 'BLAST search failed. Please try again.';
+                container.innerHTML = titleHtml +
+                    '<div style="padding:16px;background:#fa5252;color:white;border-radius:8px;margin-bottom:16px;">' +
+                    '<strong>BLAST Search Failed</strong><br/>' + msg + '</div>';
+                container.dataset.initialized = 'error';
+                return true;
+            }
+            if (data.status === 'no_hits') {
+                container.innerHTML = titleHtml +
+                    '<div style="padding:16px;background:#fff3bf;color:#862e00;border-radius:8px;margin-bottom:16px;">' +
+                    '<strong>No Database Matches</strong><br/>' +
+                    'Your sequence did not match any Starships in our database.</div>';
+                container.dataset.initialized = 'true';
+                return true;
+            }
+            return false;
+        };
+
         if (!active_tab) {
             return window.dash_clientside.no_update;
         }
@@ -2272,34 +2348,29 @@ clientside_callback(
         if (!blast_data) {
             return window.dash_clientside.no_update;
         }
-        
-        if (!blast_data.blast_text) {
+
+        const hasTerminalStatus = blast_data.error || blast_data.status === 'failed' || blast_data.status === 'no_hits';
+        if (!blast_data.blast_text && !hasTerminalStatus) {
             return window.dash_clientside.no_update;
         }
 
         try {
-            // Extract the tab index from the active tab ID
             const tabIdx = parseInt(active_tab.split("-")[1]);
             if (isNaN(tabIdx)) {
                 return window.dash_clientside.no_update;
             }
 
-            // Find the correct container based on active tab
             const containerId = `blast-container-${tabIdx}`;
             
-            // Create a function that will attempt to initialize BlasterJS
             const initializeBlasterJS = (attempts = 0, maxAttempts = 5) => {
                 let container = document.getElementById(containerId);
                 
-                // If no container is found and we haven't exceeded max attempts, retry
                 if (!container && attempts < maxAttempts) {
                     setTimeout(() => initializeBlasterJS(attempts + 1, maxAttempts), 100);
                     return;
                 }
                 
-                // If still no container after max attempts, try fallback options
                 if (!container) {
-                    // Try fallback options
                     const containers = document.getElementsByClassName('blast-container');
                     if (containers.length > 0) {
                         container = containers[0];
@@ -2313,12 +2384,13 @@ clientside_callback(
                     }
                 }
 
-                // Only initialize if empty or not initialized yet
-                if (container.children.length === 0 || !container.dataset.initialized) {
-                    // Clear existing content
+                if (container.children.length === 0 || !container.dataset.initialized || hasTerminalStatus) {
                     container.innerHTML = '';
+
+                    if (renderStatusMessage(container, blast_data)) {
+                        return;
+                    }
                     
-                    // Create the title element
                     const titleElement = document.createElement('h2');
                     titleElement.innerHTML = 'BLAST Results';
                     titleElement.style.marginTop = '15px';
@@ -2860,16 +2932,19 @@ def update_classification_progress(workflow_state_dict):
         {"display": "block"} if show_classification_stepper else {"display": "none"}
     )
 
-    # Error display
+    # Error display — keep visible after completion when workflow failed
     error_children = ""
     error_style = {"display": "none"}
     if workflow_state.error:
         error_children = f"Error: {workflow_state.error}"
         error_style = {"display": "block"}
 
-    # Hide the progress section if classification is complete
-    if workflow_state.complete:
+    if workflow_state.complete and workflow_state.error:
         section_style = {"display": "none"}
+    elif workflow_state.complete:
+        section_style = {"display": "none"}
+        if not workflow_state.error:
+            error_style = {"display": "none"}
     else:
         section_style = (
             {"display": "block"}
