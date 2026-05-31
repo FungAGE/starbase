@@ -25,6 +25,8 @@ Key Components
    All dataclasses expose to_dict()/from_dict() for JSON compatibility with Dash stores.
 """
 
+import os
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Any
@@ -985,11 +987,22 @@ def get_legacy_pipeline_state() -> PipelineState:
             state = PipelineState.from_dict(data)
             state._cache_key = cache_key
             state._cache_timeout = DEFAULT_CACHE_TIMEOUT
+            logger.debug(
+                "Pipeline state restored from cache (pid=%s, submission=%s, sequences=%s)",
+                os.getpid(),
+                submission_id,
+                len(state._sequences),
+            )
             return state
         # New submission: return empty state that will be persisted when we mutate
         state = PipelineState()
         state._cache_key = cache_key
         state._cache_timeout = DEFAULT_CACHE_TIMEOUT
+        logger.debug(
+            "Pipeline state initialized for new submission (pid=%s, submission=%s)",
+            os.getpid(),
+            submission_id,
+        )
         return state
     except Exception as e:
         logger.warning("Failed to load pipeline state from cache: %s", e)
@@ -1278,6 +1291,30 @@ class DashStateAdapter:
     def __init__(self):
         self.pipeline_state = get_legacy_pipeline_state()
 
+    def refresh_pipeline_state(self) -> None:
+        """Reload pipeline state for the current request (multi-worker safe)."""
+        self.pipeline_state = get_legacy_pipeline_state()
+        try:
+            from flask import session
+
+            submission_id = session.get("blast_submission_id") if session else None
+        except ImportError:
+            submission_id = None
+
+        if self.pipeline_state._cache_key:
+            logger.debug(
+                "Adapter bound to cache key %s (pid=%s, submission=%s)",
+                self.pipeline_state._cache_key,
+                os.getpid(),
+                submission_id,
+            )
+        else:
+            logger.debug(
+                "Adapter using in-memory pipeline state (pid=%s, submission=%s)",
+                os.getpid(),
+                submission_id,
+            )
+
     def get_blast_data_store(self, sequence_id: str = None) -> Optional[Dict[str, Any]]:
         """Get data for blast-data-store"""
         result = self.pipeline_state.to_blast_data_dict(sequence_id)
@@ -1386,7 +1423,8 @@ _dash_adapter = DashStateAdapter()
 
 
 def get_dash_adapter() -> DashStateAdapter:
-    """Get the global Dash state adapter"""
+    """Get the global Dash state adapter with request-scoped pipeline state."""
+    _dash_adapter.refresh_pipeline_state()
     return _dash_adapter
 
 

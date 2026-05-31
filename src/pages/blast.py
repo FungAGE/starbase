@@ -1058,6 +1058,72 @@ def preprocess(n_clicks, query_text_input, seq_list, file_contents):
         return None, str(e), error_alert, None, n_clicks
 
 
+def legacy_per_sequence_result(converted):
+    """Extract the per-sequence entry from a legacy conversion dict."""
+    if not converted:
+        return {}
+    inner = converted.get("sequence_results", {}).get("0")
+    if inner:
+        return dict(inner)
+    return dict(converted)
+
+
+def _append_tab_error_results(results_store, tab_idx, error_message):
+    """Mark a tab as processed with an error so the UI can surface it."""
+    updated = dict(results_store)
+    processed = list(updated.get("processed_sequences", []))
+    if tab_idx not in processed:
+        processed.append(tab_idx)
+    updated["processed_sequences"] = processed
+    seq_results = dict(updated.get("sequence_results") or {})
+    seq_results[str(tab_idx)] = {"error": error_message, "processed": True}
+    updated["sequence_results"] = seq_results
+    return updated
+
+
+def _populate_blast_hits(blast_result, sequence_id):
+    """Parse BLAST XML from file or in-memory content into blast_result.blast_hits."""
+    from src.utils.blast_utils import parse_blast_xml
+
+    if blast_result.error:
+        return
+
+    xml_source = None
+    if blast_result.blast_file and os.path.exists(blast_result.blast_file):
+        xml_source = blast_result.blast_file
+    elif blast_result.blast_content:
+        xml_source = blast_result.blast_content
+    else:
+        return
+
+    try:
+        blast_tsv = parse_blast_xml(xml_source)
+        if blast_tsv and os.path.exists(blast_tsv):
+            blast_df = pd.read_csv(blast_tsv, sep="\t")
+            try:
+                os.unlink(blast_tsv)
+            except OSError:
+                pass
+
+            if len(blast_df) == 0:
+                logger.warning(f"No BLAST hits found for {sequence_id}")
+                blast_result.blast_hits = []
+            else:
+                blast_result.blast_hits = blast_df.to_dict("records")
+                logger.info(
+                    f"Successfully processed {len(blast_df)} BLAST hits for {sequence_id}"
+                )
+            blast_result.processed = True
+        else:
+            error_message = "Failed to parse BLAST XML file"
+            logger.error(error_message)
+            blast_result.error = error_message
+    except Exception as e:
+        error_message = f"Failed to parse BLAST output: {e}"
+        logger.error(error_message)
+        blast_result.error = error_message
+
+
 def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_id=None):
     """Process a single sequence and return structured results
     Handle cases where blast_results is:
@@ -1084,7 +1150,6 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
         WorkflowConfig,
         WorkflowStatus,
     )
-    from src.utils.blast_utils import parse_blast_xml
 
     # Extract basic sequence information
     query_header = seq_data.get("header", "query")
@@ -1159,36 +1224,7 @@ def process_single_sequence(seq_data, evalue_threshold, curated=None, sequence_i
             else:
                 blast_result.blast_content = blast_results
 
-        if (
-            blast_result.blast_file
-            and os.path.exists(blast_result.blast_file)
-            and not blast_result.error
-        ):
-            try:
-                blast_tsv = parse_blast_xml(blast_result.blast_file)
-
-                if blast_tsv and os.path.exists(blast_tsv):
-                    blast_df = pd.read_csv(blast_tsv, sep="\t")
-
-                    if len(blast_df) == 0:
-                        logger.warning(f"No BLAST hits found for {sequence_id}")
-                        blast_result.blast_hits = []
-                    else:
-                        blast_result.blast_hits = blast_df.to_dict("records")
-                        logger.info(
-                            f"Successfully processed {len(blast_df)} BLAST hits for {sequence_id}"
-                        )
-
-                    blast_result.processed = True
-                else:
-                    error_message = "Failed to parse BLAST XML file"
-                    logger.error(error_message)
-                    blast_result.error = error_message
-
-            except Exception as e:
-                error_message = f"Failed to parse BLAST output: {e}"
-                logger.error(error_message)
-                blast_result.error = error_message
+        _populate_blast_hits(blast_result, sequence_id)
 
         analysis.blast_result = blast_result
 
@@ -1325,11 +1361,14 @@ def process_multiple_sequences(
                 adapter, sequence_id, "Failed to convert sequence data"
             )
 
+        per_seq_result = legacy_per_sequence_result(sequence_result)
+
         # Create BlastData with the sequence result
         blast_data = BlastData(
             processed_sequences=[0],
-            sequence_results={"0": sequence_result},
+            sequence_results={"0": per_seq_result},
             total_sequences=len(seq_list),
+            error=sequence_analysis.error,
         )
 
         # Update the centralized state with BLAST data using the submission ID
@@ -1378,8 +1417,33 @@ def process_multiple_sequences(
         )
 
         logger.debug(
-            f"Classification decision: skip={skip_classification}, seq_length={sequence_length}, tier={tier}"
+            f"Classification decision: skip={skip_classification}, seq_length={sequence_length}, tier={tier}, "
+            f"hits={len(sequence_analysis.blast_result.blast_hits) if sequence_analysis.blast_result and sequence_analysis.blast_result.blast_hits else 0}, "
+            f"pid={os.getpid()}"
         )
+
+        if sequence_analysis.has_error():
+            workflow_state.status = "failed"
+            workflow_state.complete = True
+            workflow_state.error = sequence_analysis.error or "BLAST search failed"
+        elif (
+            not sequence_analysis.blast_result
+            or not sequence_analysis.blast_result.blast_content
+        ):
+            workflow_state.status = "failed"
+            workflow_state.complete = True
+            workflow_state.error = (
+                (
+                    sequence_analysis.blast_result.error
+                    if sequence_analysis.blast_result
+                    else None
+                )
+                or sequence_analysis.error
+                or "No BLAST results returned"
+            )
+        elif skip_classification:
+            workflow_state.status = "complete"
+            workflow_state.complete = True
 
         classification_data = None
         if not skip_classification:
@@ -1564,7 +1628,9 @@ def process_additional_sequence(
             logger.error(
                 f"Failed to process sequence for tab {tab_idx} - no analysis returned"
             )
-            raise PreventUpdate
+            return _append_tab_error_results(
+                results_store, tab_idx, "Failed to process sequence"
+            )
 
         # Convert to legacy format for backward compatibility
         sequence_result = safe_convert_sequence_analysis_to_legacy(
@@ -1575,7 +1641,11 @@ def process_additional_sequence(
             logger.error(
                 f"Failed to convert analysis to legacy format for tab {tab_idx}"
             )
-            raise PreventUpdate
+            return _append_tab_error_results(
+                results_store, tab_idx, "Failed to convert sequence data"
+            )
+
+        per_seq_result = legacy_per_sequence_result(sequence_result)
 
         logger.info(
             f"Successfully processed and converted tab {tab_idx} using unified approach"
@@ -1585,6 +1655,19 @@ def process_additional_sequence(
             logger.error(
                 f"Error processing sequence for tab {tab_idx}: {analysis.error}"
             )
+            per_seq_result["error"] = analysis.error
+            per_seq_result["processed"] = True
+            updated_results = dict(results_store)
+            updated_results["processed_sequences"] = list(
+                updated_results.get("processed_sequences", [])
+            )
+            if tab_idx not in updated_results["processed_sequences"]:
+                updated_results["processed_sequences"].append(tab_idx)
+            updated_results["sequence_results"] = dict(
+                updated_results.get("sequence_results") or {}
+            )
+            updated_results["sequence_results"][str(tab_idx)] = per_seq_result
+            return updated_results
 
         sequence_length = len(analysis.sequence or "")
         logger.debug(
@@ -1691,6 +1774,7 @@ def process_additional_sequence(
             workflow_state.match_result = perfect_blast_match
             workflow_state.set_classification(classification_data)
             pipeline_state.update_workflow_state(tab_sequence_id, workflow_state)
+            per_seq_result["classification"] = classification_data.to_dict()
 
         elif should_classify:
             logger.info(
@@ -1712,8 +1796,9 @@ def process_additional_sequence(
                     seq_type=analysis.sequence_type.value,
                     fasta_file=tmp_fasta,
                     blast_df=analysis.blast_result.blast_hits,
+                    blast_content=analysis.blast_result.blast_content,
                     processed_sequences=[0],
-                    sequence_results={"0": sequence_result},
+                    sequence_results={"0": per_seq_result},
                     total_sequences=1,
                 )
                 pipeline_state.update_blast_data(tab_sequence_id, blast_data)
@@ -1772,7 +1857,7 @@ def process_additional_sequence(
                     )
 
                     classification_dict = enriched_classification.to_dict()
-                    sequence_result["classification"] = classification_dict
+                    per_seq_result["classification"] = classification_dict
 
                     logger.info(
                         f"Updated tab {tab_idx} with classification: {classification_dict}"
@@ -1782,6 +1867,8 @@ def process_additional_sequence(
                 logger.error(
                     f"Error running classification workflow for tab {tab_idx}: {e}"
                 )
+                per_seq_result["error"] = f"Classification failed: {e}"
+                per_seq_result["processed"] = True
         else:
             if not should_classify:
                 logger.debug(
@@ -1793,8 +1880,15 @@ def process_additional_sequence(
                 )
 
         updated_results = dict(results_store)
-        updated_results["processed_sequences"].append(tab_idx)
-        updated_results["sequence_results"][str(tab_idx)] = sequence_result
+        updated_results["processed_sequences"] = list(
+            updated_results.get("processed_sequences", [])
+        )
+        if tab_idx not in updated_results["processed_sequences"]:
+            updated_results["processed_sequences"].append(tab_idx)
+        updated_results["sequence_results"] = dict(
+            updated_results.get("sequence_results") or {}
+        )
+        updated_results["sequence_results"][str(tab_idx)] = per_seq_result
 
         logger.info(f"Successfully processed and updated results for tab {tab_idx}")
         return updated_results

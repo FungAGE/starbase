@@ -234,14 +234,22 @@ def parse_hmmer(hmmer_output_file):
 
 
 # parse blast xml output to tsv
-def parse_blast_xml(xml):
-    parsed_file = tempfile.NamedTemporaryFile(suffix=".blast.parsed.txt").name
+def parse_blast_xml(xml_source):
+    """Parse BLAST XML from a file path or XML string. Returns path to TSV file."""
+    from io import StringIO
+
+    parsed_file = tempfile.NamedTemporaryFile(
+        suffix=".blast.parsed.txt", delete=False
+    ).name
+    if os.path.isfile(xml_source):
+        record = SearchIO.read(xml_source, "blast-xml")
+    else:
+        record = SearchIO.read(StringIO(xml_source), "blast-xml")
     with open(parsed_file, "w") as tsv_file:
         # Add quotes around field names to ensure proper parsing
         tsv_file.write(
             '"query_id"\t"hit_IDs"\t"aln_length"\t"query_start"\t"query_end"\t"gaps"\t"query_seq"\t"subject_seq"\t"evalue"\t"bitscore"\t"pident"\n'
         )
-        record = SearchIO.read(xml, "blast-xml")
         for hit in record:
             for hsp in hit:
                 try:
