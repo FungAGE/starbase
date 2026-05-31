@@ -25,48 +25,41 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends curl wget build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Switch to user for conda/mamba installation
 USER $USER
 
-# Install Mambaforge as the user (so files are owned by user from the start)
 RUN wget https://github.com/conda-forge/miniforge/releases/download/25.3.0-3/Miniforge3-25.3.0-3-Linux-x86_64.sh -O miniforge.sh && \
     bash miniforge.sh -b -p $HOME/miniconda && \
     rm miniforge.sh && \
     echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
-    echo "conda activate starbase" >> $HOME/.bashrc
+    echo "conda activate starbase-frontend" >> $HOME/.bashrc
 
 ENV PATH=$HOME/miniconda/bin:$PATH
 
-# Copy environment file and create conda environment using mamba
-COPY --chown=$USER:$USER environment.yaml .
-RUN mamba env create -y -f environment.yaml && \
+COPY --chown=$USER:$USER frontend/environment.yaml frontend/environment.yaml
+RUN mamba env create -y -f frontend/environment.yaml && \
     mamba clean -afy
 
-ENV PATH=$HOME/miniconda/envs/starbase/bin:$HOME/miniconda/bin:$PATH
-ENV CONDA_DEFAULT_ENV=starbase
+ENV PATH=$HOME/miniconda/envs/starbase-frontend/bin:$HOME/miniconda/bin:$PATH
+ENV CONDA_DEFAULT_ENV=starbase-frontend
 
 # Node.js + blasterjs (frontend BLAST visualisation component)
+USER root
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g biojs-vis-blasterjs
+    && npm install -g biojs-vis-blasterjs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+USER $USER
 
-RUN chown -R $USER:$USER $HOME
-# Create required directories (as user, before copying app code)
-RUN mkdir -p $HOME/src/database/db \
-             $HOME/src/database/logs \
+RUN mkdir -p $HOME/src/database/logs \
              $HOME/src/database/cache && \
     chmod -R 755 $HOME/src/database/logs \
-                 $HOME/src/database/cache && \
-    chmod -R 777 $HOME/src/database/db
+                 $HOME/src/database/cache
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/cache/status || exit 1
 
-# Copy application code (changes most frequently, so do this last)
 COPY --chown=$USER:$USER ./ ./
-RUN chmod +x start-script.sh && \
-    chmod +x start_celery.py && \
-    chmod +x manage_celery.py
+RUN chmod +x start-script.sh
 
 USER $USER
 

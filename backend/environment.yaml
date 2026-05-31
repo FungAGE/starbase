@@ -104,14 +104,8 @@ dependencies:
       - click-repl==0.3.0
       - async-timeout==5.0.1
 
-      # Flask + Flask-Caching (smart_cache in sql_manager uses Flask app context)
-      - flask==2.2.5
-      - flask-caching==2.3.0
-      - werkzeug==3.0.6
-      - jinja2==3.1.6
-      - markupsafe==3.0.2
-      - itsdangerous==2.2.0
-      - cachelib==0.9.0
+      # In-process query cache (sql_manager_impl)
+      - cachetools==4.2.4
 
       # Retry + resilience
       - tenacity==8.2.3

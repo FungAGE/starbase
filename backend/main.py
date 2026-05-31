@@ -17,11 +17,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.dependencies import verify_backend_api_key
 from backend.routers import blast, data
+from src.config.logging import get_logger
+from src.database.migrations import create_database_indexes, run_alembic_migrations
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Place startup hooks here (e.g. DB indexes) when wiring full backend deploy."""
+    """Run DB migrations and create indexes on startup."""
+    try:
+        run_alembic_migrations()
+        create_database_indexes()
+    except Exception as exc:
+        logger.error("Backend startup DB init failed: %s", exc)
+        raise
     yield
 
 

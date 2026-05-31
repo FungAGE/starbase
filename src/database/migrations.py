@@ -16,6 +16,19 @@ def ensure_type_ship_column():
             logger.info("Added type_ship column to ships table")
 
 
+def run_alembic_migrations():
+    """Apply pending Alembic migrations to starbase.sqlite."""
+    from alembic.config import Config
+    from alembic import command
+    from src.config.settings import DB_PATHS, PROJECT_ROOT
+
+    cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATHS['starbase']}")
+    logger.info("Running Alembic migrations on %s", DB_PATHS["starbase"])
+    command.upgrade(cfg, "head")
+    logger.info("Alembic migrations complete")
+
+
 def create_database_indexes():
     """Create indexes to optimize database queries"""
 

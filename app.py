@@ -11,7 +11,7 @@ from dash import Dash, html, dcc, _dash_renderer
 from src.config.settings import IS_DEV, BACKEND_API_URL
 from src.components import navmenu
 from src.components.ui import create_footer
-from src.config.cache import cache, cleanup_old_cache, cache_dir
+from src.config.cache import cache, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
@@ -21,7 +21,7 @@ from src.config.celery_config import run_task, celery
 
 from src.config import backend_client
 from src.config.sentry import init_sentry
-from src.database.migrations import create_database_indexes
+from src.database.migrations import create_database_indexes, run_alembic_migrations
 from src.database.blastdb import create_dbs
 
 
@@ -31,22 +31,29 @@ server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
 
-# Use filesystem cache in production (shared across workers); SimpleCache for dev
+# Use Redis for response cache in production; SimpleCache when REDIS_URL unset in dev
+_redis_url = os.getenv("REDIS_URL", "")
 cache_config = {
     "MAX_CONTENT_LENGTH": 50
     * 1024
     * 1024,  # 50MB limit (BLAST accepts large FASTA uploads)
-    "CACHE_TYPE": "SimpleCache" if IS_DEV else "filesystem",
+    "CACHE_TYPE": "RedisCache"
+    if _redis_url
+    else ("SimpleCache" if IS_DEV else "RedisCache"),
     "CACHE_DEFAULT_TIMEOUT": 300,
     "SEND_FILE_MAX_AGE_DEFAULT": 0,
     "COMPRESS_MIMETYPES": ["text/html", "text/css", "application/javascript"],
     "COMPRESS_LEVEL": 6,
     "COMPRESS_ALGORITHM": ["gzip", "br"],
 }
+if _redis_url:
+    cache_config["CACHE_REDIS_URL"] = _redis_url
+elif not IS_DEV:
+    cache_config["CACHE_REDIS_URL"] = os.getenv(
+        "CACHE_REDIS_URL", "redis://redis-frontend:6379/1"
+    )
+
 if not IS_DEV:
-    cache_config["CACHE_DIR"] = cache_dir
-    cache_config["CACHE_THRESHOLD"] = 1000
-    cache_config["CACHE_KEY_PREFIX"] = "starbase"
     secret_key = os.getenv("SECRET_KEY")
     if secret_key:
         server.config["SECRET_KEY"] = secret_key
@@ -120,11 +127,11 @@ def initialize_app():
 
     with server.app_context():
         init_sentry()
-        create_database_indexes()
         cleanup_old_cache()
         update_ip_locations_task()
 
         if not backend_client.is_configured():
+            run_alembic_migrations()
             create_database_indexes()
 
             if not IS_DEV:

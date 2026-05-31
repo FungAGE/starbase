@@ -1,0 +1,108 @@
+# Starbase frontend conda environment (Dash UI, no BLAST/HMMER CLI tools).
+# Root environment.yaml remains for local monolith dev with full bio stack.
+#
+# Build: mamba env create -f frontend/environment.yaml
+# Update: mamba env update -f frontend/environment.yaml --prune
+
+name: starbase-frontend
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.9
+
+  # Dash UI
+  - dash==2.16.1
+  - dash-ag-grid
+  - dash-bio==1.0.2
+  - dash-bootstrap-components==1.5.0
+  - dash-core-components==2.0.0
+  - dash-html-components==2.0.0
+  - dash-iconify==0.1.2
+  - dash-mantine-components==0.14.4
+  - dash-table==5.0.0
+
+  # Light bio Python (UI components; no BLAST/HMMER binaries)
+  - biopython=1.85
+
+  # Data / viz
+  - numpy=1.26.4
+  - pandas=2.0.3
+  - scipy=1.11.2
+  - matplotlib
+  - pillow=11.3.0
+  - networkx=3.2.1
+
+  # System
+  - curl
+  - wget
+  - ca-certificates
+
+  - pip:
+      # Flask + Dash server middleware
+      - flask==2.2.5
+      - flask-caching==2.3.0
+      - flask-compress==1.15
+      - flask-limiter==3.8.0
+      - werkzeug==3.0.6
+      - jinja2==3.1.6
+      - markupsafe==3.0.2
+      - itsdangerous==2.2.0
+      - cachelib==0.9.0
+      - blinker==1.9.0
+
+      # Backend HTTP client (split mode)
+      - httpx==0.27.2
+      - h11==0.16.0
+      - sniffio==1.3.1
+      - anyio>=3.4
+
+      # Local DBs (submissions + telemetry on frontend)
+      - sqlalchemy==1.4.36
+      - alembic==1.16.5
+      - greenlet==3.2.4
+
+      # Redis cache + optional Celery (telemetry)
+      - redis==5.0.8
+      - celery==5.3.1
+      - kombu==5.5.4
+      - amqp==5.3.1
+      - billiard==4.2.1
+      - vine==5.1.0
+      - click==8.1.8
+      - async-timeout==5.0.1
+
+      # Retry / resilience
+      - tenacity==8.2.3
+
+      # Telemetry / geolocation
+      - geocoder==1.38.1
+      - geoip2==5.1.0
+      - maxminddb==2.8.2
+      - ip2geotools==0.1.6
+      - ratelim==0.1.6
+
+      # Viz / serialisation
+      - plotly==5.24.1
+      - simplejson==3.20.1
+      - pyyaml==6.0.2
+      - requests==2.32.3
+
+      # Utilities
+      - python-dotenv==1.0.1
+      - psutil==5.9.5
+      - packaging==24.2
+      - six==1.17.0
+      - pytz==2025.2
+      - python-dateutil==2.9.0.post0
+      - urllib3==1.26.9
+      - certifi==2025.8.3
+      - charset-normalizer==3.4.3
+      - idna==3.10
+      - typing-extensions==4.14.1
+      - importlib-metadata==8.7.0
+      - zipp==3.23.0
+
+      # Testing (docker compose --profile testing)
+      - pytest==7.1.2
+      - pluggy==1.6.0

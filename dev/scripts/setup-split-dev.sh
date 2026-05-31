@@ -90,6 +90,8 @@ start_frontend() {
 
 	echo "Starting frontend on http://localhost:8000"
 	echo "  BACKEND_API_URL=${BACKEND_API_URL}"
+	echo "  Cache: REDIS_URL=${REDIS_URL:-<unset — using SimpleCache in dev>}"
+	echo "         Set REDIS_URL=redis://localhost:6379/1 if running local Redis."
 	echo ""
 
 	if command -v conda >/dev/null 2>&1 && conda env list | grep -q '^starbase '; then

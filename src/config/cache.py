@@ -110,8 +110,8 @@ def cache_key_builder(*args, **kwargs):
     return "|".join(key_parts)
 
 
-def smart_cache(timeout=3600, unless=None):
-    """Smart caching decorator that handles pandas DataFrames"""
+def smart_cache(timeout=3600, unless=None, key_prefix=None):
+    """Smart caching decorator that handles pandas DataFrames (Flask app context required)."""
 
     def decorator(f):
         @wraps(f)
@@ -119,39 +119,31 @@ def smart_cache(timeout=3600, unless=None):
             if unless and unless(*args, **kwargs):
                 return f(*args, **kwargs)
 
-            def _run():
-                actual_timeout = timeout
-                if IS_DEV and timeout is None:
-                    actual_timeout = 300
+            actual_timeout = timeout
+            if IS_DEV and timeout is None:
+                actual_timeout = 300
 
-                cache_key = f"{f.__name__}:{cache_key_builder(*args, **kwargs)}"
-                result = cache.get(cache_key)
+            prefix = key_prefix or f.__name__
+            cache_key = f"{prefix}:{cache_key_builder(*args, **kwargs)}"
+            result = cache.get(cache_key)
 
-                if result is not None:
-                    if isinstance(result, dict) and "pandas_df" in result:
-                        return pd.DataFrame.from_dict(result["pandas_df"])
-                    return result
-
-                result = f(*args, **kwargs)
-
-                if isinstance(result, pd.DataFrame):
-                    cache.set(
-                        cache_key,
-                        {"pandas_df": result.to_dict()},
-                        timeout=actual_timeout,
-                    )
-                else:
-                    cache.set(cache_key, result, timeout=actual_timeout)
-
+            if result is not None:
+                if isinstance(result, dict) and "pandas_df" in result:
+                    return pd.DataFrame.from_dict(result["pandas_df"])
                 return result
 
-            try:
-                from backend.flask_cache_app import cache_app_context
-            except ImportError:
-                return _run()
+            result = f(*args, **kwargs)
 
-            with cache_app_context():
-                return _run()
+            if isinstance(result, pd.DataFrame):
+                cache.set(
+                    cache_key,
+                    {"pandas_df": result.to_dict()},
+                    timeout=actual_timeout,
+                )
+            else:
+                cache.set(cache_key, result, timeout=actual_timeout)
+
+            return result
 
         return wrapper
 

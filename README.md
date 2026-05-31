@@ -53,8 +53,12 @@ Production target: **frontend** on a SciLifeLab [Serve](https://github.com/Scili
 
 | Component | Runs on | Data |
 |-----------|---------|------|
-| Frontend (Dash) | Serve pod / your laptop | submissions + telemetry SQLite only |
-| Backend (FastAPI) | Institute machine (Docker) | starbase.sqlite + BLAST/HMM databases |
+| Frontend (Dash) | Serve pod / your laptop | submissions + telemetry SQLite only (`FRONTEND_DATA_DIR`) |
+| Backend (FastAPI) | Institute machine (Docker) | starbase.sqlite + BLAST/HMM databases (`DATA_DIR`) |
+
+`sql_manager` dispatches automatically: HTTP when `BACKEND_API_URL` is set, direct SQLAlchemy when unset (local DB debug).
+
+**Volume mounts:** only the **backend** mounts `DATA_DIR` from the host into the container (`/home/starbase/src/database/db`). The frontend never mounts the starbase database tree — it reaches starbase data only via the backend API.
 
 The last commits on branch `backend-split-tailscale` wire this up: `sql_manager` and BLAST tasks call the backend over HTTP when `BACKEND_API_URL` is set.
 

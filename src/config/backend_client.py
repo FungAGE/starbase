@@ -67,12 +67,20 @@ def _request(
     Returns parsed JSON payload on success.
     Raises httpx.HTTPStatusError on non-retriable 4xx, RuntimeError on exhausted retries.
     """
+    if not is_configured():
+        raise RuntimeError(
+            "BACKEND_API_URL is not set; use sql_manager local impl or set BACKEND_API_URL"
+        )
+
     last_exc: Exception | None = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             with _client(timeout) as client:
                 response = client.request(method, path, json=json)
-                if response.status_code in _RETRY_STATUS_CODES and attempt < _MAX_RETRIES:
+                if (
+                    response.status_code in _RETRY_STATUS_CODES
+                    and attempt < _MAX_RETRIES
+                ):
                     logger.warning(
                         "Backend %s %s → %s, retry %d/%d",
                         method,
@@ -87,14 +95,23 @@ def _request(
         except httpx.TimeoutException as exc:
             last_exc = exc
             logger.warning(
-                "Backend %s %s timed out (attempt %d/%d)", method, path, attempt, _MAX_RETRIES
+                "Backend %s %s timed out (attempt %d/%d)",
+                method,
+                path,
+                attempt,
+                _MAX_RETRIES,
             )
         except httpx.HTTPStatusError:
             raise
         except Exception as exc:
             last_exc = exc
             logger.warning(
-                "Backend %s %s error (attempt %d/%d): %s", method, path, attempt, _MAX_RETRIES, exc
+                "Backend %s %s error (attempt %d/%d): %s",
+                method,
+                path,
+                attempt,
+                _MAX_RETRIES,
+                exc,
             )
 
     raise RuntimeError(
@@ -106,10 +123,14 @@ def _request(
 
 
 def fetch_meta_data(curated: bool = False, accession_tags=None) -> list[dict]:
-    return _request("POST", "/api/data/meta", json={
-        "curated": curated,
-        "accession_tags": accession_tags,
-    })
+    return _request(
+        "POST",
+        "/api/data/meta",
+        json={
+            "curated": curated,
+            "accession_tags": accession_tags,
+        },
+    )
 
 
 def fetch_paper_data() -> list[dict]:
@@ -122,12 +143,16 @@ def fetch_ships(
     dereplicate: bool = True,
     with_sequence: bool = False,
 ) -> list[dict]:
-    return _request("POST", "/api/data/ships", json={
-        "accession_tags": accession_tags,
-        "curated": curated,
-        "dereplicate": dereplicate,
-        "with_sequence": with_sequence,
-    })
+    return _request(
+        "POST",
+        "/api/data/ships",
+        json={
+            "accession_tags": accession_tags,
+            "curated": curated,
+            "dereplicate": dereplicate,
+            "with_sequence": with_sequence,
+        },
+    )
 
 
 def fetch_ship_table(
@@ -135,11 +160,15 @@ def fetch_ship_table(
     with_sequence: bool = False,
     with_gff_entries: bool = False,
 ) -> list[dict]:
-    return _request("POST", "/api/data/ship-table", json={
-        "curated": curated,
-        "with_sequence": with_sequence,
-        "with_gff_entries": with_gff_entries,
-    })
+    return _request(
+        "POST",
+        "/api/data/ship-table",
+        json={
+            "curated": curated,
+            "with_sequence": with_sequence,
+            "with_gff_entries": with_gff_entries,
+        },
+    )
 
 
 def fetch_accession_ship(accession_tag: str) -> dict:
@@ -152,12 +181,16 @@ def fetch_captains(
     dereplicate: bool = True,
     with_sequence: bool = False,
 ) -> list[dict]:
-    return _request("POST", "/api/data/captains", json={
-        "accession_tags": accession_tags,
-        "curated": curated,
-        "dereplicate": dereplicate,
-        "with_sequence": with_sequence,
-    })
+    return _request(
+        "POST",
+        "/api/data/captains",
+        json={
+            "accession_tags": accession_tags,
+            "curated": curated,
+            "dereplicate": dereplicate,
+            "with_sequence": with_sequence,
+        },
+    )
 
 
 def fetch_captain_tree() -> str:
@@ -177,11 +210,15 @@ def get_database_version() -> str:
 def set_database_version(
     semantic_version: str, description: str = "", created_by: str = "manual"
 ) -> bool:
-    _request("POST", "/api/data/database-version", json={
-        "semantic_version": semantic_version,
-        "description": description,
-        "created_by": created_by,
-    })
+    _request(
+        "POST",
+        "/api/data/database-version",
+        json={
+            "semantic_version": semantic_version,
+            "description": description,
+            "created_by": created_by,
+        },
+    )
     return True
 
 
@@ -200,20 +237,28 @@ def add_quality_tag(
     tag_value: str | None = None,
     created_by: str = "api",
 ) -> int:
-    result = _request("POST", "/api/data/quality-tags", json={
-        "joined_ship_id": joined_ship_id,
-        "tag_type": tag_type,
-        "tag_value": tag_value,
-        "created_by": created_by,
-    })
+    result = _request(
+        "POST",
+        "/api/data/quality-tags",
+        json={
+            "joined_ship_id": joined_ship_id,
+            "tag_type": tag_type,
+            "tag_value": tag_value,
+            "created_by": created_by,
+        },
+    )
     return result["id"]
 
 
 def remove_quality_tag(joined_ship_id: int, tag_type: str) -> bool:
-    result = _request("POST", "/api/data/quality-tags/remove", json={
-        "joined_ship_id": joined_ship_id,
-        "tag_type": tag_type,
-    })
+    result = _request(
+        "POST",
+        "/api/data/quality-tags/remove",
+        json={
+            "joined_ship_id": joined_ship_id,
+            "tag_type": tag_type,
+        },
+    )
     return result["removed"]
 
 

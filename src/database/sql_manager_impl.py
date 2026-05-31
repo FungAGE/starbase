@@ -9,7 +9,7 @@ from tenacity import (
 )
 import sqlalchemy.exc
 from sqlalchemy import text
-from src.config.cache import smart_cache
+from src.config.query_cache import query_cache
 from src.config.settings import PHYLOGENY_PATHS
 
 from src.config.logging import get_logger
@@ -54,22 +54,9 @@ def _normalize_accession_tags(accession_tags=None, accessions=None):
     return tags
 
 
-@db_retry_decorator()
-def fetch_meta_data(curated=False, accession_tags=None, accessions=None):
-    accessions = _normalize_accession_tags(accession_tags, accessions)
-    from src.config.cache import cache
-
-    cache_key = "fetch_meta_data:full_dataset:v2"
-    accession_mode = _get_accession_mode(accessions)
-
-    with _session() as session:
-        try:
-            full_df = cache.get(cache_key)
-            if full_df is not None:
-                if isinstance(full_df, dict) and "pandas_df" in full_df:
-                    full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
-            else:
-                meta_query = """
+@query_cache(timeout=None, key_prefix="fetch_meta_data:full_dataset:v2")
+def _fetch_meta_data_full():
+    meta_query = """
                 SELECT j.curated_status, j.starshipID,
                     j.ship_id, j.id as joined_ship_id,
                     sa.ship_accession_tag,
@@ -93,12 +80,17 @@ def fetch_meta_data(curated=False, accession_tags=None, accessions=None):
                 LEFT JOIN accessions a ON j.accession_id = a.id
                 WHERE j.ship_id IS NOT NULL
                 """
-                full_df = pd.read_sql_query(meta_query, session.bind)
-                cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
-        except Exception as e:
-            logger.error(f"Error fetching meta data: {str(e)}")
-            raise
+    with _session() as session:
+        return pd.read_sql_query(meta_query, session.bind)
 
+
+@db_retry_decorator()
+def fetch_meta_data(curated=False, accession_tags=None, accessions=None):
+    accessions = _normalize_accession_tags(accession_tags, accessions)
+    accession_mode = _get_accession_mode(accessions)
+
+    try:
+        full_df = _fetch_meta_data_full()
         filtered_df = full_df.copy()
 
         if curated:
@@ -122,11 +114,14 @@ def fetch_meta_data(curated=False, accession_tags=None, accessions=None):
             else:
                 raise ValueError(f"Invalid accession mode: {accession_mode}")
 
-    return filtered_df
+        return filtered_df
+    except Exception as e:
+        logger.error(f"Error fetching meta data: {str(e)}")
+        raise
 
 
 @db_retry_decorator()
-@smart_cache(timeout=None)
+@query_cache(timeout=None)
 def fetch_paper_data():
     """Fetch paper data from the database and cache the result."""
     with _session() as session:
@@ -341,22 +336,9 @@ def fetch_ships(
         return df
 
 
-@db_retry_decorator()
-@smart_cache(timeout=None)
-def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
-    """Fetch ship metadata and filter for those with sequence and GFF data."""
-    from src.config.cache import cache
-
-    cache_key = "fetch_ship_table:full_dataset"
-
-    full_df = cache.get(cache_key)
-    with _session() as session:
-        if full_df is not None:
-            if isinstance(full_df, dict) and "pandas_df" in full_df:
-                full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
-        else:
-            try:
-                query = """
+@query_cache(timeout=None, key_prefix="fetch_ship_table:full_dataset")
+def _fetch_ship_table_full():
+    query = """
                 SELECT DISTINCT
                     js.ship_id,
                     js.source,
@@ -374,22 +356,26 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                 LEFT JOIN accessions a ON js.accession_id = a.id
                 WHERE js.ship_id IS NOT NULL
                 """
+    with _session() as session:
+        return pd.read_sql_query(query, session.bind)
 
-                full_df = pd.read_sql_query(query, session.bind)
 
-                cache.set(cache_key, {"pandas_df": full_df.to_dict()}, timeout=None)
+@db_retry_decorator()
+def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
+    """Fetch ship metadata and filter for those with sequence and GFF data."""
+    try:
+        full_df = _fetch_ship_table_full()
+    except Exception as e:
+        logger.error(f"Error fetching ship table data: {str(e)}")
+        raise
 
-            except Exception as e:
-                logger.error(f"Error fetching ship table data: {str(e)}")
-                raise
-
+    with _session() as session:
         filtered_df = full_df.copy()
 
         if with_sequence:
             filtered_df = filtered_df[filtered_df["ship_id"].notna()]
 
         if with_gff_entries:
-            # generate a list of ship_ids that have GFF entries, using a separate query
             try:
                 gff_query = """
                 SELECT DISTINCT g.ship_id
@@ -401,7 +387,6 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                 filtered_df = filtered_df[filtered_df["ship_id"].isin(gff_ship_ids)]
             except Exception as e:
                 logger.error(f"Error fetching GFF data for filtering: {str(e)}")
-                # If GFF query fails, return empty dataframe to ensure no entries without GFF data are shown
                 filtered_df = filtered_df.iloc[0:0]
 
         if curated:
@@ -674,7 +659,7 @@ def get_alembic_schema_version():
 
 
 @db_retry_decorator()
-@smart_cache(timeout=None)
+@query_cache(timeout=None)
 def get_database_stats():
     """Get statistics about the Starship database."""
 
