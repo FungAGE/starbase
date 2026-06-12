@@ -1,7 +1,10 @@
+import base64
 import uuid
 from datetime import datetime
+from io import StringIO
 from urllib.parse import parse_qs
 
+from Bio import SeqIO
 import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
@@ -179,6 +182,107 @@ def _do_update(table_key, row_id, col_id, new_value):
 
 
 # ---------------------------------------------------------------------------
+# Promote helper
+# ---------------------------------------------------------------------------
+
+
+def _promote_submission(sub_id: int):
+    """
+    Load a staging submission and insert it into the main starbase DB via
+    perform_database_insertion (SubmissionProcessor).
+
+    Returns (success: bool, accession: str|None, error: str|None).
+    """
+    from src.utils.web_submission_adapter import perform_database_insertion
+    from src.utils.submission_utils import check_sequence_duplicate
+
+    try:
+        with get_submissions_session() as session:
+            row = session.execute(
+                text("SELECT * FROM submissions WHERE id = :id"), {"id": sub_id}
+            ).fetchone()
+
+        if not row:
+            return False, None, f"Submission {sub_id} not found"
+
+        row = dict(row._mapping)
+
+        if not row.get("seq_contents"):
+            return False, None, "No sequence data stored in this submission"
+
+        content_type, content_string = row["seq_contents"].split(",", 1)
+        decoded = base64.b64decode(content_string).decode("utf-8")
+        records = list(SeqIO.parse(StringIO(decoded), "fasta"))
+        if not records:
+            return False, None, "No valid FASTA sequences in submission"
+        sequence = str(records[0].seq)
+        seq_id = records[0].id
+
+        duplicate_info = check_sequence_duplicate(
+            sequence, row.get("genus") or "", row.get("species") or ""
+        )
+
+        strand = row.get("shipstrand") or "+"
+        processed_data = {
+            "sequence": sequence,
+            "starshipID": seq_id,
+            "evidence": row.get("evidence") or "",
+            "source": "web_submission_promoted",
+            "genus": row.get("genus") or "",
+            "species": row.get("species") or "",
+            "strain": None,
+            "contig_id": row.get("hostchr") or "",
+            "element_start": row.get("shipstart"),
+            "element_end": row.get("shipend"),
+            "element_strand": strand,
+            "curator": row.get("uploader") or "",
+            "curated_status": "curated",
+            "notes": row.get("comment") or "",
+            "duplicate_info": duplicate_info,
+        }
+
+        if row.get("classification_family") or row.get("classification_navis"):
+            processed_data["classification"] = {
+                "family": row.get("classification_family"),
+                "navis": row.get("classification_navis"),
+                "haplotype": row.get("classification_haplotype"),
+                "source": row.get("classification_source"),
+                "closest_match": row.get("closest_match"),
+                "confidence": row.get("classification_confidence"),
+            }
+            if row.get("classification_family"):
+                processed_data["ship_family"] = row["classification_family"]
+            if row.get("classification_navis"):
+                processed_data["ship_navis"] = row["classification_navis"]
+            if row.get("classification_haplotype"):
+                processed_data["ship_haplotype"] = row["classification_haplotype"]
+
+        result = perform_database_insertion(
+            processed_data,
+            anno_contents=row.get("anno_contents"),
+            anno_filename=row.get("anno_filename"),
+            anno_date=None,
+            seq_date=0,
+        )
+
+        with get_submissions_session() as session:
+            session.execute(
+                text("UPDATE submissions SET needs_review = 0 WHERE id = :id"),
+                {"id": sub_id},
+            )
+            session.commit()
+
+        logger.info(
+            "Promoted submission %s → accession %s", sub_id, result["accession"]
+        )
+        return True, result["accession"], None
+
+    except Exception as exc:
+        logger.error("Promotion failed for submission %s: %s", sub_id, exc)
+        return False, None, str(exc)
+
+
+# ---------------------------------------------------------------------------
 # UI helpers
 # ---------------------------------------------------------------------------
 
@@ -224,6 +328,44 @@ def _make_grid(df, grid_id, editable_cols):
         getRowId="params.data.id",
         className="ag-theme-alpine",
         style={"width": "100%", "height": "600px"},
+    )
+
+
+def _promote_modal():
+    return dmc.Modal(
+        id="admin-promote-modal",
+        title="Promote submission to main database?",
+        centered=True,
+        size="lg",
+        opened=False,
+        children=dmc.Stack(
+            [
+                dmc.Alert(
+                    "This inserts the submission into the live starbase database. "
+                    "The action cannot be undone — a duplicate check will still run.",
+                    color="yellow",
+                    variant="light",
+                ),
+                html.Div(id="admin-promote-modal-info"),
+                dmc.Group(
+                    [
+                        dmc.Button(
+                            "Promote",
+                            id="admin-promote-confirm",
+                            color="green",
+                        ),
+                        dmc.Button(
+                            "Cancel",
+                            id="admin-promote-cancel",
+                            variant="subtle",
+                            color="gray",
+                        ),
+                    ],
+                    justify="flex-end",
+                ),
+            ],
+            gap="md",
+        ),
     )
 
 
@@ -316,14 +458,38 @@ def _build_admin_layout():
                             "admin-joined-ships-grid",
                             EDITABLE_COLS["joined_ships"],
                         ),
-                        label=f"Joined Ships ({len(js_df):,})",
+                        label=f"Starships ({len(js_df):,})",
                         tab_id="joined_ships",
                     ),
                     dbc.Tab(
-                        _make_grid(
-                            sub_df,
-                            "admin-submissions-grid",
-                            EDITABLE_COLS["submissions"],
+                        html.Div(
+                            [
+                                dmc.Group(
+                                    [
+                                        dmc.Text(
+                                            "Select row(s) to promote into the main starbase database.",
+                                            size="sm",
+                                            c="dimmed",
+                                        ),
+                                        dmc.Button(
+                                            "Promote to Main DB",
+                                            id="admin-promote-btn",
+                                            color="green",
+                                            size="sm",
+                                            disabled=True,
+                                        ),
+                                    ],
+                                    justify="space-between",
+                                    align="center",
+                                    mb="xs",
+                                    mt="xs",
+                                ),
+                                _make_grid(
+                                    sub_df,
+                                    "admin-submissions-grid",
+                                    EDITABLE_COLS["submissions"],
+                                ),
+                            ]
                         ),
                         label=f"Submissions ({len(sub_df):,})",
                         tab_id="submissions",
@@ -365,6 +531,7 @@ layout = html.Div(
         dcc.Store(id="admin-save-store"),
         html.Div(id="admin-content"),
         _version_bump_modal(),
+        _promote_modal(),
     ]
 )
 
@@ -589,4 +756,144 @@ def confirm_version_bump(n_clicks, bump_type, description):
     prevent_initial_call=True,
 )
 def cancel_version_bump(n_clicks):
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — promote submission
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("admin-promote-btn", "disabled"),
+    Input("admin-submissions-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+def toggle_promote_button(selected):
+    return not bool(selected)
+
+
+@callback(
+    [
+        Output("admin-promote-modal", "opened"),
+        Output("admin-promote-modal-info", "children"),
+    ],
+    Input("admin-promote-btn", "n_clicks"),
+    State("admin-submissions-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+def open_promote_modal(n_clicks, selected_rows):
+    if not n_clicks or not selected_rows:
+        return False, no_update
+
+    cards = []
+    for row in selected_rows:
+        family = row.get("classification_family") or "unclassified"
+        navis = row.get("classification_navis") or ""
+        taxon = f"{row.get('genus', '')} {row.get('species', '')}".strip()
+        cards.append(
+            dmc.Paper(
+                dmc.Stack(
+                    [
+                        dmc.Group(
+                            [
+                                dmc.Text(f"ID {row.get('id')}", fw=700, size="sm"),
+                                dmc.Text(
+                                    row.get("seq_filename", ""), size="sm", c="dimmed"
+                                ),
+                                dmc.Badge(
+                                    "needs review"
+                                    if row.get("needs_review")
+                                    else "reviewed",
+                                    color="orange"
+                                    if row.get("needs_review")
+                                    else "green",
+                                    variant="light",
+                                    size="xs",
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Badge(
+                                    taxon or "unknown taxon",
+                                    variant="light",
+                                    color="gray",
+                                ),
+                                dmc.Badge(family, variant="light", color="blue"),
+                                dmc.Badge(navis, variant="light", color="teal")
+                                if navis
+                                else None,
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    gap="xs",
+                ),
+                p="sm",
+                withBorder=True,
+                radius="sm",
+            )
+        )
+
+    return True, dmc.Stack(cards, gap="xs")
+
+
+@callback(
+    [
+        Output("admin-promote-modal", "opened", allow_duplicate=True),
+        Output("admin-save-store", "data", allow_duplicate=True),
+    ],
+    Input("admin-promote-confirm", "n_clicks"),
+    State("admin-submissions-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+def run_promotion(n_clicks, selected_rows):
+    if not n_clicks or not selected_rows:
+        return no_update, no_update
+
+    results = []
+    for row in selected_rows:
+        sub_id = row.get("id")
+        success, accession, error = _promote_submission(sub_id)
+        results.append((sub_id, success, accession, error))
+
+    failures = [r for r in results if not r[1]]
+
+    if failures:
+        errors = "; ".join(f"sub {r[0]}: {r[3]}" for r in failures)
+        store_data = {
+            "table": "submissions",
+            "col_id": "promote",
+            "row_id": failures[0][0],
+            "old_value": "staging",
+            "new_value": None,
+            "success": False,
+            "error": errors,
+            "ts": datetime.now().isoformat(),
+        }
+        return False, store_data
+
+    successes = [r for r in results if r[1]]
+    accessions = ", ".join(r[2] for r in successes if r[2])
+    store_data = {
+        "table": "submissions",
+        "col_id": "promote",
+        "row_id": ", ".join(str(r[0]) for r in successes),
+        "old_value": "staging",
+        "new_value": accessions,
+        "success": True,
+        "error": None,
+        "ts": datetime.now().isoformat(),
+    }
+    return False, store_data
+
+
+@callback(
+    Output("admin-promote-modal", "opened", allow_duplicate=True),
+    Input("admin-promote-cancel", "n_clicks"),
+    prevent_initial_call=True,
+)
+def cancel_promote(n_clicks):
     return False
