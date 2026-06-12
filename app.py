@@ -112,8 +112,8 @@ if IS_DEV:
 def initialize_app():
     """Initialize app components and perform setup tasks."""
     with server.app_context():
-        from src.database.migrations import create_database_indexes
         from src.database.blastdb import create_dbs
+        from src.database.migrations import create_database_indexes
         from src.config.celery_config import celery
         from src.config.sentry import init_sentry
 

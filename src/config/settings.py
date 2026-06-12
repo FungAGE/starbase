@@ -1,10 +1,14 @@
 import os
 
-# Development mode
-IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
+from dotenv import load_dotenv
 
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+
+# Development mode
+IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Try potential database directories in order of preference
 potential_db_dirs = [
@@ -106,6 +110,8 @@ ABOUT_URL = os.getenv("ABOUT_URL", "/about")
 SYNTENY_URL = os.getenv("SYNTENY_URL", "/synteny")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
+ADMIN_URL = os.getenv("ADMIN_URL", "/admin")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
 
 # Define valid pages
 PAGES = {
