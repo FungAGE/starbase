@@ -1,7 +1,12 @@
 #!/bin/bash
 
-# get DEV_MODE from `.env` file
-DEV_MODE=$(grep DEV_MODE .env | cut -d '=' -f 2)
+# Load .env so uvicorn workers inherit ADMIN_TOKEN, DEV_MODE, etc.
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
+fi
 
 if [ -z "$DEV_MODE" ]; then
     DEV_MODE=false
