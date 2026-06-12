@@ -47,6 +47,28 @@ EDITABLE_COLS = {
         "starshipMentioned",
         "typePaper",
     },
+    "family_names": {
+        "familyName",
+        "notes",
+        "type_element_reference",
+        "clade",
+        "longFamilyID",
+        "oldFamilyID",
+        "otherFamilyID",
+    },
+    "navis_names": {"navis_name", "previous_navis_name", "activity"},
+    "haplotype_names": {"haplotype_name", "previous_haplotype_name", "activity"},
+    "accessions": {"version_tag"},
+    "ship_accessions": {"ship_accession_display", "ship_version_tag"},
+    "genomes": {
+        "ome",
+        "version",
+        "genomeSource",
+        "citation",
+        "biosample",
+        "acquisition_date",
+        "assembly_accession",
+    },
 }
 
 TABLE_CONFIG = {
@@ -54,6 +76,12 @@ TABLE_CONFIG = {
     "submissions": {"sql_table": "submissions", "db": "submissions", "pk": "id"},
     "taxonomy": {"sql_table": "taxonomy", "db": "starbase", "pk": "id"},
     "papers": {"sql_table": "papers", "db": "starbase", "pk": "id"},
+    "family_names": {"sql_table": "family_names", "db": "starbase", "pk": "id"},
+    "navis_names": {"sql_table": "navis_names", "db": "starbase", "pk": "id"},
+    "haplotype_names": {"sql_table": "haplotype_names", "db": "starbase", "pk": "id"},
+    "accessions": {"sql_table": "accessions", "db": "starbase", "pk": "id"},
+    "ship_accessions": {"sql_table": "ship_accessions", "db": "starbase", "pk": "id"},
+    "genomes": {"sql_table": "genomes", "db": "starbase", "pk": "id"},
 }
 
 # Columns that should be stored as integers (SQLite booleans)
@@ -121,6 +149,88 @@ def _fetch_papers():
                    shortCitation, starshipMentioned, typePaper
             FROM papers
             ORDER BY id
+            """,
+            session.bind,
+        )
+
+
+def _fetch_family_names():
+    with get_starbase_session() as session:
+        return pd.read_sql_query(
+            """
+            SELECT id, familyName, longFamilyID, oldFamilyID, otherFamilyID,
+                   clade, newFamilyID, type_element_reference, notes
+            FROM family_names
+            ORDER BY id
+            """,
+            session.bind,
+        )
+
+
+def _fetch_navis_names():
+    with get_starbase_session() as session:
+        return pd.read_sql_query(
+            """
+            SELECT n.id, n.navis_name, n.previous_navis_name, n.activity,
+                   f.familyName
+            FROM navis_names n
+            LEFT JOIN family_names f ON n.ship_family_id = f.id
+            ORDER BY n.id
+            """,
+            session.bind,
+        )
+
+
+def _fetch_haplotype_names():
+    with get_starbase_session() as session:
+        return pd.read_sql_query(
+            """
+            SELECT h.id, h.haplotype_name, h.previous_haplotype_name, h.activity,
+                   n.navis_name, f.familyName
+            FROM haplotype_names h
+            LEFT JOIN navis_names n ON h.navis_id = n.id
+            LEFT JOIN family_names f ON h.ship_family_id = f.id
+            ORDER BY h.id
+            """,
+            session.bind,
+        )
+
+
+def _fetch_accessions():
+    with get_starbase_session() as session:
+        return pd.read_sql_query(
+            """
+            SELECT a.id, a.accession_tag, a.version_tag
+            FROM accessions a
+            ORDER BY a.id
+            """,
+            session.bind,
+        )
+
+
+def _fetch_ship_accessions():
+    with get_starbase_session() as session:
+        return pd.read_sql_query(
+            """
+            SELECT sa.id, sa.ship_accession_tag, sa.ship_accession_display,
+                   sa.ship_version_tag, sa.ship_id
+            FROM ship_accessions sa
+            ORDER BY sa.id
+            """,
+            session.bind,
+        )
+
+
+def _fetch_genomes():
+    with get_starbase_session() as session:
+        return pd.read_sql_query(
+            """
+            SELECT g.id, g.ome, g.version, g.genomeSource, g.citation,
+                   g.biosample, g.acquisition_date, g.assembly_accession,
+                   t.name AS taxonomy_name
+            FROM genomes g
+            LEFT JOIN taxonomy t ON g.taxonomy_id = t.id
+            ORDER BY g.id
             """,
             session.bind,
         )
@@ -420,6 +530,12 @@ def _build_admin_layout():
         sub_df = _fetch_submissions()
         tax_df = _fetch_taxonomy()
         pap_df = _fetch_papers()
+        fam_df = _fetch_family_names()
+        nav_df = _fetch_navis_names()
+        hap_df = _fetch_haplotype_names()
+        acc_df = _fetch_accessions()
+        sacc_df = _fetch_ship_accessions()
+        gen_df = _fetch_genomes()
     except Exception as exc:
         logger.error("Admin data load failed: %s", exc)
         return dmc.Alert(str(exc), title="Database Error", color="red", mt="xl")
@@ -511,6 +627,60 @@ def _build_admin_layout():
                         ),
                         label=f"Papers ({len(pap_df):,})",
                         tab_id="papers",
+                    ),
+                    dbc.Tab(
+                        _make_grid(
+                            fam_df,
+                            "admin-family-names-grid",
+                            EDITABLE_COLS["family_names"],
+                        ),
+                        label=f"Families ({len(fam_df):,})",
+                        tab_id="family_names",
+                    ),
+                    dbc.Tab(
+                        _make_grid(
+                            nav_df,
+                            "admin-navis-names-grid",
+                            EDITABLE_COLS["navis_names"],
+                        ),
+                        label=f"Navis ({len(nav_df):,})",
+                        tab_id="navis_names",
+                    ),
+                    dbc.Tab(
+                        _make_grid(
+                            hap_df,
+                            "admin-haplotype-names-grid",
+                            EDITABLE_COLS["haplotype_names"],
+                        ),
+                        label=f"Haplotypes ({len(hap_df):,})",
+                        tab_id="haplotype_names",
+                    ),
+                    dbc.Tab(
+                        _make_grid(
+                            acc_df,
+                            "admin-accessions-grid",
+                            EDITABLE_COLS["accessions"],
+                        ),
+                        label=f"Accessions ({len(acc_df):,})",
+                        tab_id="accessions",
+                    ),
+                    dbc.Tab(
+                        _make_grid(
+                            sacc_df,
+                            "admin-ship-accessions-grid",
+                            EDITABLE_COLS["ship_accessions"],
+                        ),
+                        label=f"Ship Accessions ({len(sacc_df):,})",
+                        tab_id="ship_accessions",
+                    ),
+                    dbc.Tab(
+                        _make_grid(
+                            gen_df,
+                            "admin-genomes-grid",
+                            EDITABLE_COLS["genomes"],
+                        ),
+                        label=f"Genomes ({len(gen_df):,})",
+                        tab_id="genomes",
                     ),
                 ],
                 active_tab="joined_ships",
@@ -624,6 +794,60 @@ def save_taxonomy(cell_changed):
 )
 def save_papers(cell_changed):
     return _handle_cell_change("papers", cell_changed)
+
+
+@callback(
+    Output("admin-save-store", "data", allow_duplicate=True),
+    Input("admin-family-names-grid", "cellValueChanged"),
+    prevent_initial_call=True,
+)
+def save_family_names(cell_changed):
+    return _handle_cell_change("family_names", cell_changed)
+
+
+@callback(
+    Output("admin-save-store", "data", allow_duplicate=True),
+    Input("admin-navis-names-grid", "cellValueChanged"),
+    prevent_initial_call=True,
+)
+def save_navis_names(cell_changed):
+    return _handle_cell_change("navis_names", cell_changed)
+
+
+@callback(
+    Output("admin-save-store", "data", allow_duplicate=True),
+    Input("admin-haplotype-names-grid", "cellValueChanged"),
+    prevent_initial_call=True,
+)
+def save_haplotype_names(cell_changed):
+    return _handle_cell_change("haplotype_names", cell_changed)
+
+
+@callback(
+    Output("admin-save-store", "data", allow_duplicate=True),
+    Input("admin-accessions-grid", "cellValueChanged"),
+    prevent_initial_call=True,
+)
+def save_accessions(cell_changed):
+    return _handle_cell_change("accessions", cell_changed)
+
+
+@callback(
+    Output("admin-save-store", "data", allow_duplicate=True),
+    Input("admin-ship-accessions-grid", "cellValueChanged"),
+    prevent_initial_call=True,
+)
+def save_ship_accessions(cell_changed):
+    return _handle_cell_change("ship_accessions", cell_changed)
+
+
+@callback(
+    Output("admin-save-store", "data", allow_duplicate=True),
+    Input("admin-genomes-grid", "cellValueChanged"),
+    prevent_initial_call=True,
+)
+def save_genomes(cell_changed):
+    return _handle_cell_change("genomes", cell_changed)
 
 
 # ---------------------------------------------------------------------------
