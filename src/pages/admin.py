@@ -789,6 +789,7 @@ layout = html.Div(
     [
         dcc.Location(id="admin-url", refresh=False),
         dcc.Store(id="admin-pending-changes", data=[]),
+        dcc.Store(id="admin-selected-submissions", data=[]),
         html.Div(id="admin-content"),
         _version_bump_modal(),
         _promote_modal(),
@@ -848,6 +849,19 @@ for _tk, _gid in GRID_IDS.items():
         State(_gid, "rowData"),
         prevent_initial_call=True,
     )
+
+# ---------------------------------------------------------------------------
+# Clientside callback — relay selectedRows into static-layout store
+# (avoids refErr for State("admin-submissions-grid", "selectedRows") in Python
+# callbacks that are validated against the initial layout before auth)
+# ---------------------------------------------------------------------------
+
+clientside_callback(
+    "function(r) { return r || []; }",
+    Output("admin-selected-submissions", "data"),
+    Input("admin-submissions-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
 
 # ---------------------------------------------------------------------------
 # Clientside callback — pending count drives toolbar labels / disabled state
@@ -1051,7 +1065,7 @@ def cancel_version_bump(n_clicks):
 
 @callback(
     Output("admin-promote-btn", "disabled"),
-    Input("admin-submissions-grid", "selectedRows"),
+    Input("admin-selected-submissions", "data"),
     prevent_initial_call=True,
 )
 def toggle_promote_button(selected):
@@ -1064,7 +1078,7 @@ def toggle_promote_button(selected):
         Output("admin-promote-modal-info", "children"),
     ],
     Input("admin-promote-btn", "n_clicks"),
-    State("admin-submissions-grid", "selectedRows"),
+    State("admin-selected-submissions", "data"),
     prevent_initial_call=True,
 )
 def open_promote_modal(n_clicks, selected_rows):
@@ -1134,7 +1148,7 @@ def open_promote_modal(n_clicks, selected_rows):
         Output("notifications-container", "children", allow_duplicate=True),
     ],
     Input("admin-promote-confirm", "n_clicks"),
-    State("admin-submissions-grid", "selectedRows"),
+    State("admin-selected-submissions", "data"),
     prevent_initial_call=True,
 )
 def run_promotion(n_clicks, selected_rows):
