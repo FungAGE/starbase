@@ -1,6 +1,5 @@
 import base64
 import uuid
-from datetime import datetime
 from io import StringIO
 from urllib.parse import parse_qs
 
@@ -10,7 +9,16 @@ import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 import pandas as pd
-from dash import Input, Output, State, callback, dcc, html, no_update
+from dash import (
+    Input,
+    Output,
+    State,
+    callback,
+    clientside_callback,
+    dcc,
+    html,
+    no_update,
+)
 from sqlalchemy import text
 
 from src.config.logging import get_logger
@@ -86,6 +94,20 @@ TABLE_CONFIG = {
 
 # Columns that should be stored as integers (SQLite booleans)
 BOOLEAN_COLS = {"needs_review"}
+
+# Grid IDs keyed by table_key — used for batch save/discard
+GRID_IDS = {
+    "joined_ships": "admin-joined-ships-grid",
+    "submissions": "admin-submissions-grid",
+    "taxonomy": "admin-taxonomy-grid",
+    "papers": "admin-papers-grid",
+    "family_names": "admin-family-names-grid",
+    "navis_names": "admin-navis-names-grid",
+    "haplotype_names": "admin-haplotype-names-grid",
+    "accessions": "admin-accessions-grid",
+    "ship_accessions": "admin-ship-accessions-grid",
+    "genomes": "admin-genomes-grid",
+}
 
 # ---------------------------------------------------------------------------
 # Data helpers
@@ -236,6 +258,27 @@ def _fetch_genomes():
         )
 
 
+def _refetch_rowdata(table_key):
+    """Re-fetch clean rowData (no _dirty) for a grid after save/discard."""
+    fetchers = {
+        "joined_ships": _fetch_joined_ships,
+        "submissions": _fetch_submissions,
+        "taxonomy": _fetch_taxonomy,
+        "papers": _fetch_papers,
+        "family_names": _fetch_family_names,
+        "navis_names": _fetch_navis_names,
+        "haplotype_names": _fetch_haplotype_names,
+        "accessions": _fetch_accessions,
+        "ship_accessions": _fetch_ship_accessions,
+        "genomes": _fetch_genomes,
+    }
+    try:
+        return fetchers[table_key]().fillna("").to_dict("records")
+    except Exception as exc:
+        logger.error("Re-fetch failed for %s: %s", table_key, exc)
+        return no_update
+
+
 def _bump_version(version_str, bump_type):
     """Increment semantic version string by minor or patch."""
     try:
@@ -274,14 +317,26 @@ def _do_update(table_key, row_id, col_id, new_value):
             else get_submissions_session
         )
         with ctx() as session:
-            session.execute(sql, {"val": new_value, "pk": row_id})
+            result = session.execute(sql, {"val": new_value, "pk": row_id})
             session.commit()
+            rc = result.rowcount
+        if rc == 0:
+            logger.warning(
+                "admin UPDATE matched 0 rows: %s.%s id=%r (pk type=%s, value=%r)",
+                config["sql_table"],
+                col_id,
+                row_id,
+                type(row_id).__name__,
+                new_value,
+            )
+            return False, f"Row id={row_id!r} not found in {config['sql_table']}."
         logger.info(
-            "admin UPDATE %s.%s id=%s  %r",
+            "admin UPDATE %s.%s id=%s  %r  (rowcount=%d)",
             config["sql_table"],
             col_id,
             row_id,
             new_value,
+            rc,
         )
         return True, None
     except Exception as exc:
@@ -423,10 +478,12 @@ def _make_grid(df, grid_id, editable_cols):
             col_def["cellStyle"] = {"backgroundColor": "var(--mantine-color-yellow-0)"}
         col_defs.append(col_def)
 
+    rows = [{**r, "_dirty": False} for r in df.fillna("").to_dict("records")]
+
     return dag.AgGrid(
         id=grid_id,
         columnDefs=col_defs,
-        rowData=df.fillna("").to_dict("records"),
+        rowData=rows,
         defaultColDef={"resizable": True, "minWidth": 80},
         dashGridOptions={
             "pagination": True,
@@ -434,6 +491,7 @@ def _make_grid(df, grid_id, editable_cols):
             "suppressPropertyNamesCheck": True,
             "rowHeight": 40,
             "headerHeight": 44,
+            "rowClassRules": {"admin-unsaved-row": "params.data._dirty === true"},
         },
         getRowId="params.data.id",
         className="ag-theme-alpine",
@@ -559,12 +617,44 @@ def _build_admin_layout():
                 mt="lg",
                 mb="xs",
             ),
-            dmc.Text(
-                "Yellow-highlighted cells are editable. "
-                "Press Enter or click away to save. All changes are logged.",
-                size="sm",
-                c="dimmed",
+            dmc.Paper(
+                dmc.Group(
+                    [
+                        dmc.Text(
+                            id="admin-pending-label",
+                            size="sm",
+                            c="dimmed",
+                            children="No pending changes. Yellow cells are editable — edit freely, then save.",
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Button(
+                                    "Discard",
+                                    id="admin-discard-btn",
+                                    variant="subtle",
+                                    color="gray",
+                                    size="sm",
+                                    disabled=True,
+                                ),
+                                dmc.Button(
+                                    "Save changes",
+                                    id="admin-save-btn",
+                                    color="blue",
+                                    size="sm",
+                                    disabled=True,
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    justify="space-between",
+                    align="center",
+                ),
+                p="sm",
                 mb="md",
+                radius="sm",
+                withBorder=True,
+                style={"borderColor": "var(--mantine-color-blue-3)"},
             ),
             dbc.Tabs(
                 [
@@ -698,7 +788,7 @@ def _build_admin_layout():
 layout = html.Div(
     [
         dcc.Location(id="admin-url", refresh=False),
-        dcc.Store(id="admin-save-store"),
+        dcc.Store(id="admin-pending-changes", data=[]),
         html.Div(id="admin-content"),
         _version_bump_modal(),
         _promote_modal(),
@@ -731,193 +821,164 @@ def render_admin_content(search):
 
 
 # ---------------------------------------------------------------------------
-# Callbacks — cell edits → DB update → store
+# Clientside callbacks — cell edits accumulate into pending store + _dirty
 # ---------------------------------------------------------------------------
 
+_CELL_JS = """
+function(ev, pending, rowData) {{
+    if (!ev || ev.colId === undefined) return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+    var rid = ev.data.id, cid = ev.colId, ov = ev.oldValue, tk = "{tk}";
+    var nv = (ev.data && ev.data[cid] !== undefined) ? ev.data[cid] : ev.value;
+    var p = JSON.parse(JSON.stringify(pending || []));
+    var idx = -1;
+    for (var i = 0; i < p.length; i++) {{ if (p[i].table===tk && p[i].row_id===rid && p[i].col_id===cid) {{ idx=i; break; }} }}
+    if (idx >= 0) {{ p[idx].new_value = nv; }} else {{ p.push({{table:tk,row_id:rid,col_id:cid,old_value:ov,new_value:nv}}); }}
+    var rd = (rowData||[]).map(function(r) {{ return r.id===rid ? Object.assign({{}},r,{{_dirty:true}}) : r; }});
+    return [rd, p];
+}}
+"""
 
-def _handle_cell_change(table_key, cell_changed):
-    if not cell_changed:
-        return no_update
-    row_data = cell_changed.get("data", {})
-    row_id = row_data.get("id")
-    col_id = cell_changed.get("colId")
-    new_value = cell_changed.get("value")
-    old_value = cell_changed.get("oldValue")
+for _tk, _gid in GRID_IDS.items():
+    clientside_callback(
+        _CELL_JS.format(tk=_tk),
+        Output(_gid, "rowData"),
+        Output("admin-pending-changes", "data", allow_duplicate=True),
+        Input(_gid, "cellValueChanged"),
+        State("admin-pending-changes", "data"),
+        State(_gid, "rowData"),
+        prevent_initial_call=True,
+    )
 
-    if row_id is None or col_id is None:
-        return no_update
+# ---------------------------------------------------------------------------
+# Clientside callback — pending count drives toolbar labels / disabled state
+# ---------------------------------------------------------------------------
 
-    success, error = _do_update(table_key, row_id, col_id, new_value)
-    return {
-        "table": table_key,
-        "row_id": row_id,
-        "col_id": col_id,
-        "old_value": old_value,
-        "new_value": new_value,
-        "success": success,
-        "error": error,
-        "ts": datetime.now().isoformat(),
+clientside_callback(
+    """
+    function(p) {
+        var n = (p||[]).length, dis = n===0;
+        var lbl = n > 0 ? ('Save '+n+' change'+(n!==1?'s':'')) : 'Save changes';
+        var hint = n > 0 ? (n+' unsaved change'+(n!==1?'s':'')+' \u2014 click Save or Discard.')
+                         : 'No pending changes. Yellow cells are editable \u2014 edit freely, then save.';
+        return [dis, dis, lbl, hint];
     }
-
-
-@callback(
-    Output("admin-save-store", "data"),
-    Input("admin-joined-ships-grid", "cellValueChanged"),
+    """,
+    Output("admin-save-btn", "disabled"),
+    Output("admin-discard-btn", "disabled"),
+    Output("admin-save-btn", "children"),
+    Output("admin-pending-label", "children"),
+    Input("admin-pending-changes", "data"),
     prevent_initial_call=True,
 )
-def save_joined_ships(cell_changed):
-    return _handle_cell_change("joined_ships", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-submissions-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_submissions(cell_changed):
-    return _handle_cell_change("submissions", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-taxonomy-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_taxonomy(cell_changed):
-    return _handle_cell_change("taxonomy", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-papers-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_papers(cell_changed):
-    return _handle_cell_change("papers", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-family-names-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_family_names(cell_changed):
-    return _handle_cell_change("family_names", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-navis-names-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_navis_names(cell_changed):
-    return _handle_cell_change("navis_names", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-haplotype-names-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_haplotype_names(cell_changed):
-    return _handle_cell_change("haplotype_names", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-accessions-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_accessions(cell_changed):
-    return _handle_cell_change("accessions", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-ship-accessions-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_ship_accessions(cell_changed):
-    return _handle_cell_change("ship_accessions", cell_changed)
-
-
-@callback(
-    Output("admin-save-store", "data", allow_duplicate=True),
-    Input("admin-genomes-grid", "cellValueChanged"),
-    prevent_initial_call=True,
-)
-def save_genomes(cell_changed):
-    return _handle_cell_change("genomes", cell_changed)
 
 
 # ---------------------------------------------------------------------------
-# Callbacks — store → open version modal (or show error notification)
+# Callbacks — batch save / discard
 # ---------------------------------------------------------------------------
 
 
-@callback(
-    [
-        Output("admin-version-modal", "opened"),
-        Output("admin-version-modal-info", "children"),
-        Output("admin-version-description", "value"),
-        Output("notifications-container", "children"),
-    ],
-    Input("admin-save-store", "data"),
-    prevent_initial_call=True,
-)
-def on_save_store_updated(store_data):
-    if not store_data:
-        return no_update, no_update, no_update, no_update
-
-    if not store_data.get("success"):
-        err = store_data.get("error", "Unknown error")
-        notification = dmc.Notification(
-            id=f"admin-err-{uuid.uuid4().hex[:6]}",
-            title="Save failed",
-            message=err,
-            color="red",
-            action="show",
-            autoClose=7000,
-        )
-        return False, no_update, no_update, notification
-
-    current_ver = get_database_version()
-    table = store_data.get("table", "")
-    col_id = store_data.get("col_id", "")
-    row_id = store_data.get("row_id", "")
-    old_val = store_data.get("old_value", "")
-    new_val = store_data.get("new_value", "")
-
-    minor_ver = _bump_version(current_ver, "minor")
-    patch_ver = _bump_version(current_ver, "patch")
-
-    modal_info = dmc.Stack(
+def _make_version_modal_content(successes):
+    tables = sorted({c["table"] for c in successes})
+    n = len(successes)
+    cur = get_database_version()
+    info = dmc.Stack(
         [
-            dmc.Text(f"Saved: {table}.{col_id}  (row {row_id})", size="sm", fw=500),
-            dmc.Code(f'"{old_val}"  →  "{new_val}"', block=False),
+            dmc.Text(
+                f"Saved {n} change{'s' if n != 1 else ''} across: {', '.join(tables)}",
+                size="sm",
+                fw=500,
+            ),
             dmc.Divider(),
             dmc.Group(
                 [
-                    dmc.Text("Current version:", size="sm"),
-                    dmc.Badge(current_ver, variant="outline", color="gray"),
+                    dmc.Text("Current:", size="sm"),
+                    dmc.Badge(cur, variant="outline", color="gray"),
                 ],
                 gap="xs",
             ),
             dmc.Group(
                 [
-                    dmc.Text("Minor bump →", size="sm"),
-                    dmc.Badge(minor_ver, variant="light", color="blue"),
-                    dmc.Text("Patch bump →", size="sm"),
-                    dmc.Badge(patch_ver, variant="light", color="teal"),
+                    dmc.Text("Minor \u2192", size="sm"),
+                    dmc.Badge(
+                        _bump_version(cur, "minor"), variant="light", color="blue"
+                    ),
+                    dmc.Text("Patch \u2192", size="sm"),
+                    dmc.Badge(
+                        _bump_version(cur, "patch"), variant="light", color="teal"
+                    ),
                 ],
                 gap="xs",
             ),
         ],
         gap="xs",
     )
+    desc = f"admin: {n} edit{'s' if n != 1 else ''} across {', '.join(tables)}"
+    return info, desc
 
-    default_description = f"edited {table}.{col_id} row {row_id} via admin"
-    return True, modal_info, default_description, no_update
+
+@callback(
+    [
+        Output("admin-pending-changes", "data"),
+        *[Output(gid, "rowData", allow_duplicate=True) for gid in GRID_IDS.values()],
+        Output("admin-version-modal", "opened"),
+        Output("admin-version-modal-info", "children"),
+        Output("admin-version-description", "value"),
+        Output("notifications-container", "children"),
+    ],
+    Input("admin-save-btn", "n_clicks"),
+    State("admin-pending-changes", "data"),
+    prevent_initial_call=True,
+)
+def save_all_pending(n_clicks, pending):
+    n_out = (
+        len(GRID_IDS) + 5
+    )  # pending-store + 10 grids + modal-opened + modal-info + description + notif
+    if not n_clicks or not pending:
+        return [no_update] * n_out
+
+    logger.info("save_all_pending: %d change(s): %s", len(pending), pending)
+    errors, successes = [], []
+    for ch in pending:
+        ok, err = _do_update(
+            ch["table"], ch["row_id"], ch["col_id"], ch.get("new_value")
+        )
+        (successes if ok else errors).append((ch, err))
+
+    changed_tables = {ch["table"] for ch in pending}
+    fresh = [
+        _refetch_rowdata(k) if k in changed_tables else no_update for k in GRID_IDS
+    ]
+
+    if errors:
+        msgs = "; ".join(
+            f"{c['table']}.{c['col_id']} row {c['row_id']}: {e}" for c, e in errors[:3]
+        )
+        notif = dmc.Notification(
+            id=f"admin-err-{uuid.uuid4().hex[:6]}",
+            title="Some saves failed",
+            message=msgs,
+            color="red",
+            action="show",
+            autoClose=10000,
+        )
+        return [[], *fresh, False, no_update, no_update, notif]
+
+    info, desc = _make_version_modal_content([c for c, _ in successes])
+    return [[], *fresh, True, info, desc, no_update]
+
+
+@callback(
+    [
+        Output("admin-pending-changes", "data", allow_duplicate=True),
+        *[Output(gid, "rowData", allow_duplicate=True) for gid in GRID_IDS.values()],
+    ],
+    Input("admin-discard-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def discard_pending(n_clicks):
+    if not n_clicks:
+        return [no_update] * (len(GRID_IDS) + 1)
+    return [[], *[_refetch_rowdata(k) for k in GRID_IDS]]
 
 
 # ---------------------------------------------------------------------------
@@ -1067,7 +1128,10 @@ def open_promote_modal(n_clicks, selected_rows):
 @callback(
     [
         Output("admin-promote-modal", "opened", allow_duplicate=True),
-        Output("admin-save-store", "data", allow_duplicate=True),
+        Output("admin-version-modal", "opened", allow_duplicate=True),
+        Output("admin-version-modal-info", "children", allow_duplicate=True),
+        Output("admin-version-description", "value", allow_duplicate=True),
+        Output("notifications-container", "children", allow_duplicate=True),
     ],
     Input("admin-promote-confirm", "n_clicks"),
     State("admin-submissions-grid", "selectedRows"),
@@ -1075,7 +1139,7 @@ def open_promote_modal(n_clicks, selected_rows):
 )
 def run_promotion(n_clicks, selected_rows):
     if not n_clicks or not selected_rows:
-        return no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
 
     results = []
     for row in selected_rows:
@@ -1087,31 +1151,57 @@ def run_promotion(n_clicks, selected_rows):
 
     if failures:
         errors = "; ".join(f"sub {r[0]}: {r[3]}" for r in failures)
-        store_data = {
-            "table": "submissions",
-            "col_id": "promote",
-            "row_id": failures[0][0],
-            "old_value": "staging",
-            "new_value": None,
-            "success": False,
-            "error": errors,
-            "ts": datetime.now().isoformat(),
-        }
-        return False, store_data
+        notif = dmc.Notification(
+            id=f"admin-err-{uuid.uuid4().hex[:6]}",
+            title="Promotion failed",
+            message=errors,
+            color="red",
+            action="show",
+            autoClose=10000,
+        )
+        return False, False, no_update, no_update, notif
 
     successes = [r for r in results if r[1]]
     accessions = ", ".join(r[2] for r in successes if r[2])
-    store_data = {
-        "table": "submissions",
-        "col_id": "promote",
-        "row_id": ", ".join(str(r[0]) for r in successes),
-        "old_value": "staging",
-        "new_value": accessions,
-        "success": True,
-        "error": None,
-        "ts": datetime.now().isoformat(),
-    }
-    return False, store_data
+    _pseudo_changes = [
+        {"table": "submissions", "col_id": f"promote→{a}", "row_id": sid}
+        for sid, _, a, _ in successes
+    ]
+    n = len(successes)
+    cur = get_database_version()
+    info = dmc.Stack(
+        [
+            dmc.Text(
+                f"Promoted {n} submission{'s' if n != 1 else ''}: {accessions}",
+                size="sm",
+                fw=500,
+            ),
+            dmc.Divider(),
+            dmc.Group(
+                [
+                    dmc.Text("Current:", size="sm"),
+                    dmc.Badge(cur, variant="outline", color="gray"),
+                ],
+                gap="xs",
+            ),
+            dmc.Group(
+                [
+                    dmc.Text("Minor \u2192", size="sm"),
+                    dmc.Badge(
+                        _bump_version(cur, "minor"), variant="light", color="blue"
+                    ),
+                    dmc.Text("Patch \u2192", size="sm"),
+                    dmc.Badge(
+                        _bump_version(cur, "patch"), variant="light", color="teal"
+                    ),
+                ],
+                gap="xs",
+            ),
+        ],
+        gap="xs",
+    )
+    desc = f"admin: promoted submission(s) {accessions} to main DB"
+    return False, True, info, desc, no_update
 
 
 @callback(

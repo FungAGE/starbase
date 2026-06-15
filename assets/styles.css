@@ -150,3 +150,11 @@
         display: block;
     }
 }
+
+/* Admin — unsaved row highlight */
+.admin-unsaved-row {
+    background-color: var(--mantine-color-orange-1) !important;
+}
+.admin-unsaved-row .ag-cell {
+    background-color: transparent !important;
+}
