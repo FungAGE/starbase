@@ -35,7 +35,7 @@ dash.register_page(__name__, path="/admin", title="Admin", name="Admin")
 # ---------------------------------------------------------------------------
 
 EDITABLE_COLS = {
-    "joined_ships": {"curated_status", "evidence", "source"},
+    "joined_ships": {"curated_status", "evidence", "source", "tax_id"},
     "submissions": {
         "needs_review",
         "classification_family",
@@ -44,7 +44,27 @@ EDITABLE_COLS = {
         "classification_confidence",
         "comment",
     },
-    "taxonomy": {"name", "taxID", "genus", "species", "strain"},
+    "taxonomy": {
+        "name",
+        "taxID",
+        "genus",
+        "species",
+        "strain",
+        "superkingdom",
+        "clade",
+        "kingdom",
+        "subkingdom",
+        "phylum",
+        "subphylum",
+        "class",
+        "subclass",
+        "order",
+        "suborder",
+        "family",
+        "section",
+        "species_group",
+        "subgenus",
+    },
     "papers": {
         "Title",
         "Author",
@@ -76,7 +96,9 @@ EDITABLE_COLS = {
         "biosample",
         "acquisition_date",
         "assembly_accession",
+        "taxonomy_id",
     },
+    "ships": {"md5", "rev_comp_md5"},
 }
 
 TABLE_CONFIG = {
@@ -90,7 +112,18 @@ TABLE_CONFIG = {
     "accessions": {"sql_table": "accessions", "db": "starbase", "pk": "id"},
     "ship_accessions": {"sql_table": "ship_accessions", "db": "starbase", "pk": "id"},
     "genomes": {"sql_table": "genomes", "db": "starbase", "pk": "id"},
+    "ships": {"sql_table": "ships", "db": "starbase", "pk": "id"},
 }
+
+# SQLite reserved / quoted column names in UPDATE statements
+SQL_QUOTED_COLS = {"class", "order", "source"}
+
+
+def _sql_col_ref(col_id):
+    if col_id in SQL_QUOTED_COLS:
+        return f"`{col_id}`"
+    return col_id
+
 
 # Columns that should be stored as integers (SQLite booleans)
 BOOLEAN_COLS = {"needs_review"}
@@ -118,7 +151,7 @@ def _fetch_joined_ships():
     with get_starbase_session() as session:
         return pd.read_sql_query(
             """
-            SELECT j.id, j.starshipID, j.curated_status, j.evidence, j.source,
+            SELECT j.id, j.starshipID, j.curated_status, j.evidence, j.source, j.tax_id,
                    a.accession_tag,
                    f.familyName,
                    n.navis_name,
@@ -248,7 +281,7 @@ def _fetch_genomes():
         return pd.read_sql_query(
             """
             SELECT g.id, g.ome, g.version, g.genomeSource, g.citation,
-                   g.biosample, g.acquisition_date, g.assembly_accession,
+                   g.biosample, g.acquisition_date, g.assembly_accession, g.taxonomy_id,
                    t.name AS taxonomy_name
             FROM genomes g
             LEFT JOIN taxonomy t ON g.taxonomy_id = t.id
@@ -307,7 +340,7 @@ def _do_update(table_key, row_id, col_id, new_value):
         new_value = 1 if str(new_value).lower() in ("true", "1", "yes") else 0
 
     sql = text(
-        f"UPDATE {config['sql_table']} SET {col_id} = :val WHERE {config['pk']} = :pk"
+        f"UPDATE {config['sql_table']} SET {_sql_col_ref(col_id)} = :val WHERE {config['pk']} = :pk"
     )
 
     try:
@@ -344,6 +377,510 @@ def _do_update(table_key, row_id, col_id, new_value):
             "admin UPDATE error (%s.%s id=%s): %s", table_key, col_id, row_id, exc
         )
         return False, str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Admin jobs — consistency / cleanup utilities
+# ---------------------------------------------------------------------------
+
+_REPORT_COLS = [
+    "ship_id",
+    "accession_tag",
+    "md5",
+    "rev_comp_md5",
+    "issue",
+]
+
+_STAGE_COLS = [
+    "table",
+    "row_id",
+    "col_id",
+    "old_value",
+    "new_value",
+]
+
+_TAX_LINK_COLS = [
+    "table",
+    "row_id",
+    "col_id",
+    "old_value",
+    "new_value",
+    "strategy",
+    "starshipID",
+    "note",
+]
+
+_TAX_VALIDATE_COLS = [
+    "issue_type",
+    "taxonomy_id",
+    "name",
+    "detail",
+]
+
+
+def _taxonomy_orm_field_to_col(field):
+    if field == "class_":
+        return "class"
+    return field
+
+
+def _consolidator_clean_to_changes(report):
+    """Convert TaxonomyConsolidator.clean_taxonomy_data report to pending changes."""
+    changes = []
+    for item in report.get("whitespace_fixes", []):
+        col = _taxonomy_orm_field_to_col(item.get("field", ""))
+        nv = item.get("new_value")
+        if nv == "NULL":
+            nv = None
+        ov = item.get("old_value")
+        if ov == '""':
+            ov = ""
+        changes.append(
+            {
+                "table": "taxonomy",
+                "row_id": item["taxonomy_id"],
+                "col_id": col,
+                "old_value": ov if ov is not None else "",
+                "new_value": nv,
+                "source": "job",
+            }
+        )
+    for item in report.get("species_cleanup", []):
+        changes.append(
+            {
+                "table": "taxonomy",
+                "row_id": item["taxonomy_id"],
+                "col_id": "species",
+                "old_value": item.get("old_species", ""),
+                "new_value": item.get("new_species"),
+                "source": "job",
+            }
+        )
+    for item in report.get("strain_cleanup", []):
+        changes.append(
+            {
+                "table": "taxonomy",
+                "row_id": item["taxonomy_id"],
+                "col_id": "strain",
+                "old_value": item.get("old_strain", ""),
+                "new_value": item.get("new_strain"),
+                "source": "job",
+            }
+        )
+    for item in report.get("name_cleanup", []):
+        changes.append(
+            {
+                "table": "taxonomy",
+                "row_id": item["taxonomy_id"],
+                "col_id": "name",
+                "old_value": item.get("old_name", ""),
+                "new_value": item.get("new_name"),
+                "source": "job",
+            }
+        )
+    return changes
+
+
+def _consolidator_backfill_to_changes(report):
+    changes = []
+    for item in report.get("fields_backfilled", []):
+        col = _taxonomy_orm_field_to_col(item.get("field", ""))
+        changes.append(
+            {
+                "table": "taxonomy",
+                "row_id": item["taxonomy_id"],
+                "col_id": col,
+                "old_value": "",
+                "new_value": item.get("inferred_value"),
+                "source": "job",
+            }
+        )
+    return changes
+
+
+def _flatten_validation_report(report):
+    rows = []
+    for item in report.get("duplicate_entries", []):
+        ids = ", ".join(str(e.get("id")) for e in item.get("entries", []))
+        rows.append(
+            {
+                "issue_type": "duplicate",
+                "taxonomy_id": ids,
+                "name": item.get("name") or "",
+                "detail": (
+                    f"{item.get('count')} rows — "
+                    f"{item.get('genus')} {item.get('species')} "
+                    f"strain={item.get('strain') or ''}"
+                ).strip(),
+            }
+        )
+    for item in report.get("orphaned_entries", []):
+        rows.append(
+            {
+                "issue_type": "orphaned",
+                "taxonomy_id": item.get("taxonomy_id"),
+                "name": item.get("name") or "",
+                "detail": f"taxID={item.get('taxID') or 'none'}",
+            }
+        )
+    for item in report.get("family_inconsistencies", []):
+        rows.append(
+            {
+                "issue_type": "family_inconsistency",
+                "taxonomy_id": "",
+                "name": item.get("family") or "",
+                "detail": f"{item.get('field')}: {item.get('values')}",
+            }
+        )
+    for item in report.get("data_quality_issues", []):
+        rows.append(
+            {
+                "issue_type": item.get("type", "data_quality"),
+                "taxonomy_id": item.get("count", ""),
+                "name": "",
+                "detail": item.get("description", str(item)),
+            }
+        )
+    return rows
+
+
+def _job_taxonomy_validate():
+    from src.database.cleanup.utils.taxonomy_consolidator import TaxonomyConsolidator
+
+    with TaxonomyConsolidator() as consolidator:
+        report = consolidator.validate_taxonomy_consistency()
+    rows = _flatten_validation_report(report)
+    s = report.get("summary", {})
+    summary = (
+        f"{len(rows)} issue(s): "
+        f"{s.get('duplicate_entries', 0)} duplicate group(s), "
+        f"{s.get('orphaned_entries', 0)} orphaned, "
+        f"{s.get('family_inconsistencies', 0)} family inconsistency group(s)"
+        if rows
+        else "No taxonomy consistency issues found."
+    )
+    return {
+        "job": "taxonomy_validate",
+        "mode": "report",
+        "columns": _TAX_VALIDATE_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_taxonomy_clean():
+    from src.database.cleanup.utils.taxonomy_consolidator import TaxonomyConsolidator
+
+    with TaxonomyConsolidator() as consolidator:
+        report = consolidator.clean_taxonomy_data(dry_run=True)
+    proposed = _consolidator_clean_to_changes(report)
+    preview = [
+        {
+            "table": c["table"],
+            "row_id": c["row_id"],
+            "col_id": c["col_id"],
+            "old_value": c["old_value"],
+            "new_value": c["new_value"],
+        }
+        for c in proposed
+    ]
+    s = report.get("summary", {})
+    n = len(proposed)
+    summary = (
+        f"{n} field fix(es) to stage: "
+        f"{s.get('whitespace_fixes', 0)} whitespace, "
+        f"{s.get('species_cleanup', 0)} species, "
+        f"{s.get('strain_cleanup', 0)} strain, "
+        f"{s.get('name_cleanup', 0)} name"
+        if n
+        else "Taxonomy data already clean — nothing to stage."
+    )
+    return {
+        "job": "taxonomy_clean",
+        "mode": "stage",
+        "columns": _STAGE_COLS,
+        "rows": preview,
+        "proposed_changes": proposed,
+        "summary": summary,
+    }
+
+
+def _job_taxonomy_hierarchy_backfill():
+    from src.database.cleanup.utils.taxonomy_consolidator import TaxonomyConsolidator
+
+    with TaxonomyConsolidator() as consolidator:
+        report = consolidator.backfill_taxonomy_hierarchy(dry_run=True)
+    proposed = _consolidator_backfill_to_changes(report)
+    preview = [
+        {
+            "table": c["table"],
+            "row_id": c["row_id"],
+            "col_id": c["col_id"],
+            "old_value": c["old_value"],
+            "new_value": c["new_value"],
+        }
+        for c in proposed
+    ]
+    n = len(proposed)
+    summary = (
+        f"{n} empty hierarchy field(s) can be backfilled from matching family/genus rows"
+        if n
+        else "No empty hierarchy fields to backfill."
+    )
+    return {
+        "job": "taxonomy_hierarchy_backfill",
+        "mode": "stage",
+        "columns": _STAGE_COLS,
+        "rows": preview,
+        "proposed_changes": proposed,
+        "summary": summary,
+    }
+
+
+def _job_taxonomy_link_ships():
+    from src.database.cleanup.utils.fill_taxonomy_from_ome_and_source import (
+        analyze_fill_taxonomy_from_ome_and_source,
+    )
+
+    proposed, preview, counts = analyze_fill_taxonomy_from_ome_and_source(
+        overwrite=False
+    )
+    n = len(proposed)
+    create_n = counts.get("taxonomy_would_create", 0)
+    summary = (
+        f"{n} link(s) to stage: genome={counts.get('from_genome', 0)}, "
+        f"ome={counts.get('from_ome', 0)}, "
+        f"gluck_thaler_2025={counts.get('from_gluck_thaler_2025', 0)}, "
+        f"genome taxonomy_id={counts.get('genome_taxonomy_updates', 0)}"
+        + (
+            f"; {create_n} new taxonomy row(s) need CLI fill (not stageable)"
+            if create_n
+            else ""
+        )
+        if n or create_n
+        else "All joined_ships already linked to taxonomy."
+    )
+    return {
+        "job": "taxonomy_link_ships",
+        "mode": "stage",
+        "columns": _TAX_LINK_COLS,
+        "rows": preview,
+        "proposed_changes": proposed,
+        "summary": summary,
+    }
+
+
+def _job_md5_validation():
+    """Report ships with duplicate MD5 hashes or missing rev_comp_md5."""
+    with get_starbase_session() as session:
+        df = pd.read_sql_query(
+            """
+            WITH dup_md5 AS (
+                SELECT md5 FROM ships
+                WHERE md5 IS NOT NULL AND md5 != ''
+                GROUP BY md5 HAVING COUNT(*) > 1
+            ),
+            dup_rev AS (
+                SELECT rev_comp_md5 FROM ships
+                WHERE rev_comp_md5 IS NOT NULL AND rev_comp_md5 != ''
+                GROUP BY rev_comp_md5 HAVING COUNT(*) > 1
+            )
+            SELECT s.id AS ship_id,
+                   a.accession_tag,
+                   s.md5,
+                   s.rev_comp_md5,
+                   CASE
+                       WHEN s.rev_comp_md5 IS NULL OR s.rev_comp_md5 = ''
+                           THEN 'missing rev_comp_md5'
+                       WHEN s.md5 IN (SELECT md5 FROM dup_md5)
+                           THEN 'duplicate md5'
+                       WHEN s.rev_comp_md5 IN (SELECT rev_comp_md5 FROM dup_rev)
+                           THEN 'duplicate rev_comp_md5'
+                   END AS issue
+            FROM ships s
+            LEFT JOIN accessions a ON s.accession_id = a.id
+            WHERE (s.rev_comp_md5 IS NULL OR s.rev_comp_md5 = '')
+               OR s.md5 IN (SELECT md5 FROM dup_md5)
+               OR s.rev_comp_md5 IN (SELECT rev_comp_md5 FROM dup_rev)
+            ORDER BY issue, s.md5, s.id
+            """,
+            session.bind,
+        )
+
+    rows = df.fillna("").to_dict("records")
+    n_dup = sum(1 for r in rows if "duplicate" in r.get("issue", ""))
+    n_missing = sum(1 for r in rows if "missing" in r.get("issue", ""))
+    summary = (
+        f"{len(rows)} issue(s): {n_dup} duplicate hash row(s), "
+        f"{n_missing} missing rev_comp_md5"
+        if rows
+        else "No MD5 issues found."
+    )
+    return {
+        "job": "md5_validation",
+        "mode": "report",
+        "columns": _REPORT_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_backfill_rev_comp_md5():
+    """Stage rev_comp_md5 backfill for ships where it is NULL."""
+    from src.utils.classification_utils import generate_md5_hash
+    from src.utils.seq_utils import revcomp
+
+    with get_starbase_session() as session:
+        df = pd.read_sql_query(
+            """
+            SELECT s.id, s.sequence, s.rev_comp_md5, a.accession_tag
+            FROM ships s
+            LEFT JOIN accessions a ON s.accession_id = a.id
+            WHERE s.rev_comp_md5 IS NULL OR s.rev_comp_md5 = ''
+            ORDER BY s.id
+            """,
+            session.bind,
+        )
+
+    proposed = []
+    preview_rows = []
+    for _, row in df.iterrows():
+        seq = row.get("sequence") or ""
+        if not seq:
+            preview_rows.append(
+                {
+                    "table": "ships",
+                    "row_id": row["id"],
+                    "col_id": "rev_comp_md5",
+                    "old_value": "",
+                    "new_value": "",
+                    "note": "skipped — no sequence",
+                }
+            )
+            continue
+        new_hash = generate_md5_hash(revcomp(seq))
+        proposed.append(
+            {
+                "table": "ships",
+                "row_id": int(row["id"]),
+                "col_id": "rev_comp_md5",
+                "old_value": row.get("rev_comp_md5") or "",
+                "new_value": new_hash,
+                "source": "job",
+            }
+        )
+        preview_rows.append(
+            {
+                "table": "ships",
+                "row_id": int(row["id"]),
+                "col_id": "rev_comp_md5",
+                "old_value": row.get("rev_comp_md5") or "",
+                "new_value": new_hash,
+            }
+        )
+
+    summary = (
+        f"{len(proposed)} change(s) ready to stage"
+        if proposed
+        else "No ships need rev_comp_md5 backfill."
+    )
+    return {
+        "job": "backfill_rev_comp_md5",
+        "mode": "stage",
+        "columns": _STAGE_COLS,
+        "rows": preview_rows,
+        "proposed_changes": proposed,
+        "summary": summary,
+    }
+
+
+JOB_REGISTRY = {
+    "md5_validation": {
+        "label": "MD5 Duplicate Detection",
+        "description": "Find ships with duplicate or missing MD5 / rev_comp_md5 hashes.",
+        "fn": _job_md5_validation,
+        "mode": "report",
+    },
+    "backfill_rev_comp_md5": {
+        "label": "Backfill missing rev_comp_md5",
+        "description": "Compute rev_comp_md5 for ships where it is NULL (does not overwrite existing values).",
+        "fn": _job_backfill_rev_comp_md5,
+        "mode": "stage",
+    },
+    "taxonomy_validate": {
+        "label": "Taxonomy consistency check",
+        "description": "Report duplicates, orphaned taxonomy rows, and family inconsistencies.",
+        "fn": _job_taxonomy_validate,
+        "mode": "report",
+    },
+    "taxonomy_clean": {
+        "label": "Clean taxonomy fields",
+        "description": "Stage whitespace, species, strain, and name fixes (TaxonomyConsolidator).",
+        "fn": _job_taxonomy_clean,
+        "mode": "stage",
+    },
+    "taxonomy_hierarchy_backfill": {
+        "label": "Backfill taxonomy hierarchy",
+        "description": "Fill empty hierarchy fields from other rows with same family/genus.",
+        "fn": _job_taxonomy_hierarchy_backfill,
+        "mode": "stage",
+    },
+    "taxonomy_link_ships": {
+        "label": "Link missing ship taxonomy",
+        "description": "Stage joined_ships.tax_id links from genome, ome, or gluck_thaler_2025 rules.",
+        "fn": _job_taxonomy_link_ships,
+        "mode": "stage",
+    },
+}
+
+
+def _merge_pending_changes(existing, new_changes):
+    """Merge job/manual pending entries; later entry wins per table/row/col."""
+    pending = list(existing or [])
+    for ch in new_changes:
+        entry = {k: v for k, v in ch.items() if k != "note"}
+        if "source" not in entry:
+            entry["source"] = "job"
+        idx = next(
+            (
+                i
+                for i, p in enumerate(pending)
+                if p.get("table") == entry["table"]
+                and p.get("row_id") == entry["row_id"]
+                and p.get("col_id") == entry["col_id"]
+            ),
+            -1,
+        )
+        if idx >= 0:
+            pending[idx] = entry
+        else:
+            pending.append(entry)
+    return pending
+
+
+def _overlay_job_changes_on_rowdata(table_key, changes):
+    """Re-fetch rowData and overlay staged job values with _dirty='job'."""
+    rows = _refetch_rowdata(table_key)
+    if rows is no_update:
+        return no_update
+    table_changes = [c for c in changes if c.get("table") == table_key]
+    if not table_changes:
+        return no_update
+    by_row = {}
+    for ch in table_changes:
+        by_row.setdefault(ch["row_id"], []).append(ch)
+    out = []
+    for row in rows:
+        rid = row.get("id")
+        nr = {**row, "_dirty": row.get("_dirty", False)}
+        if rid in by_row:
+            for ch in by_row[rid]:
+                nr[ch["col_id"]] = ch.get("new_value", "")
+            nr["_dirty"] = "job"
+        out.append(nr)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -491,11 +1028,110 @@ def _make_grid(df, grid_id, editable_cols):
             "suppressPropertyNamesCheck": True,
             "rowHeight": 40,
             "headerHeight": 44,
-            "rowClassRules": {"admin-unsaved-row": "params.data._dirty === true"},
+            "rowClassRules": {
+                "admin-unsaved-row": "params.data._dirty === 'manual' || params.data._dirty === true",
+                "admin-job-row": "params.data._dirty === 'job'",
+            },
         },
         getRowId="params.data.id",
         className="ag-theme-alpine",
         style={"width": "100%", "height": "600px"},
+    )
+
+
+def _make_result_table(columns, rows, table_id):
+    """Read-only AG Grid for job report / diff preview."""
+    if not rows:
+        return dmc.Text("No rows.", size="sm", c="dimmed")
+    col_defs = [
+        {
+            "field": c,
+            "headerName": c,
+            "filter": True,
+            "sortable": True,
+            "resizable": True,
+            "minWidth": 90,
+        }
+        for c in columns
+    ]
+    return dag.AgGrid(
+        id=table_id,
+        columnDefs=col_defs,
+        rowData=[{k: ("" if v is None else v) for k, v in r.items()} for r in rows],
+        defaultColDef={"resizable": True, "minWidth": 80},
+        dashGridOptions={
+            "pagination": True,
+            "paginationPageSize": 25,
+            "suppressPropertyNamesCheck": True,
+        },
+        className="ag-theme-alpine",
+        style={"width": "100%", "height": "360px"},
+    )
+
+
+def _build_jobs_tab():
+    job_options = [
+        {"label": meta["label"], "value": key} for key, meta in JOB_REGISTRY.items()
+    ]
+    default_job = job_options[0]["value"] if job_options else None
+    default_desc = JOB_REGISTRY[default_job]["description"] if default_job else ""
+
+    return html.Div(
+        [
+            dmc.Text(
+                "Run consistency checks or stage cleanup changes. "
+                "Staged changes merge into the pending-changes queue — review and Save from the toolbar.",
+                size="sm",
+                c="dimmed",
+                mb="sm",
+                mt="xs",
+            ),
+            dmc.Paper(
+                dmc.Stack(
+                    [
+                        dmc.Select(
+                            id="admin-job-select",
+                            label="Job",
+                            data=job_options,
+                            value=default_job,
+                            allowDeselect=False,
+                        ),
+                        dmc.Text(
+                            id="admin-job-description",
+                            size="sm",
+                            c="dimmed",
+                            children=default_desc,
+                        ),
+                        dmc.Group(
+                            [
+                                dmc.Button(
+                                    "Run job",
+                                    id="admin-run-job-btn",
+                                    color="blue",
+                                    size="sm",
+                                ),
+                                dmc.Button(
+                                    "Apply to pending",
+                                    id="admin-apply-job-btn",
+                                    color="teal",
+                                    size="sm",
+                                    variant="light",
+                                    disabled=True,
+                                    style={"display": "none"},
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    gap="sm",
+                ),
+                p="md",
+                withBorder=True,
+                radius="sm",
+                mb="md",
+            ),
+            html.Div(id="admin-job-result-panel"),
+        ]
     )
 
 
@@ -772,6 +1408,11 @@ def _build_admin_layout():
                         label=f"Genomes ({len(gen_df):,})",
                         tab_id="genomes",
                     ),
+                    dbc.Tab(
+                        _build_jobs_tab(),
+                        label="Jobs",
+                        tab_id="jobs",
+                    ),
                 ],
                 active_tab="joined_ships",
             ),
@@ -790,6 +1431,8 @@ layout = html.Div(
         dcc.Location(id="admin-url", refresh=False),
         dcc.Store(id="admin-pending-changes", data=[]),
         dcc.Store(id="admin-selected-submissions", data=[]),
+        dcc.Store(id="admin-job-result", data=None),
+        dcc.Store(id="admin-job-applied", data=False),
         html.Div(id="admin-content"),
         _version_bump_modal(),
         _promote_modal(),
@@ -833,8 +1476,8 @@ function(ev, pending, rowData) {{
     var p = JSON.parse(JSON.stringify(pending || []));
     var idx = -1;
     for (var i = 0; i < p.length; i++) {{ if (p[i].table===tk && p[i].row_id===rid && p[i].col_id===cid) {{ idx=i; break; }} }}
-    if (idx >= 0) {{ p[idx].new_value = nv; }} else {{ p.push({{table:tk,row_id:rid,col_id:cid,old_value:ov,new_value:nv}}); }}
-    var rd = (rowData||[]).map(function(r) {{ return r.id===rid ? Object.assign({{}},r,{{_dirty:true}}) : r; }});
+    if (idx >= 0) {{ p[idx].new_value = nv; p[idx].source = 'manual'; }} else {{ p.push({{table:tk,row_id:rid,col_id:cid,old_value:ov,new_value:nv,source:'manual'}}); }}
+    var rd = (rowData||[]).map(function(r) {{ return r.id===rid ? Object.assign({{}},r,{{_dirty:'manual'}}) : r; }});
     return [rd, p];
 }}
 """
@@ -873,7 +1516,7 @@ clientside_callback(
         var n = (p||[]).length, dis = n===0;
         var lbl = n > 0 ? ('Save '+n+' change'+(n!==1?'s':'')) : 'Save changes';
         var hint = n > 0 ? (n+' unsaved change'+(n!==1?'s':'')+' \u2014 click Save or Discard.')
-                         : 'No pending changes. Yellow cells are editable \u2014 edit freely, then save.';
+                         : 'No pending changes. Yellow cells are editable \u2014 edit freely, then save. Blue rows = job-staged.';
         return [dis, dis, lbl, hint];
     }
     """,
@@ -1225,3 +1868,156 @@ def run_promotion(n_clicks, selected_rows):
 )
 def cancel_promote(n_clicks):
     return False
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — admin jobs
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("admin-job-description", "children"),
+    Input("admin-job-select", "value"),
+)
+def update_job_description(job_key):
+    if not job_key or job_key not in JOB_REGISTRY:
+        return ""
+    return JOB_REGISTRY[job_key]["description"]
+
+
+@callback(
+    [
+        Output("admin-job-result", "data"),
+        Output("admin-job-applied", "data"),
+        Output("notifications-container", "children", allow_duplicate=True),
+    ],
+    Input("admin-run-job-btn", "n_clicks"),
+    State("admin-job-select", "value"),
+    prevent_initial_call=True,
+)
+def run_job(n_clicks, job_key):
+    if not n_clicks or not job_key:
+        return no_update, no_update, no_update
+    meta = JOB_REGISTRY.get(job_key)
+    if not meta:
+        return no_update, no_update, no_update
+    try:
+        result = meta["fn"]()
+        logger.info("admin job %s: %s", job_key, result.get("summary"))
+        return result, False, no_update
+    except Exception as exc:
+        logger.error("admin job %s failed: %s", job_key, exc)
+        notif = dmc.Notification(
+            id=f"admin-job-err-{uuid.uuid4().hex[:6]}",
+            title="Job failed",
+            message=str(exc),
+            color="red",
+            action="show",
+            autoClose=10000,
+        )
+        return no_update, no_update, notif
+
+
+@callback(
+    [
+        Output("admin-job-result-panel", "children"),
+        Output("admin-apply-job-btn", "disabled"),
+        Output("admin-apply-job-btn", "style"),
+        Output("admin-apply-job-btn", "children"),
+    ],
+    [
+        Input("admin-job-result", "data"),
+        Input("admin-job-applied", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def render_job_result(result, applied):
+    if not result:
+        return no_update, no_update, no_update, no_update
+
+    mode = result.get("mode", "report")
+    summary = result.get("summary", "")
+    rows = result.get("rows") or []
+    columns = result.get("columns") or []
+    proposed = result.get("proposed_changes") or []
+    job_label = JOB_REGISTRY.get(result.get("job", ""), {}).get("label", "Job")
+
+    parts = [
+        dmc.Group(
+            [
+                dmc.Text(job_label, fw=600, size="sm"),
+                dmc.Badge(
+                    "Report only" if mode == "report" else "Stage changes",
+                    color="gray" if mode == "report" else "teal",
+                    variant="light",
+                    size="sm",
+                ),
+            ],
+            gap="xs",
+        ),
+        dmc.Text(summary, size="sm"),
+    ]
+    if mode == "stage":
+        parts.append(
+            dmc.Alert(
+                "Review proposed changes below, then Apply to pending. "
+                "Nothing is written until you Save from the toolbar.",
+                color="blue",
+                variant="light",
+            )
+        )
+    if rows:
+        parts.append(_make_result_table(columns, rows, "admin-job-result-grid"))
+    else:
+        parts.append(dmc.Text("No rows to display.", size="sm", c="dimmed"))
+
+    show_apply = mode == "stage" and bool(proposed) and not applied
+    btn_style = {} if show_apply else {"display": "none"}
+    btn_disabled = not show_apply
+    btn_label = f"Apply {len(proposed)} change(s) to pending"
+
+    return dmc.Stack(parts, gap="sm"), btn_disabled, btn_style, btn_label
+
+
+@callback(
+    [
+        Output("admin-pending-changes", "data", allow_duplicate=True),
+        Output("admin-job-applied", "data", allow_duplicate=True),
+        *[Output(gid, "rowData", allow_duplicate=True) for gid in GRID_IDS.values()],
+        Output("notifications-container", "children", allow_duplicate=True),
+    ],
+    Input("admin-apply-job-btn", "n_clicks"),
+    [
+        State("admin-job-result", "data"),
+        State("admin-pending-changes", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def apply_job_changes(n_clicks, result, pending):
+    n_out = len(GRID_IDS) + 3
+    if not n_clicks or not result:
+        return [no_update] * n_out
+
+    proposed = result.get("proposed_changes") or []
+    if not proposed:
+        return [no_update] * n_out
+
+    merged = _merge_pending_changes(pending, proposed)
+    changed_tables = {c["table"] for c in proposed}
+    grid_updates = [
+        _overlay_job_changes_on_rowdata(k, proposed)
+        if k in changed_tables
+        else no_update
+        for k in GRID_IDS
+    ]
+
+    n = len(proposed)
+    notif = dmc.Notification(
+        id=f"admin-job-ok-{uuid.uuid4().hex[:6]}",
+        title="Changes staged",
+        message=f"{n} job change(s) added to pending queue. Review and Save.",
+        color="blue",
+        action="show",
+        autoClose=6000,
+    )
+    return [merged, True, *grid_updates, notif]
