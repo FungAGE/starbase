@@ -1,4 +1,5 @@
 import base64
+import time
 import uuid
 from io import StringIO
 from urllib.parse import parse_qs
@@ -1433,6 +1434,19 @@ layout = html.Div(
         dcc.Store(id="admin-selected-submissions", data=[]),
         dcc.Store(id="admin-job-result", data=None),
         dcc.Store(id="admin-job-applied", data=False),
+        dcc.Store(id="admin-busy", data=False),
+        dcc.Store(id="admin-job-running", data=False),
+        dcc.Store(id="admin-busy-reset", data=0),
+        dcc.Store(id="admin-authed", data=False),
+        dcc.Store(id="admin-ui-state", data={}),
+        dcc.Store(
+            id="admin-apply-job-meta",
+            data={
+                "disabled": True,
+                "style": {"display": "none"},
+                "children": "Apply to pending",
+            },
+        ),
         html.Div(id="admin-content"),
         _version_bump_modal(),
         _promote_modal(),
@@ -1445,24 +1459,190 @@ layout = html.Div(
 
 
 @callback(
-    Output("admin-content", "children"),
+    [
+        Output("admin-content", "children"),
+        Output("admin-authed", "data"),
+    ],
     Input("admin-url", "search"),
 )
 def render_admin_content(search):
     params = parse_qs((search or "").lstrip("?"))
     token = params.get("token", [None])[0]
     if not ADMIN_TOKEN or not token or token != ADMIN_TOKEN:
-        return dmc.Container(
-            dmc.Alert(
-                "A valid ?token= query parameter is required.",
-                title="Unauthorized",
-                color="red",
-                mt="xl",
+        return (
+            dmc.Container(
+                dmc.Alert(
+                    "A valid ?token= query parameter is required.",
+                    title="Unauthorized",
+                    color="red",
+                    mt="xl",
+                ),
+                size="sm",
             ),
-            size="sm",
+            False,
         )
-    return _build_admin_layout()
+    return _build_admin_layout(), True
 
+
+# ---------------------------------------------------------------------------
+# Clientside — mark busy on action button click (cleared by Python when done)
+# ---------------------------------------------------------------------------
+
+clientside_callback(
+    """
+    function() {
+        return true;
+    }
+    """,
+    Output("admin-busy", "data"),
+    Input("admin-apply-job-btn", "n_clicks"),
+    Input("admin-save-btn", "n_clicks"),
+    Input("admin-discard-btn", "n_clicks"),
+    Input("admin-promote-confirm", "n_clicks"),
+    Input("admin-version-confirm", "n_clicks"),
+    prevent_initial_call=True,
+)
+
+# Run job blocks synchronously on the server — set busy immediately in the browser
+# so the button disables before the round-trip completes.
+clientside_callback(
+    """
+    function(n) {
+        if (!n) return [
+            window.dash_clientside.no_update,
+            window.dash_clientside.no_update,
+            window.dash_clientside.no_update,
+            window.dash_clientside.no_update,
+        ];
+        return [true, true, true, 'Running job...'];
+    }
+    """,
+    Output("admin-job-running", "data"),
+    Output("admin-run-job-btn", "disabled", allow_duplicate=True),
+    Output("admin-run-job-btn", "loading", allow_duplicate=True),
+    Output("admin-run-job-btn", "children", allow_duplicate=True),
+    Input("admin-run-job-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+
+# ---------------------------------------------------------------------------
+# Clientside — compute UI state into static store (safe before auth layout loads)
+# ---------------------------------------------------------------------------
+
+clientside_callback(
+    """
+    function(busy, jobRunning, pending, applyMeta, selected) {
+        var isBusy = !!busy || !!jobRunning;
+        var n = (pending || []).length;
+        var meta = applyMeta || {
+            disabled: true,
+            style: {display: 'none'},
+            children: 'Apply to pending'
+        };
+        return {
+            isBusy: isBusy,
+            saveDis: isBusy || n === 0,
+            discardDis: isBusy || n === 0,
+            saveLbl: isBusy ? 'Saving...'
+                : (n > 0 ? ('Save ' + n + ' change' + (n !== 1 ? 's' : '')) : 'Save changes'),
+            hint: isBusy ? 'Working — please wait...'
+                : (n > 0 ? (n + ' unsaved change' + (n !== 1 ? 's' : '') + ' \\u2014 click Save or Discard.')
+                         : 'No pending changes. Yellow cells are editable \\u2014 edit freely, then save. Blue rows = job-staged.'),
+            applyDis: isBusy || !!meta.disabled,
+            applyStyle: meta.style || {display: 'none'},
+            applyLbl: isBusy ? 'Applying...' : (meta.children || 'Apply to pending'),
+            promoteDis: isBusy || !(selected && selected.length),
+            jobSelectDis: isBusy,
+            runJobDis: isBusy,
+            runJobLbl: jobRunning ? 'Running job...' : 'Run job',
+        };
+    }
+    """,
+    Output("admin-ui-state", "data"),
+    Input("admin-busy", "data"),
+    Input("admin-job-running", "data"),
+    Input("admin-pending-changes", "data"),
+    Input("admin-apply-job-meta", "data"),
+    Input("admin-selected-submissions", "data"),
+)
+
+
+# Single duplicate writer clears busy flags after server actions complete.
+@callback(
+    [
+        Output("admin-busy", "data", allow_duplicate=True),
+        Output("admin-job-running", "data", allow_duplicate=True),
+    ],
+    Input("admin-busy-reset", "data"),
+    prevent_initial_call=True,
+)
+def _clear_admin_busy(_token):
+    return False, False
+
+
+# ---------------------------------------------------------------------------
+# Clientside — apply UI state to auth-gated components (only exist after login)
+# ---------------------------------------------------------------------------
+
+clientside_callback(
+    """
+    function(uiState, authed, content) {
+        var nu = window.dash_clientside.no_update;
+        if (!authed || !content || !uiState || uiState.saveDis === undefined) {
+            return [nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu];
+        }
+        var b = uiState.isBusy;
+        return [
+            uiState.saveDis, uiState.discardDis, uiState.saveLbl, uiState.hint,
+            b, b,
+            uiState.runJobDis, b, uiState.runJobLbl,
+            uiState.applyDis, uiState.applyStyle, uiState.applyLbl, b,
+            uiState.promoteDis, b,
+            uiState.jobSelectDis,
+        ];
+    }
+    """,
+    Output("admin-save-btn", "disabled"),
+    Output("admin-discard-btn", "disabled"),
+    Output("admin-save-btn", "children"),
+    Output("admin-pending-label", "children"),
+    Output("admin-save-btn", "loading"),
+    Output("admin-discard-btn", "loading"),
+    Output("admin-run-job-btn", "disabled"),
+    Output("admin-run-job-btn", "loading"),
+    Output("admin-run-job-btn", "children"),
+    Output("admin-apply-job-btn", "disabled"),
+    Output("admin-apply-job-btn", "style"),
+    Output("admin-apply-job-btn", "children"),
+    Output("admin-apply-job-btn", "loading"),
+    Output("admin-promote-btn", "disabled"),
+    Output("admin-promote-btn", "loading"),
+    Output("admin-job-select", "disabled"),
+    Input("admin-ui-state", "data"),
+    Input("admin-authed", "data"),
+    Input("admin-content", "children"),
+    prevent_initial_call=True,
+)
+
+# ---------------------------------------------------------------------------
+# Clientside — modal confirm buttons live in static layout; always safe to update
+# ---------------------------------------------------------------------------
+
+clientside_callback(
+    """
+    function(uiState) {
+        var nu = window.dash_clientside.no_update;
+        if (!uiState || uiState.isBusy === undefined) return [nu, nu, nu, nu];
+        var b = uiState.isBusy;
+        return [b, b, b, b];
+    }
+    """,
+    Output("admin-promote-confirm", "disabled"),
+    Output("admin-promote-confirm", "loading"),
+    Output("admin-version-confirm", "disabled"),
+    Output("admin-version-confirm", "loading"),
+    Input("admin-ui-state", "data"),
+)
 
 # ---------------------------------------------------------------------------
 # Clientside callbacks — cell edits accumulate into pending store + _dirty
@@ -1503,28 +1683,6 @@ clientside_callback(
     "function(r) { return r || []; }",
     Output("admin-selected-submissions", "data"),
     Input("admin-submissions-grid", "selectedRows"),
-    prevent_initial_call=True,
-)
-
-# ---------------------------------------------------------------------------
-# Clientside callback — pending count drives toolbar labels / disabled state
-# ---------------------------------------------------------------------------
-
-clientside_callback(
-    """
-    function(p) {
-        var n = (p||[]).length, dis = n===0;
-        var lbl = n > 0 ? ('Save '+n+' change'+(n!==1?'s':'')) : 'Save changes';
-        var hint = n > 0 ? (n+' unsaved change'+(n!==1?'s':'')+' \u2014 click Save or Discard.')
-                         : 'No pending changes. Yellow cells are editable \u2014 edit freely, then save. Blue rows = job-staged.';
-        return [dis, dis, lbl, hint];
-    }
-    """,
-    Output("admin-save-btn", "disabled"),
-    Output("admin-discard-btn", "disabled"),
-    Output("admin-save-btn", "children"),
-    Output("admin-pending-label", "children"),
-    Input("admin-pending-changes", "data"),
     prevent_initial_call=True,
 )
 
@@ -1581,17 +1739,16 @@ def _make_version_modal_content(successes):
         Output("admin-version-modal-info", "children"),
         Output("admin-version-description", "value"),
         Output("notifications-container", "children"),
+        Output("admin-busy-reset", "data", allow_duplicate=True),
     ],
     Input("admin-save-btn", "n_clicks"),
     State("admin-pending-changes", "data"),
     prevent_initial_call=True,
 )
 def save_all_pending(n_clicks, pending):
-    n_out = (
-        len(GRID_IDS) + 5
-    )  # pending-store + 10 grids + modal-opened + modal-info + description + notif
+    n_out = len(GRID_IDS) + 6  # pending + grids + modal×3 + notif + busy-reset
     if not n_clicks or not pending:
-        return [no_update] * n_out
+        return [no_update] * (n_out - 1) + [time.time()]
 
     logger.info("save_all_pending: %d change(s): %s", len(pending), pending)
     errors, successes = [], []
@@ -1618,24 +1775,25 @@ def save_all_pending(n_clicks, pending):
             action="show",
             autoClose=10000,
         )
-        return [[], *fresh, False, no_update, no_update, notif]
+        return [[], *fresh, False, no_update, no_update, notif, time.time()]
 
     info, desc = _make_version_modal_content([c for c, _ in successes])
-    return [[], *fresh, True, info, desc, no_update]
+    return [[], *fresh, True, info, desc, no_update, time.time()]
 
 
 @callback(
     [
         Output("admin-pending-changes", "data", allow_duplicate=True),
         *[Output(gid, "rowData", allow_duplicate=True) for gid in GRID_IDS.values()],
+        Output("admin-busy-reset", "data", allow_duplicate=True),
     ],
     Input("admin-discard-btn", "n_clicks"),
     prevent_initial_call=True,
 )
 def discard_pending(n_clicks):
     if not n_clicks:
-        return [no_update] * (len(GRID_IDS) + 1)
-    return [[], *[_refetch_rowdata(k) for k in GRID_IDS]]
+        return [no_update] * (len(GRID_IDS) + 1) + [time.time()]
+    return [[], *[_refetch_rowdata(k) for k in GRID_IDS], time.time()]
 
 
 # ---------------------------------------------------------------------------
@@ -1647,6 +1805,7 @@ def discard_pending(n_clicks):
     [
         Output("admin-version-modal", "opened", allow_duplicate=True),
         Output("notifications-container", "children", allow_duplicate=True),
+        Output("admin-busy-reset", "data", allow_duplicate=True),
     ],
     Input("admin-version-confirm", "n_clicks"),
     [
@@ -1657,7 +1816,7 @@ def discard_pending(n_clicks):
 )
 def confirm_version_bump(n_clicks, bump_type, description):
     if not n_clicks:
-        return no_update, no_update
+        return no_update, no_update, no_update
 
     if bump_type == "skip":
         notification = dmc.Notification(
@@ -1668,7 +1827,7 @@ def confirm_version_bump(n_clicks, bump_type, description):
             action="show",
             autoClose=4000,
         )
-        return False, notification
+        return False, notification, time.time()
 
     current_ver = get_database_version()
     new_ver = _bump_version(current_ver, bump_type)
@@ -1689,7 +1848,7 @@ def confirm_version_bump(n_clicks, bump_type, description):
         action="show",
         autoClose=5000,
     )
-    return False, notification
+    return False, notification, time.time()
 
 
 @callback(
@@ -1704,15 +1863,6 @@ def cancel_version_bump(n_clicks):
 # ---------------------------------------------------------------------------
 # Callbacks — promote submission
 # ---------------------------------------------------------------------------
-
-
-@callback(
-    Output("admin-promote-btn", "disabled"),
-    Input("admin-selected-submissions", "data"),
-    prevent_initial_call=True,
-)
-def toggle_promote_button(selected):
-    return not bool(selected)
 
 
 @callback(
@@ -1789,6 +1939,7 @@ def open_promote_modal(n_clicks, selected_rows):
         Output("admin-version-modal-info", "children", allow_duplicate=True),
         Output("admin-version-description", "value", allow_duplicate=True),
         Output("notifications-container", "children", allow_duplicate=True),
+        Output("admin-busy-reset", "data", allow_duplicate=True),
     ],
     Input("admin-promote-confirm", "n_clicks"),
     State("admin-selected-submissions", "data"),
@@ -1796,7 +1947,7 @@ def open_promote_modal(n_clicks, selected_rows):
 )
 def run_promotion(n_clicks, selected_rows):
     if not n_clicks or not selected_rows:
-        return no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, time.time()
 
     results = []
     for row in selected_rows:
@@ -1816,7 +1967,7 @@ def run_promotion(n_clicks, selected_rows):
             action="show",
             autoClose=10000,
         )
-        return False, False, no_update, no_update, notif
+        return False, False, no_update, no_update, notif, time.time()
 
     successes = [r for r in results if r[1]]
     accessions = ", ".join(r[2] for r in successes if r[2])
@@ -1858,7 +2009,7 @@ def run_promotion(n_clicks, selected_rows):
         gap="xs",
     )
     desc = f"admin: promoted submission(s) {accessions} to main DB"
-    return False, True, info, desc, no_update
+    return False, True, info, desc, no_update, time.time()
 
 
 @callback(
@@ -1890,6 +2041,7 @@ def update_job_description(job_key):
         Output("admin-job-result", "data"),
         Output("admin-job-applied", "data"),
         Output("notifications-container", "children", allow_duplicate=True),
+        Output("admin-busy-reset", "data", allow_duplicate=True),
     ],
     Input("admin-run-job-btn", "n_clicks"),
     State("admin-job-select", "value"),
@@ -1897,14 +2049,14 @@ def update_job_description(job_key):
 )
 def run_job(n_clicks, job_key):
     if not n_clicks or not job_key:
-        return no_update, no_update, no_update
+        return no_update, no_update, no_update, time.time()
     meta = JOB_REGISTRY.get(job_key)
     if not meta:
-        return no_update, no_update, no_update
+        return no_update, no_update, no_update, time.time()
     try:
         result = meta["fn"]()
         logger.info("admin job %s: %s", job_key, result.get("summary"))
-        return result, False, no_update
+        return result, False, no_update, time.time()
     except Exception as exc:
         logger.error("admin job %s failed: %s", job_key, exc)
         notif = dmc.Notification(
@@ -1915,25 +2067,24 @@ def run_job(n_clicks, job_key):
             action="show",
             autoClose=10000,
         )
-        return no_update, no_update, notif
+        return no_update, no_update, notif, time.time()
 
 
 @callback(
     [
         Output("admin-job-result-panel", "children"),
-        Output("admin-apply-job-btn", "disabled"),
-        Output("admin-apply-job-btn", "style"),
-        Output("admin-apply-job-btn", "children"),
+        Output("admin-apply-job-meta", "data"),
     ],
     [
         Input("admin-job-result", "data"),
         Input("admin-job-applied", "data"),
+        Input("admin-authed", "data"),
     ],
     prevent_initial_call=True,
 )
-def render_job_result(result, applied):
-    if not result:
-        return no_update, no_update, no_update, no_update
+def render_job_result(result, applied, authed):
+    if not authed or not result:
+        return no_update, no_update
 
     mode = result.get("mode", "report")
     summary = result.get("summary", "")
@@ -1972,11 +2123,13 @@ def render_job_result(result, applied):
         parts.append(dmc.Text("No rows to display.", size="sm", c="dimmed"))
 
     show_apply = mode == "stage" and bool(proposed) and not applied
-    btn_style = {} if show_apply else {"display": "none"}
-    btn_disabled = not show_apply
-    btn_label = f"Apply {len(proposed)} change(s) to pending"
+    apply_meta = {
+        "disabled": not show_apply,
+        "style": {} if show_apply else {"display": "none"},
+        "children": f"Apply {len(proposed)} change(s) to pending",
+    }
 
-    return dmc.Stack(parts, gap="sm"), btn_disabled, btn_style, btn_label
+    return dmc.Stack(parts, gap="sm"), apply_meta
 
 
 @callback(
@@ -1985,6 +2138,7 @@ def render_job_result(result, applied):
         Output("admin-job-applied", "data", allow_duplicate=True),
         *[Output(gid, "rowData", allow_duplicate=True) for gid in GRID_IDS.values()],
         Output("notifications-container", "children", allow_duplicate=True),
+        Output("admin-busy-reset", "data", allow_duplicate=True),
     ],
     Input("admin-apply-job-btn", "n_clicks"),
     [
@@ -1994,13 +2148,13 @@ def render_job_result(result, applied):
     prevent_initial_call=True,
 )
 def apply_job_changes(n_clicks, result, pending):
-    n_out = len(GRID_IDS) + 3
+    n_out = len(GRID_IDS) + 4
     if not n_clicks or not result:
-        return [no_update] * n_out
+        return [no_update] * (n_out - 1) + [time.time()]
 
     proposed = result.get("proposed_changes") or []
     if not proposed:
-        return [no_update] * n_out
+        return [no_update] * (n_out - 1) + [time.time()]
 
     merged = _merge_pending_changes(pending, proposed)
     changed_tables = {c["table"] for c in proposed}
@@ -2020,4 +2174,4 @@ def apply_job_changes(n_clicks, result, pending):
         action="show",
         autoClose=6000,
     )
-    return [merged, True, *grid_updates, notif]
+    return [merged, True, *grid_updates, notif, time.time()]
