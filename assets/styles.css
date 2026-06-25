@@ -158,3 +158,11 @@
 .admin-unsaved-row .ag-cell {
     background-color: transparent !important;
 }
+
+/* Admin — job-staged row highlight */
+.admin-job-row {
+    background-color: var(--mantine-color-blue-1) !important;
+}
+.admin-job-row .ag-cell {
+    background-color: transparent !important;
+}
