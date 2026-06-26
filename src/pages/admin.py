@@ -36,7 +36,7 @@ dash.register_page(__name__, path="/admin", title="Admin", name="Admin")
 # ---------------------------------------------------------------------------
 
 EDITABLE_COLS = {
-    "joined_ships": {"curated_status", "evidence", "source", "tax_id"},
+    "joined_ships": {"curated_status", "evidence", "source", "tax_id", "accession_id"},
     "submissions": {
         "needs_review",
         "classification_family",
@@ -418,6 +418,50 @@ _TAX_VALIDATE_COLS = [
     "detail",
 ]
 
+_ACCESSION_MISSING_COLS = [
+    "ship_id",
+    "sequence_preview",
+    "sequence_length",
+    "md5",
+    "rev_comp_md5",
+]
+
+_ACCESSION_ASSIGN_COLS = [
+    "ship_id",
+    "new_accession",
+    "needs_review",
+    "sequence_length",
+    "note",
+]
+
+_ACCESSION_SYNC_COLS = [
+    "table",
+    "row_id",
+    "col_id",
+    "old_value",
+    "new_value",
+    "ship_id",
+    "starshipID",
+]
+
+_ACCESSION_DIAG_COLS = [
+    "issue_type",
+    "table",
+    "row_id",
+    "ship_id",
+    "detail",
+]
+
+_ACCESSION_CLEANUP_COLS = [
+    "type",
+    "primary_accession",
+    "secondary_accessions",
+    "reason",
+]
+
+# Cap assign-missing preview in admin (full pipeline per ship is expensive)
+_ACCESSION_ASSIGN_PREVIEW_LIMIT = 25
+
 
 def _taxonomy_orm_field_to_col(field):
     if field == "class_":
@@ -797,6 +841,190 @@ def _job_backfill_rev_comp_md5():
     }
 
 
+def _job_accession_status():
+    """Report ships that have sequences but no accession_id."""
+    from src.database.cleanup.utils.accession_manager import AccessionManager
+
+    manager = AccessionManager()
+    missing_df = manager.check_missing_accessions()
+    rows = missing_df.fillna("").to_dict("records") if not missing_df.empty else []
+    stats = manager.stats
+    n = len(rows)
+    summary = (
+        f"{n} ship(s) missing accessions out of "
+        f"{stats.get('ships_checked', 0)} with sequences"
+        if n
+        else "All sequenced ships have accessions."
+    )
+    return {
+        "job": "accession_status",
+        "mode": "report",
+        "columns": _ACCESSION_MISSING_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_accession_assign_preview():
+    """
+    Preview accession assignments for ships missing accessions (dry-run).
+
+    Creates new accession rows + ships.accession_id updates — not stageable via
+    admin save; use CLI accession_manager.py --fix-missing --apply to apply.
+    """
+    from src.database.cleanup.utils.accession_manager import AccessionManager
+
+    manager = AccessionManager()
+    results = manager.assign_missing_accessions(
+        dry_run=True, limit=_ACCESSION_ASSIGN_PREVIEW_LIMIT
+    )
+    rows = []
+    for a in results.get("assignments") or []:
+        rows.append(
+            {
+                "ship_id": a.get("ship_id"),
+                "new_accession": a.get("new_accession", ""),
+                "needs_review": a.get("needs_review", False),
+                "sequence_length": a.get("sequence_length", ""),
+                "note": "CLI apply only — creates accession rows",
+            }
+        )
+    for err in results.get("errors") or []:
+        rows.append(
+            {
+                "ship_id": err.get("ship_id", ""),
+                "new_accession": "",
+                "needs_review": "",
+                "sequence_length": "",
+                "note": f"error: {err.get('error', err)}",
+            }
+        )
+    n = len(results.get("assignments") or [])
+    err_n = len(results.get("errors") or [])
+    summary = (
+        f"Preview ({_ACCESSION_ASSIGN_PREVIEW_LIMIT} ship max): "
+        f"{n} assignment(s), {err_n} error(s). "
+        "Not stageable — run accession_manager.py --fix-missing --apply."
+        if n or err_n
+        else "No ships missing accessions."
+    )
+    return {
+        "job": "accession_assign_preview",
+        "mode": "report",
+        "columns": _ACCESSION_ASSIGN_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_accession_sync():
+    """Stage joined_ships.accession_id from ships.accession_id where out of sync."""
+    from src.database.cleanup.utils.sync_accession_ids import analyze_sync_accession_ids
+
+    proposed, preview, stats = analyze_sync_accession_ids()
+    n = len(proposed)
+    summary = (
+        f"{n} joined_ships.accession_id update(s) to stage "
+        f"({stats.get('already_synced', 0)} already synced, "
+        f"{stats.get('checked', 0)} checked)"
+        if n
+        else f"All {stats.get('checked', 0)} joined_ships accession_ids are in sync."
+    )
+    return {
+        "job": "accession_sync",
+        "mode": "stage",
+        "columns": _ACCESSION_SYNC_COLS,
+        "rows": preview,
+        "proposed_changes": proposed,
+        "summary": summary,
+    }
+
+
+def _job_accession_diagnose():
+    """Report accession sync, FK, duplicate, and orphan issues."""
+    from src.database.cleanup.utils.diagnose_accession_sync import (
+        analyze_accession_sync_issues,
+    )
+
+    rows, counts = analyze_accession_sync_issues()
+    n = len(rows)
+    summary = (
+        f"{n} issue(s): "
+        f"{counts.get('out_of_sync', 0)} out-of-sync, "
+        f"{counts.get('fk_mismatch', 0)} FK mismatch, "
+        f"{counts.get('duplicate_ship_id_groups', 0)} duplicate ship_id group(s), "
+        f"{counts.get('orphaned_joined_ships', 0)} orphaned"
+        if n
+        else "No accession sync issues found."
+    )
+    return {
+        "job": "accession_diagnose",
+        "mode": "report",
+        "columns": _ACCESSION_DIAG_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_accession_fix_duplicates_preview():
+    """Preview duplicate joined_ships.ship_id cleanup (report only)."""
+    from src.database.cleanup.utils.diagnose_accession_sync import (
+        analyze_fix_duplicate_ship_ids,
+    )
+
+    rows, stats = analyze_fix_duplicate_ship_ids()
+    n_clear = stats.get("would_clear", 0)
+    summary = (
+        f"{stats.get('checked', 0)} duplicate row(s): "
+        f"{stats.get('kept', 0)} keep, {n_clear} would clear ship_id/accession_id. "
+        "Not stageable — run diagnose_accession_sync.py --fix-duplicates --apply."
+        if stats.get("checked")
+        else "No duplicate ship_id groups in joined_ships."
+    )
+    return {
+        "job": "accession_fix_duplicates_preview",
+        "mode": "report",
+        "columns": _ACCESSION_DIAG_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_accession_cleanup_analyze():
+    """
+    Report hash-duplicate and reverse-complement accession consolidation groups.
+
+    Full consolidation merges ships/FKs — use cleanup_accessions.py CLI to apply.
+    Nested-sequence detection is skipped here (too slow for interactive admin).
+    """
+    from src.database.cleanup.utils.cleanup_accessions import analyze_accession_cleanup
+
+    _consolidations, preview, stats = analyze_accession_cleanup(include_nested=False)
+    n = stats.get("total_groups", 0)
+    sec = stats.get("secondary_accessions", 0)
+    summary = (
+        f"{n} consolidation group(s) affecting {sec} secondary accession(s): "
+        f"{stats.get('hash_groups', 0)} hash, "
+        f"{stats.get('rev_comp_groups', 0)} rev-comp "
+        f"({stats.get('sequences', 0)} sequences scanned). "
+        "Report only — run cleanup_accessions.py to apply."
+        if n
+        else f"No hash/rev-comp consolidations among {stats.get('sequences', 0)} sequences."
+    )
+    return {
+        "job": "accession_cleanup_analyze",
+        "mode": "report",
+        "columns": _ACCESSION_CLEANUP_COLS,
+        "rows": preview,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
 JOB_REGISTRY = {
     "md5_validation": {
         "label": "MD5 Duplicate Detection",
@@ -833,6 +1061,45 @@ JOB_REGISTRY = {
         "description": "Stage joined_ships.tax_id links from genome, ome, or gluck_thaler_2025 rules.",
         "fn": _job_taxonomy_link_ships,
         "mode": "stage",
+    },
+    "accession_status": {
+        "label": "Accession status",
+        "description": "List ships with sequences but no accession_id.",
+        "fn": _job_accession_status,
+        "mode": "report",
+    },
+    "accession_diagnose": {
+        "label": "Diagnose accession sync",
+        "description": "Report out-of-sync joined_ships, FK mismatches, duplicates, and orphans.",
+        "fn": _job_accession_diagnose,
+        "mode": "report",
+    },
+    "accession_sync": {
+        "label": "Sync joined_ships accession_id",
+        "description": "Stage joined_ships.accession_id updates from ships.accession_id.",
+        "fn": _job_accession_sync,
+        "mode": "stage",
+    },
+    "accession_assign_preview": {
+        "label": "Preview missing accession assignment",
+        "description": (
+            f"Dry-run AccessionManager pipeline (max {_ACCESSION_ASSIGN_PREVIEW_LIMIT} ships). "
+            "Apply via accession_manager.py --fix-missing --apply."
+        ),
+        "fn": _job_accession_assign_preview,
+        "mode": "report",
+    },
+    "accession_cleanup_analyze": {
+        "label": "Analyze accession consolidations",
+        "description": "Report hash-duplicate and reverse-complement groups (fast scan; apply via cleanup_accessions CLI).",
+        "fn": _job_accession_cleanup_analyze,
+        "mode": "report",
+    },
+    "accession_fix_duplicates_preview": {
+        "label": "Preview duplicate ship_id cleanup",
+        "description": "Show joined_ships rows that would be cleared when starshipID != ships.header.",
+        "fn": _job_accession_fix_duplicates_preview,
+        "mode": "report",
     },
 }
 
@@ -933,8 +1200,9 @@ def _promote_submission(sub_id: int):
             "source": "web_submission_promoted",
             "genus": row.get("genus") or "",
             "species": row.get("species") or "",
-            "strain": None,
+            "strain": row.get("strain") or None,
             "contig_id": row.get("hostchr") or "",
+            "assembly_accession": row.get("assembly_accession") or None,
             "element_start": row.get("shipstart"),
             "element_end": row.get("shipend"),
             "element_strand": strand,
