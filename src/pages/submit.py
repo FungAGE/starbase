@@ -3,8 +3,8 @@ import dash
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 
-from dash.dependencies import Output, Input, State, ALL
-from dash import dcc, html, callback, ctx
+from dash.dependencies import Output, Input, State
+from dash import dcc, html, callback, ctx, clientside_callback
 from dash.exceptions import PreventUpdate
 
 import datetime
@@ -17,14 +17,21 @@ from src.components.ui import create_file_upload, _i, _lt
 
 from src.config.logging import get_logger
 from src.config.cache import cache
-from src.config.celery_config import run_task
-from src.tasks import process_submission_task
 from src.utils.web_submission_adapter import (
     WebValidationError,
     parse_fasta_records,
     get_gff_seqids,
     build_submission_entries,
     decode_upload_contents,
+    parse_location_metadata_tsv,
+)
+from src.components.submission_location_grid import (
+    LOCATION_GRID_ID,
+    create_location_grid,
+    create_location_status,
+    create_location_tsv_upload,
+    init_location_rows,
+    rows_to_locations,
 )
 
 import uuid
@@ -33,7 +40,7 @@ from src.utils.email_notifications import (
     send_curator_notification,
     send_submission_confirmation,
 )
-from src.components.submission_queue import create_submission_queue
+from src.components.submission_queue import create_submission_queue_banner
 
 
 logger = get_logger(__name__)
@@ -253,155 +260,6 @@ def get_submission_status(submission_id: str) -> Optional[Dict]:
     return None
 
 
-def create_location_placeholder():
-    """Placeholder before a FASTA file is uploaded."""
-    return dmc.Text(
-        "Upload a FASTA file above to enter organism and location details for each sequence.",
-        size="sm",
-        c="dimmed",
-    )
-
-
-def create_location_table(seq_ids):
-    """Table with one row per FASTA header for host genome location metadata."""
-    rows = []
-    for index, seq_id in enumerate(seq_ids):
-        rows.append(
-            html.Tr(
-                [
-                    html.Td(
-                        dmc.Text(
-                            seq_id,
-                            size="sm",
-                            fw=500,
-                            style={"wordBreak": "break-word", "maxWidth": "180px"},
-                        )
-                    ),
-                    html.Td(
-                        dmc.TextInput(
-                            id={"type": "primary-loc-genus", "index": index},
-                            placeholder="e.g., Alternaria",
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.TextInput(
-                            id={"type": "primary-loc-species", "index": index},
-                            placeholder="e.g., alternata",
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.TextInput(
-                            id={"type": "primary-loc-strain", "index": index},
-                            placeholder="optional",
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.TextInput(
-                            id={"type": "primary-loc-assembly", "index": index},
-                            placeholder="e.g., GCA_000001305.1",
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.TextInput(
-                            id={"type": "primary-loc-hostchr", "index": index},
-                            placeholder="e.g., chr1",
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.NumberInput(
-                            id={"type": "primary-loc-shipstart", "index": index},
-                            placeholder="Start",
-                            min=1,
-                            step=1,
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.NumberInput(
-                            id={"type": "primary-loc-shipend", "index": index},
-                            placeholder="End",
-                            min=1,
-                            step=1,
-                            size="sm",
-                        )
-                    ),
-                    html.Td(
-                        dmc.SegmentedControl(
-                            id={"type": "primary-loc-strand", "index": index},
-                            data=[
-                                {"label": "+", "value": "1"},
-                                {"label": "-", "value": "2"},
-                            ],
-                            value="1",
-                            size="xs",
-                        )
-                    ),
-                ]
-            )
-        )
-
-    children = [
-        dmc.Text(
-            "Starship submissions",
-            size="sm",
-            fw=600,
-            c="dimmed",
-            tt="uppercase",
-        ),
-        dmc.Text(
-            f"{len(seq_ids)} sequence{'s' if len(seq_ids) != 1 else ''} — enter organism and location details for each row.",
-            size="sm",
-            c="dimmed",
-        ),
-    ]
-    if len(seq_ids) > 1:
-        children.append(
-            dmc.Alert(
-                "Annotations in your GFF file are matched to FASTA headers automatically.",
-                color="var(--mantine-color-blue-6)",
-                variant="light",
-                title="Multiple sequences",
-            )
-        )
-
-    children.append(
-        html.Div(
-            dmc.Table(
-                [
-                    html.Thead(
-                        html.Tr(
-                            [
-                                html.Th("Sequence"),
-                                html.Th("Genus"),
-                                html.Th("Species"),
-                                html.Th("Strain"),
-                                html.Th("Genome Accession"),
-                                html.Th("Host contig"),
-                                html.Th("Start"),
-                                html.Th("End"),
-                                html.Th("Strand"),
-                            ]
-                        )
-                    ),
-                    html.Tbody(rows),
-                ],
-                striped=True,
-                highlightOnHover=True,
-                withTableBorder=True,
-                withColumnBorders=True,
-            ),
-            style={"overflowX": "auto"},
-        )
-    )
-
-    return dmc.Stack(children, gap="md")
-
-
 dash.register_page(__name__)
 
 submission_header = dmc.Title(
@@ -599,13 +457,14 @@ contact_section = dmc.Stack(
     gap="md",
 )
 
-# Section: Location (table — one row per FASTA header)
+# Section: Location (editable grid — one row per FASTA header)
 location_section = dmc.Stack(
     [
-        html.Div(
-            id="submit-location-fields",
-            children=create_location_placeholder(),
-        ),
+        dmc.Title("Location Details", order=2, mb="md"),
+        html.Div(id="submit-location-status", children=create_location_status()),
+        create_location_tsv_upload(),
+        html.Div(id="submit-location-tsv-feedback"),
+        create_location_grid(),
     ],
     gap="md",
 )
@@ -742,17 +601,10 @@ data_policy_card = dmc.Alert(
     mb="md",
 )
 
-sidebar = dmc.Box(
-    dmc.Stack(
-        [data_policy_card, create_submission_queue(max_items=15)],
-        gap="md",
-    ),
-    style={
-        "position": "sticky",
-        "top": "var(--mantine-spacing-md)",
-        "maxHeight": "calc(100vh - 2rem)",
-        "overflowY": "auto",
-    },
+top_section = dmc.Stack(
+    [data_policy_card, create_submission_queue_banner(max_items=5)],
+    gap="md",
+    mb="xl",
 )
 
 layout = dmc.Container(
@@ -761,22 +613,11 @@ layout = dmc.Container(
         dcc.Location(id="submit-url", refresh=False),
         dcc.Store(id="submit-fasta-prefill"),
         dcc.Store(id="submit-primary-seq-ids", data=[]),
+        dcc.Store(id="submit-location-rows", data=[]),
         submission_header,
-        dmc.Grid(
-            [
-                dmc.GridCol(
-                    dmc.Stack(
-                        [submission_info_card, submission_body],
-                        gap="xl",
-                    ),
-                    span={"base": "auto", "md": 8},
-                ),
-                dmc.GridCol(
-                    sidebar,
-                    span={"base": "auto", "md": 4},
-                ),
-            ],
-        ),
+        top_section,
+        submission_info_card,
+        submission_body,
         submission_received_modal,
     ],
     style={
@@ -934,6 +775,8 @@ def insert_submission(
     classification=None,
     assembly_accession=None,
     strain=None,
+    submission_group_id=None,
+    processing_status="pending",
 ):
     """
     Insert a new submission record into the submissions table (queue).
@@ -967,10 +810,6 @@ def insert_submission(
                 "%Y-%m-%d %H:%M:%S"
             )
 
-        # Enrich classification with family/navis/haplotype from main DB when closest_match is set
-        if classification:
-            classification = _enrich_classification_from_db(classification)
-
         with get_submissions_session() as session:
             submission = Submission(
                 seq_contents=seq_decoded,
@@ -992,6 +831,8 @@ def insert_submission(
                 comment=comment,
                 accession_tag=accession,
                 needs_review=needs_review,
+                submission_group_id=submission_group_id,
+                processing_status=processing_status,
                 classification_source=classification.get("source")
                 if classification
                 else None,
@@ -1156,19 +997,12 @@ def collect_all_submission_entries(
     anno_contents,
     anno_filename,
     anno_date,
-    primary_loc_genus,
-    primary_loc_species,
-    primary_loc_strain,
-    primary_loc_assembly,
-    primary_loc_hostchr,
-    primary_loc_shipstart,
-    primary_loc_shipend,
-    primary_loc_strand,
+    location_rows,
     uploader,
     evidence,
     comment,
 ):
-    """Collect and validate all Starship entries from the FASTA table."""
+    """Collect and validate all Starship entries from the location grid."""
     errors = []
     if not uploader:
         errors.append("Curator email is required")
@@ -1192,42 +1026,13 @@ def collect_all_submission_entries(
     records = parse_fasta_records(seq_contents, seq_filename)
     expected_count = len(records)
 
-    if not primary_loc_hostchr or len(primary_loc_hostchr) != expected_count:
+    if not location_rows or len(location_rows) != expected_count:
         raise WebValidationError(
             "Provide organism and location details for each sequence in the table below.",
             "location",
         )
 
-    def _cell(values, index):
-        if not values or index >= len(values):
-            return None
-        value = values[index]
-        if isinstance(value, str):
-            value = value.strip()
-        return value or None
-
-    locations = []
-    for index in range(expected_count):
-        strand_val = (
-            primary_loc_strand[index]
-            if primary_loc_strand and index < len(primary_loc_strand)
-            else 1
-        )
-        if isinstance(strand_val, str):
-            strand_val = int(strand_val) if strand_val else 1
-
-        locations.append(
-            {
-                "genus": _cell(primary_loc_genus, index),
-                "species": _cell(primary_loc_species, index),
-                "strain": _cell(primary_loc_strain, index),
-                "assembly_accession": _cell(primary_loc_assembly, index),
-                "hostchr": primary_loc_hostchr[index],
-                "shipstart": primary_loc_shipstart[index],
-                "shipend": primary_loc_shipend[index],
-                "strand_radio": strand_val or 1,
-            }
-        )
+    locations = rows_to_locations(location_rows)
 
     return build_submission_entries(
         seq_contents=seq_contents,
@@ -1244,170 +1049,63 @@ def collect_all_submission_entries(
     )
 
 
-def process_validated_submission_entry(validated_data):
-    """Queue one validated submission entry for async processing."""
-    submission_id = str(uuid.uuid4())
-    shipstrand = "+" if (validated_data.get("strand_radio") or 1) == 1 else "-"
-    seq_contents = validated_data.get("seq_contents")
-    seq_filename = validated_data.get("seq_filename") or validated_data.get("filename")
-    seq_date = validated_data.get("seq_date") or datetime.datetime.now().timestamp()
-
-    try:
-        db_submission_id = insert_submission(
-            seq_contents=seq_contents,
-            seq_filename=seq_filename,
-            seq_date=seq_date,
-            anno_contents=validated_data.get("anno_contents"),
-            anno_filename=validated_data.get("anno_filename"),
-            anno_date=validated_data.get("anno_date"),
-            uploader=validated_data["uploader"],
-            evidence=validated_data["evidence"],
-            genus=validated_data["genus"],
-            species=validated_data["species"],
-            strain=validated_data.get("strain"),
-            hostchr=validated_data["hostchr"],
-            shipstart=validated_data["shipstart"],
-            shipend=validated_data["shipend"],
-            shipstrand=shipstrand,
-            comment=validated_data.get("comment") or "",
-            accession=None,
-            needs_review=True,
-            classification=validated_data.get("classification"),
-            assembly_accession=validated_data.get("assembly_accession"),
-        )
-        validated_data["db_submission_id"] = db_submission_id
-    except Exception as e:
-        logger.warning(f"Failed to insert submission into queue (continuing): {e}")
-        validated_data["db_submission_id"] = None
-
-    create_submission_status(submission_id, "queued")
-    task_result = run_task(process_submission_task, validated_data, submission_id)
-
-    accession_assigned = None
-    if hasattr(task_result, "id"):
-        update_submission_status(
-            submission_id,
-            "processing",
-            progress=10,
-            message="Your submission is in the queue. Processing usually takes a few minutes.",
-        )
-        cache.set(f"task:{submission_id}", task_result.id, timeout=3600)
-    else:
-        update_submission_status(
-            submission_id,
-            "completed" if task_result.get("success") else "failed",
-            progress=100,
-            message=task_result.get("message", "Processing complete"),
-            result=task_result,
-        )
-        if task_result.get("success"):
-            accession_assigned = task_result.get("accession")
-
-    return submission_id, task_result, accession_assigned
+def insert_submission_from_entry(entry: dict, submission_group_id: str) -> int:
+    """Insert one validated entry into the submissions queue (no processing)."""
+    shipstrand = "+" if (entry.get("strand_radio") or 1) == 1 else "-"
+    seq_date = entry.get("seq_date") or datetime.datetime.now().timestamp()
+    return insert_submission(
+        seq_contents=entry.get("seq_contents"),
+        seq_filename=entry.get("seq_filename") or entry.get("filename"),
+        seq_date=seq_date,
+        anno_contents=entry.get("anno_contents"),
+        anno_filename=entry.get("anno_filename"),
+        anno_date=entry.get("anno_date"),
+        uploader=entry["uploader"],
+        evidence=entry["evidence"],
+        genus=entry["genus"],
+        species=entry["species"],
+        strain=entry.get("strain"),
+        hostchr=entry["hostchr"],
+        shipstart=entry["shipstart"],
+        shipend=entry["shipend"],
+        shipstrand=shipstrand,
+        comment=entry.get("comment") or "",
+        accession=None,
+        needs_review=True,
+        classification=entry.get("classification"),
+        assembly_accession=entry.get("assembly_accession"),
+        submission_group_id=submission_group_id,
+        processing_status="pending",
+    )
 
 
-def build_submission_success_message(entries, results):
-    """Build modal feedback for one or more queued submissions."""
-    _submission_ids = [item["submission_id"] for item in results]
-    async_pending = any(item["async"] for item in results)
-
-    if len(entries) == 1:
-        result = results[0]
-        submission_id = result["submission_id"]
-        task_result = result["task_result"]
-        if async_pending:
-            return dmc.Alert(
-                children=[
-                    dmc.Text(
-                        "Your submission is in the queue and will be processed shortly.",
-                        fw=600,
-                        size="lg",
-                    ),
-                    html.Br(),
-                    dmc.Text(f"Submission ID: {submission_id}", size="sm", c="dimmed"),
-                    html.Br(),
-                    dmc.Text(
-                        "We'll email you when processing is complete. Our curation team will then review your submission.",
-                        size="sm",
-                    ),
-                ],
-                title="Submission received",
-                color="var(--mantine-color-green-6)",
-                variant="light",
-            )
-        if task_result.get("success"):
-            return dmc.Alert(
-                children=[
-                    dmc.Text(
-                        f"Accession: {task_result['accession']}",
-                        size="md",
-                        fw=500,
-                        c="var(--mantine-color-green-6)",
-                    ),
-                    dmc.Text(
-                        f"StarshipID: {task_result['filename']}",
-                        size="sm",
-                        c="dimmed",
-                    ),
-                    html.Br(),
-                    dmc.Text(
-                        "The submission still has to be curated in order to be visible on starbase. You may be contacted via email if we need some more information.",
-                        size="sm",
-                    ),
-                ],
-                title="Submission complete",
-                color="var(--mantine-color-green-6)",
-                variant="light",
-            )
-        return dmc.Alert(
-            children=[
-                dmc.Text(
-                    task_result.get(
-                        "user_message",
-                        "We couldn't complete your submission. Please check your input and try again.",
-                    ),
-                    size="sm",
-                ),
-            ],
-            title="Submission failed",
-            color="var(--mantine-color-red-6)",
-            variant="light",
-        )
-
-    list_items = []
-    for entry, result in zip(entries, results):
-        label = entry.get("filename") or entry.get("seq_id")
-        list_items.append(dmc.ListItem(f"{label} — ID {result['submission_id'][:8]}…"))
-
-    if async_pending:
-        return dmc.Alert(
-            children=[
-                dmc.Text(
-                    f"Queued {len(entries)} Starship submissions.",
-                    fw=600,
-                    size="lg",
-                ),
-                dmc.List(list_items, size="sm", spacing="xs"),
-                dmc.Text(
-                    "We'll email you when processing is complete. Our curation team will then review each submission.",
-                    size="sm",
-                ),
-            ],
-            title="Submissions received",
-            color="var(--mantine-color-green-6)",
-            variant="light",
-        )
+def build_submission_success_message(group_id: str, ship_count: int, entries: list):
+    """Build modal feedback for a grouped submission upload."""
+    ship_labels = [
+        entry.get("seq_id") or entry.get("filename") or f"Ship {index + 1}"
+        for index, entry in enumerate(entries)
+    ]
+    list_items = [dmc.ListItem(label) for label in ship_labels]
 
     return dmc.Alert(
         children=[
             dmc.Text(
-                f"Processed {len(entries)} Starship submissions.",
+                f"Uploaded {ship_count} Starship{'s' if ship_count != 1 else ''}.",
                 fw=600,
                 size="lg",
             ),
-            dmc.List(list_items, size="sm", spacing="xs"),
+            dmc.Text(f"Submission ID: {group_id}", size="sm", c="dimmed"),
+            html.Br(),
+            dmc.List(list_items, size="sm", spacing="xs")
+            if len(list_items) > 1
+            else None,
+            dmc.Text(
+                "Your submission has been received and will be reviewed by our curation team. "
+                "You will be contacted by email if we need more information.",
+                size="sm",
+            ),
         ],
-        title="Submissions complete",
+        title="Submission received",
         color="var(--mantine-color-green-6)",
         variant="light",
     )
@@ -1442,7 +1140,9 @@ def disable_consent_during_submit(loading):
         Output("evidence", "value", allow_duplicate=True),
         Output("comment", "value", allow_duplicate=True),
         Output("submit-primary-seq-ids", "data", allow_duplicate=True),
-        Output("submit-location-fields", "children", allow_duplicate=True),
+        Output("submit-location-rows", "data", allow_duplicate=True),
+        Output(LOCATION_GRID_ID, "rowData", allow_duplicate=True),
+        Output("submit-location-status", "children", allow_duplicate=True),
     ],
     [
         Input("submit-ship", "n_clicks"),
@@ -1457,14 +1157,7 @@ def disable_consent_during_submit(loading):
         State("submit-upload-gff", "contents"),
         State("submit-upload-gff", "filename"),
         State("submit-upload-gff", "last_modified"),
-        State({"type": "primary-loc-genus", "index": ALL}, "value"),
-        State({"type": "primary-loc-species", "index": ALL}, "value"),
-        State({"type": "primary-loc-strain", "index": ALL}, "value"),
-        State({"type": "primary-loc-assembly", "index": ALL}, "value"),
-        State({"type": "primary-loc-hostchr", "index": ALL}, "value"),
-        State({"type": "primary-loc-shipstart", "index": ALL}, "value"),
-        State({"type": "primary-loc-shipend", "index": ALL}, "value"),
-        State({"type": "primary-loc-strand", "index": ALL}, "value"),
+        State("submit-location-rows", "data"),
         State("uploader", "value"),
         State("evidence", "value"),
         State("comment", "value"),
@@ -1486,21 +1179,14 @@ def submit_ship(
     anno_contents,
     anno_filename,
     anno_date,
-    primary_loc_genus,
-    primary_loc_species,
-    primary_loc_strain,
-    primary_loc_assembly,
-    primary_loc_hostchr,
-    primary_loc_shipstart,
-    primary_loc_shipend,
-    primary_loc_strand,
+    location_rows,
     uploader,
     evidence,
     comment,
 ):
     """Validate and queue one or more Starship submissions."""
     triggered_id = ctx.triggered_id if ctx.triggered else None
-    no_update_tail = (dash.no_update,) * 5
+    no_update_tail = (dash.no_update,) * 7
 
     if triggered_id == "close":
         return (False, "", *no_update_tail)
@@ -1529,61 +1215,43 @@ def submit_ship(
             anno_contents=anno_contents,
             anno_filename=anno_filename,
             anno_date=anno_date,
-            primary_loc_genus=primary_loc_genus,
-            primary_loc_species=primary_loc_species,
-            primary_loc_strain=primary_loc_strain,
-            primary_loc_assembly=primary_loc_assembly,
-            primary_loc_hostchr=primary_loc_hostchr,
-            primary_loc_shipstart=primary_loc_shipstart,
-            primary_loc_shipend=primary_loc_shipend,
-            primary_loc_strand=primary_loc_strand,
+            location_rows=location_rows,
             uploader=uploader,
             evidence=evidence,
             comment=comment,
         )
 
-        results = []
+        group_id = str(uuid.uuid4())
         for entry in entries:
-            submission_id, task_result, accession_assigned = (
-                process_validated_submission_entry(entry)
-            )
-            results.append(
-                {
-                    "submission_id": submission_id,
-                    "task_result": task_result,
-                    "accession_assigned": accession_assigned,
-                    "async": hasattr(task_result, "id"),
-                }
-            )
-            try:
-                send_curator_notification(submission_id, entry, accession_assigned)
-                if uploader:
-                    send_submission_confirmation(
-                        uploader, submission_id, accession_assigned
-                    )
-            except Exception as e:
-                logger.error(f"Failed to send email notifications: {str(e)}")
+            insert_submission_from_entry(entry, group_id)
 
-        message = build_submission_success_message(entries, results)
-        reset_form = all(
-            item["async"] or item["task_result"].get("success") for item in results
-        )
-
-        if reset_form:
-            return (
-                True,
-                message,
-                "",
-                "",
-                "",
-                [],
-                create_location_placeholder(),
+        try:
+            send_curator_notification(
+                group_id,
+                entries,
+                uploader=uploader,
+                evidence=evidence,
+                comment=comment,
             )
+            if uploader:
+                send_submission_confirmation(
+                    uploader, group_id, ship_count=len(entries)
+                )
+        except Exception as e:
+            logger.error(f"Failed to send email notifications: {str(e)}")
+
+        message = build_submission_success_message(group_id, len(entries), entries)
 
         return (
             True,
             message,
-            *no_update_tail,
+            "",
+            "",
+            "",
+            [],
+            [],
+            [],
+            create_location_status(),
         )
 
     except WebValidationError as e:
@@ -1618,32 +1286,174 @@ def submit_ship(
 
 @callback(
     [
-        Output("submit-location-fields", "children"),
+        Output("submit-location-rows", "data"),
+        Output(LOCATION_GRID_ID, "rowData"),
         Output("submit-primary-seq-ids", "data"),
+        Output("submit-location-status", "children"),
+        Output(LOCATION_GRID_ID, "style"),
+        Output(LOCATION_GRID_ID, "dashGridOptions"),
     ],
     [
         Input("submit-fasta-upload", "contents"),
         Input("submit-fasta-upload", "filename"),
         Input("submit-fasta-prefill", "data"),
     ],
+    State("submit-location-rows", "data"),
 )
-def update_primary_location_fields(seq_contents, seq_filename, fasta_prefill):
-    """Render location table with one row per FASTA header."""
+def update_primary_location_fields(
+    seq_contents, seq_filename, fasta_prefill, existing_rows
+):
+    """Initialize location grid rows from FASTA headers."""
+    from src.components.submission_location_grid import grid_height
+
     resolved_contents, resolved_filename, _seq_date = _resolve_primary_fasta(
         fasta_prefill, seq_contents, seq_filename, None
     )
     if not resolved_contents:
-        return create_location_placeholder(), []
+        return (
+            [],
+            [],
+            [],
+            create_location_status(),
+            {"width": "100%", "height": "200px"},
+            dash.no_update,
+        )
 
     try:
         records = parse_fasta_records(
             resolved_contents, resolved_filename or "upload.fa"
         )
     except WebValidationError:
-        return create_location_placeholder(), []
+        return (
+            [],
+            [],
+            [],
+            create_location_status(),
+            {"width": "100%", "height": "200px"},
+            dash.no_update,
+        )
 
     seq_ids = [record["id"] for record in records]
-    return create_location_table(seq_ids), seq_ids
+    rows = init_location_rows(seq_ids, existing_rows)
+    grid_style = {"width": "100%", "height": grid_height(len(rows))}
+    grid_options = {
+        "suppressPropertyNamesCheck": True,
+        "rowHeight": 40,
+        "headerHeight": 44,
+        "enableCellTextSelection": True,
+        "ensureDomOrder": True,
+    }
+    return (
+        rows,
+        rows,
+        seq_ids,
+        create_location_status(seq_ids),
+        grid_style,
+        grid_options,
+    )
+
+
+clientside_callback(
+    """
+    function(ev, rowData) {
+        if (!ev || !rowData) {
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+        }
+        var shipHeader = ev.data && ev.data.ship_header;
+        var colId = ev.colId;
+        if (!shipHeader || !colId) {
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+        }
+        var newValue = (ev.data && ev.data[colId] !== undefined) ? ev.data[colId] : ev.value;
+        var updatedRows = rowData.map(function(row) {
+            if (row.ship_header !== shipHeader) {
+                return row;
+            }
+            var copy = Object.assign({}, row);
+            copy[colId] = newValue;
+            return copy;
+        });
+        return [updatedRows, updatedRows];
+    }
+    """,
+    Output("submit-location-rows", "data", allow_duplicate=True),
+    Output(LOCATION_GRID_ID, "rowData", allow_duplicate=True),
+    Input(LOCATION_GRID_ID, "cellValueChanged"),
+    State(LOCATION_GRID_ID, "rowData"),
+    prevent_initial_call=True,
+)
+
+
+@callback(
+    [
+        Output("submit-location-rows", "data", allow_duplicate=True),
+        Output(LOCATION_GRID_ID, "rowData", allow_duplicate=True),
+        Output("submit-location-tsv-feedback", "children"),
+    ],
+    Input("submit-location-tsv-upload", "contents"),
+    [
+        State("submit-location-tsv-upload", "filename"),
+        State("submit-primary-seq-ids", "data"),
+        State("submit-location-rows", "data"),
+    ],
+    prevent_initial_call=True,
+)
+def import_location_tsv(contents, filename, seq_ids, existing_rows):
+    """Import location metadata from TSV/CSV matched by ship header."""
+    if not contents:
+        raise PreventUpdate
+
+    if not seq_ids:
+        return (
+            dash.no_update,
+            dash.no_update,
+            dmc.Alert(
+                "Upload a FASTA file before importing metadata.",
+                title="No sequences loaded",
+                color="var(--mantine-color-orange-6)",
+                variant="light",
+            ),
+        )
+
+    try:
+        decoded = decode_upload_contents(contents)
+        rows, imported_count = parse_location_metadata_tsv(
+            decoded, seq_ids, existing_rows
+        )
+        return (
+            rows,
+            rows,
+            dmc.Alert(
+                f"Imported metadata for {imported_count} row(s) from {filename or 'uploaded file'}. "
+                "Empty cells were skipped; ships not listed in the file were unchanged.",
+                title="Metadata imported",
+                color="var(--mantine-color-green-6)",
+                variant="light",
+            ),
+        )
+    except WebValidationError as exc:
+        return (
+            dash.no_update,
+            dash.no_update,
+            dmc.Alert(
+                str(exc.message),
+                title="Metadata import failed",
+                color="var(--mantine-color-red-6)",
+                variant="light",
+            ),
+        )
+    except Exception as exc:
+        logger.error(f"Failed to import location metadata: {exc}", exc_info=True)
+        return (
+            dash.no_update,
+            dash.no_update,
+            dmc.Alert(
+                "Could not read the metadata file. Check the format and try again.",
+                title="Metadata import failed",
+                color="var(--mantine-color-red-6)",
+                variant="light",
+            ),
+        )
 
 
 @callback(

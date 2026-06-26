@@ -39,29 +39,29 @@ def anonymize_email(email: str) -> str:
 
 def get_pending_submissions() -> List[Dict[str, Any]]:
     """
-    Get all pending submissions from database.
+    Get pending submission groups from database.
 
-    Returns:
-        List of pending submission dicts
+    Returns one row per submission group (most recent ship row per group).
     """
     try:
         with get_submissions_session() as session:
-            # Query for submissions that need review or are pending
             query = text("""
-                SELECT 
-                    id,
-                    seq_filename,
-                    seq_date,
-                    uploader,
-                    evidence,
-                    genus,
-                    species,
-                    accession_tag,
-                    needs_review,
-                    id as created_at
+                SELECT
+                    COALESCE(submission_group_id, CAST(id AS TEXT)) AS submission_group_id,
+                    MIN(id) AS id,
+                    COUNT(*) AS ship_count,
+                    MIN(seq_filename) AS seq_filename,
+                    MIN(seq_date) AS seq_date,
+                    MIN(uploader) AS uploader,
+                    MIN(evidence) AS evidence,
+                    MIN(genus) AS genus,
+                    MIN(species) AS species,
+                    MIN(processing_status) AS processing_status
                 FROM submissions
-                WHERE needs_review = TRUE OR needs_review IS NULL
-                ORDER BY id DESC
+                WHERE processing_status IN ('pending', 'processed')
+                  AND (needs_review = TRUE OR needs_review IS NULL)
+                GROUP BY COALESCE(submission_group_id, CAST(id AS TEXT))
+                ORDER BY MIN(id) DESC
                 LIMIT 50
             """)
 
@@ -69,18 +69,21 @@ def get_pending_submissions() -> List[Dict[str, Any]]:
             submissions = []
 
             for row in result:
+                group_id = row.submission_group_id or str(row.id)
+                status = row.processing_status or "pending"
                 submissions.append(
                     {
                         "id": row.id,
+                        "group_id": group_id,
+                        "ship_count": row.ship_count,
                         "filename": row.seq_filename,
                         "date": row.seq_date,
                         "submitter": anonymize_email(row.uploader),
                         "evidence": row.evidence,
                         "genus": row.genus,
                         "species": row.species,
-                        "accession": row.accession_tag,
-                        "needs_review": row.needs_review,
-                        "created_at": row.created_at,
+                        "processing_status": status,
+                        "created_at": row.id,
                     }
                 )
 
@@ -93,7 +96,7 @@ def get_pending_submissions() -> List[Dict[str, Any]]:
 
 def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
     """
-    Create a card for a single submission.
+    Create a card for a single submission group.
 
     Args:
         submission: Submission data dict
@@ -101,13 +104,18 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
     Returns:
         Card component
     """
-    # Format date
     if isinstance(submission["date"], str):
         date_str = submission["date"]
     else:
         date_str = (
             submission["date"].strftime("%Y-%m-%d") if submission["date"] else "Unknown"
         )
+
+    status = submission.get("processing_status") or "pending"
+    badge_label = "Under review" if status == "processed" else "Pending review"
+    badge_color = "blue" if status == "processed" else "gray"
+    group_label = submission.get("group_id") or f"#{submission['id']}"
+    ship_count = submission.get("ship_count") or 1
 
     return dmc.Card(
         children=[
@@ -118,15 +126,14 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
                             dmc.Group(
                                 [
                                     dmc.Text(
-                                        f"#{submission['id']}",
+                                        group_label[:13]
+                                        + ("…" if len(group_label) > 13 else ""),
                                         fw=600,
                                         size="md",
                                     ),
                                     dmc.Badge(
-                                        submission["accession"] or "Pending",
-                                        color="blue"
-                                        if submission["accession"]
-                                        else "gray",
+                                        badge_label,
+                                        color=badge_color,
                                         variant="light",
                                     ),
                                 ],
@@ -150,6 +157,12 @@ def create_submission_queue_card(submission: Dict[str, Any]) -> dmc.Card:
                             ),
                             dmc.Group(
                                 [
+                                    dmc.Text(
+                                        f"{ship_count} ship{'s' if ship_count != 1 else ''}",
+                                        size="xs",
+                                        c="dimmed",
+                                    ),
+                                    dmc.Text("•", size="xs", c="dimmed"),
                                     dmc.Text(
                                         f"Method: {submission['evidence']}",
                                         size="xs",
@@ -213,7 +226,6 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
             size="lg",
         )
 
-    # Create submission cards
     cards = [create_submission_queue_card(sub) for sub in submissions]
 
     output = dmc.Container(
@@ -247,6 +259,98 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
     return output
 
 
+def create_submission_queue_banner(max_items: int = 5):
+    """Compact pending queue for the top of the submit page."""
+    all_pending = get_pending_submissions()
+    submissions = all_pending[:max_items]
+    total_pending = len(all_pending)
+
+    if not submissions:
+        return dmc.Paper(
+            children=[
+                dmc.Group(
+                    [
+                        dmc.Text("Pending Submissions", fw=600, size="sm"),
+                        dmc.Badge(
+                            "All clear", color="green", variant="light", size="sm"
+                        ),
+                    ],
+                    justify="space-between",
+                ),
+            ],
+            p="md",
+            radius="md",
+            withBorder=True,
+            mb="md",
+        )
+
+    items = []
+    for sub in submissions:
+        status = sub.get("processing_status") or "pending"
+        badge_label = "Review" if status == "processed" else "Pending"
+        group_label = sub.get("group_id") or f"#{sub['id']}"
+        if len(group_label) > 16:
+            group_label = group_label[:16] + "…"
+        ship_count = sub.get("ship_count") or 1
+        items.append(
+            dmc.Group(
+                [
+                    dmc.Text(
+                        group_label, size="sm", fw=500, style={"minWidth": "100px"}
+                    ),
+                    dmc.Text(
+                        f"{sub.get('genus', '')} {sub.get('species', '')}".strip()
+                        or "Unknown",
+                        size="sm",
+                        c="dimmed",
+                        style={"flex": 1},
+                        truncate=True,
+                    ),
+                    dmc.Text(
+                        f"{ship_count} ship{'s' if ship_count != 1 else ''}",
+                        size="xs",
+                        c="dimmed",
+                    ),
+                    dmc.Badge(badge_label, size="sm", variant="light"),
+                ],
+                gap="sm",
+                wrap="nowrap",
+                style={"width": "100%"},
+            )
+        )
+
+    return dmc.Paper(
+        children=[
+            dmc.Group(
+                [
+                    dmc.Text("Pending Submissions", fw=600, size="sm"),
+                    dmc.Badge(
+                        f"{total_pending} pending",
+                        color="var(--mantine-color-orange-6)",
+                        variant="light",
+                        size="sm",
+                    ),
+                ],
+                justify="space-between",
+                mb="sm",
+            ),
+            dmc.Stack(items, gap="xs"),
+            dmc.Text(
+                f"Showing {len(submissions)} most recent"
+                + (f" of {total_pending}" if total_pending > len(submissions) else ""),
+                size="xs",
+                c="dimmed",
+                ta="right",
+                mt="xs",
+            ),
+        ],
+        p="md",
+        radius="md",
+        withBorder=True,
+        mb="md",
+    )
+
+
 def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
     """
     Create compact submission queue for dashboard.
@@ -271,6 +375,8 @@ def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
 
     items = []
     for sub in submissions:
+        status = sub.get("processing_status") or "pending"
+        badge_label = "Review" if status == "processed" else "Pending"
         items.append(
             dmc.Group(
                 [
@@ -293,7 +399,7 @@ def create_compact_submission_queue(max_items: int = 5) -> dmc.Card:
                         style={"flex": 1},
                     ),
                     dmc.Badge(
-                        sub["accession"] or "Pending",
+                        badge_label,
                         size="sm",
                         variant="light",
                     ),

@@ -396,15 +396,22 @@ def _process_submission_impl(
     submission_data: Dict[str, Any], submission_id: str = None
 ) -> Dict[str, Any]:
     """
-    Implementation of submission processing task.
+    Process a staging submission row (admin-triggered).
 
-    Args:
-        submission_data: Dict containing all submission data
-        submission_id: Optional submission ID for status tracking
-
-    Returns:
-        Dict with processing results
+    When submission_data contains db_submission_id, runs staging checks and
+    accession assignment via process_staging_submission.
     """
+    db_submission_id = (
+        submission_data.get("db_submission_id")
+        if isinstance(submission_data, dict)
+        else None
+    )
+    if db_submission_id:
+        from src.utils.web_submission_adapter import process_staging_submission
+
+        logger.info(f"Processing staging submission row {db_submission_id}")
+        return process_staging_submission(db_submission_id)
+
     try:
         from src.utils.web_submission_adapter import (
             validate_submission_data,

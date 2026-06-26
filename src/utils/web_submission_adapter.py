@@ -18,15 +18,19 @@ from typing import Dict, Any, List, Optional, Set
 from Bio import SeqIO
 from io import StringIO
 
+import pandas as pd
+
 from src.config.logging import get_logger
 from src.utils.submission_utils import (
     SubmissionProcessor,
     validate_submission,
     check_sequence_duplicate,
 )
-from src.utils.seq_utils import clean_sequence
-from src.utils.classification_utils import assign_accession
+from src.utils.seq_utils import clean_sequence, revcomp
+from src.utils.classification_utils import assign_accession, generate_md5_hash
 from src.database.sql_manager import fetch_ships
+from src.database.sql_engine import get_submissions_session
+from sqlalchemy import text
 
 logger = get_logger(__name__)
 
@@ -294,6 +298,160 @@ def validate_organism_fields(
         raise WebValidationError("; ".join(errors))
 
 
+def _normalize_metadata_strand(value: Any) -> str:
+    normalized = str(value).strip().lower()
+    if normalized in ("+", "1", "plus"):
+        return "+"
+    if normalized in ("-", "2", "minus"):
+        return "-"
+    raise WebValidationError(
+        f"Invalid strand value '{value}'. Use +, -, 1, 2, plus, or minus."
+    )
+
+
+def _parse_metadata_coordinate(value: Any) -> Optional[int]:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def infer_metadata_strand(
+    strand_value: Any,
+    shipstart: Any = None,
+    shipend: Any = None,
+) -> str:
+    """
+    Resolve strand as '+' or '-'.
+
+    Uses explicit strand when provided; otherwise infers reverse strand when
+    start > end (same rule as process_submission_data).
+    """
+    if strand_value is not None and str(strand_value).strip() != "":
+        return _normalize_metadata_strand(strand_value)
+
+    start = _parse_metadata_coordinate(shipstart)
+    end = _parse_metadata_coordinate(shipend)
+    if start is not None and end is not None and start > end:
+        return "-"
+    return "+"
+
+
+METADATA_COLUMNS = {
+    "ship_header",
+    "genus",
+    "species",
+    "strain",
+    "assembly_accession",
+    "hostchr",
+    "shipstart",
+    "shipend",
+    "strand",
+}
+
+
+def _validate_metadata_columns(raw_columns: List[str]) -> List[str]:
+    """Require exact column names; only ship_header is mandatory."""
+    columns = [str(col).strip() for col in raw_columns if str(col).strip()]
+    unknown = set(columns) - METADATA_COLUMNS
+    if unknown:
+        raise WebValidationError(
+            "Unknown metadata column(s): "
+            + ", ".join(sorted(unknown))
+            + ". Allowed columns: "
+            + ", ".join(sorted(METADATA_COLUMNS))
+        )
+    if "ship_header" not in columns:
+        raise WebValidationError("Metadata file must include a ship_header column")
+    return columns
+
+
+def parse_location_metadata_tsv(
+    contents: str,
+    expected_seq_ids: List[str],
+    existing_rows: Optional[List[Dict[str, Any]]] = None,
+) -> tuple:
+    """
+    Parse TSV/CSV metadata and merge into location grid rows by ship header.
+
+    Column headers must match exactly: ship_header (required), plus any of
+    genus, species, strain, assembly_accession, hostchr, shipstart, shipend,
+    strand. Only non-empty cells overwrite the table. Strand is inferred from
+    start/end when omitted.
+
+    Returns:
+        (merged_rows, imported_row_count)
+    """
+    from io import StringIO
+    from src.components.submission_location_grid import init_location_rows
+
+    if not contents or not contents.strip():
+        raise WebValidationError("Metadata file is empty")
+
+    first_line = contents.strip().splitlines()[0]
+    delimiter = "\t" if "\t" in first_line else ","
+
+    try:
+        df = pd.read_csv(
+            StringIO(contents), sep=delimiter, dtype=str, keep_default_na=False
+        )
+    except Exception as exc:
+        raise WebValidationError(f"Could not parse metadata file: {exc}") from exc
+
+    if df.empty:
+        raise WebValidationError("Metadata file has no data rows")
+
+    df.columns = _validate_metadata_columns(list(df.columns))
+
+    importable_fields = set(df.columns) - {"ship_header"}
+    rows = init_location_rows(expected_seq_ids, existing_rows)
+    rows_by_header = {row["ship_header"]: row for row in rows}
+
+    imported_count = 0
+    seen_headers = set()
+
+    for _, file_row in df.iterrows():
+        header = str(file_row["ship_header"]).strip()
+        if not header:
+            raise WebValidationError("Metadata file contains a blank ship header")
+
+        if header in seen_headers:
+            raise WebValidationError(
+                f"Duplicate ship header in metadata file: '{header}'"
+            )
+        seen_headers.add(header)
+
+        if header not in rows_by_header:
+            raise WebValidationError(
+                f"Unknown ship header in metadata file: '{header}'"
+            )
+
+        target = rows_by_header[header]
+        imported_count += 1
+
+        for field in importable_fields - {"strand"}:
+            value = str(file_row.get(field, "")).strip()
+            if value:
+                target[field] = value
+
+        explicit_strand = None
+        if "strand" in importable_fields:
+            explicit_strand = str(file_row.get("strand", "")).strip() or None
+
+        target["strand"] = infer_metadata_strand(
+            explicit_strand,
+            target.get("shipstart"),
+            target.get("shipend"),
+        )
+
+    if imported_count == 0:
+        raise WebValidationError("Metadata file contains no usable data rows")
+
+    return [rows_by_header[seq_id] for seq_id in expected_seq_ids], imported_count
+
+
 def build_submission_entries(
     seq_contents: str,
     seq_filename: str,
@@ -450,7 +608,10 @@ def process_submission_data(
     return processed_data
 
 
-def process_submission_to_staging(processed_data: Dict[str, Any]) -> Dict[str, Any]:
+def process_submission_to_staging(
+    processed_data: Dict[str, Any],
+    existing_ships: Optional[pd.DataFrame] = None,
+) -> Dict[str, Any]:
     """
     Process submission for staging only (submissions DB). Does NOT insert into main DB.
 
@@ -497,7 +658,8 @@ def process_submission_to_staging(processed_data: Dict[str, Any]) -> Dict[str, A
             needs_review = True
             logger.info(f"Using BLAST exact match for display: {accession_tag}")
         else:
-            existing_ships = fetch_ships(with_sequence=True)
+            if existing_ships is None:
+                existing_ships = build_accession_reference_pool()
             accession_tag, needs_review = assign_accession(clean_seq, existing_ships)
 
     return {
@@ -590,6 +752,222 @@ def perform_database_insertion(
     except Exception as e:
         logger.error(f"Database insertion error: {str(e)}", exc_info=True)
         raise WebValidationError(f"Failed to insert into database: {str(e)}")
+
+
+def parse_submission_fasta(seq_contents: str) -> tuple:
+    """Parse plain-text or base64 FASTA stored in submissions DB."""
+    text = decode_upload_contents(seq_contents) if seq_contents else ""
+    records = list(SeqIO.parse(StringIO(text), "fasta"))
+    if not records:
+        raise WebValidationError("No valid FASTA sequences in submission", "sequence")
+    record = records[0]
+    return record.id, str(record.seq)
+
+
+def fetch_processed_submissions(
+    exclude_submission_id: Optional[int] = None,
+) -> pd.DataFrame:
+    """Load processed staging submissions as an accession reference pool."""
+    query = """
+        SELECT id, seq_contents, accession_tag
+        FROM submissions
+        WHERE processing_status = 'processed'
+          AND accession_tag IS NOT NULL
+    """
+    params = {}
+    if exclude_submission_id is not None:
+        query += " AND id != :exclude_id"
+        params["exclude_id"] = exclude_submission_id
+
+    rows = []
+    with get_submissions_session() as session:
+        result = session.execute(text(query), params)
+        for row in result:
+            try:
+                _seq_id, sequence = parse_submission_fasta(row.seq_contents)
+            except WebValidationError:
+                continue
+            clean_seq = clean_sequence(sequence)
+            if not clean_seq or not row.accession_tag:
+                continue
+            rows.append(
+                {
+                    "accession_tag": row.accession_tag,
+                    "accession_display": row.accession_tag,
+                    "sequence": sequence,
+                    "md5": generate_md5_hash(clean_seq),
+                    "rev_comp_md5": generate_md5_hash(revcomp(clean_seq)),
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "accession_tag",
+                "accession_display",
+                "sequence",
+                "md5",
+                "rev_comp_md5",
+            ]
+        )
+    return pd.DataFrame(rows)
+
+
+def merge_accession_reference_pools(
+    main_ships: pd.DataFrame, staging_ships: pd.DataFrame
+) -> pd.DataFrame:
+    """Combine main-DB ships and processed staging submissions for assign_accession."""
+    frames = [
+        df for df in (main_ships, staging_ships) if df is not None and not df.empty
+    ]
+    if not frames:
+        return pd.DataFrame()
+    combined = pd.concat(frames, ignore_index=True)
+    if "accession_tag" in combined.columns:
+        combined = combined.drop_duplicates(subset=["accession_tag"], keep="first")
+    return combined
+
+
+def build_accession_reference_pool(
+    exclude_submission_id: Optional[int] = None,
+) -> pd.DataFrame:
+    """Build merged accession pool from main DB and processed staging rows."""
+    main_ships = fetch_ships(with_sequence=True)
+    staging_ships = fetch_processed_submissions(
+        exclude_submission_id=exclude_submission_id
+    )
+    return merge_accession_reference_pools(main_ships, staging_ships)
+
+
+def submission_row_to_validated_data(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a submissions DB row into validated_data for process_submission_data."""
+    seq_id, sequence = parse_submission_fasta(row["seq_contents"])
+    strand = row.get("shipstrand") or "+"
+    strand_radio = 1 if strand == "+" else 2
+
+    classification = None
+    if row.get("classification_family") or row.get("closest_match"):
+        classification = {
+            "family": row.get("classification_family"),
+            "navis": row.get("classification_navis"),
+            "haplotype": row.get("classification_haplotype"),
+            "source": row.get("classification_source"),
+            "closest_match": row.get("closest_match"),
+            "confidence": row.get("classification_confidence"),
+        }
+
+    return {
+        "sequence": sequence,
+        "seq_id": seq_id,
+        "filename": row.get("seq_filename") or seq_id,
+        "uploader": row.get("uploader") or "",
+        "evidence": row.get("evidence") or "",
+        "genus": row.get("genus") or "",
+        "species": row.get("species") or "",
+        "strain": row.get("strain"),
+        "hostchr": row.get("hostchr") or "",
+        "shipstart": row.get("shipstart"),
+        "shipend": row.get("shipend"),
+        "strand_radio": strand_radio,
+        "assembly_accession": row.get("assembly_accession"),
+        "comment": row.get("comment") or "",
+        "classification": classification,
+    }
+
+
+def update_staging_submission_after_process(
+    sub_id: int, result: Dict[str, Any], processed_data: Dict[str, Any]
+) -> None:
+    """Persist accession and review flags after admin Process step."""
+    classification = processed_data.get("classification") or {}
+    with get_submissions_session() as session:
+        session.execute(
+            text(
+                """
+                UPDATE submissions
+                SET accession_tag = :accession_tag,
+                    needs_review = :needs_review,
+                    processing_status = 'processed',
+                    classification_source = COALESCE(:classification_source, classification_source),
+                    classification_family = COALESCE(:classification_family, classification_family),
+                    classification_navis = COALESCE(:classification_navis, classification_navis),
+                    classification_haplotype = COALESCE(:classification_haplotype, classification_haplotype),
+                    closest_match = COALESCE(:closest_match, closest_match),
+                    classification_confidence = COALESCE(:classification_confidence, classification_confidence)
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": sub_id,
+                "accession_tag": result.get("accession"),
+                "needs_review": 1 if result.get("needs_review") else 0,
+                "classification_source": classification.get("source"),
+                "classification_family": processed_data.get("ship_family")
+                or classification.get("family"),
+                "classification_navis": processed_data.get("ship_navis")
+                or classification.get("navis"),
+                "classification_haplotype": processed_data.get("ship_haplotype")
+                or classification.get("haplotype"),
+                "closest_match": classification.get("closest_match"),
+                "classification_confidence": classification.get("confidence"),
+            },
+        )
+        session.commit()
+
+
+def process_staging_submission(sub_id: int) -> Dict[str, Any]:
+    """
+    Run staging checks and accession assignment for one submission row.
+
+    Used by the admin Process action (not at web submit time).
+    """
+    with get_submissions_session() as session:
+        row = session.execute(
+            text("SELECT * FROM submissions WHERE id = :id"), {"id": sub_id}
+        ).fetchone()
+
+    if not row:
+        raise WebValidationError(f"Submission {sub_id} not found")
+
+    row = dict(row._mapping)
+    status = row.get("processing_status") or "pending"
+
+    if status == "promoted":
+        raise WebValidationError(f"Submission {sub_id} has already been promoted")
+    if status == "processed" and row.get("accession_tag"):
+        return {
+            "success": True,
+            "already_processed": True,
+            "accession": row.get("accession_tag"),
+            "needs_review": bool(row.get("needs_review")),
+            "filename": row.get("seq_filename"),
+            "uploader": row.get("uploader"),
+        }
+
+    validated = submission_row_to_validated_data(row)
+    processed = process_submission_data(validated, validated["strand_radio"])
+    reference_pool = build_accession_reference_pool(exclude_submission_id=sub_id)
+    result = process_submission_to_staging(processed, existing_ships=reference_pool)
+    update_staging_submission_after_process(sub_id, result, processed)
+    result["success"] = True
+    result["already_processed"] = False
+    return result
+
+
+def process_staging_submissions_ordered(sub_ids: List[int]) -> List[Dict[str, Any]]:
+    """Process multiple submission rows sequentially (for grouped submits)."""
+    results = []
+    for sub_id in sorted(sub_ids):
+        try:
+            results.append({"sub_id": sub_id, **process_staging_submission(sub_id)})
+        except WebValidationError as e:
+            results.append(
+                {"sub_id": sub_id, "success": False, "error": str(e.message)}
+            )
+        except Exception as e:
+            logger.error(f"Failed to process submission {sub_id}: {e}", exc_info=True)
+            results.append({"sub_id": sub_id, "success": False, "error": str(e)})
+    return results
 
 
 def _parse_gff_contents(anno_contents: str, anno_filename: str) -> list:
