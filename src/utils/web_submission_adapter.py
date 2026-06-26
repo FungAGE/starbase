@@ -14,7 +14,7 @@ It handles:
 
 import base64
 import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional, Set
 from Bio import SeqIO
 from io import StringIO
 
@@ -30,6 +30,9 @@ from src.database.sql_manager import fetch_ships
 
 logger = get_logger(__name__)
 
+MAX_SHIPS_PER_SUBMISSION = 100
+MAX_SEQUENCES_PER_FASTA = 100
+
 
 class WebValidationError(Exception):
     """Web-friendly validation error."""
@@ -38,6 +41,54 @@ class WebValidationError(Exception):
         self.message = message
         self.field = field
         super().__init__(self.message)
+
+
+def decode_upload_contents(contents: str) -> str:
+    """Decode base64 Dash upload contents to plain text."""
+    if "," in str(contents) and "base64" in str(contents):
+        _ct, content_string = str(contents).split(",", 1)
+        return base64.b64decode(content_string).decode("utf-8")
+    return str(contents)
+
+
+def encode_upload_contents(text: str, mime: str = "text/plain") -> str:
+    """Encode plain text for Dash upload storage."""
+    encoded = base64.b64encode(text.encode("utf-8")).decode("utf-8")
+    return f"data:{mime};base64,{encoded}"
+
+
+def parse_fasta_records(contents: str, filename: str) -> List[Dict[str, str]]:
+    """
+    Parse FASTA sequences from uploaded file contents.
+
+    Returns:
+        Ordered list of {"id": header, "sequence": sequence_string}
+    """
+    try:
+        decoded = decode_upload_contents(contents)
+        records = []
+        for record in SeqIO.parse(StringIO(decoded), "fasta"):
+            records.append({"id": record.id, "sequence": str(record.seq)})
+
+        if not records:
+            raise WebValidationError(
+                "No valid sequences found in FASTA file", "fasta_file"
+            )
+        if len(records) > MAX_SEQUENCES_PER_FASTA:
+            raise WebValidationError(
+                f"FASTA file contains {len(records)} sequences. "
+                f"Maximum {MAX_SEQUENCES_PER_FASTA} sequences per file.",
+                "fasta_file",
+            )
+
+        logger.info(f"Parsed {len(records)} sequences from {filename}")
+        return records
+
+    except WebValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Error parsing FASTA: {str(e)}")
+        raise WebValidationError(f"Failed to parse FASTA file: {str(e)}", "fasta_file")
 
 
 def parse_fasta_sequences(contents: str, filename: str) -> Dict[str, str]:
@@ -54,29 +105,8 @@ def parse_fasta_sequences(contents: str, filename: str) -> Dict[str, str]:
     Raises:
         WebValidationError: If FASTA parsing fails
     """
-    try:
-        # Decode base64 content
-        content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string).decode("utf-8")
-
-        # Parse FASTA
-        sequences = {}
-        fasta_io = StringIO(decoded)
-
-        for record in SeqIO.parse(fasta_io, "fasta"):
-            sequences[record.id] = str(record.seq)
-
-        if not sequences:
-            raise WebValidationError(
-                "No valid sequences found in FASTA file", "fasta_file"
-            )
-
-        logger.info(f"Parsed {len(sequences)} sequences from {filename}")
-        return sequences
-
-    except Exception as e:
-        logger.error(f"Error parsing FASTA: {str(e)}")
-        raise WebValidationError(f"Failed to parse FASTA file: {str(e)}", "fasta_file")
+    records = parse_fasta_records(contents, filename)
+    return {record["id"]: record["sequence"] for record in records}
 
 
 def validate_submission_data(
@@ -148,16 +178,16 @@ def validate_submission_data(
 
     # Parse FASTA
     try:
-        sequences = parse_fasta_sequences(seq_contents, seq_filename)
-
-        # For now, we expect single sequence per submission
-        if len(sequences) > 1:
-            logger.warning(
-                f"Multiple sequences found in {seq_filename}, using first one"
+        records = parse_fasta_records(seq_contents, seq_filename)
+        if len(records) > 1:
+            raise WebValidationError(
+                f"FASTA file contains {len(records)} sequences. "
+                "Provide location details for each sequence below, or upload one sequence per file.",
+                "fasta_file",
             )
 
-        # Get first sequence
-        seq_id, sequence = next(iter(sequences.items()))
+        record = records[0]
+        seq_id, sequence = record["id"], record["sequence"]
 
     except WebValidationError:
         raise
@@ -177,6 +207,168 @@ def validate_submission_data(
         "shipstart": int(shipstart),
         "shipend": int(shipend),
     }
+
+
+def get_gff_seqids(anno_contents: str) -> Set[str]:
+    """Return unique seqids referenced in a GFF upload."""
+    seqids: Set[str] = set()
+    if not anno_contents:
+        return seqids
+
+    for line in decode_upload_contents(anno_contents).split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if parts:
+            seqids.add(parts[0])
+    return seqids
+
+
+def filter_gff_for_seqid(anno_contents: Optional[str], seq_id: str) -> Optional[str]:
+    """Return GFF upload contents containing only rows for the given seqid."""
+    if not anno_contents:
+        return None
+
+    header_lines = []
+    matching_rows = []
+    for line in decode_upload_contents(anno_contents).split("\n"):
+        if not line.strip():
+            continue
+        if line.startswith("#"):
+            header_lines.append(line)
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 8 and parts[0] == seq_id:
+            matching_rows.append(line)
+
+    if not matching_rows:
+        return None
+
+    filtered_text = "\n".join(header_lines + matching_rows) + "\n"
+    return encode_upload_contents(filtered_text)
+
+
+def encode_single_fasta(seq_id: str, sequence: str) -> str:
+    """Encode a single-sequence FASTA for per-ship storage."""
+    return encode_upload_contents(f">{seq_id}\n{sequence}\n")
+
+
+def validate_location_fields(
+    hostchr: str,
+    shipstart: int,
+    shipend: int,
+    label: str = "Starship",
+) -> None:
+    """Validate host location fields for one sequence."""
+    errors = []
+    if not hostchr:
+        errors.append(f"{label}: host contig or scaffold ID is required")
+    if shipstart is None:
+        errors.append(f"{label}: start coordinate is required")
+    if shipend is None:
+        errors.append(f"{label}: end coordinate is required")
+    if shipstart is not None and shipstart <= 0:
+        errors.append(f"{label}: start coordinate must be greater than 0")
+    if shipend is not None and shipend <= 0:
+        errors.append(f"{label}: end coordinate must be greater than 0")
+    if shipstart is not None and shipend is not None and shipstart == shipend:
+        errors.append(f"{label}: start and end coordinates cannot be the same")
+
+    if errors:
+        raise WebValidationError("; ".join(errors))
+
+
+def validate_organism_fields(
+    genus: str,
+    species: str,
+    label: str = "Starship",
+) -> None:
+    """Validate organism fields for one sequence."""
+    errors = []
+    if not genus:
+        errors.append(f"{label}: genus is required")
+    if not species:
+        errors.append(f"{label}: species is required")
+    if errors:
+        raise WebValidationError("; ".join(errors))
+
+
+def build_submission_entries(
+    seq_contents: str,
+    seq_filename: str,
+    seq_date: Optional[float],
+    anno_contents: Optional[str],
+    anno_filename: Optional[str],
+    anno_date: Optional[float],
+    locations: List[Dict[str, Any]],
+    uploader: str,
+    evidence: str,
+    comment: str = "",
+    classification: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Build validated submission payloads from one FASTA/GFF pair and location rows.
+
+    Each location row corresponds to one FASTA header (same order as records).
+    """
+    records = parse_fasta_records(seq_contents, seq_filename)
+    if len(locations) != len(records):
+        raise WebValidationError(
+            f"Expected location details for {len(records)} sequence(s), "
+            f"but received {len(locations)}.",
+            "location",
+        )
+
+    gff_seqids = get_gff_seqids(anno_contents) if anno_contents else set()
+    entries = []
+
+    for record, location in zip(records, locations):
+        seq_id = record["id"]
+        label = f"Sequence {seq_id}"
+        validate_organism_fields(
+            location.get("genus"),
+            location.get("species"),
+            label=label,
+        )
+        validate_location_fields(
+            location.get("hostchr"),
+            location.get("shipstart"),
+            location.get("shipend"),
+            label=label,
+        )
+
+        per_seq_gff = filter_gff_for_seqid(anno_contents, seq_id)
+        if anno_contents and gff_seqids and not per_seq_gff:
+            logger.info(f"No GFF rows matched FASTA header '{seq_id}'")
+
+        entries.append(
+            {
+                "sequence": record["sequence"],
+                "seq_id": seq_id,
+                "filename": f"{seq_filename} ({seq_id})",
+                "seq_contents": encode_single_fasta(seq_id, record["sequence"]),
+                "seq_filename": seq_filename,
+                "seq_date": seq_date,
+                "anno_contents": per_seq_gff,
+                "anno_filename": anno_filename if per_seq_gff else None,
+                "anno_date": anno_date if per_seq_gff else None,
+                "uploader": uploader,
+                "evidence": evidence,
+                "genus": location["genus"],
+                "species": location["species"],
+                "strain": location.get("strain"),
+                "hostchr": location["hostchr"],
+                "shipstart": int(location["shipstart"]),
+                "shipend": int(location["shipend"]),
+                "strand_radio": location.get("strand_radio", 1),
+                "assembly_accession": location.get("assembly_accession"),
+                "comment": comment or "",
+                "classification": classification if len(entries) == 0 else None,
+            }
+        )
+
+    return entries
 
 
 def process_submission_data(
@@ -223,11 +415,12 @@ def process_submission_data(
         "source": f"web_submission_{datetime.datetime.now().strftime('%Y%m%d')}",
         "genus": validated_data["genus"],
         "species": validated_data["species"],
-        "strain": None,
+        "strain": validated_data.get("strain"),
         "contig_id": validated_data["hostchr"],
         "element_start": start,
         "element_end": end,
         "element_strand": strand,
+        "assembly_accession": validated_data.get("assembly_accession"),
         "curator": validated_data["uploader"],
         "curated_status": "needs_review",  # Default for web submissions
         "notes": validated_data.get("comment", ""),
