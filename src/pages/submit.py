@@ -106,7 +106,7 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
 
     if isinstance(error, ValidationError):
         return {
-            "modal_open": False,
+            "modal_open": True,
             "message": dmc.Alert(
                 title="Check your input",
                 children=str(error.user_message),
@@ -117,7 +117,7 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
         }
     elif isinstance(error, ProcessingError):
         return {
-            "modal_open": False,
+            "modal_open": True,
             "message": dmc.Alert(
                 title="Processing failed",
                 children=str(error.user_message),
@@ -128,7 +128,7 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
         }
     elif isinstance(error, DatabaseError):
         return {
-            "modal_open": False,
+            "modal_open": True,
             "message": dmc.Alert(
                 title="Something went wrong",
                 children=dmc.Stack(
@@ -149,7 +149,7 @@ def handle_submission_error(error: Exception) -> Dict[str, Any]:
         }
     else:
         return {
-            "modal_open": False,
+            "modal_open": True,
             "message": dmc.Alert(
                 title="Something went wrong",
                 children=dmc.Stack(
@@ -273,36 +273,17 @@ submission_header = dmc.Title(
     mb="md",
 )
 
-submission_info_card = dmc.Paper(
-    children=[
-        dmc.Stack(
-            [
-                dmc.Text(
-                    "Comparative genomics projects are a collaborative effort. Submit your Starship discoveries to the community to help us build the most comprehensive database of Starship elements.",
-                    size="md",
-                    mb="md",
-                ),
-                # TODO: "You'll receive a confirmation email once your submission is processed."
-                dmc.Text(
-                    "Each submission will be processed and assigned an accession number. It will also go through a manual review before being included in the next database release.",
-                    size="md",
-                    mb="md",
-                ),
-                dmc.Alert(
-                    "Complete all fields marked with * before submitting.",
-                    color="var(--mantine-color-red-6)",
-                    variant="light",
-                    title="Required fields",
-                ),
-            ],
-            gap="md",
-        ),
+submission_intro = dmc.Text(
+    [
+        "Upload your FASTA (and optional GFF), fill in location details, and submit for manual review. ",
+        "Fields marked ",
+        html.Span("*", style={"color": "var(--mantine-color-red-6)"}),
+        " are required.",
     ],
-    p="xl",
-    radius="md",
-    withBorder=True,
-    mb="xl",
-    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
+    size="sm",
+    c="dimmed",
+    mb="lg",
+    className="submit-intro",
 )
 
 submission_received_modal = dmc.Modal(
@@ -330,32 +311,26 @@ submission_received_modal = dmc.Modal(
     ],
 )
 
-# Section: Upload (side-by-side)
+# Section: Upload
 upload_section = dmc.Stack(
     [
-        dmc.Title("Upload Files", order=2, mb="md"),
-        dmc.Text(
-            "Upload a single- or multi-sequence FASTA.",
-            size="sm",
-            c="dimmed",
-            mb="sm",
-        ),
+        dmc.Title("Upload files", order=2),
         html.Div(id="submit-prefill-info"),
         dmc.Grid(
             [
                 dmc.GridCol(
-                    dmc.Paper(
-                        children=[
+                    dmc.Stack(
+                        [
                             dmc.Text(
                                 [
-                                    "Starship Sequence ",
+                                    "Starship FASTA ",
                                     html.Span(
                                         "*",
                                         style={"color": "var(--mantine-color-red-6)"},
                                     ),
                                 ],
                                 fw=500,
-                                mb="sm",
+                                size="sm",
                             ),
                             create_file_upload(
                                 upload_id="submit-fasta-upload",
@@ -369,21 +344,19 @@ upload_section = dmc.Stack(
                                 children=html.Div(id="loading-output-1"),
                             ),
                         ],
-                        p="md",
-                        radius="md",
-                        withBorder=False,
+                        gap="sm",
                     ),
                     span={"base": 12, "md": 6},
                 ),
                 dmc.GridCol(
-                    dmc.Paper(
-                        children=[
-                            dmc.Text("Gene Annotations (GFF3)", fw=500, mb="sm"),
+                    dmc.Stack(
+                        [
+                            dmc.Text("GFF3 annotations (optional)", fw=500, size="sm"),
                             create_file_upload(
                                 upload_id="submit-upload-gff",
                                 output_id="submit-output-gff-upload",
                                 accept_types=[".gff", ".gff3", ".tsv"],
-                                placeholder_text="Choose a GFF file (.gff, .gff3) — optional",
+                                placeholder_text="Choose a GFF file (.gff, .gff3)",
                             ),
                             dcc.Loading(
                                 id="loading-2",
@@ -391,13 +364,13 @@ upload_section = dmc.Stack(
                                 children=html.Div(id="loading-output-2"),
                             ),
                         ],
-                        p="md",
-                        radius="md",
-                        withBorder=False,
+                        gap="sm",
                     ),
                     span={"base": 12, "md": 6},
                 ),
             ],
+            gutter="md",
+            className="submit-upload-grid",
         ),
     ],
     gap="md",
@@ -406,67 +379,47 @@ upload_section = dmc.Stack(
 # Section: Contact
 contact_section = dmc.Stack(
     [
-        dmc.Title("Metadata", order=2, mb="md"),
-        dmc.Grid(
-            [
-                dmc.GridCol(
-                    dmc.Stack(
-                        [
-                            dmc.Text(
-                                "Contact",
-                                size="sm",
-                                fw=600,
-                                c="dimmed",
-                                tt="uppercase",
-                            ),
-                            dmc.TextInput(
-                                id="uploader",
-                                label="Your email",
-                                placeholder="e.g., you@example.com",
-                                required=True,
-                                leftSection=DashIconify(icon="fas fa-envelope"),
-                            ),
-                            dmc.Box(
-                                id="email-validation-message",
-                                style={"minHeight": "20px"},
-                            ),
-                            dmc.Select(
-                                id="evidence",
-                                label="Annotation tool or method",
-                                placeholder="Select method",
-                                required=True,
-                                description="Tool or pipeline used to identify and annotate the Starship",
-                                data=[
-                                    {"value": "starfish", "label": "starfish"},
-                                    {
-                                        "value": "manual curation",
-                                        "label": "manual curation",
-                                    },
-                                    {"value": "BLAST", "label": "BLAST"},
-                                    {"value": "other", "label": "other"},
-                                ],
-                            ),
-                        ],
-                        gap="md",
-                    ),
-                    span={"base": 12, "md": 8},
+        dmc.Title("Your details", order=2),
+        dmc.SimpleGrid(
+            cols={"base": 1, "sm": 2},
+            spacing="md",
+            children=[
+                dmc.TextInput(
+                    id="uploader",
+                    label="Email",
+                    placeholder="you@example.com",
+                    required=True,
+                    leftSection=DashIconify(icon="fas fa-envelope"),
+                ),
+                dmc.Select(
+                    id="evidence",
+                    label="Annotation method",
+                    placeholder="Select method",
+                    required=True,
+                    data=[
+                        {"value": "starfish", "label": "starfish"},
+                        {"value": "manual curation", "label": "manual curation"},
+                        {"value": "BLAST", "label": "BLAST"},
+                        {"value": "other", "label": "other"},
+                    ],
                 ),
             ],
         ),
+        dmc.Box(id="email-validation-message", style={"minHeight": "20px"}),
     ],
-    gap="md",
+    gap="sm",
 )
 
 # Section: Location (editable grid — one row per FASTA header)
 location_section = dmc.Stack(
     [
-        dmc.Title("Location Details", order=2, mb="md"),
+        dmc.Title("Location details", order=2),
         html.Div(id="submit-location-status", children=create_location_status()),
         create_location_tsv_upload(),
         html.Div(id="submit-location-tsv-feedback"),
-        create_location_grid(),
+        html.Div(create_location_grid(), className="submit-location-grid-wrap"),
     ],
-    gap="md",
+    gap="sm",
 )
 
 # Section: Notes (progressive disclosure - collapsed by default)
@@ -477,19 +430,11 @@ notes_section = dmc.Accordion(
         dmc.AccordionItem(
             value="notes",
             children=[
-                dmc.AccordionControl(
-                    dmc.Text(
-                        "Add optional notes, i.e. linked publications, etc.",
-                        size="sm",
-                        c="dimmed",
-                    ),
-                ),
+                dmc.AccordionControl("Optional notes"),
                 dmc.AccordionPanel(
                     dmc.Textarea(
                         id="comment",
-                        label="Notes",
-                        placeholder="e.g., unusual features, annotation notes, or host genome context",
-                        description="Any details that would help curators evaluate this submission",
+                        placeholder="Publications, unusual features, or host context for curators",
                         minRows=3,
                         autosize=True,
                         maxRows=6,
@@ -500,111 +445,76 @@ notes_section = dmc.Accordion(
     ],
 )
 
-# Sticky submit button
-submit_button_section = dmc.Box(
-    dmc.Stack(
-        [
-            dmc.Checkbox(
-                id="submit-consent-checkbox",
-                label="I understand that accepted submissions will be publicly available in the Starbase database",
-                checked=False,
-                color="indigo",
-            ),
-            dmc.Center(
-                dmc.Button(
-                    "Submit Starship(s)",
-                    id="submit-ship",
-                    size="lg",
-                    variant="filled",
-                    color="indigo",
-                    loading=False,
-                    disabled=True,
-                    fullWidth=False,
-                ),
-            ),
-        ],
-        gap="md",
-        align="center",
-    ),
-    mt="xl",
-    pt="md",
-)
-
-submission_body = dmc.Paper(
-    children=dmc.Stack(
-        [
-            upload_section,
-            dmc.Divider(),
-            contact_section,
-            dmc.Divider(),
-            location_section,
-            dmc.Divider(),
-            notes_section,
-            submit_button_section,
-        ],
-        gap="xl",
-    ),
-    p="xl",
-    radius="md",
-    withBorder=True,
-    style={"borderLeft": "4px solid var(--mantine-color-indigo-5)"},
-)
-
-data_policy_card = dmc.Alert(
-    dmc.Stack(
-        [
-            dmc.Text(
-                "This database is an academic resource. Submitted data is used solely to:",
-                size="sm",
-                fw=500,
-            ),
-            dmc.List(
-                [
-                    dmc.ListItem(
-                        dmc.Text(
-                            "Build and maintain a public database for scientific research",
-                            size="sm",
-                        )
-                    ),
-                    dmc.ListItem(
-                        dmc.Text(
-                            "Attribute your contribution — your name or identifier will be associated with the database entry, not your email address",
-                            size="sm",
-                        )
-                    ),
-                    dmc.ListItem(
-                        dmc.Text(
-                            "Contact you about your submission (confirmation and curation questions)",
-                            size="sm",
-                        )
-                    ),
-                ],
-                size="sm",
-                spacing="xs",
-            ),
-            dmc.Divider(),
-            dmc.Text(
-                "Accepted submissions are included in public database releases and will be publicly accessible.",
-                size="sm",
-                fw=500,
-            ),
-            dmc.Text(
-                "Only submit sequences you are comfortable making publicly available. If your data is from unpublished work, consider whether public release is appropriate at this time.",
-                size="sm",
-            ),
-        ],
-        gap="xs",
-    ),
-    title="How this data is used",
-    color="var(--mantine-color-indigo-6)",
-    variant="light",
-    mb="md",
-)
-
-top_section = dmc.Stack(
-    [data_policy_card, create_submission_queue_banner(max_items=5)],
+submit_button_section = dmc.Stack(
+    [
+        dmc.Checkbox(
+            id="submit-consent-checkbox",
+            label="I understand accepted submissions will be publicly available in Starbase",
+            checked=False,
+            color="indigo",
+        ),
+        dmc.Button(
+            "Submit Starship(s)",
+            id="submit-ship",
+            size="lg",
+            variant="filled",
+            color="indigo",
+            loading=False,
+            disabled=True,
+            className="submit-submit-btn",
+        ),
+    ],
     gap="md",
-    mb="xl",
+    mt="lg",
+)
+
+submission_body = dmc.Stack(
+    [
+        upload_section,
+        contact_section,
+        location_section,
+        notes_section,
+        submit_button_section,
+    ],
+    gap="xl",
+    className="submit-form-body",
+)
+
+data_policy_accordion = dmc.Accordion(
+    variant="contained",
+    chevronPosition="right",
+    children=[
+        dmc.AccordionItem(
+            value="policy",
+            children=[
+                dmc.AccordionControl(dmc.Text("How submitted data is used", size="sm")),
+                dmc.AccordionPanel(
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                "Submitted data builds the public research database, attributes your contribution (not your email), and lets us contact you about curation.",
+                                size="sm",
+                            ),
+                            dmc.Text(
+                                "Accepted submissions are included in public releases. Only submit sequences you are comfortable sharing.",
+                                size="sm",
+                                c="dimmed",
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ),
+            ],
+        ),
+    ],
+)
+
+_queue_banner = create_submission_queue_banner(max_items=5)
+top_section_children = ([_queue_banner] if _queue_banner is not None else []) + [
+    data_policy_accordion
+]
+top_section = dmc.Stack(
+    top_section_children, gap="sm", mb="lg", className="submit-top-section"
 )
 
 layout = dmc.Container(
@@ -616,14 +526,11 @@ layout = dmc.Container(
         dcc.Store(id="submit-location-rows", data=[]),
         submission_header,
         top_section,
-        submission_info_card,
+        submission_intro,
         submission_body,
         submission_received_modal,
     ],
-    style={
-        "margin": "0 auto",
-        "padding": "var(--mantine-spacing-xl)",
-    },
+    className="submit-page-container",
 )
 
 
@@ -911,8 +818,11 @@ def create_fasta_display(records, filename):
     """Create HTML components to display FASTA file info below the upload box."""
     seq_ids = [record["id"] for record in records]
     children = [
-        dmc.Text(f"✓ File: {filename}", size="sm", fw=500),
-        dmc.Text(f"Sequences found: {len(records)}", size="sm", c="dimmed"),
+        dmc.Text(
+            f"{filename} — {len(records)} sequence{'s' if len(records) != 1 else ''}",
+            size="sm",
+            fw=500,
+        ),
     ]
     if len(records) > 1:
         children.append(
@@ -923,18 +833,11 @@ def create_fasta_display(records, filename):
                 c="dimmed",
             )
         )
-    children.append(
-        dmc.Text(
-            "Fill in organism and location details for each sequence in the table below.",
-            size="xs",
-            c="dimmed",
-        )
-    )
     return dmc.Alert(
         children=children,
-        title="FASTA loaded",
         color="var(--mantine-color-green-6)",
         variant="light",
+        py="xs",
     )
 
 
@@ -1225,20 +1128,15 @@ def submit_ship(
         for entry in entries:
             insert_submission_from_entry(entry, group_id)
 
-        try:
-            send_curator_notification(
-                group_id,
-                entries,
-                uploader=uploader,
-                evidence=evidence,
-                comment=comment,
-            )
-            if uploader:
-                send_submission_confirmation(
-                    uploader, group_id, ship_count=len(entries)
-                )
-        except Exception as e:
-            logger.error(f"Failed to send email notifications: {str(e)}")
+        send_curator_notification(
+            group_id,
+            entries,
+            uploader=uploader,
+            evidence=evidence,
+            comment=comment,
+        )
+        if uploader:
+            send_submission_confirmation(uploader, group_id, len(entries))
 
         message = build_submission_success_message(group_id, len(entries), entries)
 

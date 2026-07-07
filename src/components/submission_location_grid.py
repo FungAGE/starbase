@@ -143,7 +143,7 @@ def create_location_grid(row_data: Optional[List[Dict[str, Any]]] = None) -> dag
         updated = dict(col_def)
         if updated["field"] in EDITABLE_COLUMNS:
             updated["cellStyle"] = {
-                "backgroundColor": "var(--mantine-color-yellow-0)",
+                "backgroundColor": "var(--mantine-color-gray-0)",
             }
         col_defs.append(updated)
 
@@ -162,89 +162,48 @@ def create_location_grid(row_data: Optional[List[Dict[str, Any]]] = None) -> dag
 def create_location_status(seq_ids: Optional[List[str]] = None):
     if not seq_ids:
         return dmc.Text(
-            "Upload a FASTA file above to enter organism and location details for each sequence.",
+            "Upload a FASTA file to fill in organism and location details below.",
             size="sm",
             c="dimmed",
         )
 
-    children = [
-        dmc.Text(
-            "Starship submissions",
-            size="sm",
-            fw=600,
-            c="dimmed",
-            tt="uppercase",
-        ),
-        dmc.Text(
-            f"{len(seq_ids)} sequence{'s' if len(seq_ids) != 1 else ''} — enter organism and location details for each row.",
-            size="sm",
-            c="dimmed",
-        ),
-    ]
+    label = f"{len(seq_ids)} ship{'s' if len(seq_ids) != 1 else ''} — edit the table or import a TSV/CSV."
     if len(seq_ids) > 1:
-        children.append(
-            dmc.Alert(
-                "Annotations in your GFF file are matched to FASTA headers automatically.",
-                color="var(--mantine-color-blue-6)",
-                variant="light",
-                title="Multiple sequences",
-            )
-        )
-    return dmc.Stack(children, gap="xs")
+        label += " GFF rows match FASTA headers automatically."
+    return dmc.Text(label, size="sm", c="dimmed")
 
 
 def create_location_tsv_upload():
-    return dmc.Stack(
+    return dmc.Group(
         [
-            dmc.Group(
-                [
-                    dmc.Text("Import metadata", size="sm", fw=500),
-                    dcc.Upload(
-                        id="submit-location-tsv-upload",
-                        children=dmc.Button(
-                            "Upload TSV/CSV",
-                            variant="light",
-                            color="indigo",
-                            size="xs",
-                        ),
-                        accept=".tsv,.csv,.txt",
-                        multiple=False,
-                    ),
-                ],
-                gap="sm",
-                align="center",
+            dcc.Upload(
+                id="submit-location-tsv-upload",
+                children=dmc.Button(
+                    "Import TSV/CSV",
+                    variant="light",
+                    color="indigo",
+                    size="sm",
+                ),
+                accept=".tsv,.csv,.txt",
+                multiple=False,
             ),
             dmc.Accordion(
                 variant="contained",
                 chevronPosition="right",
+                style={"flex": 1},
                 children=[
                     dmc.AccordionItem(
                         value="format",
                         children=[
                             dmc.AccordionControl(
-                                dmc.Text(
-                                    "TSV/CSV format (rows matched by ship header)",
-                                    size="sm",
-                                    c="dimmed",
-                                ),
+                                dmc.Text("File format", size="sm", c="dimmed"),
                             ),
                             dmc.AccordionPanel(
                                 dmc.Stack(
                                     [
                                         dmc.Text(
-                                            "Column headers must match exactly. "
-                                            "Only ship_header is required in the file; "
-                                            "include any of the other columns below to fill the table. "
-                                            "Rows are matched to FASTA headers; omitted ships keep existing table values.",
-                                            size="sm",
-                                            c="dimmed",
-                                        ),
-                                        dmc.Text(
-                                            "Allowed columns: ship_header, genus, species, strain, "
-                                            "assembly_accession, hostchr, shipstart, shipend, strand. "
-                                            "Required before submit: genus, species, hostchr, shipstart, shipend. "
-                                            "If strand is omitted, it is inferred from start/end order "
-                                            "(start > end implies reverse).",
+                                            "Rows match by ship_header. Include any columns you want to fill; "
+                                            "required before submit: genus, species, hostchr, shipstart, shipend.",
                                             size="sm",
                                             c="dimmed",
                                         ),
@@ -252,6 +211,7 @@ def create_location_tsv_upload():
                                             "ship_header\tgenus\tspecies\tstrain\tassembly_accession\thostchr\tshipstart\tshipend\n"
                                             "seq_1\tAlternaria\talternata\t\tGCA_000001305.1\tchr1\t1000\t5000",
                                             block=True,
+                                            className="submit-tsv-example",
                                         ),
                                     ],
                                     gap="xs",
@@ -261,14 +221,11 @@ def create_location_tsv_upload():
                     ),
                 ],
             ),
-            dmc.Text(
-                "Select cells in the table and paste from a spreadsheet, or upload a TSV/CSV file. "
-                "The ship header column is read-only.",
-                size="xs",
-                c="dimmed",
-            ),
         ],
-        gap="xs",
+        gap="sm",
+        align="flex-start",
+        wrap="wrap",
+        className="submit-tsv-toolbar",
     )
 
 

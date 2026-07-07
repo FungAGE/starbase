@@ -166,3 +166,89 @@
 .admin-job-row .ag-cell {
     background-color: transparent !important;
 }
+
+/* Submit page */
+.submit-page-container {
+    margin: 0 auto;
+    padding: var(--mantine-spacing-xl);
+    padding-bottom: calc(var(--mantine-spacing-xl) + 4rem);
+}
+
+.submit-form-body {
+    max-width: 100%;
+}
+
+.submit-location-grid-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.submit-location-grid-wrap .ag-theme-alpine {
+    min-width: 720px;
+}
+
+.submit-tsv-toolbar {
+    width: 100%;
+}
+
+.submit-tsv-example {
+    font-size: 0.75rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.submit-queue-banner {
+    padding: var(--mantine-spacing-sm) 0;
+    border-bottom: 1px solid var(--mantine-color-gray-3);
+}
+
+.submit-queue-row {
+    flex-wrap: wrap;
+    width: 100%;
+    align-items: center;
+}
+
+.submit-queue-species {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.submit-submit-btn {
+    align-self: flex-start;
+}
+
+@media (max-width: 48em) {
+    .submit-page-container {
+        padding: var(--mantine-spacing-md);
+        padding-bottom: calc(var(--mantine-spacing-md) + 4rem);
+    }
+
+    .submit-intro {
+        line-height: 1.5;
+    }
+
+    .submit-submit-btn {
+        width: 100%;
+    }
+
+    .submit-queue-row {
+        gap: var(--mantine-spacing-xs);
+    }
+
+    .submit-queue-id {
+        min-width: 100%;
+    }
+
+    .submit-tsv-toolbar {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .upload-box {
+        padding: var(--mantine-spacing-md);
+    }
+}

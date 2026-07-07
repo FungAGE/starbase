@@ -260,29 +260,13 @@ def create_submission_queue(max_items: int = 20) -> dmc.Container:
 
 
 def create_submission_queue_banner(max_items: int = 5):
-    """Compact pending queue for the top of the submit page."""
+    """Compact pending queue for the top of the submit page. Hidden when queue is empty."""
     all_pending = get_pending_submissions()
     submissions = all_pending[:max_items]
     total_pending = len(all_pending)
 
     if not submissions:
-        return dmc.Paper(
-            children=[
-                dmc.Group(
-                    [
-                        dmc.Text("Pending Submissions", fw=600, size="sm"),
-                        dmc.Badge(
-                            "All clear", color="green", variant="light", size="sm"
-                        ),
-                    ],
-                    justify="space-between",
-                ),
-            ],
-            p="md",
-            radius="md",
-            withBorder=True,
-            mb="md",
-        )
+        return None
 
     items = []
     for sub in submissions:
@@ -292,19 +276,20 @@ def create_submission_queue_banner(max_items: int = 5):
         if len(group_label) > 16:
             group_label = group_label[:16] + "…"
         ship_count = sub.get("ship_count") or 1
+        species_label = (
+            f"{sub.get('genus', '')} {sub.get('species', '')}".strip() or "Unknown"
+        )
         items.append(
             dmc.Group(
                 [
                     dmc.Text(
-                        group_label, size="sm", fw=500, style={"minWidth": "100px"}
+                        group_label, size="sm", fw=500, className="submit-queue-id"
                     ),
                     dmc.Text(
-                        f"{sub.get('genus', '')} {sub.get('species', '')}".strip()
-                        or "Unknown",
+                        species_label,
                         size="sm",
                         c="dimmed",
-                        style={"flex": 1},
-                        truncate=True,
+                        className="submit-queue-species",
                     ),
                     dmc.Text(
                         f"{ship_count} ship{'s' if ship_count != 1 else ''}",
@@ -314,16 +299,15 @@ def create_submission_queue_banner(max_items: int = 5):
                     dmc.Badge(badge_label, size="sm", variant="light"),
                 ],
                 gap="sm",
-                wrap="nowrap",
-                style={"width": "100%"},
+                className="submit-queue-row",
             )
         )
 
-    return dmc.Paper(
-        children=[
+    return dmc.Stack(
+        [
             dmc.Group(
                 [
-                    dmc.Text("Pending Submissions", fw=600, size="sm"),
+                    dmc.Text("Pending submissions", fw=600, size="sm"),
                     dmc.Badge(
                         f"{total_pending} pending",
                         color="var(--mantine-color-orange-6)",
@@ -332,22 +316,16 @@ def create_submission_queue_banner(max_items: int = 5):
                     ),
                 ],
                 justify="space-between",
-                mb="sm",
             ),
             dmc.Stack(items, gap="xs"),
             dmc.Text(
-                f"Showing {len(submissions)} most recent"
-                + (f" of {total_pending}" if total_pending > len(submissions) else ""),
+                f"{len(submissions)} most recent shown",
                 size="xs",
                 c="dimmed",
-                ta="right",
-                mt="xs",
             ),
         ],
-        p="md",
-        radius="md",
-        withBorder=True,
-        mb="md",
+        gap="xs",
+        className="submit-queue-banner",
     )
 
 
