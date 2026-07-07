@@ -31,7 +31,9 @@ def main():
         ("evidence", "VARCHAR(100)"),
         ("genus", "VARCHAR(255)"),
         ("species", "VARCHAR(255)"),
+        ("strain", "VARCHAR(255)"),
         ("hostchr", "VARCHAR(255)"),
+        ("assembly_accession", "VARCHAR(50)"),
         ("shipstart", "INTEGER"),
         ("shipend", "INTEGER"),
         ("shipstrand", "VARCHAR(10)"),
@@ -45,6 +47,8 @@ def main():
         ("classification_haplotype", "VARCHAR(100)"),
         ("closest_match", "VARCHAR(50)"),
         ("classification_confidence", "VARCHAR(20)"),
+        ("submission_group_id", "VARCHAR(36)"),
+        ("processing_status", "VARCHAR(20) DEFAULT 'pending'"),
     ]
     inspector = inspect(submissions_engine)
     with get_submissions_session() as session:
@@ -79,6 +83,40 @@ def main():
                         raise
             if not add_columns:
                 print("Submissions table already has all columns.")
+
+            # Backfill processing_status and submission_group_id for existing rows
+            session.execute(
+                text(
+                    """
+                    UPDATE submissions
+                    SET processing_status = 'processed'
+                    WHERE processing_status IS NULL
+                      AND accession_tag IS NOT NULL
+                    """
+                )
+            )
+            session.execute(
+                text(
+                    """
+                    UPDATE submissions
+                    SET processing_status = 'pending'
+                    WHERE processing_status IS NULL
+                    """
+                )
+            )
+            session.execute(
+                text(
+                    """
+                    UPDATE submissions
+                    SET submission_group_id = CAST(id AS TEXT)
+                    WHERE submission_group_id IS NULL
+                    """
+                )
+            )
+            session.commit()
+            print(
+                "Backfilled processing_status and submission_group_id for existing rows."
+            )
 
 
 if __name__ == "__main__":
