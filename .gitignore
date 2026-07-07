@@ -201,3 +201,6 @@ docs/
 
 .cursorignore
 .agent-docs/
+
+!src/database/cleanup/utils/fill_taxonomy_from_ncbi.py
+!src/database/cleanup/utils/validate_genome_coordinates.py

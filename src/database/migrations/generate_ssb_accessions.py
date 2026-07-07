@@ -74,7 +74,7 @@ def generate_ssb_accessions(dry_run=False):
                     # Insert the new ship_accession
                     session.execute(
                         text("""
-                        INSERT INTO ship_accessions (ship_accession_tag, version_tag, ship_id)
+                        INSERT INTO ship_accessions (ship_accession_tag, ship_version_tag, ship_id)
                         VALUES (:tag, :version, :ship_id)
                         """),
                         {"tag": ssb_tag, "version": 1, "ship_id": ship_id},

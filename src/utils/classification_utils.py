@@ -277,10 +277,6 @@ def assign_accession(
     if exact_match:
         logger.debug(f"Found exact match: {exact_match}")
         return exact_match, False
-    else:
-        # return SSB accessions
-        # this should return a new SSB accession if the ship doesn't have one?
-        ssb_accession = get_next_available_accession(session, "SSB")
 
     logger.debug("Step 2: Checking for contained matches...")
     container_result = check_contained_match(
@@ -332,6 +328,22 @@ def assign_accession(
             accession = new_accession
         return accession, review_flag
 
+    logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
+    similar_match, _similarities = check_similar_match(
+        sequence,
+        existing_ships,
+        threshold,
+        precomputed_sig_path=precomputed_sig_path,
+    )
+    if similar_match:
+        logger.debug(f"Found similar match: {similar_match}")
+        return similar_match, True
+
+    logger.debug("Step 4: No matches found - generating new accession...")
+    new_accession = generate_new_accession(existing_ships)
+    logger.debug(f"Generated new accession: {new_accession}")
+    return new_accession, True
+
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     """
@@ -371,33 +383,36 @@ def get_version_sort_key(version_tag):
 
 
 def get_next_available_accession(session, accession_type: str):
-    """Get the next available accession (full tag string, e.g. 'SSB0000002')."""
+    """Get the next unused accession tag (full string, e.g. 'SSB0000002')."""
     if accession_type == "SSB":
-        query = text("""
-        SELECT ship_accession_tag FROM ship_accessions
-        WHERE ship_accession_tag LIKE 'SSB%'
-        ORDER BY ship_accession_tag DESC
-        LIMIT 1
+        max_query = text("""
+        SELECT COALESCE(MAX(CAST(SUBSTR(ship_accession_tag, 4) AS INTEGER)), 0)
+        FROM ship_accessions
+        WHERE ship_accession_tag GLOB 'SSB[0-9]*'
         """)
+        exists_query = text(
+            "SELECT 1 FROM ship_accessions WHERE ship_accession_tag = :tag LIMIT 1"
+        )
     elif accession_type == "SSA":
-        query = text("""
-        SELECT accession_tag FROM accessions
-        WHERE accession_tag LIKE 'SSA%'
-        ORDER BY accession_tag DESC
-        LIMIT 1
+        max_query = text("""
+        SELECT COALESCE(MAX(CAST(SUBSTR(accession_tag, 4) AS INTEGER)), 0)
+        FROM accessions
+        WHERE accession_tag GLOB 'SSA[0-9]*'
         """)
+        exists_query = text(
+            "SELECT 1 FROM accessions WHERE accession_tag = :tag LIMIT 1"
+        )
     else:
         raise ValueError(f"Invalid accession type: {accession_type}")
 
-    result = session.execute(query).fetchone()
+    next_num = (session.execute(max_query).scalar() or 0) + 1
+    for _ in range(100):
+        candidate = f"{accession_type}{next_num:07d}"
+        if not session.execute(exists_query, {"tag": candidate}).fetchone():
+            return candidate
+        next_num += 1
 
-    if result:
-        # Extract number from accession format
-        last_accession = result[0]
-        last_number = int(last_accession.replace(accession_type, ""))
-        return f"{accession_type}{last_number + 1:07d}"
-    else:
-        return f"{accession_type}0000001"
+    raise RuntimeError(f"Could not find unused {accession_type} accession tag")
 
 
 def ensure_ship_has_ssb(session, ship_id: int) -> str:
@@ -424,7 +439,7 @@ def ensure_ship_has_ssb(session, ship_id: int) -> str:
     next_tag = get_next_available_accession(session, "SSB")
     session.execute(
         text("""
-        INSERT INTO ship_accessions (ship_accession_tag, version_tag, ship_id)
+        INSERT INTO ship_accessions (ship_accession_tag, ship_version_tag, ship_id)
         VALUES (:tag, :version, :ship_id)
         """),
         {"tag": next_tag, "version": 1, "ship_id": ship_id},
@@ -1914,6 +1929,11 @@ def run_classification_workflow(
 
         run_exact = tier == "full" and not weak_blast and not skip_exact_len
         run_contained_similar = tier in ("skip_exact", "full") and not weak_blast
+
+        for stage in WORKFLOW_STAGES:
+            workflow_state.stages.setdefault(
+                stage["id"], {"progress": 0, "status": "pending"}
+            )
 
         if tier == "none":
             for stage in WORKFLOW_STAGES:

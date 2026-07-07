@@ -1,30 +1,38 @@
 #!/usr/bin/env python3
-"""Test email configuration."""
+"""Manual test script for email configuration."""
 
 from dotenv import load_dotenv
-from src.utils.email_notifications import send_curator_notification
 
-load_dotenv()  # Load .env file
+load_dotenv()
 
-# Test submission data
-test_data = {
-    "uploader": "test@example.com",
-    "evidence": "manual annotation",
+from src.utils.email_notifications import (
+    email_configuration_status,
+    notify_submission_received,
+)
+
+test_entry = {
+    "seq_id": "test_ship",
     "genus": "Fusarium",
     "species": "oxysporum",
     "hostchr": "chr1",
     "shipstart": 1000,
     "shipend": 20000,
-    "strand_radio": 1,
-    "seq_filename": "test.fasta",
+    "evidence": "manual annotation",
     "comment": "Test submission",
 }
 
-success = send_curator_notification(
-    submission_id="test-123", submission_data=test_data, accession="SSA000001"
+print("Email configuration:", email_configuration_status())
+result = notify_submission_received(
+    submission_group_id="test-group-123",
+    entries=[test_entry],
+    uploader="test@example.com",
+    evidence=test_entry["evidence"],
+    comment=test_entry["comment"],
 )
 
-if success:
-    print("✓ Email sent successfully!")
+if result.curator_sent and result.confirmation_sent:
+    print("✓ Curator and confirmation emails sent.")
+elif result.skipped:
+    print(f"✗ Skipped: {result.skip_reason}")
 else:
-    print("✗ Email failed. Check logs for details.")
+    print(f"✗ Partial/failed: {result.errors}")

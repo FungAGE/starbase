@@ -8,12 +8,25 @@ from sqlalchemy import (
     DateTime,
     VARCHAR,
     Boolean,
+    func,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 metadata = Base.metadata
+
+
+class DatabaseVersion(Base):
+    """Content version changelog — one row per version bump event."""
+
+    __tablename__ = "database_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    semantic_version = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(String, default="system")
 
 
 class Accessions(Base):
@@ -306,7 +319,9 @@ class Submission(Base):
     evidence = Column(String(100), nullable=True)
     genus = Column(String(255), nullable=True)
     species = Column(String(255), nullable=True)
+    strain = Column(String(255), nullable=True)
     hostchr = Column(String(255), nullable=True)
+    assembly_accession = Column(String(50), nullable=True)
     shipstart = Column(Integer, nullable=True)
     shipend = Column(Integer, nullable=True)
     shipstrand = Column(String(10), nullable=True)
@@ -314,6 +329,8 @@ class Submission(Base):
     ship_accession_tag = Column(String(50), nullable=True)
     accession_tag = Column(String(50), nullable=True)
     needs_review = Column(Boolean, default=False, nullable=True)
+    submission_group_id = Column(String(36), nullable=True)
+    processing_status = Column(String(20), default="pending", nullable=True)
     # Classification from BLAST prefill (optional)
     classification_source = Column(String(50), nullable=True)
     classification_family = Column(String(100), nullable=True)
