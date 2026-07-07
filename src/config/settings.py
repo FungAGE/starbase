@@ -129,6 +129,7 @@ PAGE_MAPPING = ",".join(PAGES)
 
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
+NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # GenBank files path

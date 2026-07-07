@@ -1,10 +1,7 @@
-import base64
 import time
 import uuid
-from io import StringIO
 from urllib.parse import parse_qs
 
-from Bio import SeqIO
 import dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
@@ -20,6 +17,7 @@ from dash import (
     html,
     no_update,
 )
+from dash.exceptions import PreventUpdate
 from sqlalchemy import text
 
 from src.config.logging import get_logger
@@ -100,6 +98,13 @@ EDITABLE_COLS = {
         "taxonomy_id",
     },
     "ships": {"md5", "rev_comp_md5"},
+    "starship_features": {
+        "contigID",
+        "elementBegin",
+        "elementEnd",
+        "elementLength",
+        "strand",
+    },
 }
 
 TABLE_CONFIG = {
@@ -114,6 +119,11 @@ TABLE_CONFIG = {
     "ship_accessions": {"sql_table": "ship_accessions", "db": "starbase", "pk": "id"},
     "genomes": {"sql_table": "genomes", "db": "starbase", "pk": "id"},
     "ships": {"sql_table": "ships", "db": "starbase", "pk": "id"},
+    "starship_features": {
+        "sql_table": "starship_features",
+        "db": "starbase",
+        "pk": "id",
+    },
 }
 
 # SQLite reserved / quoted column names in UPDATE statements
@@ -174,12 +184,15 @@ def _fetch_submissions():
     with get_submissions_session() as session:
         return pd.read_sql_query(
             """
-            SELECT id, seq_filename, uploader, seq_date,
+            SELECT id, submission_group_id, seq_filename, uploader, seq_date,
+                   genus, species, strain, hostchr, shipstart, shipend, shipstrand,
+                   assembly_accession, evidence,
+                   processing_status, accession_tag,
                    needs_review, comment,
                    classification_family, classification_navis,
                    classification_haplotype, classification_confidence
             FROM submissions
-            ORDER BY id DESC
+            ORDER BY submission_group_id DESC, id ASC
             """,
             session.bind,
         )
@@ -411,6 +424,17 @@ _TAX_LINK_COLS = [
     "note",
 ]
 
+_TAX_NCBI_COLS = [
+    "genome_id",
+    "assembly_accession",
+    "biosample",
+    "ncbi_taxid",
+    "organism",
+    "taxonomy_id",
+    "joined_ships_updated",
+    "action",
+]
+
 _TAX_VALIDATE_COLS = [
     "issue_type",
     "taxonomy_id",
@@ -457,6 +481,35 @@ _ACCESSION_CLEANUP_COLS = [
     "primary_accession",
     "secondary_accessions",
     "reason",
+]
+
+_GENOME_COORD_COLS = [
+    "issue_type",
+    "source",
+    "joined_ship_id",
+    "submission_id",
+    "starshipID",
+    "ship_id",
+    "assembly_accession",
+    "genome_source",
+    "contig_id",
+    "coordinates",
+    "detail",
+]
+
+_GENOME_COORD_FIX_COLS = [
+    "status",
+    "starshipID",
+    "ship_id",
+    "starship_feature_id",
+    "assembly_accession",
+    "contig_id",
+    "old_coordinates",
+    "new_coordinates",
+    "strand",
+    "coverage",
+    "identity",
+    "detail",
 ]
 
 # Cap assign-missing preview in admin (full pipeline per ship is expensive)
@@ -1025,6 +1078,106 @@ def _job_accession_cleanup_analyze():
     }
 
 
+def _job_taxonomy_ncbi_backfill():
+    from src.database.cleanup.utils.fill_taxonomy_from_ncbi import (
+        fill_taxonomy_from_ncbi,
+    )
+
+    summary, rows, _counts = fill_taxonomy_from_ncbi(dry_run=False, overwrite=False)
+    return {
+        "job": "taxonomy_ncbi_backfill",
+        "mode": "apply",
+        "columns": _TAX_NCBI_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_genome_coordinates_validate():
+    """Check contig/chr IDs and coordinates against linked assembly accessions."""
+    from src.database.cleanup.utils.validate_genome_coordinates import (
+        analyze_genome_coordinates,
+    )
+
+    rows, stats = analyze_genome_coordinates(
+        include_submissions=True,
+        validate_ncbi=True,
+        validate_sequences=True,
+    )
+    n = len(rows)
+    by_type: dict[str, int] = {}
+    for r in rows:
+        t = r.get("issue_type") or "unknown"
+        by_type[t] = by_type.get(t, 0) + 1
+    type_bits = ", ".join(f"{k}={v}" for k, v in sorted(by_type.items())[:6])
+    jgi_skip = stats.get("jgi_rows_skipped", 0)
+    seq_ok = stats.get("sequence_matches", 0)
+    summary = (
+        f"{n} issue(s) across {stats.get('rows_checked', 0)} row(s)"
+        + (f": {type_bits}" if type_bits else "")
+        + (
+            f"; NCBI metadata on {stats.get('ncbi_rows_checked', 0)} row(s) "
+            f"({stats.get('ncbi_assemblies', 0)} assemblies)"
+            if stats.get("ncbi_rows_checked")
+            else ""
+        )
+        + (
+            f"; {seq_ok} full sequence match(es), "
+            f"{stats.get('sequence_mismatches', 0)} mismatch(es)"
+            if seq_ok or stats.get("sequence_mismatches")
+            else ""
+        )
+        + (f"; {jgi_skip} JGI row(s) skipped external lookup" if jgi_skip else "")
+        if n or jgi_skip or seq_ok
+        else f"No genome coordinate issues in {stats.get('rows_checked', 0)} row(s)."
+    )
+    return {
+        "job": "genome_coordinates_validate",
+        "mode": "report",
+        "columns": _GENOME_COORD_COLS,
+        "rows": rows,
+        "proposed_changes": [],
+        "summary": summary,
+    }
+
+
+def _job_genome_coordinates_fix():
+    """Align ship sequences to NCBI contigs and stage coordinate corrections."""
+    from src.database.cleanup.utils.validate_genome_coordinates import (
+        analyze_genome_coordinate_fixes,
+    )
+
+    proposed, preview, stats = analyze_genome_coordinate_fixes(require_perfect=True)
+    n = len(proposed)
+    field_updates = len({(c["row_id"], c["col_id"]) for c in proposed})
+    staged_ships = stats.get("fixes_staged", 0)
+    summary = (
+        f"{field_updates} field update(s) staged for {staged_ships} ship(s)"
+        + (
+            f"; {stats.get('already_correct', 0)} already match GenBank, "
+            f"{stats.get('partial_match', 0)} partial alignment(s), "
+            f"{stats.get('no_alignment', 0)} not located"
+            if stats.get("rows_checked")
+            else ""
+        )
+        if n
+        else (
+            f"No coordinate fixes to stage ({stats.get('rows_checked', 0)} checked, "
+            f"{stats.get('already_correct', 0)} already correct, "
+            f"{stats.get('no_alignment', 0)} not located)."
+        )
+    )
+    return {
+        "job": "genome_coordinates_fix",
+        "mode": "stage",
+        "columns": _GENOME_COORD_FIX_COLS,
+        "rows": preview,
+        "proposed_changes": proposed,
+        "summary": summary,
+    }
+
+
 JOB_REGISTRY = {
     "md5_validation": {
         "label": "MD5 Duplicate Detection",
@@ -1061,6 +1214,16 @@ JOB_REGISTRY = {
         "description": "Stage joined_ships.tax_id links from genome, ome, or gluck_thaler_2025 rules.",
         "fn": _job_taxonomy_link_ships,
         "mode": "stage",
+    },
+    "taxonomy_ncbi_backfill": {
+        "label": "Fill taxonomy from NCBI",
+        "description": (
+            "Look up NCBI taxon from GCA/GCF assembly accessions or SAMN/SAMEA biosamples, "
+            "create taxonomy rows if needed, and set genomes.taxonomy_id and joined_ships.tax_id "
+            "(writes immediately; skips rows that already have taxonomy; requires NCBI_API_KEY in .env)."
+        ),
+        "fn": _job_taxonomy_ncbi_backfill,
+        "mode": "apply",
     },
     "accession_status": {
         "label": "Accession status",
@@ -1100,6 +1263,28 @@ JOB_REGISTRY = {
         "description": "Show joined_ships rows that would be cleared when starshipID != ships.header.",
         "fn": _job_accession_fix_duplicates_preview,
         "mode": "report",
+    },
+    "genome_coordinates_validate": {
+        "label": "Validate genome coordinates",
+        "description": (
+            "Check contig/chr IDs and coordinates against genomes.assembly_accession. "
+            "NCBI GCA/GCF: validates contig/range via Datasets, then compares the "
+            "full ship sequence to the GenBank interval (set NCBI_API_KEY in .env). "
+            "Includes pending submissions."
+        ),
+        "fn": _job_genome_coordinates_validate,
+        "mode": "report",
+    },
+    "genome_coordinates_fix": {
+        "label": "Fix genome coordinates from sequence",
+        "description": (
+            "Align ship sequences to NCBI contigs (minimap2, same thresholds as "
+            "check_contained_match). Stages perfect-match updates to "
+            "starship_features elementBegin/elementEnd/elementLength/strand only — "
+            "never modifies ship sequences. Run Validate first to review mismatches."
+        ),
+        "fn": _job_genome_coordinates_fix,
+        "mode": "stage",
     },
 }
 
@@ -1163,8 +1348,10 @@ def _promote_submission(sub_id: int):
 
     Returns (success: bool, accession: str|None, error: str|None).
     """
-    from src.utils.web_submission_adapter import perform_database_insertion
-    from src.utils.submission_utils import check_sequence_duplicate
+    from src.utils.web_submission_adapter import (
+        perform_database_insertion,
+        parse_submission_fasta,
+    )
 
     try:
         with get_submissions_session() as session:
@@ -1177,20 +1364,26 @@ def _promote_submission(sub_id: int):
 
         row = dict(row._mapping)
 
+        if row.get("processing_status") != "processed":
+            return (
+                False,
+                None,
+                f"Submission {sub_id} must be processed before promotion "
+                f"(current status: {row.get('processing_status') or 'pending'})",
+            )
+
         if not row.get("seq_contents"):
             return False, None, "No sequence data stored in this submission"
 
-        content_type, content_string = row["seq_contents"].split(",", 1)
-        decoded = base64.b64decode(content_string).decode("utf-8")
-        records = list(SeqIO.parse(StringIO(decoded), "fasta"))
-        if not records:
-            return False, None, "No valid FASTA sequences in submission"
-        sequence = str(records[0].seq)
-        seq_id = records[0].id
+        staging_accession = str(row.get("accession_tag") or "").strip()
+        if not staging_accession:
+            return (
+                False,
+                None,
+                f"Submission {sub_id} has no accession_tag; run Process first",
+            )
 
-        duplicate_info = check_sequence_duplicate(
-            sequence, row.get("genus") or "", row.get("species") or ""
-        )
+        seq_id, sequence = parse_submission_fasta(row["seq_contents"])
 
         strand = row.get("shipstrand") or "+"
         processed_data = {
@@ -1209,7 +1402,8 @@ def _promote_submission(sub_id: int):
             "curator": row.get("uploader") or "",
             "curated_status": "curated",
             "notes": row.get("comment") or "",
-            "duplicate_info": duplicate_info,
+            "trust_staging": True,
+            "staging_accession_tag": staging_accession,
         }
 
         if row.get("classification_family") or row.get("classification_navis"):
@@ -1238,7 +1432,13 @@ def _promote_submission(sub_id: int):
 
         with get_submissions_session() as session:
             session.execute(
-                text("UPDATE submissions SET needs_review = 0 WHERE id = :id"),
+                text(
+                    """
+                    UPDATE submissions
+                    SET needs_review = 0, processing_status = 'promoted'
+                    WHERE id = :id
+                    """
+                ),
                 {"id": sub_id},
             )
             session.commit()
@@ -1258,7 +1458,7 @@ def _promote_submission(sub_id: int):
 # ---------------------------------------------------------------------------
 
 
-def _make_grid(df, grid_id, editable_cols):
+def _make_grid(df, grid_id, editable_cols, row_selection=False):
     col_defs = []
     for col in df.columns:
         is_editable = col in editable_cols
@@ -1286,22 +1486,26 @@ def _make_grid(df, grid_id, editable_cols):
 
     rows = [{**r, "_dirty": False} for r in df.fillna("").to_dict("records")]
 
+    dash_grid_options = {
+        "pagination": True,
+        "paginationPageSize": 50,
+        "suppressPropertyNamesCheck": True,
+        "rowHeight": 40,
+        "headerHeight": 44,
+        "rowClassRules": {
+            "admin-unsaved-row": "params.data._dirty === 'manual' || params.data._dirty === true",
+            "admin-job-row": "params.data._dirty === 'job'",
+        },
+    }
+    if row_selection:
+        dash_grid_options["rowSelection"] = "multiple"
+
     return dag.AgGrid(
         id=grid_id,
         columnDefs=col_defs,
         rowData=rows,
         defaultColDef={"resizable": True, "minWidth": 80},
-        dashGridOptions={
-            "pagination": True,
-            "paginationPageSize": 50,
-            "suppressPropertyNamesCheck": True,
-            "rowHeight": 40,
-            "headerHeight": 44,
-            "rowClassRules": {
-                "admin-unsaved-row": "params.data._dirty === 'manual' || params.data._dirty === true",
-                "admin-job-row": "params.data._dirty === 'job'",
-            },
-        },
+        dashGridOptions=dash_grid_options,
         getRowId="params.data.id",
         className="ag-theme-alpine",
         style={"width": "100%", "height": "600px"},
@@ -1442,6 +1646,30 @@ def _promote_modal():
     )
 
 
+def _process_modal():
+    return dmc.Modal(
+        id="admin-process-modal",
+        title="Processing submissions",
+        centered=True,
+        opened=False,
+        closeOnClickOutside=False,
+        withCloseButton=False,
+        children=dmc.Stack(
+            [
+                dmc.Loader(type="dots", size="lg"),
+                dmc.Text(
+                    id="admin-process-modal-text",
+                    children="Running checks, classification, and accession assignment…",
+                    size="sm",
+                ),
+            ],
+            align="center",
+            gap="md",
+            py="md",
+        ),
+    )
+
+
 def _version_bump_modal():
     return dmc.Modal(
         id="admin-version-modal",
@@ -1578,16 +1806,29 @@ def _build_admin_layout():
                                 dmc.Group(
                                     [
                                         dmc.Text(
-                                            "Select row(s) to promote into the main starbase database.",
+                                            "Select row(s), then Process (classify + accession) or Promote (main DB). "
+                                            "Re-processing skips rows that already have an accession and classification.",
                                             size="sm",
                                             c="dimmed",
                                         ),
-                                        dmc.Button(
-                                            "Promote to Main DB",
-                                            id="admin-promote-btn",
-                                            color="green",
-                                            size="sm",
-                                            disabled=True,
+                                        dmc.Group(
+                                            [
+                                                dmc.Button(
+                                                    "Process submission(s)",
+                                                    id="admin-process-btn",
+                                                    color="blue",
+                                                    size="sm",
+                                                    disabled=True,
+                                                ),
+                                                dmc.Button(
+                                                    "Promote to Main DB",
+                                                    id="admin-promote-btn",
+                                                    color="green",
+                                                    size="sm",
+                                                    disabled=True,
+                                                ),
+                                            ],
+                                            gap="sm",
                                         ),
                                     ],
                                     justify="space-between",
@@ -1599,6 +1840,7 @@ def _build_admin_layout():
                                     sub_df,
                                     "admin-submissions-grid",
                                     EDITABLE_COLS["submissions"],
+                                    row_selection=True,
                                 ),
                             ]
                         ),
@@ -1700,11 +1942,13 @@ layout = html.Div(
         dcc.Location(id="admin-url", refresh=False),
         dcc.Store(id="admin-pending-changes", data=[]),
         dcc.Store(id="admin-selected-submissions", data=[]),
+        dcc.Store(id="admin-submissions-rowdata", data=None),
         dcc.Store(id="admin-job-result", data=None),
         dcc.Store(id="admin-job-applied", data=False),
         dcc.Store(id="admin-busy", data=False),
         dcc.Store(id="admin-job-running", data=False),
         dcc.Store(id="admin-busy-reset", data=0),
+        dcc.Store(id="admin-process-meta", data=None),
         dcc.Store(id="admin-authed", data=False),
         dcc.Store(id="admin-ui-state", data={}),
         dcc.Store(
@@ -1718,6 +1962,7 @@ layout = html.Div(
         html.Div(id="admin-content"),
         _version_bump_modal(),
         _promote_modal(),
+        _process_modal(),
     ]
 )
 
@@ -1766,8 +2011,30 @@ clientside_callback(
     Input("admin-apply-job-btn", "n_clicks"),
     Input("admin-save-btn", "n_clicks"),
     Input("admin-discard-btn", "n_clicks"),
+    Input("admin-process-btn", "n_clicks"),
     Input("admin-promote-confirm", "n_clicks"),
     Input("admin-version-confirm", "n_clicks"),
+    prevent_initial_call=True,
+)
+
+clientside_callback(
+    """
+    function(n, selected) {
+        if (!n) return [
+            window.dash_clientside.no_update,
+            window.dash_clientside.no_update,
+        ];
+        var count = (selected || []).length;
+        var label = count === 1
+            ? 'Processing 1 submission…'
+            : ('Processing ' + count + ' submissions…');
+        return [true, label];
+    }
+    """,
+    Output("admin-process-modal", "opened"),
+    Output("admin-process-modal-text", "children"),
+    Input("admin-process-btn", "n_clicks"),
+    State("admin-selected-submissions", "data"),
     prevent_initial_call=True,
 )
 
@@ -1820,6 +2087,7 @@ clientside_callback(
             applyStyle: meta.style || {display: 'none'},
             applyLbl: isBusy ? 'Applying...' : (meta.children || 'Apply to pending'),
             promoteDis: isBusy || !(selected && selected.length),
+            processDis: isBusy || !(selected && selected.length),
             jobSelectDis: isBusy,
             runJobDis: isBusy,
             runJobLbl: jobRunning ? 'Running job...' : 'Run job',
@@ -1848,6 +2116,15 @@ def _clear_admin_busy(_token):
     return False, False
 
 
+@callback(
+    Output("admin-process-modal", "opened", allow_duplicate=True),
+    Input("admin-busy-reset", "data"),
+    prevent_initial_call=True,
+)
+def _close_process_modal(_token):
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Clientside — apply UI state to auth-gated components (only exist after login)
 # ---------------------------------------------------------------------------
@@ -1857,7 +2134,7 @@ clientside_callback(
     function(uiState, authed, content) {
         var nu = window.dash_clientside.no_update;
         if (!authed || !content || !uiState || uiState.saveDis === undefined) {
-            return [nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu];
+            return [nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu];
         }
         var b = uiState.isBusy;
         return [
@@ -1865,6 +2142,7 @@ clientside_callback(
             b, b,
             uiState.runJobDis, b, uiState.runJobLbl,
             uiState.applyDis, uiState.applyStyle, uiState.applyLbl, b,
+            uiState.processDis, b,
             uiState.promoteDis, b,
             uiState.jobSelectDis,
         ];
@@ -1883,6 +2161,8 @@ clientside_callback(
     Output("admin-apply-job-btn", "style"),
     Output("admin-apply-job-btn", "children"),
     Output("admin-apply-job-btn", "loading"),
+    Output("admin-process-btn", "disabled"),
+    Output("admin-process-btn", "loading"),
     Output("admin-promote-btn", "disabled"),
     Output("admin-promote-btn", "loading"),
     Output("admin-job-select", "disabled"),
@@ -1951,6 +2231,20 @@ clientside_callback(
     "function(r) { return r || []; }",
     Output("admin-selected-submissions", "data"),
     Input("admin-submissions-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+
+clientside_callback(
+    """
+    function(rowData) {
+        if (rowData === null || rowData === undefined) {
+            return window.dash_clientside.no_update;
+        }
+        return rowData;
+    }
+    """,
+    Output("admin-submissions-grid", "rowData", allow_duplicate=True),
+    Input("admin-submissions-rowdata", "data"),
     prevent_initial_call=True,
 )
 
@@ -2129,6 +2423,62 @@ def cancel_version_bump(n_clicks):
 
 
 # ---------------------------------------------------------------------------
+# Callbacks — process submission
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("notifications-container", "children", allow_duplicate=True),
+    Output("admin-submissions-rowdata", "data", allow_duplicate=True),
+    Output("admin-busy-reset", "data", allow_duplicate=True),
+    Input("admin-process-btn", "n_clicks"),
+    State("admin-selected-submissions", "data"),
+    prevent_initial_call=True,
+)
+def run_process(n_clicks, selected_rows):
+    if not n_clicks or not selected_rows:
+        raise PreventUpdate
+
+    from src.utils.web_submission_adapter import (
+        process_staging_submissions_ordered,
+        summarize_staging_process_results,
+    )
+
+    sub_ids = sorted({row.get("id") for row in selected_rows if row.get("id")})
+    results = process_staging_submissions_ordered(sub_ids)
+    grid_rows = _fetch_submissions().fillna("").to_dict("records")
+
+    failures = [r for r in results if not r.get("success")]
+    detail = summarize_staging_process_results(results)
+    if failures:
+        notif = dmc.Notification(
+            id=f"admin-err-{uuid.uuid4().hex[:6]}",
+            title=f"Processing finished with {len(failures)} error(s)",
+            message=detail,
+            color="red",
+            action="show",
+            autoClose=15000,
+        )
+        return notif, grid_rows, time.time()
+
+    skipped = sum(1 for r in results if r.get("already_processed"))
+    classified = sum(1 for r in results if r.get("classified"))
+    notif = dmc.Notification(
+        id=f"admin-ok-{uuid.uuid4().hex[:6]}",
+        title="Processing complete",
+        message=detail
+        or (
+            f"{len(results)} submission(s): "
+            f"{classified} classified, {skipped} skipped (already done)"
+        ),
+        color="green",
+        action="show",
+        autoClose=12000,
+    )
+    return notif, grid_rows, time.time()
+
+
+# ---------------------------------------------------------------------------
 # Callbacks — promote submission
 # ---------------------------------------------------------------------------
 
@@ -2160,6 +2510,14 @@ def open_promote_modal(n_clicks, selected_rows):
                                 dmc.Text(f"ID {row.get('id')}", fw=700, size="sm"),
                                 dmc.Text(
                                     row.get("seq_filename", ""), size="sm", c="dimmed"
+                                ),
+                                dmc.Badge(
+                                    row.get("processing_status") or "pending",
+                                    color="blue"
+                                    if row.get("processing_status") == "processed"
+                                    else "gray",
+                                    variant="light",
+                                    size="xs",
                                 ),
                                 dmc.Badge(
                                     "needs review"
@@ -2208,6 +2566,7 @@ def open_promote_modal(n_clicks, selected_rows):
         Output("admin-version-description", "value", allow_duplicate=True),
         Output("notifications-container", "children", allow_duplicate=True),
         Output("admin-busy-reset", "data", allow_duplicate=True),
+        Output("admin-submissions-rowdata", "data", allow_duplicate=True),
     ],
     Input("admin-promote-confirm", "n_clicks"),
     State("admin-selected-submissions", "data"),
@@ -2215,7 +2574,7 @@ def open_promote_modal(n_clicks, selected_rows):
 )
 def run_promotion(n_clicks, selected_rows):
     if not n_clicks or not selected_rows:
-        return no_update, no_update, no_update, no_update, no_update, time.time()
+        return (no_update,) * 7
 
     results = []
     for row in selected_rows:
@@ -2223,6 +2582,7 @@ def run_promotion(n_clicks, selected_rows):
         success, accession, error = _promote_submission(sub_id)
         results.append((sub_id, success, accession, error))
 
+    grid_rows = _fetch_submissions().fillna("").to_dict("records")
     failures = [r for r in results if not r[1]]
 
     if failures:
@@ -2235,7 +2595,7 @@ def run_promotion(n_clicks, selected_rows):
             action="show",
             autoClose=10000,
         )
-        return False, False, no_update, no_update, notif, time.time()
+        return False, False, no_update, no_update, notif, time.time(), grid_rows
 
     successes = [r for r in results if r[1]]
     accessions = ", ".join(r[2] for r in successes if r[2])
@@ -2277,7 +2637,7 @@ def run_promotion(n_clicks, selected_rows):
         gap="xs",
     )
     desc = f"admin: promoted submission(s) {accessions} to main DB"
-    return False, True, info, desc, no_update, time.time()
+    return False, True, info, desc, no_update, time.time(), grid_rows
 
 
 @callback(
@@ -2366,8 +2726,12 @@ def render_job_result(result, applied, authed):
             [
                 dmc.Text(job_label, fw=600, size="sm"),
                 dmc.Badge(
-                    "Report only" if mode == "report" else "Stage changes",
-                    color="gray" if mode == "report" else "teal",
+                    "Report only"
+                    if mode == "report"
+                    else ("Applied" if mode == "apply" else "Stage changes"),
+                    color="gray"
+                    if mode == "report"
+                    else ("green" if mode == "apply" else "teal"),
                     variant="light",
                     size="sm",
                 ),
@@ -2376,7 +2740,15 @@ def render_job_result(result, applied, authed):
         ),
         dmc.Text(summary, size="sm"),
     ]
-    if mode == "stage":
+    if mode == "apply":
+        parts.append(
+            dmc.Alert(
+                "Changes were written to the database.",
+                color="green",
+                variant="light",
+            )
+        )
+    elif mode == "stage":
         parts.append(
             dmc.Alert(
                 "Review proposed changes below, then Apply to pending. "
