@@ -416,9 +416,106 @@ def resolve_ship_by_accession(
     return (ship.id, accession_tag, accession_id) if accession_tag else None
 
 
-# ============================================================================
-# DATABASE INSERTION
-# ============================================================================
+def sequence_matches_ship(clean_seq: str, ship: Ships) -> bool:
+    """Return True if clean_seq matches ship MD5 (forward or reverse complement)."""
+    query_md5 = generate_md5_hash(clean_seq)
+    query_md5_rc = generate_md5_hash(revcomp(clean_seq))
+    return (
+        (ship.md5 and ship.md5 == query_md5)
+        or (ship.rev_comp_md5 and ship.rev_comp_md5 == query_md5)
+        or (ship.md5 and ship.md5 == query_md5_rc)
+        or (ship.rev_comp_md5 and ship.rev_comp_md5 == query_md5_rc)
+    )
+
+
+def find_ship_by_sequence(session, clean_seq: str) -> Optional[Ships]:
+    """Return an existing ship whose sequence matches clean_seq (forward or RC)."""
+    md5_hash = generate_md5_hash(clean_seq)
+    md5_revcomp = generate_md5_hash(revcomp(clean_seq))
+    return (
+        session.query(Ships)
+        .filter(
+            (Ships.md5 == md5_hash)
+            | (Ships.md5 == md5_revcomp)
+            | (Ships.rev_comp_md5 == md5_hash)
+            | (Ships.rev_comp_md5 == md5_revcomp)
+        )
+        .first()
+    )
+
+
+def resolve_ship_by_ssa_accession(
+    session, accession_tag: str
+) -> Optional[Tuple[int, str, Optional[int]]]:
+    """Resolve an SSA accession_tag to (ship_id, accession_tag, accession_id)."""
+    if not accession_tag or not str(accession_tag).strip():
+        return None
+
+    candidates = [str(accession_tag).strip()]
+    base = candidates[0].split(".")[0] if "." in candidates[0] else candidates[0]
+    if base not in candidates:
+        candidates.append(base)
+
+    for tag in candidates:
+        accession = (
+            session.query(Accessions).filter(Accessions.accession_tag == tag).first()
+        )
+        if not accession:
+            continue
+        ship = session.query(Ships).filter(Ships.accession_id == accession.id).first()
+        if ship:
+            return (ship.id, accession.accession_tag, accession.id)
+    return None
+
+
+def _resolve_ship_for_staging_accession(
+    session, staging_tag: str
+) -> Optional[Tuple[int, str, Optional[int], Ships]]:
+    """Try SSB-style and SSA-style lookups for a staging accession tag."""
+    for resolver in (resolve_ship_by_accession, resolve_ship_by_ssa_accession):
+        resolved = resolver(session, staging_tag)
+        if not resolved:
+            continue
+        ship_id, accession_tag, accession_id = resolved
+        ship = session.query(Ships).filter(Ships.id == ship_id).first()
+        if ship:
+            return ship_id, accession_tag, accession_id, ship
+    return None
+
+
+def _create_ship_with_accession_tag(
+    session, clean_seq: str, accession_tag: str
+) -> Tuple[Ships, Accessions, int, str]:
+    """Create Accessions + Ships using a predetermined SSA accession tag.
+
+    SSB (ship_accession) rows are created later by ensure_ship_has_ssb().
+    """
+    tag = accession_tag.split(".")[0] if "." in accession_tag else accession_tag
+
+    accession = (
+        session.query(Accessions).filter(Accessions.accession_tag == tag).first()
+    )
+    if not accession:
+        accession = Accessions(accession_tag=tag, version_tag=1)
+        session.add(accession)
+        session.flush()
+    else:
+        existing_ship = (
+            session.query(Ships).filter(Ships.accession_id == accession.id).first()
+        )
+        if existing_ship and sequence_matches_ship(clean_seq, existing_ship):
+            return existing_ship, accession, existing_ship.id, tag
+
+    ship = Ships(
+        sequence=clean_seq,
+        sequence_length=len(clean_seq),
+        md5=generate_md5_hash(clean_seq),
+        rev_comp_md5=generate_md5_hash(revcomp(clean_seq)),
+        accession_id=accession.id,
+    )
+    session.add(ship)
+    session.flush()
+    return ship, accession, ship.id, tag
 
 
 class SubmissionProcessor:
@@ -456,41 +553,52 @@ class SubmissionProcessor:
         }
 
         try:
-            # Step 1: Validate
-            is_valid, validation_errors = validate_submission(data)
-            if not is_valid:
-                result["errors"] = validation_errors
-                self.stats["errors"].append(
-                    {
-                        "starshipID": data.get("starshipID", "unknown"),
-                        "errors": validation_errors,
-                    }
+            trust_staging = bool(data.get("trust_staging"))
+
+            if trust_staging:
+                duplicate_info = data.get("duplicate_info") or DuplicateInfo(
+                    is_duplicate=False
                 )
-                return result
+                self.stats["validated"] += 1
+            else:
+                # Step 1: Validate
+                is_valid, validation_errors = validate_submission(data)
+                if not is_valid:
+                    result["errors"] = validation_errors
+                    self.stats["errors"].append(
+                        {
+                            "starshipID": data.get("starshipID", "unknown"),
+                            "errors": validation_errors,
+                        }
+                    )
+                    return result
 
-            self.stats["validated"] += 1
+                self.stats["validated"] += 1
 
-            # Step 2: Check for duplicates
-            duplicate_info = check_sequence_duplicate(
-                data["sequence"], data.get("genus"), data.get("species")
-            )
-            result["duplicate_info"] = duplicate_info
-
-            if duplicate_info.is_duplicate and not duplicate_info.different_taxon:
-                # Exact duplicate in same taxon - skip
-                result["warnings"].append(
-                    f"Duplicate sequence found (ship_id={duplicate_info.existing_ship_id}, "
-                    f"accession={duplicate_info.existing_accession})"
+                # Step 2: Check for duplicates
+                duplicate_info = check_sequence_duplicate(
+                    data["sequence"], data.get("genus"), data.get("species")
                 )
-                self.stats["duplicates_same_taxon"] += 1
-                logger.warning(f"Skipping duplicate: {data.get('starshipID')}")
-                return result
+                result["duplicate_info"] = duplicate_info
 
-            if duplicate_info.is_duplicate and duplicate_info.different_taxon:
-                result["warnings"].append(
-                    "Same sequence in different taxon - will create new joined_ships entry"
-                )
-                self.stats["duplicates_diff_taxon"] += 1
+                if duplicate_info.is_duplicate and not duplicate_info.different_taxon:
+                    # Exact duplicate in same taxon - skip
+                    result["warnings"].append(
+                        f"Duplicate sequence found (ship_id={duplicate_info.existing_ship_id}, "
+                        f"accession={duplicate_info.existing_accession})"
+                    )
+                    self.stats["duplicates_same_taxon"] += 1
+                    logger.warning(f"Skipping duplicate: {data.get('starshipID')}")
+                    return result
+
+                if duplicate_info.is_duplicate and duplicate_info.different_taxon:
+                    result["warnings"].append(
+                        "Same sequence in different taxon - will create new joined_ships entry"
+                    )
+                    self.stats["duplicates_diff_taxon"] += 1
+
+            if not result.get("duplicate_info"):
+                result["duplicate_info"] = duplicate_info
 
             # Step 3: Process insertion
             if not self.dry_run:
@@ -557,83 +665,108 @@ class SubmissionProcessor:
                 if resolved:
                     cand_ship_id, cand_accession_tag, cand_accession_id = resolved
                     ship = session.query(Ships).filter(Ships.id == cand_ship_id).first()
-                    if ship:
-                        query_md5 = generate_md5_hash(clean_seq)
-                        query_md5_rc = generate_md5_hash(revcomp(clean_seq))
-                        if (
-                            (ship.md5 and ship.md5 == query_md5)
-                            or (ship.rev_comp_md5 and ship.rev_comp_md5 == query_md5)
-                            or (ship.md5 and ship.md5 == query_md5_rc)
-                            or (ship.rev_comp_md5 and ship.rev_comp_md5 == query_md5_rc)
-                        ):
-                            ship_id = cand_ship_id
-                            accession_tag = cand_accession_tag
-                            if cand_accession_id:
-                                accession = (
-                                    session.query(Accessions)
-                                    .filter(Accessions.id == cand_accession_id)
-                                    .first()
-                                )
-                            logger.info(
-                                f"Using exact match from BLAST: {classification['closest_match']}"
+                    if ship and sequence_matches_ship(clean_seq, ship):
+                        ship_id = cand_ship_id
+                        accession_tag = cand_accession_tag
+                        if cand_accession_id:
+                            accession = (
+                                session.query(Accessions)
+                                .filter(Accessions.id == cand_accession_id)
+                                .first()
                             )
-                            if ship.accession_id:
-                                accession = (
-                                    session.query(Accessions)
-                                    .filter(Accessions.id == ship.accession_id)
-                                    .first()
-                                )
+                        logger.info(
+                            f"Using exact match from BLAST: {classification['closest_match']}"
+                        )
+                        if ship.accession_id:
+                            accession = (
+                                session.query(Accessions)
+                                .filter(Accessions.id == ship.accession_id)
+                                .first()
+                            )
 
-            if not (ship_id and accession_tag):
-                # No exact-match skip; use normal duplicate or create-new path
-                if duplicate_info.is_duplicate and duplicate_info.different_taxon:
-                    ship_id = duplicate_info.existing_ship_id
-                    ship = session.query(Ships).filter(Ships.id == ship_id).first()
-
-                if ship.accession_id:
+            staging_tag = (data.get("staging_accession_tag") or "").strip()
+            if (
+                not (ship_id and accession_tag)
+                and data.get("trust_staging")
+                and staging_tag
+            ):
+                resolved = _resolve_ship_for_staging_accession(session, staging_tag)
+                if resolved:
+                    cand_ship_id, cand_accession_tag, cand_accession_id, ship = resolved
+                    if sequence_matches_ship(clean_seq, ship):
+                        ship_id = cand_ship_id
+                        accession_tag = cand_accession_tag or staging_tag
+                        if cand_accession_id:
+                            accession = (
+                                session.query(Accessions)
+                                .filter(Accessions.id == cand_accession_id)
+                                .first()
+                            )
+                        logger.info(
+                            "Promote: reusing ship %s for staging accession %s",
+                            ship_id,
+                            staging_tag,
+                        )
+                if not ship_id:
+                    existing_ship = find_ship_by_sequence(session, clean_seq)
+                    if existing_ship:
+                        ship = existing_ship
+                        ship_id = existing_ship.id
+                        if existing_ship.accession_id:
+                            accession = (
+                                session.query(Accessions)
+                                .filter(Accessions.id == existing_ship.accession_id)
+                                .first()
+                            )
+                            accession_tag = (
+                                accession.accession_tag if accession else staging_tag
+                            )
+                        else:
+                            accession_tag = staging_tag
+                        logger.info(
+                            "Promote: reusing ship %s by sequence match (staging %s)",
+                            ship_id,
+                            staging_tag,
+                        )
+                if not ship_id:
+                    ship, accession, ship_id, accession_tag = (
+                        _create_ship_with_accession_tag(session, clean_seq, staging_tag)
+                    )
+                    logger.info(
+                        "Promote: created ship %s with staging accession %s",
+                        ship_id,
+                        accession_tag,
+                    )
+            elif ship_id and accession_tag:
+                # Exact BLAST match — ship and accession already resolved above
+                pass
+            elif duplicate_info.is_duplicate and duplicate_info.different_taxon:
+                ship_id = duplicate_info.existing_ship_id
+                ship = session.query(Ships).filter(Ships.id == ship_id).first()
+                if ship and ship.accession_id:
                     accession = (
                         session.query(Accessions)
                         .filter(Accessions.id == ship.accession_id)
                         .first()
                     )
                     accession_tag = accession.accession_tag if accession else None
-                else:
+                if not accession_tag:
                     existing_ships = fetch_ships(with_sequence=True)
                     accession_tag, _ = assign_accession(clean_seq, existing_ships)
-
                     new_accession = Accessions(
                         accession_tag=accession_tag, version_tag=1
                     )
                     session.add(new_accession)
                     session.flush()
-
-                    ship.accession_id = new_accession.id
-                    accession_tag = new_accession.accession_tag
+                    accession = new_accession
+                    if ship:
+                        ship.accession_id = new_accession.id
             else:
-                # Create new ship
                 existing_ships = fetch_ships(with_sequence=True)
-                accession_tag, needs_review = assign_accession(
-                    clean_seq, existing_ships
+                accession_tag, _ = assign_accession(clean_seq, existing_ships)
+                ship, accession, ship_id, accession_tag = (
+                    _create_ship_with_accession_tag(session, clean_seq, accession_tag)
                 )
-
-                ship_accession = ShipAccessions(ship_accession_tag=accession_tag)
-                session.add(ship_accession)
-                session.flush()
-
-                accession = Accessions(accession_tag=accession_tag, version_tag=1)
-                session.add(accession)
-                session.flush()
-
-                ship = Ships(
-                    sequence=clean_seq,
-                    sequence_length=len(clean_seq),
-                    md5=generate_md5_hash(clean_seq),
-                    rev_comp_md5=generate_md5_hash(revcomp(clean_seq)),
-                    accession_id=accession.id,
-                )
-                session.add(ship)
-                session.flush()
-                ship_id = ship.id
 
             ensure_ship_has_ssb(session, ship_id)
 
@@ -819,16 +952,30 @@ class SubmissionProcessor:
     ):
         """Add GFF annotation entries."""
         for entry in gff_entries:
+            attributes = entry.get("attributes")
+            seqid = entry.get("seqid")
+            if seqid:
+                prefix = f"seqid={seqid}"
+                attributes = f"{prefix};{attributes}" if attributes else prefix
+
+            phase = entry.get("phase")
+            if phase is not None and phase != ".":
+                try:
+                    phase = int(phase)
+                except (TypeError, ValueError):
+                    phase = None
+            else:
+                phase = None
+
             gff = Gff(
-                seqid=entry.get("seqid"),
                 source=entry.get("source"),
                 type=entry.get("type"),
                 start=entry.get("start"),
                 end=entry.get("end"),
                 score=entry.get("score"),
                 strand=entry.get("strand"),
-                phase=entry.get("phase"),
-                attributes=entry.get("attributes"),
+                phase=phase,
+                attributes=attributes,
                 accession_id=accession_id,
                 ship_id=ship_id,
             )

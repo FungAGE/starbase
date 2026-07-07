@@ -14,6 +14,7 @@ It handles:
 
 import base64
 import datetime
+import os
 from typing import Dict, Any, List, Optional, Set
 from Bio import SeqIO
 from io import StringIO
@@ -27,8 +28,12 @@ from src.utils.submission_utils import (
     check_sequence_duplicate,
 )
 from src.utils.seq_utils import clean_sequence, revcomp
-from src.utils.classification_utils import assign_accession, generate_md5_hash
-from src.database.sql_manager import fetch_ships
+from src.utils.classification_utils import (
+    assign_accession,
+    generate_md5_hash,
+    length_classification_tier,
+)
+from src.database.sql_manager import fetch_ships, fetch_meta_data
 from src.database.sql_engine import get_submissions_session
 from sqlalchemy import text
 
@@ -697,23 +702,20 @@ def perform_database_insertion(
         WebValidationError: If insertion fails
     """
     try:
-        # Check for duplicates
-        duplicate_info = processed_data.get("duplicate_info")
-
-        if duplicate_info and duplicate_info.is_duplicate:
-            if not duplicate_info.different_taxon:
-                # Exact duplicate in same taxon
-                raise WebValidationError(
-                    f"This sequence already exists in the database "
-                    f"(Accession: {duplicate_info.existing_accession}). "
-                    f"Duplicate submissions from the same organism are not allowed.",
-                    "sequence",
-                )
-            else:
-                # Same sequence, different taxon - allow with warning
+        if not processed_data.get("trust_staging"):
+            duplicate_info = processed_data.get("duplicate_info")
+            if duplicate_info and duplicate_info.is_duplicate:
+                if not duplicate_info.different_taxon:
+                    raise WebValidationError(
+                        f"This sequence already exists in the database "
+                        f"(Accession: {duplicate_info.existing_accession}). "
+                        f"Duplicate submissions from the same organism are not allowed.",
+                        "sequence",
+                    )
                 logger.info(
-                    f"Duplicate sequence from different taxon - creating new entry "
-                    f"(existing: {duplicate_info.existing_accession})"
+                    "Duplicate sequence from different taxon - creating new entry "
+                    "(existing: %s)",
+                    duplicate_info.existing_accession,
                 )
 
         # Parse GFF if provided
@@ -875,32 +877,202 @@ def submission_row_to_validated_data(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def update_staging_submission_after_process(
-    sub_id: int, result: Dict[str, Any], processed_data: Dict[str, Any]
+def _lookup_meta_classification(accession: str) -> Dict[str, Any]:
+    """Fill family/nav/hap from main DB metadata for a matched accession."""
+    if not accession:
+        return {}
+    base = str(accession).split(".")[0]
+    for try_acc in (accession, base):
+        meta_df = fetch_meta_data(accessions=[try_acc])
+        if meta_df is None or meta_df.empty:
+            continue
+        acc_col = (
+            "ship_accession_display"
+            if "ship_accession_display" in meta_df.columns
+            else "accession_tag"
+        )
+        if acc_col not in meta_df.columns:
+            continue
+        mask = meta_df[acc_col].astype(str).str.startswith(base)
+        if not mask.any():
+            continue
+        row = meta_df[mask].iloc[0]
+        out: Dict[str, Any] = {}
+        for col, key in [
+            ("familyName", "family"),
+            ("navis_name", "navis"),
+            ("haplotype_name", "haplotype"),
+        ]:
+            val = row.get(col)
+            if val is not None and str(val).strip() and str(val) != "None":
+                out[key] = str(val).strip()
+        return out
+    return {}
+
+
+def _classification_from_workflow_result(
+    workflow_result: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    if not workflow_result or not workflow_result.get("complete"):
+        return None
+
+    cd = workflow_result.get("classification_data") or {}
+    source = cd.get("source") or workflow_result.get("match_stage")
+    closest = cd.get("closest_match") or workflow_result.get("match_result")
+    family = cd.get("family")
+    navis = cd.get("navis")
+    haplotype = cd.get("haplotype")
+    if isinstance(haplotype, dict):
+        haplotype = haplotype.get("haplotype_name")
+
+    if source in ("exact", "contained", "similar") and closest:
+        meta_bits = _lookup_meta_classification(closest)
+        family = family or meta_bits.get("family")
+        navis = navis or meta_bits.get("navis")
+        haplotype = haplotype or meta_bits.get("haplotype")
+
+    if not any([source, family, navis, haplotype, closest]):
+        return None
+
+    return {
+        "source": source,
+        "family": family,
+        "navis": navis,
+        "haplotype": haplotype,
+        "closest_match": closest,
+        "confidence": cd.get("confidence"),
+        "match_details": cd.get("match_details"),
+    }
+
+
+def classify_staging_sequence(
+    sequence: str, seq_id: str = "query"
+) -> Optional[Dict[str, Any]]:
+    """
+    Run the classification workflow for a staging submission sequence.
+
+    Uses the same pipeline as the BLAST page (exact/contained/similar/family/navis/haplotype
+    depending on sequence length). Sequences <=1000 bp return None.
+    """
+    from src.tasks import run_classification_workflow_sync
+    from src.utils.blast_data import (
+        BlastData,
+        ClassificationData,
+        FetchCaptainParams,
+        FetchShipParams,
+        WorkflowState,
+    )
+    from src.utils.classification_utils import WORKFLOW_STAGES
+    from src.utils.seq_utils import write_temp_fasta
+
+    clean = clean_sequence(sequence)
+    if not clean:
+        return None
+    tier = length_classification_tier(len(clean))
+    if tier == "none":
+        logger.info("Skipping classification for %s — sequence <=1000 bp", seq_id)
+        return None
+
+    tmp_fasta = write_temp_fasta(header=seq_id, sequence=sequence)
+    if not tmp_fasta:
+        return None
+
+    try:
+        workflow_state = WorkflowState(
+            complete=False,
+            stop_after_family=(tier == "family_only"),
+            pipeline_entry=tier,
+            stages={
+                stage["id"]: {"progress": 0, "status": "pending"}
+                for stage in WORKFLOW_STAGES
+            },
+        )
+        workflow_state.fetch_ship_params = FetchShipParams(
+            curated=False, with_sequence=True, dereplicate=True
+        )
+        workflow_state.fetch_captain_params = FetchCaptainParams(
+            curated=True, with_sequence=True
+        )
+
+        blast_data = BlastData(seq_type="nucl", fasta_file=tmp_fasta, sequence=sequence)
+        classification_data = ClassificationData(seq_type="nucl", fasta_file=tmp_fasta)
+
+        meta_df = fetch_meta_data()
+        meta_dict = meta_df.to_dict("records") if meta_df is not None else None
+
+        workflow_result = run_classification_workflow_sync(
+            workflow_state=workflow_state.to_dict(),
+            blast_data=blast_data.to_dict(),
+            classification_data=classification_data.to_dict(),
+            meta_dict=meta_dict,
+        )
+    finally:
+        try:
+            os.unlink(tmp_fasta)
+        except OSError:
+            pass
+
+    if workflow_result and workflow_result.get("error"):
+        logger.warning(
+            "Classification workflow error for %s: %s",
+            seq_id,
+            workflow_result.get("error"),
+        )
+    return _classification_from_workflow_result(workflow_result or {})
+
+
+def _apply_classification_to_processed(
+    processed_data: Dict[str, Any], classification: Dict[str, Any]
 ) -> None:
-    """Persist accession and review flags after admin Process step."""
+    processed_data["classification"] = classification
+    if classification.get("family"):
+        processed_data["ship_family"] = classification["family"]
+    if classification.get("navis"):
+        processed_data["ship_navis"] = classification["navis"]
+    if classification.get("haplotype"):
+        processed_data["ship_haplotype"] = classification["haplotype"]
+
+
+def _submission_has_classification(row: Dict[str, Any]) -> bool:
+    return bool(str(row.get("classification_family") or "").strip())
+
+
+def update_staging_submission_after_process(
+    sub_id: int,
+    result: Dict[str, Any],
+    processed_data: Dict[str, Any],
+    *,
+    update_accession: bool = True,
+    update_classification: bool = True,
+) -> None:
+    """Persist accession/classification after admin Process step."""
     classification = processed_data.get("classification") or {}
-    with get_submissions_session() as session:
-        session.execute(
-            text(
-                """
-                UPDATE submissions
-                SET accession_tag = :accession_tag,
-                    needs_review = :needs_review,
-                    processing_status = 'processed',
-                    classification_source = COALESCE(:classification_source, classification_source),
-                    classification_family = COALESCE(:classification_family, classification_family),
-                    classification_navis = COALESCE(:classification_navis, classification_navis),
-                    classification_haplotype = COALESCE(:classification_haplotype, classification_haplotype),
-                    closest_match = COALESCE(:closest_match, closest_match),
-                    classification_confidence = COALESCE(:classification_confidence, classification_confidence)
-                WHERE id = :id
-                """
-            ),
+    sets = [
+        "processing_status = 'processed'",
+        "needs_review = :needs_review",
+    ]
+    params: Dict[str, Any] = {
+        "id": sub_id,
+        "needs_review": 1 if result.get("needs_review") else 0,
+    }
+
+    if update_accession:
+        sets.append("accession_tag = :accession_tag")
+        params["accession_tag"] = result.get("accession")
+
+    if update_classification and classification:
+        sets.extend(
+            [
+                "classification_source = :classification_source",
+                "classification_family = :classification_family",
+                "classification_navis = :classification_navis",
+                "classification_haplotype = :classification_haplotype",
+                "closest_match = :closest_match",
+                "classification_confidence = :classification_confidence",
+            ]
+        )
+        params.update(
             {
-                "id": sub_id,
-                "accession_tag": result.get("accession"),
-                "needs_review": 1 if result.get("needs_review") else 0,
                 "classification_source": classification.get("source"),
                 "classification_family": processed_data.get("ship_family")
                 or classification.get("family"),
@@ -910,16 +1082,21 @@ def update_staging_submission_after_process(
                 or classification.get("haplotype"),
                 "closest_match": classification.get("closest_match"),
                 "classification_confidence": classification.get("confidence"),
-            },
+            }
         )
+
+    sql = f"UPDATE submissions SET {', '.join(sets)} WHERE id = :id"
+    with get_submissions_session() as session:
+        session.execute(text(sql), params)
         session.commit()
 
 
 def process_staging_submission(sub_id: int) -> Dict[str, Any]:
     """
-    Run staging checks and accession assignment for one submission row.
+    Run staging checks, classification, and accession assignment for one submission.
 
-    Used by the admin Process action (not at web submit time).
+    Skips work already done: existing accession_tag is never overwritten; existing
+    classification_family is not re-run unless missing.
     """
     with get_submissions_session() as session:
         row = session.execute(
@@ -931,10 +1108,12 @@ def process_staging_submission(sub_id: int) -> Dict[str, Any]:
 
     row = dict(row._mapping)
     status = row.get("processing_status") or "pending"
+    has_accession = bool(str(row.get("accession_tag") or "").strip())
+    has_classification = _submission_has_classification(row)
 
     if status == "promoted":
         raise WebValidationError(f"Submission {sub_id} has already been promoted")
-    if status == "processed" and row.get("accession_tag"):
+    if status == "processed" and has_accession and has_classification:
         return {
             "success": True,
             "already_processed": True,
@@ -942,22 +1121,77 @@ def process_staging_submission(sub_id: int) -> Dict[str, Any]:
             "needs_review": bool(row.get("needs_review")),
             "filename": row.get("seq_filename"),
             "uploader": row.get("uploader"),
+            "skipped_accession": True,
+            "skipped_classification": True,
         }
 
     validated = submission_row_to_validated_data(row)
     processed = process_submission_data(validated, validated["strand_radio"])
     reference_pool = build_accession_reference_pool(exclude_submission_id=sub_id)
-    result = process_submission_to_staging(processed, existing_ships=reference_pool)
-    update_staging_submission_after_process(sub_id, result, processed)
-    result["success"] = True
-    result["already_processed"] = False
+
+    result: Dict[str, Any] = {
+        "success": True,
+        "already_processed": False,
+        "filename": processed.get("starshipID"),
+        "uploader": processed.get("curator"),
+    }
+
+    update_accession = not has_accession
+    update_classification = not has_classification
+
+    if update_accession:
+        staging = process_submission_to_staging(
+            processed, existing_ships=reference_pool
+        )
+        result.update(staging)
+    else:
+        result["accession"] = row.get("accession_tag")
+        result["needs_review"] = bool(row.get("needs_review"))
+        result["skipped_accession"] = True
+        logger.info(
+            "Submission %s: keeping existing accession %s",
+            sub_id,
+            result["accession"],
+        )
+
+    if update_classification:
+        classification = classify_staging_sequence(
+            processed["sequence"], processed.get("starshipID") or f"sub_{sub_id}"
+        )
+        if classification:
+            _apply_classification_to_processed(processed, classification)
+            result["classified"] = True
+            result["classification"] = classification
+        else:
+            result["classification_skipped"] = True
+            if processed.get("classification"):
+                result["skipped_classification"] = True
+    else:
+        result["skipped_classification"] = True
+        if validated.get("classification"):
+            processed["classification"] = validated["classification"]
+            _apply_classification_to_processed(processed, validated["classification"])
+
+    if not update_accession and not update_classification:
+        result["already_processed"] = True
+
+    update_staging_submission_after_process(
+        sub_id,
+        result,
+        processed,
+        update_accession=update_accession,
+        update_classification=update_classification
+        and bool(processed.get("classification")),
+    )
     return result
 
 
 def process_staging_submissions_ordered(sub_ids: List[int]) -> List[Dict[str, Any]]:
     """Process multiple submission rows sequentially (for grouped submits)."""
     results = []
-    for sub_id in sorted(sub_ids):
+    total = len(sub_ids)
+    for idx, sub_id in enumerate(sorted(sub_ids), start=1):
+        logger.info("Processing submission %s (%d/%d)", sub_id, idx, total)
         try:
             results.append({"sub_id": sub_id, **process_staging_submission(sub_id)})
         except WebValidationError as e:
@@ -970,21 +1204,48 @@ def process_staging_submissions_ordered(sub_ids: List[int]) -> List[Dict[str, An
     return results
 
 
+def summarize_staging_process_results(results: List[Dict[str, Any]]) -> str:
+    """Human-readable per-submission summary for admin notifications."""
+    lines: List[str] = []
+    for r in results:
+        sid = r.get("sub_id")
+        if not r.get("success"):
+            lines.append(f"#{sid}: failed — {r.get('error', 'unknown error')}")
+            continue
+        if r.get("already_processed"):
+            lines.append(f"#{sid}: skipped (already complete)")
+            continue
+        parts = []
+        if r.get("accession"):
+            if r.get("skipped_accession"):
+                parts.append(f"accession {r['accession']} (unchanged)")
+            else:
+                parts.append(f"accession {r['accession']}")
+        if r.get("classified"):
+            cls = r.get("classification") or {}
+            fam = cls.get("family") or "?"
+            parts.append(f"classified → {fam}")
+        elif r.get("skipped_classification"):
+            parts.append("classification unchanged")
+        elif r.get("classification_skipped"):
+            parts.append("classification skipped (too short or no match)")
+        lines.append(f"#{sid}: {', '.join(parts) if parts else 'updated'}")
+    return "\n".join(lines)
+
+
 def _parse_gff_contents(anno_contents: str, anno_filename: str) -> list:
     """
     Parse GFF file contents into list of entry dicts.
 
     Args:
-        anno_contents: Base64-encoded GFF file contents
+        anno_contents: Plain text or base64-encoded GFF file contents
         anno_filename: GFF filename
 
     Returns:
         List of GFF entry dicts
     """
     try:
-        # Decode base64
-        content_type, content_string = anno_contents.split(",")
-        decoded = base64.b64decode(content_string).decode("utf-8")
+        decoded = decode_upload_contents(anno_contents)
 
         gff_entries = []
 
