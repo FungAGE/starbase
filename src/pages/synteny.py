@@ -847,7 +847,11 @@ def generate_synteny_data(n_clicks, selected_ships, color_by, label_field):
 
         clusters = []
         for ship_id in ship_ids:
-            ship_gff = [g for g in gff_data if g["ship_id"] == ship_id]
+            ship_gff = [
+                g
+                for g in gff_data
+                if g["ship_id"] == ship_id and g.get("type", "").lower() == "gene"
+            ]
 
             if not ship_gff:
                 continue
