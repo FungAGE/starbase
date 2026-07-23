@@ -295,6 +295,22 @@ main_card = dmc.Paper(
                     limit=20,
                     style={"flex": 1, "minWidth": "12.5rem"},
                 ),
+                dmc.Autocomplete(
+                    id="group-accession-search",
+                    label="Group Accession (SSA)",
+                    placeholder="e.g. SSA000001",
+                    data=[],
+                    limit=20,
+                    style={"flex": 1, "minWidth": "12.5rem"},
+                ),
+                dmc.Autocomplete(
+                    id="ship-accession-search",
+                    label="Ship Accession (SSB)",
+                    placeholder="e.g. SSB000001",
+                    data=[],
+                    limit=20,
+                    style={"flex": 1, "minWidth": "12.5rem"},
+                ),
             ],
         ),
         dmc.Group(
@@ -789,6 +805,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
     [
         Output("taxa-search", "data"),
         Output("family-search", "data"),
+        Output("group-accession-search", "data"),
+        Output("ship-accession-search", "data"),
     ],
     Input("meta-data", "data"),
     prevent_initial_call=False,  # Allow initial call to populate on page load
@@ -796,7 +814,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
 @handle_callback_error
 def populate_search_components(meta_data):
     if not meta_data:
-        return [], []
+        return [], [], [], []
 
     try:
         df = pd.DataFrame(meta_data)
@@ -842,11 +860,36 @@ def populate_search_components(meta_data):
         else:
             family_search_data = []
 
-        return taxa_search_data, family_search_data
+        # Get group accession (SSA) search data
+        group_accession_search_data = []
+        if "accession_tag" in df.columns:
+            group_accession_values = df["accession_tag"].dropna().astype(str).unique()
+            group_accession_search_data = [
+                {"value": val, "label": val}
+                for val in sorted(group_accession_values)
+            ]
+
+        # Get ship accession (SSB) search data
+        ship_accession_search_data = []
+        if "ship_accession_tag" in df.columns:
+            ship_accession_values = (
+                df["ship_accession_tag"].dropna().astype(str).unique()
+            )
+            ship_accession_search_data = [
+                {"value": val, "label": val}
+                for val in sorted(ship_accession_values)
+            ]
+
+        return (
+            taxa_search_data,
+            family_search_data,
+            group_accession_search_data,
+            ship_accession_search_data,
+        )
 
     except Exception as e:
         logger.error(f"Error in populate_search_components: {str(e)}")
-        return [], []
+        return [], [], [], []
 
 
 @callback(
@@ -858,13 +901,21 @@ def populate_search_components(meta_data):
     [
         State("taxa-search", "value"),
         State("family-search", "value"),
+        State("group-accession-search", "value"),
+        State("ship-accession-search", "value"),
         State("meta-data", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
 def handle_taxa_and_family_search(
-    search_clicks, reset_clicks, taxa_search_value, family_search_value, original_data
+    search_clicks,
+    reset_clicks,
+    taxa_search_value,
+    family_search_value,
+    group_accession_search_value,
+    ship_accession_search_value,
+    original_data,
 ):
     if not original_data:
         raise PreventUpdate
@@ -924,6 +975,22 @@ def handle_taxa_and_family_search(
                 filtered_df = filtered_df[
                     filtered_df["familyName"].astype(str).str.lower()
                     == family_search_value.lower()
+                ]
+
+        # Apply group accession (SSA) search if value is provided
+        if group_accession_search_value and group_accession_search_value.strip():
+            if "accession_tag" in filtered_df.columns:
+                filtered_df = filtered_df[
+                    filtered_df["accession_tag"].astype(str).str.lower()
+                    == group_accession_search_value.strip().lower()
+                ]
+
+        # Apply ship accession (SSB) search if value is provided
+        if ship_accession_search_value and ship_accession_search_value.strip():
+            if "ship_accession_tag" in filtered_df.columns:
+                filtered_df = filtered_df[
+                    filtered_df["ship_accession_tag"].astype(str).str.lower()
+                    == ship_accession_search_value.strip().lower()
                 ]
 
         # Return empty list if no results found, otherwise return the filtered data
