@@ -39,6 +39,10 @@ from src.config.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Unresolved-species taxonomic qualifiers (NCBI convention) -- not real taxon
+# names, excluded from the taxa search autocomplete/filter.
+TAXA_PLACEHOLDER_VALUES = {"sp", "sp.", "spp", "spp.", "cf", "cf.", "aff", "aff."}
+
 dash.register_page(__name__)
 
 
@@ -822,15 +826,11 @@ def populate_search_components(meta_data):
         # Get taxonomy search data
         search_columns = [
             "name",
-            "subkingdom",
-            "phylum",
-            "subphylum",
             "class",
-            "subclass",
             "order",
-            "suborder",
             "family",
             "genus",
+            "species",
         ]
 
         # Collect all unique values across specified columns
@@ -841,6 +841,11 @@ def populate_search_components(meta_data):
                 # Get non-null values and add to set
                 values = df[col].dropna().astype(str).unique()
                 all_taxa_values.update(values)
+
+        # Drop unresolved-species placeholder qualifiers (e.g. "sp.", "cf.", "aff.") --
+        # not real taxa, and being short they'd otherwise dominate the top of the
+        # length-sorted autocomplete list.
+        all_taxa_values -= TAXA_PLACEHOLDER_VALUES
 
         # Convert to sorted list and format for Autocomplete
         # sort by length instead of alphabetically
@@ -943,15 +948,11 @@ def handle_taxa_and_family_search(
             # Define columns to search across
             taxa_search_columns = [
                 "name",
-                "subkingdom",
-                "phylum",
-                "subphylum",
                 "class",
-                "subclass",
                 "order",
-                "suborder",
                 "family",
                 "genus",
+                "species",
             ]
 
             # Create a mask for rows that contain the search value in any of the specified columns

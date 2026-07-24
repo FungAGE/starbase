@@ -55,7 +55,7 @@ def fetch_meta_data(curated=False, accessions=None):
                     ship_accession_tag,
                     ship_version_tag,
                     ship_accession_display,
-                    taxID, strain, "order", family, name,
+                    taxID, strain, "order", family, name, genus, species, "class",
                     elementLength, upDR, downDR, contigID, captainID, elementBegin, elementEnd,
                     familyName, type_element_reference, navis_name, navis_activity, haplotype_name, haplotype_activity,
                     ome, genome_version as version, genomeSource, citation, assembly_accession,
