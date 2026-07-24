@@ -709,6 +709,43 @@ def remove_quality_tag(joined_ship_id, tag_type):
             raise
 
 
+def set_ship_deleted(joined_ship_id, deleted=True):
+    """
+    Toggle the soft-delete flag on a joined_ships record.
+
+    Soft-deleted ships are excluded from ships_with_metadata,
+    captains_with_metadata, and ship_table_view automatically.
+
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+        deleted (bool): True to soft-delete, False to restore
+
+    Returns:
+        bool: True if a row was updated, False if not found
+    """
+    from src.database.models.schema import JoinedShips
+
+    with get_starbase_session() as session:
+        try:
+            joined_ship = (
+                session.query(JoinedShips).filter_by(id=joined_ship_id).first()
+            )
+            if not joined_ship:
+                logger.warning(f"joined_ships row {joined_ship_id} not found")
+                return False
+
+            joined_ship.is_deleted = deleted
+            session.commit()
+            logger.info(
+                f"Set is_deleted={deleted} for joined_ships row {joined_ship_id}"
+            )
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error setting soft-delete flag: {str(e)}")
+            raise
+
+
 def get_quality_tags(joined_ship_id):
     """
     Get all quality tags for a ship.
