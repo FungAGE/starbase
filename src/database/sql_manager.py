@@ -50,28 +50,18 @@ def fetch_meta_data(curated=False, accessions=None):
                     full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
             else:
                 meta_query = """
-                SELECT j.curated_status, j.starshipID,
-                    j.ship_id, j.id as joined_ship_id,
-                    sa.ship_accession_tag,
-                    sa.ship_version_tag,
-                    sa.ship_accession_display,
-                    t.taxID, t.strain, t.`order`, t.family, t.name,
-                    sf.elementLength, sf.upDR, sf.downDR, sf.contigID, sf.captainID, sf.elementBegin, sf.elementEnd,
-                    f.familyName, f.type_element_reference, n.navis_name, n.activity as navis_activity, h.haplotype_name, h.activity as haplotype_activity,
-                    g.ome, g.version, g.genomeSource, g.citation, g.assembly_accession,
-                    s.md5, s.rev_comp_md5, s.type_ship,
-                    a.accession_tag, a.version_tag, a.accession_display
-                FROM joined_ships j
-                LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
-                LEFT JOIN taxonomy t ON j.tax_id = t.id
-                LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
-                LEFT JOIN family_names f ON j.ship_family_id = f.id
-                LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-                LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-                LEFT JOIN genomes g ON j.genome_id = g.id
-                LEFT JOIN ships s ON s.id = j.ship_id
-                LEFT JOIN accessions a ON j.accession_id = a.id
-                WHERE j.ship_id IS NOT NULL
+                SELECT curated_status, starshipID,
+                    ship_id, joined_ship_id,
+                    ship_accession_tag,
+                    ship_version_tag,
+                    ship_accession_display,
+                    taxID, strain, "order", family, name, genus, species, "class",
+                    elementLength, upDR, downDR, contigID, captainID, elementBegin, elementEnd,
+                    familyName, type_element_reference, navis_name, navis_activity, haplotype_name, haplotype_activity,
+                    ome, genome_version as version, genomeSource, citation, assembly_accession,
+                    md5, rev_comp_md5, type_ship,
+                    accession_tag, version_tag, accession_display
+                FROM ships_with_metadata
                 """
 
                 full_df = pd.read_sql_query(meta_query, session.bind)
@@ -171,81 +161,13 @@ def fetch_ships(
     accession_mode = _get_accession_mode(accessions)
 
     with get_starbase_session() as session:
-        # CTE: denormalized ships (joined_ships + display metadata). Not validation—just one place for the join.
-        base_query = """
-        WITH ships_with_metadata AS (
-            SELECT DISTINCT
-                j.ship_id,
-                sa.ship_accession_tag,
-                sa.ship_version_tag,
-                sa.ship_accession_display,
-                j.curated_status,
-                j.starshipID,
-                sf.elementBegin, sf.elementEnd, sf.contigID,
-                t.name, t.family, t.`order`,
-                f.familyName, n.navis_name, h.haplotype_name,
-                g.assembly_accession, c.captainID,
-                a.accession_tag, a.version_tag, a.accession_display,
-                s.type_ship
-                """
-
-        base_query += """
-            FROM joined_ships j
-            LEFT JOIN ships s ON s.id = j.ship_id
-            LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
-            LEFT JOIN taxonomy t ON j.tax_id = t.id
-            LEFT JOIN family_names f ON j.ship_family_id = f.id
-            LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-            LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-            LEFT JOIN genomes g ON j.genome_id = g.id
-            LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
-            LEFT JOIN captains c ON j.captain_id = c.id
-            LEFT JOIN accessions a ON j.accession_id = a.id
-            WHERE 1=1 AND j.ship_id IS NOT NULL
-        """
-
-        query = base_query
-
-        if accessions:
-            formatted_values = [str(tag).strip("'\"") for tag in accessions]
-            quoted_sql = ", ".join(
-                "'" + str(v).replace("'", "''") + "'" for v in formatted_values
-            )
-            # Match base accession with or without version suffix
-            like_clauses = " OR ".join(
-                "a.accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
-                for v in formatted_values
-            )
-            ship_like_clauses = " OR ".join(
-                "sa.ship_accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
-                for v in formatted_values
-            )
-
-            if accession_mode == "SSA":
-                query += " AND (a.accession_tag IN ({}) OR ({}))".format(
-                    quoted_sql, like_clauses
-                )
-            elif accession_mode == "SSB":
-                query += " AND (sa.ship_accession_tag IN ({}) OR ({}))".format(
-                    quoted_sql, ship_like_clauses
-                )
-            elif accession_mode is None:
-                # Mixed or unknown: match either column (e.g. download with mixed SSA/SSB or null SSA)
-                query += " AND ((a.accession_tag IN ({}) OR ({})) OR (sa.ship_accession_tag IN ({}) OR ({})))".format(
-                    quoted_sql,
-                    like_clauses,
-                    quoted_sql,
-                    ship_like_clauses,
-                )
-            else:
-                raise ValueError(f"Invalid accession mode: {accession_mode}")
-        if curated:
-            query += " AND j.curated_status = 'curated'"
-
+        # ships_with_metadata is a real SQL view (see alembic/versions/i2j3k4l5m6n7_*)
+        # mirroring the join previously duplicated here as an inline CTE. Column
+        # list kept narrow (not SELECT *) so DISTINCT collapses the same rows it
+        # used to -- the view carries extra columns (sequence, feature detail)
+        # that would otherwise widen the distinct set.
         if with_sequence:
-            query += """
-            )
-            SELECT
+            select_cols = """
                 sm.ship_id,
                 sm.accession_tag,
                 sm.version_tag,
@@ -259,26 +181,18 @@ def fetch_ships(
                 sm.contigID,
                 sm.name,
                 sm.family,
-                sm.`order`,
+                sm."order",
                 sm.familyName,
                 sm.navis_name,
                 sm.haplotype_name,
                 sm.assembly_accession,
                 sm.type_ship,
-                s.sequence,
-                s.md5,
-                s.rev_comp_md5,
-                sm.captainID
-            FROM ships_with_metadata sm
-            LEFT JOIN ships s ON s.id = sm.ship_id
-            WHERE s.sequence IS NOT NULL"""
-
-            query += """
-            """
+                sm.sequence,
+                sm.md5,
+                sm.rev_comp_md5,
+                sm.captainID"""
         else:
-            query += """
-            )
-            SELECT
+            select_cols = """
                 sm.accession_tag,
                 sm.version_tag,
                 sm.accession_display,
@@ -291,17 +205,59 @@ def fetch_ships(
                 sm.contigID,
                 sm.name,
                 sm.family,
-                sm.`order`,
+                sm."order",
                 sm.familyName,
                 sm.navis_name,
                 sm.haplotype_name,
                 sm.assembly_accession,
                 sm.type_ship,
-                sm.captainID
-            FROM ships_with_metadata sm"""
+                sm.captainID"""
 
-            query += """
-            """
+        query = f"""
+        SELECT DISTINCT
+        {select_cols}
+        FROM ships_with_metadata sm
+        WHERE 1=1
+        """
+
+        if accessions:
+            formatted_values = [str(tag).strip("'\"") for tag in accessions]
+            quoted_sql = ", ".join(
+                "'" + str(v).replace("'", "''") + "'" for v in formatted_values
+            )
+            # Match base accession with or without version suffix
+            like_clauses = " OR ".join(
+                "sm.accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
+                for v in formatted_values
+            )
+            ship_like_clauses = " OR ".join(
+                "sm.ship_accession_tag LIKE '" + str(v).replace("'", "''") + ".%'"
+                for v in formatted_values
+            )
+
+            if accession_mode == "SSA":
+                query += " AND (sm.accession_tag IN ({}) OR ({}))".format(
+                    quoted_sql, like_clauses
+                )
+            elif accession_mode == "SSB":
+                query += " AND (sm.ship_accession_tag IN ({}) OR ({}))".format(
+                    quoted_sql, ship_like_clauses
+                )
+            elif accession_mode is None:
+                # Mixed or unknown: match either column (e.g. download with mixed SSA/SSB or null SSA)
+                query += " AND ((sm.accession_tag IN ({}) OR ({})) OR (sm.ship_accession_tag IN ({}) OR ({})))".format(
+                    quoted_sql,
+                    like_clauses,
+                    quoted_sql,
+                    ship_like_clauses,
+                )
+            else:
+                raise ValueError(f"Invalid accession mode: {accession_mode}")
+        if curated:
+            query += " AND sm.curated_status = 'curated'"
+
+        if with_sequence:
+            query += " AND sm.sequence IS NOT NULL"
 
         try:
             df = pd.read_sql_query(query, session.bind)
@@ -335,24 +291,10 @@ def fetch_ship_table(curated=True, with_sequence=False, with_gff_entries=False):
                 full_df = pd.DataFrame.from_dict(full_df["pandas_df"])
         else:
             try:
-                query = """
-                SELECT DISTINCT
-                    js.ship_id,
-                    js.source,
-                    js.curated_status,
-                    sa.ship_accession_tag,
-                    sa.ship_version_tag,
-                    sa.ship_accession_display,
-                    f.familyName,
-                    t.name,
-                    a.accession_tag, a.version_tag, a.accession_display
-                FROM joined_ships js
-                LEFT JOIN ship_accessions sa ON sa.ship_id = js.ship_id
-                LEFT JOIN taxonomy t ON js.tax_id = t.id
-                LEFT JOIN family_names f ON js.ship_family_id = f.id
-                LEFT JOIN accessions a ON js.accession_id = a.id
-                WHERE js.ship_id IS NOT NULL
-                """
+                # ship_table_view mirrors this narrower join (see
+                # alembic/versions/i2j3k4l5m6n7_*) — no features/genomes/
+                # navis/haplotype/captains, to avoid row fan-out.
+                query = "SELECT * FROM ship_table_view"
 
                 full_df = pd.read_sql_query(query, session.bind)
 
@@ -462,46 +404,22 @@ def fetch_captains(
         pd.DataFrame: DataFrame containing captain data
     """
 
-    # CTE: denormalized captains (joined_ships + display metadata). Not validation—just one place for the join.
-    query = """
-    WITH captains_with_metadata AS (
-        SELECT DISTINCT
-            sa.ship_accession_tag,
-            sa.ship_version_tag,
-            sa.ship_accession_display,
-            j.curated_status,
-            j.starshipID,
-            c.captainID as captain_id,
-            c."sequence",
-            n.navis_name,
-            h.haplotype_name,
-            c.captainID,
-            a.accession_tag,
-            a.version_tag,
-            a.accession_display
-        FROM joined_ships j
-        LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
-        LEFT JOIN taxonomy t ON j.tax_id = t.id
-        LEFT JOIN family_names f ON j.ship_family_id = f.id
-        LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-        LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-        LEFT JOIN genomes g ON j.genome_id = g.id
-        LEFT JOIN captains c ON j.captain_id = c.id
-        LEFT JOIN starship_features sf ON j.ship_id = sf.ship_id
-        LEFT JOIN accessions a ON j.accession_id = a.id
-        WHERE 1=1 AND j.ship_id IS NOT NULL
-    """
-
+    # captains_with_metadata is a real SQL view (see
+    # alembic/versions/i2j3k4l5m6n7_*) mirroring the join previously
+    # duplicated here as an inline CTE.
+    where_clauses = ["1=1"]
     if accessions:
-        query += " AND sa.ship_accession_tag IN ({})".format(
-            ",".join(f"'{tag}'" for tag in accessions)
+        where_clauses.append(
+            "cm.ship_accession_tag IN ({})".format(
+                ",".join(f"'{tag}'" for tag in accessions)
+            )
         )
     if curated:
-        query += " AND j.curated_status = 'curated'"
+        where_clauses.append("cm.curated_status = 'curated'")
 
     if with_sequence:
-        query += """
-        )
+        where_clauses.append("cm.captain_sequence IS NOT NULL")
+        query = """
         SELECT
             cm.ship_accession_tag,
             cm.version_tag,
@@ -513,22 +431,20 @@ def fetch_captains(
                 NULLIF(TRIM(COALESCE(CAST(cm.ship_accession_display AS TEXT), '')), ''),
                 NULLIF(TRIM(COALESCE(CAST(cm.ship_accession_tag AS TEXT), '')), ''),
                 NULLIF(TRIM(COALESCE(CAST(cm.starshipID AS TEXT), '')), ''),
-                'captain_' || CAST(cm.captain_id AS TEXT)
+                'captain_' || CAST(cm.captain_row_id AS TEXT)
             ) AS accession_display,
             cm.curated_status,
             cm.starshipID,
-            cm.captain_id,
-            cm.sequence,
+            cm.captainID as captain_id,
+            cm.captain_sequence as "sequence",
             cm.navis_name,
             cm.haplotype_name,
-            cm.captain_id as captain_id_col
+            cm.captainID as captain_id_col
         FROM captains_with_metadata cm
-        WHERE cm.sequence IS NOT NULL
-        """
+        WHERE """ + " AND ".join(where_clauses)
     else:
-        query += """
-        )
-        SELECT 
+        query = """
+        SELECT
             cm.accession_tag,
             cm.version_tag,
             cm.accession_display,
@@ -538,10 +454,9 @@ def fetch_captains(
             cm.starshipID,
             cm.captainID,
             cm.navis_name,
-            cm.haplotype_name,
-            cm.captainID
+            cm.haplotype_name
         FROM captains_with_metadata cm
-        """
+        WHERE """ + " AND ".join(where_clauses)
 
     with get_starbase_session() as session:
         try:
@@ -657,7 +572,7 @@ def get_database_stats():
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
     LEFT JOIN ships s ON s.id = j.ship_id
-    WHERE j.ship_id IS NOT NULL
+    WHERE j.ship_id IS NOT NULL AND j.is_deleted = 0
     """
     with get_starbase_session() as session:
         try:
@@ -791,6 +706,43 @@ def remove_quality_tag(joined_ship_id, tag_type):
         except Exception as e:
             session.rollback()
             logger.error(f"Error removing quality tag: {str(e)}")
+            raise
+
+
+def set_ship_deleted(joined_ship_id, deleted=True):
+    """
+    Toggle the soft-delete flag on a joined_ships record.
+
+    Soft-deleted ships are excluded from ships_with_metadata,
+    captains_with_metadata, and ship_table_view automatically.
+
+    Args:
+        joined_ship_id (int): ID of the joined_ships record
+        deleted (bool): True to soft-delete, False to restore
+
+    Returns:
+        bool: True if a row was updated, False if not found
+    """
+    from src.database.models.schema import JoinedShips
+
+    with get_starbase_session() as session:
+        try:
+            joined_ship = (
+                session.query(JoinedShips).filter_by(id=joined_ship_id).first()
+            )
+            if not joined_ship:
+                logger.warning(f"joined_ships row {joined_ship_id} not found")
+                return False
+
+            joined_ship.is_deleted = deleted
+            session.commit()
+            logger.info(
+                f"Set is_deleted={deleted} for joined_ships row {joined_ship_id}"
+            )
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error setting soft-delete flag: {str(e)}")
             raise
 
 

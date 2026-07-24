@@ -260,6 +260,9 @@ class JoinedShips(Base):
 
     # Direct link to accession (when sequence data is available)
     accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=True)
+    # Direct link to ship-level (SSB) accession; mirrors accession_id (SSA, group-level).
+    # Previously only reachable via ship_id -> ships.id -> ship_accessions.ship_id.
+    ship_accession_id = Column(Integer, ForeignKey("ship_accessions.id"), nullable=True)
 
     # Links to classification and annotation data
     ship_id = Column(Integer, ForeignKey("ships.id"))
@@ -271,9 +274,11 @@ class JoinedShips(Base):
     ship_haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+    is_deleted = Column(Boolean, nullable=False, default=False, server_default="0")
 
     # Relationships
     accession = relationship("Accessions", back_populates="joined_ship")
+    ship_accession = relationship("ShipAccessions")
     ship = relationship("Ships")
     family = relationship("FamilyNames")
     taxonomy = relationship("Taxonomy")
