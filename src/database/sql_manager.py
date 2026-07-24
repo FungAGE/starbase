@@ -572,7 +572,7 @@ def get_database_stats():
     LEFT JOIN ship_accessions sa ON sa.ship_id = j.ship_id
     LEFT JOIN taxonomy t ON j.tax_id = t.id
     LEFT JOIN ships s ON s.id = j.ship_id
-    WHERE j.ship_id IS NOT NULL
+    WHERE j.ship_id IS NOT NULL AND j.is_deleted = 0
     """
     with get_starbase_session() as session:
         try:
