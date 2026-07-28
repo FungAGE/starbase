@@ -342,6 +342,47 @@ def _bump_version(version_str, bump_type):
     return version_str
 
 
+def _do_insert(table_key, col_values):
+    """Run a whitelisted INSERT for a new row. Returns (success, error, new_id)."""
+    allowed = EDITABLE_COLS.get(table_key, set())
+    config = TABLE_CONFIG[table_key]
+
+    cols = [c for c in col_values if c in allowed and col_values[c] not in (None, "")]
+    if not cols:
+        return False, "No editable field was filled in for the new row.", None
+
+    values = {}
+    for c in cols:
+        v = col_values[c]
+        if c in BOOLEAN_COLS:
+            v = 1 if str(v).lower() in ("true", "1", "yes") else 0
+        values[c] = v
+
+    col_refs = ", ".join(_sql_col_ref(c) for c in cols)
+    placeholders = ", ".join(f":{c}" for c in cols)
+    sql = text(
+        f"INSERT INTO {config['sql_table']} ({col_refs}) VALUES ({placeholders})"
+    )
+
+    try:
+        ctx = (
+            get_starbase_session
+            if config["db"] == "starbase"
+            else get_submissions_session
+        )
+        with ctx() as session:
+            result = session.execute(sql, values)
+            session.commit()
+            new_id = result.lastrowid
+        logger.info(
+            "admin INSERT %s: %r (id=%s)", config["sql_table"], values, new_id
+        )
+        return True, None, new_id
+    except Exception as exc:
+        logger.error("admin INSERT error (%s): %s", table_key, exc)
+        return False, str(exc), None
+
+
 def _do_update(table_key, row_id, col_id, new_value):
     """Run a whitelisted UPDATE. Returns (success: bool, error: str|None)."""
     allowed = EDITABLE_COLS.get(table_key, set())
@@ -1318,6 +1359,7 @@ def _overlay_job_changes_on_rowdata(table_key, changes):
     rows = _refetch_rowdata(table_key)
     if rows is no_update:
         return no_update
+    assert isinstance(rows, list)
     table_changes = [c for c in changes if c.get("table") == table_key]
     if not table_changes:
         return no_update
@@ -1762,6 +1804,13 @@ def _build_admin_layout():
                         dmc.Group(
                             [
                                 dmc.Button(
+                                    "Add row",
+                                    id="admin-add-row-btn",
+                                    variant="light",
+                                    color="blue",
+                                    size="sm",
+                                ),
+                                dmc.Button(
                                     "Discard",
                                     id="admin-discard-btn",
                                     variant="subtle",
@@ -1789,9 +1838,10 @@ def _build_admin_layout():
                 withBorder=True,
                 style={"borderColor": "var(--mantine-color-blue-3)"},
             ),
-            dbc.Tabs(
-                [
-                    dbc.Tab(
+            dbc.Tabs(  # pyright: ignore[reportCallIssue]
+                id="admin-tabs",
+                children=[
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             js_df,
                             "admin-joined-ships-grid",
@@ -1800,7 +1850,7 @@ def _build_admin_layout():
                         label=f"Starships ({len(js_df):,})",
                         tab_id="joined_ships",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         html.Div(
                             [
                                 dmc.Group(
@@ -1847,7 +1897,7 @@ def _build_admin_layout():
                         label=f"Submissions ({len(sub_df):,})",
                         tab_id="submissions",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             tax_df,
                             "admin-taxonomy-grid",
@@ -1856,7 +1906,7 @@ def _build_admin_layout():
                         label=f"Taxonomy ({len(tax_df):,})",
                         tab_id="taxonomy",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             pap_df,
                             "admin-papers-grid",
@@ -1865,7 +1915,7 @@ def _build_admin_layout():
                         label=f"Papers ({len(pap_df):,})",
                         tab_id="papers",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             fam_df,
                             "admin-family-names-grid",
@@ -1874,7 +1924,7 @@ def _build_admin_layout():
                         label=f"Families ({len(fam_df):,})",
                         tab_id="family_names",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             nav_df,
                             "admin-navis-names-grid",
@@ -1883,7 +1933,7 @@ def _build_admin_layout():
                         label=f"Navis ({len(nav_df):,})",
                         tab_id="navis_names",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             hap_df,
                             "admin-haplotype-names-grid",
@@ -1892,7 +1942,7 @@ def _build_admin_layout():
                         label=f"Haplotypes ({len(hap_df):,})",
                         tab_id="haplotype_names",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             acc_df,
                             "admin-accessions-grid",
@@ -1901,7 +1951,7 @@ def _build_admin_layout():
                         label=f"Accessions ({len(acc_df):,})",
                         tab_id="accessions",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             sacc_df,
                             "admin-ship-accessions-grid",
@@ -1910,7 +1960,7 @@ def _build_admin_layout():
                         label=f"Ship Accessions ({len(sacc_df):,})",
                         tab_id="ship_accessions",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _make_grid(
                             gen_df,
                             "admin-genomes-grid",
@@ -1919,7 +1969,7 @@ def _build_admin_layout():
                         label=f"Genomes ({len(gen_df):,})",
                         tab_id="genomes",
                     ),
-                    dbc.Tab(
+                    dbc.Tab(  # pyright: ignore[reportCallIssue]
                         _build_jobs_tab(),
                         label="Jobs",
                         tab_id="jobs",
@@ -2222,6 +2272,59 @@ for _tk, _gid in GRID_IDS.items():
     )
 
 # ---------------------------------------------------------------------------
+# Clientside callbacks — "Add row" button inserts a blank editable row into
+# whichever grid is on the active tab, and stages a __new_row__ marker so
+# save_all_pending knows to INSERT rather than UPDATE for that row_id.
+# ---------------------------------------------------------------------------
+
+_ADD_ROW_JS = """
+function(n, activeTab, rowData) {{
+    if (!n || activeTab !== "{tk}") return window.dash_clientside.no_update;
+    var tempId = -n;
+    var editableCols = {editable_cols_json};
+    var newRow = {{id: tempId, _dirty: 'new'}};
+    for (var i = 0; i < editableCols.length; i++) {{ newRow[editableCols[i]] = ''; }}
+    var rd = (rowData || []).slice();
+    rd.unshift(newRow);
+    return rd;
+}}
+"""
+
+for _tk, _gid in GRID_IDS.items():
+    clientside_callback(
+        _ADD_ROW_JS.format(
+            tk=_tk, editable_cols_json=list(EDITABLE_COLS.get(_tk, set()))
+        ),
+        Output(_gid, "rowData", allow_duplicate=True),
+        Input("admin-add-row-btn", "n_clicks"),
+        State("admin-tabs", "active_tab"),
+        State(_gid, "rowData"),
+        prevent_initial_call=True,
+    )
+
+# tempId must match the -n_clicks value used above so the marker's row_id
+# lines up with the blank row's id for whichever grid actually added one.
+clientside_callback(
+    """
+    function(n, activeTab, pending) {
+        if (!n || !activeTab) return window.dash_clientside.no_update;
+        var tempId = -n;
+        var p = JSON.parse(JSON.stringify(pending || []));
+        p.push({
+            table: activeTab, row_id: tempId, col_id: "__new_row__",
+            old_value: null, new_value: {}, source: 'manual'
+        });
+        return p;
+    }
+    """,
+    Output("admin-pending-changes", "data", allow_duplicate=True),
+    Input("admin-add-row-btn", "n_clicks"),
+    State("admin-tabs", "active_tab"),
+    State("admin-pending-changes", "data"),
+    prevent_initial_call=True,
+)
+
+# ---------------------------------------------------------------------------
 # Clientside callback — relay selectedRows into static-layout store
 # (avoids refErr for State("admin-submissions-grid", "selectedRows") in Python
 # callbacks that are validated against the initial layout before auth)
@@ -2314,7 +2417,28 @@ def save_all_pending(n_clicks, pending):
 
     logger.info("save_all_pending: %d change(s): %s", len(pending), pending)
     errors, successes = [], []
-    for ch in pending:
+
+    new_row_markers = [ch for ch in pending if ch.get("col_id") == "__new_row__"]
+    new_row_keys = {(m["table"], m["row_id"]) for m in new_row_markers}
+    updates = [
+        ch
+        for ch in pending
+        if (ch["table"], ch["row_id"]) not in new_row_keys
+    ]
+
+    for table, row_id in new_row_keys:
+        col_values = {
+            ch["col_id"]: ch.get("new_value")
+            for ch in pending
+            if ch["table"] == table
+            and ch["row_id"] == row_id
+            and ch["col_id"] != "__new_row__"
+        }
+        ok, err, new_id = _do_insert(table, col_values)
+        marker = {"table": table, "row_id": row_id, "col_id": "__new_row__"}
+        (successes if ok else errors).append((marker, err))
+
+    for ch in updates:
         ok, err = _do_update(
             ch["table"], ch["row_id"], ch["col_id"], ch.get("new_value")
         )
