@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import dash
-from dash import dcc, html, callback, clientside_callback
+from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 
@@ -34,7 +34,7 @@ from src.components.ui import (
     _i,
     _lt,
 )
-from src.components.callbacks import handle_callback_error
+from src.components.callbacks import handle_callback_error, create_modal_callback
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -536,7 +536,14 @@ info_table_paper = dmc.Paper(
                         table_columns=table_columns,
                     ),
                 ),
-                html.Div(id="dummy-output", style={"display": "none"}),
+                dmc.Modal(
+                    id="accession-modal",
+                    opened=False,
+                    size="lg",
+                    centered=True,
+                    title=html.Div(id="accession-modal-title"),
+                    children=html.Div(id="accession-modal-content"),
+                ),
             ],
         ),
     ],
@@ -1295,72 +1302,11 @@ def update_download_selected_button(selected_rows):
     return not selected_rows or len(selected_rows) == 0
 
 
-# Add clientside callback to handle accession modal clicks
-clientside_callback(
-    """
-    function(cellClicked, activeCell, tableData, pageCurrent, pageSize) {
-        if (!cellClicked && !activeCell) {
-            return window.dash_clientside.no_update;
-        }
-
-        let accession = null;
-        let isShipColumn = false;
-        let isGroupColumn = false;
-
-        const shipCols = ['ship_accession_tag', 'ship_accession_display'];
-        const groupCols = ['accession_tag', 'accession_display'];
-
-        // Handle AG Grid cell clicks
-        if (cellClicked) {
-            if (shipCols.includes(cellClicked.colId)) {
-                accession = cellClicked.value;
-                isShipColumn = true;
-            } else if (groupCols.includes(cellClicked.colId)) {
-                accession = cellClicked.value;
-                isGroupColumn = true;
-            }
-        }
-        // Handle DataTable active cell
-        else if (activeCell) {
-            const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
-            if (tableData && actualRowIdx < tableData.length) {
-                if (shipCols.includes(activeCell.column_id)) {
-                    accession = tableData[actualRowIdx][activeCell.column_id];
-                    isShipColumn = true;
-                } else if (groupCols.includes(activeCell.column_id)) {
-                    accession = tableData[actualRowIdx][activeCell.column_id];
-                    isGroupColumn = true;
-                }
-            }
-        }
-
-        if (accession) {
-            let parts = accession.toString().trim().split('/').map(s => s.trim()).filter(Boolean);
-            if (isShipColumn) {
-                let ssbPart = parts.find(p => p.startsWith('SSB'));
-                accession = ssbPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
-                showShipAccessionModal(accession);
-            } else if (isGroupColumn) {
-                let ssaPart = parts.find(p => p.startsWith('SSA'));
-                accession = ssaPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
-                showGroupAccessionModal(accession);
-            }
-        }
-
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output(
-        "dummy-output", "children"
-    ),  # Dummy output since we don't need to update any Dash components
-    [
-        Input("dl-table", "cellClicked"),
-        Input("dl-table", "active_cell"),
-    ],
-    [
-        State("dl-table", "derived_virtual_data"),
-        State("dl-table", "page_current"),
-        State("dl-table", "page_size"),
-    ],
-    prevent_initial_call=True,
+# Open a native dmc.Modal (accession-modal, defined in the layout above) when a
+# user clicks a ship/group accession cell in dl-table.
+create_modal_callback(
+    table_id="dl-table",
+    modal_id="accession-modal",
+    content_id="accession-modal-content",
+    title_id="accession-modal-title",
 )

@@ -1,5 +1,10 @@
+import re
 import traceback
+from urllib.parse import quote
+
 import pandas as pd
+import dash_mantine_components as dmc
+from dash import html
 
 from src.utils.seq_utils import extract_accession, clean_contigIDs
 from src.database.sql_manager import (
@@ -264,3 +269,230 @@ def create_accession_modal_data(accession):
         logger.error(f"Error in create_accession_modal_data: {str(e)}")
         logger.error(traceback.format_exc())
         raise
+
+
+# --- Native dmc.Modal rendering (replaces the vanilla-JS universal-modal renderers) ---
+
+_ACCESSION_RE = re.compile(r"^[A-Za-z]{2,}_?\d{6,}(\.\d+)?$", re.IGNORECASE)
+_POSITION_RE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
+
+
+def _has_value(v):
+    return v is not None and v != "" and str(v).strip().upper() != "N/A"
+
+
+def _is_valid_accession(value):
+    return bool(value) and isinstance(value, str) and bool(_ACCESSION_RE.match(value.strip()))
+
+
+def _genome_urls(genome):
+    """Mirror the URL-construction logic from universal-modal.js's renderAccessionModal."""
+    assembly = genome.get("assembly_accession")
+    source = (genome.get("genome_source") or "").lower()
+    contig_id = genome.get("contig_id")
+    position = genome.get("element_position")
+
+    genome_url = None
+    sequence_viewer_url = None
+
+    if _has_value(assembly) and _has_value(source) and _is_valid_accession(assembly):
+        if source == "jgi":
+            genome_url = f"https://mycocosm.jgi.doe.gov/{quote(assembly)}/{quote(assembly)}.home.html"
+        elif source == "ncbi":
+            genome_url = f"https://www.ncbi.nlm.nih.gov/datasets/genome/{quote(assembly)}/"
+
+        if (
+            source in ("jgi", "ncbi")
+            and _has_value(contig_id)
+            and _is_valid_accession(contig_id)
+            and _has_value(position)
+        ):
+            match = _POSITION_RE.match(position)
+            if match:
+                sequence_viewer_url = (
+                    "https://www.ncbi.nlm.nih.gov/projects/sviewer/"
+                    f"?id={quote(contig_id)}&from={match.group(1)}&to={match.group(2)}"
+                )
+
+    return genome_url, sequence_viewer_url
+
+
+def _modal_row(label, value):
+    return dmc.Group(
+        [
+            dmc.Text(label, fw=600, size="sm", c="dimmed"),
+            value if hasattr(value, "to_plotly_json") else dmc.Text(str(value), size="sm"),
+        ],
+        justify="space-between",
+        wrap="nowrap",
+        gap="md",
+    )
+
+
+def _modal_section(title, children):
+    return dmc.Paper(
+        children=[
+            dmc.Text(title, fw=700, size="lg", ta="center", mb="md"),
+            dmc.Stack(children, gap="xs"),
+        ],
+        p="lg",
+        radius="md",
+        withBorder=True,
+    )
+
+
+def render_ship_accession_modal(data):
+    """Build the dmc content for a ship-accession modal from create_ship_accession_modal_data()'s output."""
+    if data.get("error"):
+        return dmc.Alert(data["error"], title="Error", color="red", variant="light")
+
+    genomes = data.get("genomes") or []
+    starship_size_bp = None
+    if len(genomes) == 1 and _has_value(genomes[0].get("element_length")):
+        starship_size_bp = str(genomes[0]["element_length"])
+
+    info_rows = []
+    if starship_size_bp:
+        info_rows.append(_modal_row("Size", f"{starship_size_bp} bp"))
+    if _has_value(data.get("familyName")):
+        info_rows.append(_modal_row("Starship Family", data["familyName"]))
+    if _has_value(data.get("navis_name")):
+        info_rows.append(_modal_row("Starship Navis", data["navis_name"]))
+    if _has_value(data.get("haplotype_name")):
+        info_rows.append(_modal_row("Haplotype", data["haplotype_name"]))
+    genomes_present = data.get("genomes_present")
+    if _has_value(genomes_present) and int(genomes_present) > 1:
+        info_rows.append(
+            _modal_row("Genomes Present", dmc.Badge(genomes_present, color="blue", variant="light"))
+        )
+
+    genome_sections = []
+    for i, genome in enumerate(genomes):
+        assembly = genome.get("assembly_accession")
+        source = genome.get("genome_source")
+        contig_id = genome.get("contig_id")
+        position = genome.get("element_position")
+        length = genome.get("element_length")
+
+        has_content = any(_has_value(v) for v in (assembly, source, contig_id, position)) or (
+            not starship_size_bp and _has_value(length)
+        )
+        if not has_content:
+            continue
+
+        genome_url, sequence_viewer_url = _genome_urls(genome)
+
+        if _has_value(assembly) and _has_value(source):
+            section_title = ["Genome: ", dmc.Anchor(assembly, href=genome_url, target="_blank")] if genome_url else f"Genome: {assembly}"
+        elif _has_value(assembly):
+            section_title = assembly
+        elif _has_value(source):
+            section_title = source
+        else:
+            section_title = "Genome" if len(genomes) == 1 else f"Genome {i + 1}"
+
+        rows = []
+        if _has_value(assembly):
+            value = dmc.Anchor(assembly, href=genome_url, target="_blank") if genome_url else assembly
+            rows.append(_modal_row("Assembly Accession", value))
+        if _has_value(source):
+            rows.append(_modal_row("Genome Source", source))
+        if _has_value(contig_id):
+            value = dmc.Anchor(contig_id, href=sequence_viewer_url, target="_blank") if sequence_viewer_url else contig_id
+            rows.append(_modal_row("Contig ID", value))
+        if _has_value(position):
+            rows.append(_modal_row("Element Position", position))
+        if not starship_size_bp and _has_value(length):
+            rows.append(_modal_row("Size", f"{length} bp"))
+
+        genome_sections.append(
+            dmc.Paper(
+                children=[
+                    dmc.Text(section_title, fw=700, size="md", ta="center", mb="sm"),
+                    dmc.Stack(rows, gap="xs"),
+                ],
+                p="md",
+                radius="md",
+                withBorder=True,
+                mt="md",
+            )
+        )
+
+    sections = []
+    if info_rows or genome_sections:
+        sections.append(
+            _modal_section(
+                "Starship Information",
+                (info_rows if info_rows else []) + genome_sections,
+            )
+        )
+
+    taxonomy_rows = []
+    if _has_value(data.get("order")):
+        taxonomy_rows.append(_modal_row("Order", data["order"]))
+    if _has_value(data.get("family")):
+        taxonomy_rows.append(_modal_row("Family", data["family"]))
+    if _has_value(data.get("species_name")):
+        taxonomy_rows.append(_modal_row("Species", data["species_name"]))
+    if _has_value(data.get("tax_id")):
+        taxonomy_rows.append(
+            _modal_row(
+                "NCBI Taxonomy ID",
+                dmc.Anchor(
+                    str(data["tax_id"]),
+                    href=f"https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id={quote(str(data['tax_id']))}",
+                    target="_blank",
+                ),
+            )
+        )
+    if taxonomy_rows:
+        sections.append(_modal_section("Taxonomy", taxonomy_rows))
+
+    quality_rows = []
+    if _has_value(data.get("curated_status")):
+        color = "green" if data["curated_status"] == "curated" else "yellow"
+        quality_rows.append(
+            _modal_row("Curation Status", dmc.Badge(data["curated_status"], color=color, variant="light"))
+        )
+    quality_tags = data.get("quality_tags") or []
+    if quality_tags:
+        quality_rows.append(
+            _modal_row(
+                "Quality Tags",
+                dmc.Group(
+                    [dmc.Badge(tag, color="yellow", variant="light") for tag in quality_tags],
+                    gap="xs",
+                    justify="flex-end",
+                ),
+            )
+        )
+    if quality_rows:
+        sections.append(_modal_section("Data Quality", quality_rows))
+
+    if not sections:
+        return dmc.Text("No details available for this accession.", c="dimmed", ta="center")
+
+    return dmc.Stack(sections, gap="md")
+
+
+def render_group_accession_modal(data):
+    """Build the dmc content for a group-accession (SSA) modal from create_accession_modal_data()'s output."""
+    if data.get("error"):
+        return dmc.Alert(data["error"], title="Error", color="red", variant="light")
+
+    rows = []
+    if _has_value(data.get("familyName")):
+        rows.append(_modal_row("Starship Family", data["familyName"]))
+    if _has_value(data.get("genomes_present")):
+        rows.append(
+            _modal_row("Genomes Present", dmc.Badge(data["genomes_present"], color="blue", variant="light"))
+        )
+    if _has_value(data.get("navis_name")):
+        rows.append(_modal_row("Starship Navis", data["navis_name"]))
+    if _has_value(data.get("haplotype_name")):
+        rows.append(_modal_row("Haplotype", data["haplotype_name"]))
+
+    if not rows:
+        return dmc.Text("No details available for this accession.", c="dimmed", ta="center")
+
+    return _modal_section("Group Information", rows)
