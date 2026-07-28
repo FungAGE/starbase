@@ -76,6 +76,8 @@ class Captains(Base):
     id = Column(Integer, primary_key=True)
     captainID = Column(String, unique=True)
     sequence = Column(String)
+    md5 = Column(String)
+    sequence_length = Column(Integer)
     ship_id = Column(Integer, ForeignKey("ships.id"))
     reviewed = Column(String)
     evidence = Column(String)
