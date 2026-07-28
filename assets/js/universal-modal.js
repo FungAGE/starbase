@@ -318,7 +318,7 @@ if (typeof window.UniversalModal === 'undefined') {
             this.init();
         }
 
-        document.getElementById('universal-modal-title').innerHTML = title;
+        document.getElementById('universal-modal-title').innerHTML = window.UniversalModal.escapeHtml(title);
         document.getElementById('universal-modal-content').innerHTML = content;
         this.modal.style.display = 'block';
 
@@ -335,9 +335,23 @@ if (typeof window.UniversalModal === 'undefined') {
         return v != null && v !== '' && String(v).trim() !== 'N/A';
     }
 
+    // Escape untrusted values before they are interpolated into innerHTML template strings.
+    static escapeHtml(v) {
+        if (v == null) return '';
+        return String(v).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        }[c]));
+    }
+
     // Static method to render modal content from structured data
     static renderAccessionModal(data) {
         let html = '';
+
+        const esc = (v) => this.escapeHtml(v);
 
         // Handle error case
         if (data.error) {
@@ -345,7 +359,7 @@ if (typeof window.UniversalModal === 'undefined') {
                 <div class="modal-container">
                     <div class="alert alert-red">
                         <div style="font-weight: 600; margin-bottom: 8px;">Error</div>
-                        <div>${data.error}</div>
+                        <div>${esc(data.error)}</div>
                     </div>
                 </div>
             `;
@@ -380,31 +394,31 @@ if (typeof window.UniversalModal === 'undefined') {
                             ${starshipSizeBp ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Size:</span>
-                                    <span class="modal-value">${starshipSizeBp} bp</span>
+                                    <span class="modal-value">${esc(starshipSizeBp)} bp</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.familyName) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Family:</span>
-                                    <span class="modal-value">${data.familyName}</span>
+                                    <span class="modal-value">${esc(data.familyName)}</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.navis_name) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Starship Navis:</span>
-                                    <span class="modal-value">${data.navis_name}</span>
+                                    <span class="modal-value">${esc(data.navis_name)}</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.haplotype_name) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Haplotype:</span>
-                                    <span class="modal-value">${data.haplotype_name}</span>
+                                    <span class="modal-value">${esc(data.haplotype_name)}</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.genomes_present) && data.genomes_present > 1 ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Genomes Present:</span>
-                                    <span class="modal-badge badge-blue">${data.genomes_present}</span>
+                                    <span class="modal-badge badge-blue">${esc(data.genomes_present)}</span>
                                 </div>
                             ` : ''}
                         </div>
@@ -415,16 +429,16 @@ if (typeof window.UniversalModal === 'undefined') {
 
                             let genomeUrl = null;
                             let sequenceViewerUrl = null;
-                            if (hasAssemblyAccession && hasGenomeSource) {
+                            if (hasAssemblyAccession && hasGenomeSource && isValidAccession(genome.assembly_accession)) {
                                 if (source === 'jgi') {
-                                    genomeUrl = `https://mycocosm.jgi.doe.gov/${genome.assembly_accession}/${genome.assembly_accession}.home.html`;
+                                    genomeUrl = `https://mycocosm.jgi.doe.gov/${encodeURIComponent(genome.assembly_accession)}/${encodeURIComponent(genome.assembly_accession)}.home.html`;
                                 } else if (source === 'ncbi') {
-                                    genomeUrl = `https://www.ncbi.nlm.nih.gov/datasets/genome/${genome.assembly_accession}/`;
+                                    genomeUrl = `https://www.ncbi.nlm.nih.gov/datasets/genome/${encodeURIComponent(genome.assembly_accession)}/`;
                                 }
                                 if ((source === 'jgi' || source === 'ncbi') && hasValue(genome.contig_id) && isValidAccession(genome.contig_id) && hasValue(genome.element_position)) {
                                     const posMatch = (genome.element_position || '').match(/^(\d+)\s*-\s*(\d+)$/);
                                     if (posMatch) {
-                                        sequenceViewerUrl = `https://www.ncbi.nlm.nih.gov/projects/sviewer/?id=${genome.contig_id}&from=${posMatch[1]}&to=${posMatch[2]}`;
+                                        sequenceViewerUrl = `https://www.ncbi.nlm.nih.gov/projects/sviewer/?id=${encodeURIComponent(genome.contig_id)}&from=${posMatch[1]}&to=${posMatch[2]}`;
                                     }
                                 }
                             }
@@ -440,12 +454,12 @@ if (typeof window.UniversalModal === 'undefined') {
                             }
 
                             const sectionTitle = hasAssemblyAccession && hasGenomeSource
-                                ? `Genome: ${genome.assembly_accession}`
-                                : hasAssemblyAccession ? genome.assembly_accession
-                                : hasGenomeSource ? genome.genome_source
+                                ? `Genome: ${esc(genome.assembly_accession)}`
+                                : hasAssemblyAccession ? esc(genome.assembly_accession)
+                                : hasGenomeSource ? esc(genome.genome_source)
                                 : (data.genomes.length === 1 ? 'Genome' : `Genome ${i + 1}`);
                             const sectionTitleHtml = genomeUrl && hasAssemblyAccession && hasGenomeSource
-                                ? `Genome: <a href="${genomeUrl}" target="_blank" class="modal-link">${genome.assembly_accession}</a>`
+                                ? `Genome: <a href="${genomeUrl}" target="_blank" class="modal-link">${esc(genome.assembly_accession)}</a>`
                                 : sectionTitle;
 
                             return `
@@ -456,31 +470,31 @@ if (typeof window.UniversalModal === 'undefined') {
                                     ${hasValue(genome.assembly_accession) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Assembly Accession:</span>
-                                            <span class="modal-value">${genomeUrl ? `<a href="${genomeUrl}" target="_blank" class="modal-link">${genome.assembly_accession}</a>` : genome.assembly_accession}</span>
+                                            <span class="modal-value">${genomeUrl ? `<a href="${genomeUrl}" target="_blank" class="modal-link">${esc(genome.assembly_accession)}</a>` : esc(genome.assembly_accession)}</span>
                                         </div>
                                     ` : ''}
                                     ${hasValue(genome.genome_source) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Genome Source:</span>
-                                            <span class="modal-value">${genome.genome_source}</span>
+                                            <span class="modal-value">${esc(genome.genome_source)}</span>
                                         </div>
                                     ` : ''}
                                     ${hasValue(genome.contig_id) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Contig ID:</span>
-                                            <span class="modal-value">${sequenceViewerUrl ? `<a href="${sequenceViewerUrl}" target="_blank" class="modal-link">${genome.contig_id}</a>` : genome.contig_id}</span>
+                                            <span class="modal-value">${sequenceViewerUrl ? `<a href="${sequenceViewerUrl}" target="_blank" class="modal-link">${esc(genome.contig_id)}</a>` : esc(genome.contig_id)}</span>
                                         </div>
                                     ` : ''}
                                     ${hasValue(genome.element_position) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Element Position:</span>
-                                            <span class="modal-value">${genome.element_position}</span>
+                                            <span class="modal-value">${esc(genome.element_position)}</span>
                                         </div>
                                     ` : ''}
                                     ${!starshipSizeBp && hasValue(genome.element_length) ? `
                                         <div class="modal-row">
                                             <span class="modal-label">Size:</span>
-                                            <span class="modal-value">${genome.element_length} bp</span>
+                                            <span class="modal-value">${esc(genome.element_length)} bp</span>
                                         </div>
                                     ` : ''}
                                     </div>
@@ -503,26 +517,26 @@ if (typeof window.UniversalModal === 'undefined') {
                             ${hasValue(data.order) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Order:</span>
-                                    <span class="modal-value">${data.order}</span>
+                                    <span class="modal-value">${esc(data.order)}</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.family) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Family:</span>
-                                    <span class="modal-value">${data.family}</span>
+                                    <span class="modal-value">${esc(data.family)}</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.species_name) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Species:</span>
-                                    <span class="modal-value">${data.species_name}</span>
+                                    <span class="modal-value">${esc(data.species_name)}</span>
                                 </div>
                             ` : ''}
                             ${hasValue(data.tax_id) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">NCBI Taxonomy ID:</span>
                                     <span class="modal-value">
-                                        <a href="https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${data.tax_id}" target="_blank" class="modal-link">${data.tax_id}</a>
+                                        <a href="https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${encodeURIComponent(data.tax_id)}" target="_blank" class="modal-link">${esc(data.tax_id)}</a>
                                     </span>
                                 </div>
                             ` : ''}
@@ -542,14 +556,14 @@ if (typeof window.UniversalModal === 'undefined') {
                             ${hasValue(data.curated_status) ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Curation Status:</span>
-                                    <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${data.curated_status}</span>
+                                    <span class="modal-badge badge-${data.curated_status === 'curated' ? 'green' : 'yellow'}">${esc(data.curated_status)}</span>
                                 </div>
                             ` : ''}
                             ${data.quality_tags && data.quality_tags.length > 0 ? `
                                 <div class="modal-row">
                                     <span class="modal-label">Quality Tags:</span>
                                     <div class="quality-tags">
-                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${tag}</span>`).join('')}
+                                        ${data.quality_tags.map(tag => `<span class="modal-badge badge-yellow">${esc(tag)}</span>`).join('')}
                                     </div>
                                 </div>
                             ` : ''}
@@ -569,13 +583,15 @@ if (typeof window.UniversalModal === 'undefined') {
     static renderGroupAccessionModal(data) {
         let html = '';
 
+        const esc = (v) => this.escapeHtml(v);
+
         // Handle error case
         if (data.error) {
             return `
                 <div class="modal-container">
                     <div class="alert alert-red">
                         <div style="font-weight: 600; margin-bottom: 8px;">Error</div>
-                        <div>${data.error}</div>
+                        <div>${esc(data.error)}</div>
                     </div>
                 </div>
             `;
@@ -589,16 +605,16 @@ if (typeof window.UniversalModal === 'undefined') {
         html += '<div class="section-content"><div class="modal-grid">';
 
         if (hasValue(data.familyName)) {
-            html += `<div class="modal-row"><span class="modal-label">Starship Family:</span><span class="modal-value">${data.familyName}</span></div>`;
+            html += `<div class="modal-row"><span class="modal-label">Starship Family:</span><span class="modal-value">${esc(data.familyName)}</span></div>`;
         }
         if (hasValue(data.genomes_present)) {
-            html += `<div class="modal-row"><span class="modal-label">Genomes Present:</span><span class="modal-badge badge-blue">${data.genomes_present}</span></div>`;
+            html += `<div class="modal-row"><span class="modal-label">Genomes Present:</span><span class="modal-badge badge-blue">${esc(data.genomes_present)}</span></div>`;
         }
         if (hasValue(data.navis_name)) {
-            html += `<div class="modal-row"><span class="modal-label">Starship Navis:</span><span class="modal-value">${data.navis_name}</span></div>`;
+            html += `<div class="modal-row"><span class="modal-label">Starship Navis:</span><span class="modal-value">${esc(data.navis_name)}</span></div>`;
         }
         if (hasValue(data.haplotype_name)) {
-            html += `<div class="modal-row"><span class="modal-label">Haplotype:</span><span class="modal-value">${data.haplotype_name}</span></div>`;
+            html += `<div class="modal-row"><span class="modal-label">Haplotype:</span><span class="modal-value">${esc(data.haplotype_name)}</span></div>`;
         }
 
         html += '</div></div></div></div>';
