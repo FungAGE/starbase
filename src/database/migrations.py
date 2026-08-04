@@ -18,11 +18,12 @@ def ensure_type_ship_column():
 
 def run_alembic_migrations():
     """Apply pending Alembic migrations to starbase.sqlite."""
+    import os
     from alembic.config import Config
     from alembic import command
     from src.config.settings import DB_PATHS, PROJECT_ROOT
 
-    cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
+    cfg = Config(os.path.join(PROJECT_ROOT, "alembic.ini"))
     cfg.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATHS['starbase']}")
     logger.info("Running Alembic migrations on %s", DB_PATHS["starbase"])
     command.upgrade(cfg, "head")
