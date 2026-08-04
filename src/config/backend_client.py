@@ -266,6 +266,18 @@ def get_quality_tags(joined_ship_id: int) -> list[dict]:
     return _request("GET", f"/api/data/joined-ships/{joined_ship_id}/quality-tags")
 
 
+def set_ship_deleted(joined_ship_id: int, deleted: bool = True) -> bool:
+    result = _request(
+        "POST",
+        "/api/data/joined-ships/set-deleted",
+        json={
+            "joined_ship_id": joined_ship_id,
+            "deleted": deleted,
+        },
+    )
+    return result["updated"]
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 

@@ -177,6 +177,17 @@ def remove_quality_tag(body: RemoveQualityTagBody) -> dict[str, bool]:
     return {"removed": ok}
 
 
+class SetShipDeletedBody(BaseModel):
+    joined_ship_id: int
+    deleted: bool = True
+
+
+@router.post("/joined-ships/set-deleted")
+def set_ship_deleted(body: SetShipDeletedBody) -> dict[str, bool]:
+    ok = sql_manager.set_ship_deleted(body.joined_ship_id, deleted=body.deleted)
+    return {"updated": ok}
+
+
 @router.get("/joined-ships/{joined_ship_id}/quality-tags")
 def get_quality_tags(joined_ship_id: int) -> list[dict[str, Any]]:
     tags = sql_manager.get_quality_tags(joined_ship_id)
