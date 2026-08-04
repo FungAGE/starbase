@@ -8,12 +8,25 @@ from sqlalchemy import (
     DateTime,
     VARCHAR,
     Boolean,
+    func,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 metadata = Base.metadata
+
+
+class DatabaseVersion(Base):
+    """Content version changelog — one row per version bump event."""
+
+    __tablename__ = "database_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    semantic_version = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(String, default="system")
 
 
 class Accessions(Base):
@@ -63,6 +76,8 @@ class Captains(Base):
     id = Column(Integer, primary_key=True)
     captainID = Column(String, unique=True)
     sequence = Column(String)
+    md5 = Column(String)
+    sequence_length = Column(Integer)
     ship_id = Column(Integer, ForeignKey("ships.id"))
     reviewed = Column(String)
     evidence = Column(String)
@@ -247,6 +262,9 @@ class JoinedShips(Base):
 
     # Direct link to accession (when sequence data is available)
     accession_id = Column(Integer, ForeignKey("accessions.id"), nullable=True)
+    # Direct link to ship-level (SSB) accession; mirrors accession_id (SSA, group-level).
+    # Previously only reachable via ship_id -> ships.id -> ship_accessions.ship_id.
+    ship_accession_id = Column(Integer, ForeignKey("ship_accessions.id"), nullable=True)
 
     # Links to classification and annotation data
     ship_id = Column(Integer, ForeignKey("ships.id"))
@@ -258,9 +276,11 @@ class JoinedShips(Base):
     ship_haplotype_id = Column(Integer, ForeignKey("haplotype_names.id"))
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+    is_deleted = Column(Boolean, nullable=False, default=False, server_default="0")
 
     # Relationships
     accession = relationship("Accessions", back_populates="joined_ship")
+    ship_accession = relationship("ShipAccessions")
     ship = relationship("Ships")
     family = relationship("FamilyNames")
     taxonomy = relationship("Taxonomy")
@@ -306,7 +326,9 @@ class Submission(Base):
     evidence = Column(String(100), nullable=True)
     genus = Column(String(255), nullable=True)
     species = Column(String(255), nullable=True)
+    strain = Column(String(255), nullable=True)
     hostchr = Column(String(255), nullable=True)
+    assembly_accession = Column(String(50), nullable=True)
     shipstart = Column(Integer, nullable=True)
     shipend = Column(Integer, nullable=True)
     shipstrand = Column(String(10), nullable=True)
@@ -314,6 +336,8 @@ class Submission(Base):
     ship_accession_tag = Column(String(50), nullable=True)
     accession_tag = Column(String(50), nullable=True)
     needs_review = Column(Boolean, default=False, nullable=True)
+    submission_group_id = Column(String(36), nullable=True)
+    processing_status = Column(String(20), default="pending", nullable=True)
     # Classification from BLAST prefill (optional)
     classification_source = Column(String(50), nullable=True)
     classification_family = Column(String(100), nullable=True)

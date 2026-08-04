@@ -341,3 +341,19 @@ def get_quality_tags(joined_ship_id: int) -> list[dict[str, Any]]:
         return _get_impl().get_quality_tags(joined_ship_id)
 
     return _via_backend(_http, _local)
+
+
+def set_ship_deleted(joined_ship_id: int, deleted: bool = True) -> bool:
+    """Toggle the soft-delete flag on a joined_ships record.
+
+    Soft-deleted ships are excluded from ships_with_metadata,
+    captains_with_metadata, and ship_table_view automatically.
+    """
+
+    def _http():
+        return backend_client.set_ship_deleted(joined_ship_id, deleted=deleted)
+
+    def _local():
+        return _get_impl().set_ship_deleted(joined_ship_id, deleted=deleted)
+
+    return _via_backend(_http, _local)

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import dash
-from dash import dcc, html, callback, clientside_callback
+from dash import dcc, html, callback
 from dash.dependencies import Output, Input, State
 from dash.exceptions import PreventUpdate
 
@@ -34,10 +34,14 @@ from src.components.ui import (
     _i,
     _lt,
 )
-from src.components.callbacks import handle_callback_error
+from src.components.callbacks import handle_callback_error, create_modal_callback
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Unresolved-species taxonomic qualifiers (NCBI convention) -- not real taxon
+# names, excluded from the taxa search autocomplete/filter.
+TAXA_PLACEHOLDER_VALUES = {"sp", "sp.", "spp", "spp.", "cf", "cf.", "aff", "aff."}
 
 dash.register_page(__name__)
 
@@ -295,6 +299,22 @@ main_card = dmc.Paper(
                     limit=20,
                     style={"flex": 1, "minWidth": "12.5rem"},
                 ),
+                dmc.Autocomplete(
+                    id="group-accession-search",
+                    label="Group Accession (SSA)",
+                    placeholder="e.g. SSA000001",
+                    data=[],
+                    limit=20,
+                    style={"flex": 1, "minWidth": "12.5rem"},
+                ),
+                dmc.Autocomplete(
+                    id="ship-accession-search",
+                    label="Ship Accession (SSB)",
+                    placeholder="e.g. SSB000001",
+                    data=[],
+                    limit=20,
+                    style={"flex": 1, "minWidth": "12.5rem"},
+                ),
             ],
         ),
         dmc.Group(
@@ -516,7 +536,14 @@ info_table_paper = dmc.Paper(
                         table_columns=table_columns,
                     ),
                 ),
-                html.Div(id="dummy-output", style={"display": "none"}),
+                dmc.Modal(
+                    id="accession-modal",
+                    opened=False,
+                    size="lg",
+                    centered=True,
+                    title=html.Div(id="accession-modal-title"),
+                    children=html.Div(id="accession-modal-content"),
+                ),
             ],
         ),
     ],
@@ -800,6 +827,8 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
     [
         Output("taxa-search", "data"),
         Output("family-search", "data"),
+        Output("group-accession-search", "data"),
+        Output("ship-accession-search", "data"),
     ],
     Input("meta-data", "data"),
     prevent_initial_call=False,  # Allow initial call to populate on page load
@@ -807,7 +836,7 @@ def create_search_results(filtered_meta, cached_meta, curated, dereplicate):
 @handle_callback_error
 def populate_search_components(meta_data):
     if not meta_data:
-        return [], []
+        return [], [], [], []
 
     try:
         df = pd.DataFrame(meta_data)
@@ -815,15 +844,11 @@ def populate_search_components(meta_data):
         # Get taxonomy search data
         search_columns = [
             "name",
-            "subkingdom",
-            "phylum",
-            "subphylum",
             "class",
-            "subclass",
             "order",
-            "suborder",
             "family",
             "genus",
+            "species",
         ]
 
         # Collect all unique values across specified columns
@@ -834,6 +859,11 @@ def populate_search_components(meta_data):
                 # Get non-null values and add to set
                 values = df[col].dropna().astype(str).unique()
                 all_taxa_values.update(values)
+
+        # Drop unresolved-species placeholder qualifiers (e.g. "sp.", "cf.", "aff.") --
+        # not real taxa, and being short they'd otherwise dominate the top of the
+        # length-sorted autocomplete list.
+        all_taxa_values -= TAXA_PLACEHOLDER_VALUES
 
         # Convert to sorted list and format for Autocomplete
         # sort by length instead of alphabetically
@@ -853,11 +883,34 @@ def populate_search_components(meta_data):
         else:
             family_search_data = []
 
-        return taxa_search_data, family_search_data
+        # Get group accession (SSA) search data
+        group_accession_search_data = []
+        if "accession_tag" in df.columns:
+            group_accession_values = df["accession_tag"].dropna().astype(str).unique()
+            group_accession_search_data = [
+                {"value": val, "label": val} for val in sorted(group_accession_values)
+            ]
+
+        # Get ship accession (SSB) search data
+        ship_accession_search_data = []
+        if "ship_accession_tag" in df.columns:
+            ship_accession_values = (
+                df["ship_accession_tag"].dropna().astype(str).unique()
+            )
+            ship_accession_search_data = [
+                {"value": val, "label": val} for val in sorted(ship_accession_values)
+            ]
+
+        return (
+            taxa_search_data,
+            family_search_data,
+            group_accession_search_data,
+            ship_accession_search_data,
+        )
 
     except Exception as e:
         logger.error(f"Error in populate_search_components: {str(e)}")
-        return [], []
+        return [], [], [], []
 
 
 @callback(
@@ -869,13 +922,21 @@ def populate_search_components(meta_data):
     [
         State("taxa-search", "value"),
         State("family-search", "value"),
+        State("group-accession-search", "value"),
+        State("ship-accession-search", "value"),
         State("meta-data", "data"),
     ],
     prevent_initial_call=True,
 )
 @handle_callback_error
 def handle_taxa_and_family_search(
-    search_clicks, reset_clicks, taxa_search_value, family_search_value, original_data
+    search_clicks,
+    reset_clicks,
+    taxa_search_value,
+    family_search_value,
+    group_accession_search_value,
+    ship_accession_search_value,
+    original_data,
 ):
     if not original_data:
         raise PreventUpdate
@@ -903,15 +964,11 @@ def handle_taxa_and_family_search(
             # Define columns to search across
             taxa_search_columns = [
                 "name",
-                "subkingdom",
-                "phylum",
-                "subphylum",
                 "class",
-                "subclass",
                 "order",
-                "suborder",
                 "family",
                 "genus",
+                "species",
             ]
 
             # Create a mask for rows that contain the search value in any of the specified columns
@@ -935,6 +992,22 @@ def handle_taxa_and_family_search(
                 filtered_df = filtered_df[
                     filtered_df["familyName"].astype(str).str.lower()
                     == family_search_value.lower()
+                ]
+
+        # Apply group accession (SSA) search if value is provided
+        if group_accession_search_value and group_accession_search_value.strip():
+            if "accession_tag" in filtered_df.columns:
+                filtered_df = filtered_df[
+                    filtered_df["accession_tag"].astype(str).str.lower()
+                    == group_accession_search_value.strip().lower()
+                ]
+
+        # Apply ship accession (SSB) search if value is provided
+        if ship_accession_search_value and ship_accession_search_value.strip():
+            if "ship_accession_tag" in filtered_df.columns:
+                filtered_df = filtered_df[
+                    filtered_df["ship_accession_tag"].astype(str).str.lower()
+                    == ship_accession_search_value.strip().lower()
                 ]
 
         # Return empty list if no results found, otherwise return the filtered data
@@ -1238,72 +1311,11 @@ def update_download_selected_button(selected_rows):
     return not selected_rows or len(selected_rows) == 0
 
 
-# Add clientside callback to handle accession modal clicks
-clientside_callback(
-    """
-    function(cellClicked, activeCell, tableData, pageCurrent, pageSize) {
-        if (!cellClicked && !activeCell) {
-            return window.dash_clientside.no_update;
-        }
-
-        let accession = null;
-        let isShipColumn = false;
-        let isGroupColumn = false;
-
-        const shipCols = ['ship_accession_tag', 'ship_accession_display'];
-        const groupCols = ['accession_tag', 'accession_display'];
-
-        // Handle AG Grid cell clicks
-        if (cellClicked) {
-            if (shipCols.includes(cellClicked.colId)) {
-                accession = cellClicked.value;
-                isShipColumn = true;
-            } else if (groupCols.includes(cellClicked.colId)) {
-                accession = cellClicked.value;
-                isGroupColumn = true;
-            }
-        }
-        // Handle DataTable active cell
-        else if (activeCell) {
-            const actualRowIdx = (pageCurrent || 0) * pageSize + activeCell.row;
-            if (tableData && actualRowIdx < tableData.length) {
-                if (shipCols.includes(activeCell.column_id)) {
-                    accession = tableData[actualRowIdx][activeCell.column_id];
-                    isShipColumn = true;
-                } else if (groupCols.includes(activeCell.column_id)) {
-                    accession = tableData[actualRowIdx][activeCell.column_id];
-                    isGroupColumn = true;
-                }
-            }
-        }
-
-        if (accession) {
-            let parts = accession.toString().trim().split('/').map(s => s.trim()).filter(Boolean);
-            if (isShipColumn) {
-                let ssbPart = parts.find(p => p.startsWith('SSB'));
-                accession = ssbPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
-                showShipAccessionModal(accession);
-            } else if (isGroupColumn) {
-                let ssaPart = parts.find(p => p.startsWith('SSA'));
-                accession = ssaPart || (parts.length > 0 ? parts[parts.length - 1] : accession);
-                showGroupAccessionModal(accession);
-            }
-        }
-
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output(
-        "dummy-output", "children"
-    ),  # Dummy output since we don't need to update any Dash components
-    [
-        Input("dl-table", "cellClicked"),
-        Input("dl-table", "active_cell"),
-    ],
-    [
-        State("dl-table", "derived_virtual_data"),
-        State("dl-table", "page_current"),
-        State("dl-table", "page_size"),
-    ],
-    prevent_initial_call=True,
+# Open a native dmc.Modal (accession-modal, defined in the layout above) when a
+# user clicks a ship/group accession cell in dl-table.
+create_modal_callback(
+    table_id="dl-table",
+    modal_id="accession-modal",
+    content_id="accession-modal-content",
+    title_id="accession-modal-title",
 )

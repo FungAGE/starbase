@@ -238,6 +238,27 @@ DEV_MODE=true
 
 ## Unit tests
 
+Run the default unit test suite (no database files required):
+
+```bash
+conda activate starbase
+pytest
+```
+
+This runs tests under `tests/` and skips `@pytest.mark.integration` tests (database, BLAST/HMMER, submission DB).
+
+```bash
+# Include integration tests (requires src/database/db/ mounted)
+pytest -m integration
+
+# Run everything
+pytest -m ""
+```
+
+BLAST pipeline helpers have focused coverage in `tests/test_blast_pipeline.py`.
+
+Legacy tests under `src/database/cleanup*` are excluded via `testpaths = tests` in `pytest.ini`.
+
 Run Pytest in a Docker container:
 
 ```bash

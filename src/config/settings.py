@@ -1,11 +1,15 @@
 import os
 
-# Development mode
-IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
+from dotenv import load_dotenv
 
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _DEFAULT_DB_DIR = os.path.join(PROJECT_ROOT, "src", "database", "db")
+
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+
+# Development mode
+IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
 
 # Backend API (compute split) — read early; drives path layout below.
 # BACKEND_API_URL: e.g. http://100.x.y.z:8001 (Tailscale) or http://backend:8001 (compose).
@@ -126,6 +130,8 @@ ABOUT_URL = os.getenv("ABOUT_URL", "/about")
 SYNTENY_URL = os.getenv("SYNTENY_URL", "/synteny")
 SUBMIT_URL = os.getenv("SUBMIT_URL", "/submit")
 METRICS_URL = os.getenv("METRICS_URL", "/metrics")
+ADMIN_URL = os.getenv("ADMIN_URL", "/admin")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
 
 # Define valid pages
 PAGES = {
@@ -143,6 +149,7 @@ PAGE_MAPPING = ",".join(PAGES)
 
 # API Keys
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
+NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # Cache settings

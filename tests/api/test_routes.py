@@ -17,7 +17,7 @@ def test_get_ship_accession_details(test_client):
         mock_create_modal_data.return_value = mock_modal_data
 
         response = test_client.get(
-            f"/api/accession/ship_accession_details/{ship_accession_id}"
+            f"/api/accession/accession_details/{ship_accession_id}"
         )
 
         assert response.status_code == 200
@@ -37,9 +37,7 @@ def test_get_group_accession_details(test_client):
         }
         mock_create_modal_data.return_value = mock_modal_data
 
-        response = test_client.get(
-            f"/api/accession/group_accession_details/{accession_id}"
-        )
+        response = test_client.get(f"/api/accession/accession_details/{accession_id}")
 
         assert response.status_code == 200
         assert response.json == mock_modal_data

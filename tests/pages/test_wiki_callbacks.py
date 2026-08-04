@@ -4,6 +4,8 @@ from unittest.mock import patch, MagicMock
 import dash
 from dash import html
 
+pytestmark = pytest.mark.integration
+
 # Mock dash.register_page before importing the wiki module
 with patch("dash.register_page"):
     from src.pages.wiki import (

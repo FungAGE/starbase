@@ -9,7 +9,6 @@ with patch("dash.register_page"):
         create_accordion_item,
         load_initial_data,
         generate_download_helper,
-        update_table_stats,
         update_download_selected_button,
         populate_search_components,
     )
@@ -51,23 +50,9 @@ class TestWikiCoreFunctions:
         result = create_accordion_item(meta_df, papers_df, "nan")
         assert result is None
 
-    @patch("src.pages.wiki.cache")
     @patch("src.pages.wiki.fetch_meta_data")
-    def test_load_initial_data_success(self, mock_fetch, mock_cache):
+    def test_load_initial_data_success(self, mock_fetch):
         """Test successful data loading"""
-        mock_df = pd.DataFrame({"test": [1, 2, 3]})
-        mock_cache.get.return_value = mock_df
-
-        result = load_initial_data()
-
-        assert result == mock_df.to_dict("records")
-        mock_fetch.assert_not_called()
-
-    @patch("src.pages.wiki.cache")
-    @patch("src.pages.wiki.fetch_meta_data")
-    def test_load_initial_data_cache_miss(self, mock_fetch, mock_cache):
-        """Test data loading when cache is empty"""
-        mock_cache.get.return_value = None
         mock_df = pd.DataFrame({"test": [1, 2, 3]})
         mock_fetch.return_value = mock_df
 
@@ -75,8 +60,19 @@ class TestWikiCoreFunctions:
 
         assert result == mock_df.to_dict("records")
         mock_fetch.assert_called_once()
-        mock_cache.set.assert_called_once()
 
+    @patch("src.pages.wiki.fetch_meta_data")
+    def test_load_initial_data_cache_miss(self, mock_fetch):
+        """Test data loading when fetch_meta_data is called directly"""
+        mock_df = pd.DataFrame({"test": [1, 2, 3]})
+        mock_fetch.return_value = mock_df
+
+        result = load_initial_data()
+
+        assert result == mock_df.to_dict("records")
+        mock_fetch.assert_called_once()
+
+    @pytest.mark.integration
     @patch("src.pages.wiki.fetch_ships")
     def test_generate_download_helper_success(self, mock_fetch_ships):
         """Test successful download generation"""
@@ -112,33 +108,6 @@ class TestWikiCoreFunctions:
         assert result is None
         assert count == 0
         mock_fetch_ships.assert_not_called()
-
-    def test_update_table_stats_with_data(self):
-        """Test table stats with valid data"""
-        meta_data = [
-            {"accession_tag": "SSA000001", "curated_status": "curated"},
-            {"accession_tag": "SSA000002", "curated_status": "uncurated"},
-            {"accession_tag": "SSA000003", "curated_status": "curated"},
-        ]
-
-        result = update_table_stats(meta_data, None, False, False)
-        assert result == "Showing 3 records"
-
-    def test_update_table_stats_with_curated_filter(self):
-        """Test table stats with curated filter"""
-        meta_data = [
-            {"accession_tag": "SSA000001", "curated_status": "curated"},
-            {"accession_tag": "SSA000002", "curated_status": "uncurated"},
-            {"accession_tag": "SSA000003", "curated_status": "curated"},
-        ]
-
-        result = update_table_stats(meta_data, None, True, False)
-        assert result == "Showing 2 records"
-
-    def test_update_table_stats_no_data(self):
-        """Test table stats with no data"""
-        result = update_table_stats(None, None, False, False)
-        assert result == "No data available"
 
     def test_update_download_selected_button_with_selection(self):
         """Test button state with selected rows"""
@@ -232,26 +201,7 @@ class TestWikiDataProcessing:
         assert family1_item.title == "Family1"
         assert family2_item.title == "Family2"
 
-    def test_table_stats_integration(self):
-        """Test table stats with complete data"""
-        meta_data = [
-            {"accession_tag": "SSA000001", "curated_status": "curated"},
-            {"accession_tag": "SSA000002", "curated_status": "uncurated"},
-            {"accession_tag": "SSA000003", "curated_status": "curated"},
-        ]
-
-        # Test without filters
-        result = update_table_stats(meta_data, None, False, False)
-        assert result == "Showing 3 records"
-
-        # Test with curated filter
-        result = update_table_stats(meta_data, None, True, False)
-        assert result == "Showing 2 records"
-
-        # Test with dereplicated filter
-        result = update_table_stats(meta_data, None, False, True)
-        assert result == "Showing 3 records"
-
+    @pytest.mark.integration
     def test_download_helper_with_duplicate_accessions(self):
         """Test download helper with duplicate accession tags"""
         rows = [
@@ -333,16 +283,10 @@ class TestWikiEdgeCases:
             assert result is None
             assert count == 0
 
-    def test_update_table_stats_exception(self):
-        """Test table stats when exception occurs"""
-        # Pass invalid data to trigger exception
-        result = update_table_stats("invalid_data", None, False, False)
-        assert result == "Error loading data"
-
     def test_load_initial_data_exception(self):
         """Test loading data when exception occurs"""
-        with patch("src.pages.wiki.cache") as mock_cache:
-            mock_cache.get.side_effect = Exception("Cache error")
+        with patch("src.pages.wiki.fetch_meta_data") as mock_fetch:
+            mock_fetch.side_effect = Exception("Fetch error")
 
             result = load_initial_data()
 

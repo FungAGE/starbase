@@ -277,10 +277,6 @@ def assign_accession(
     if exact_match:
         logger.debug(f"Found exact match: {exact_match}")
         return exact_match, False
-    else:
-        # return SSB accessions
-        # this should return a new SSB accession if the ship doesn't have one?
-        ssb_accession = get_next_available_accession(session, "SSB")
 
     logger.debug("Step 2: Checking for contained matches...")
     container_result = check_contained_match(
@@ -332,6 +328,22 @@ def assign_accession(
             accession = new_accession
         return accession, review_flag
 
+    logger.debug(f"Step 3: Checking for similar matches (threshold={threshold})...")
+    similar_match, _similarities = check_similar_match(
+        sequence,
+        existing_ships,
+        threshold,
+        precomputed_sig_path=precomputed_sig_path,
+    )
+    if similar_match:
+        logger.debug(f"Found similar match: {similar_match}")
+        return similar_match, True
+
+    logger.debug("Step 4: No matches found - generating new accession...")
+    new_accession = generate_new_accession(existing_ships)
+    logger.debug(f"Generated new accession: {new_accession}")
+    return new_accession, True
+
 
 def generate_new_accession(existing_ships: pd.DataFrame) -> str:
     """
@@ -371,33 +383,36 @@ def get_version_sort_key(version_tag):
 
 
 def get_next_available_accession(session, accession_type: str):
-    """Get the next available accession (full tag string, e.g. 'SSB0000002')."""
+    """Get the next unused accession tag (full string, e.g. 'SSB0000002')."""
     if accession_type == "SSB":
-        query = text("""
-        SELECT ship_accession_tag FROM ship_accessions
-        WHERE ship_accession_tag LIKE 'SSB%'
-        ORDER BY ship_accession_tag DESC
-        LIMIT 1
+        max_query = text("""
+        SELECT COALESCE(MAX(CAST(SUBSTR(ship_accession_tag, 4) AS INTEGER)), 0)
+        FROM ship_accessions
+        WHERE ship_accession_tag GLOB 'SSB[0-9]*'
         """)
+        exists_query = text(
+            "SELECT 1 FROM ship_accessions WHERE ship_accession_tag = :tag LIMIT 1"
+        )
     elif accession_type == "SSA":
-        query = text("""
-        SELECT accession_tag FROM accessions
-        WHERE accession_tag LIKE 'SSA%'
-        ORDER BY accession_tag DESC
-        LIMIT 1
+        max_query = text("""
+        SELECT COALESCE(MAX(CAST(SUBSTR(accession_tag, 4) AS INTEGER)), 0)
+        FROM accessions
+        WHERE accession_tag GLOB 'SSA[0-9]*'
         """)
+        exists_query = text(
+            "SELECT 1 FROM accessions WHERE accession_tag = :tag LIMIT 1"
+        )
     else:
         raise ValueError(f"Invalid accession type: {accession_type}")
 
-    result = session.execute(query).fetchone()
+    next_num = (session.execute(max_query).scalar() or 0) + 1
+    for _ in range(100):
+        candidate = f"{accession_type}{next_num:07d}"
+        if not session.execute(exists_query, {"tag": candidate}).fetchone():
+            return candidate
+        next_num += 1
 
-    if result:
-        # Extract number from accession format
-        last_accession = result[0]
-        last_number = int(last_accession.replace(accession_type, ""))
-        return f"{accession_type}{last_number + 1:07d}"
-    else:
-        return f"{accession_type}0000001"
+    raise RuntimeError(f"Could not find unused {accession_type} accession tag")
 
 
 def ensure_ship_has_ssb(session, ship_id: int) -> str:
@@ -424,7 +439,7 @@ def ensure_ship_has_ssb(session, ship_id: int) -> str:
     next_tag = get_next_available_accession(session, "SSB")
     session.execute(
         text("""
-        INSERT INTO ship_accessions (ship_accession_tag, version_tag, ship_id)
+        INSERT INTO ship_accessions (ship_accession_tag, ship_version_tag, ship_id)
         VALUES (:tag, :version, :ship_id)
         """),
         {"tag": next_tag, "version": 1, "ship_id": ship_id},
@@ -1915,6 +1930,11 @@ def run_classification_workflow(
         run_exact = tier == "full" and not weak_blast and not skip_exact_len
         run_contained_similar = tier in ("skip_exact", "full") and not weak_blast
 
+        for stage in WORKFLOW_STAGES:
+            workflow_state.stages.setdefault(
+                stage["id"], {"progress": 0, "status": "pending"}
+            )
+
         if tier == "none":
             for stage in WORKFLOW_STAGES:
                 sid = stage["id"]
@@ -2514,13 +2534,36 @@ def create_classification_output(workflow_state=None, classification_data=None):
             classification_data = None
 
     # No valid classification data - check workflow state
-    # Handle workflow_state as either object or dictionary
     workflow_complete = False
+    workflow_error = None
+    workflow_status = None
+    pipeline_entry = None
+    found_match = False
     if workflow_state:
         if hasattr(workflow_state, "complete"):
             workflow_complete = workflow_state.complete
+            workflow_error = workflow_state.error
+            workflow_status = workflow_state.status
+            pipeline_entry = workflow_state.pipeline_entry
+            found_match = workflow_state.found_match
         elif isinstance(workflow_state, dict):
             workflow_complete = workflow_state.get("complete", False)
+            workflow_error = workflow_state.get("error")
+            workflow_status = workflow_state.get("status")
+            pipeline_entry = workflow_state.get("pipeline_entry")
+            found_match = workflow_state.get("found_match", False)
+
+    if workflow_error or workflow_status == "failed":
+        from src.utils.blast_utils import create_classification_failed_alert
+
+        return html.Div(
+            [
+                classification_title,
+                create_classification_failed_alert(
+                    workflow_error or "Classification workflow failed."
+                ),
+            ]
+        )
 
     # Check if workflow is still running
     if workflow_state and not workflow_complete:
@@ -2619,8 +2662,18 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 dmc.Stack(stepper_stack, gap="sm"),
             ]
         )
-    else:
-        # Workflow is complete but no classification available
+
+    if pipeline_entry == "none":
+        from src.utils.blast_utils import create_classification_skipped_alert
+
+        return html.Div(
+            [
+                classification_title,
+                create_classification_skipped_alert(min_bp=CLASSIFICATION_MIN_BP_NONE),
+            ]
+        )
+
+    if workflow_complete and not found_match:
         return html.Div(
             [
                 classification_title,
@@ -2632,3 +2685,16 @@ def create_classification_output(workflow_state=None, classification_data=None):
                 ),
             ]
         )
+
+    # Workflow is complete but no classification available
+    return html.Div(
+        [
+            classification_title,
+            dmc.Alert(
+                title="No Classification Available",
+                children="Could not classify this sequence with any available method.",
+                color="var(--mantine-color-yellow-6)",
+                variant="light",
+            ),
+        ]
+    )

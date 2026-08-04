@@ -124,7 +124,6 @@ if IS_DEV:
 
 def initialize_app():
     """Initialize app components and perform setup tasks."""
-
     with server.app_context():
         init_sentry()
         cleanup_old_cache()

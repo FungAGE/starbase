@@ -7,7 +7,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from src.config.logging import get_logger
@@ -24,52 +24,63 @@ SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "noreply@starbase.org")
 CURATOR_EMAILS = os.getenv("CURATOR_EMAILS", "").split(",")
 
 
+def _format_ship_summary(entries: List[Dict[str, Any]]) -> str:
+    lines = []
+    for index, entry in enumerate(entries, start=1):
+        label = entry.get("seq_id") or entry.get("filename") or f"Ship {index}"
+        organism = f"{entry.get('genus', '')} {entry.get('species', '')}".strip()
+        host = entry.get("hostchr") or "N/A"
+        coords = f"{entry.get('shipstart', 'N/A')} - {entry.get('shipend', 'N/A')}"
+        lines.append(f"  {index}. {label} ({organism}) @ {host} {coords}")
+    return "\n".join(lines)
+
+
 def send_curator_notification(
-    submission_id: str,
-    submission_data: Dict[str, Any],
-    accession: Optional[str] = None,
+    submission_group_id: str,
+    entries: List[Dict[str, Any]],
+    uploader: Optional[str] = None,
+    evidence: Optional[str] = None,
+    comment: Optional[str] = None,
 ) -> bool:
     """
-    Send email notification to curators about new submission.
+    Send email notification to curators about a new grouped submission.
 
     Args:
-        submission_id: Unique submission identifier
-        submission_data: Dict containing submission details
-        accession: Assigned accession number (if available)
+        submission_group_id: Shared submission group identifier
+        entries: List of ship entry dicts from the upload form
+        uploader: Submitter email
+        evidence: Annotation method
+        comment: Optional user comment
 
     Returns:
         True if email sent successfully, False otherwise
     """
-    # Skip if no SMTP configuration
     if not SMTP_USER or not CURATOR_EMAILS or not CURATOR_EMAILS[0]:
         logger.warning("Email notifications not configured - skipping")
         return False
 
+    first = entries[0] if entries else {}
+    submission_data = {
+        "uploader": uploader or first.get("uploader"),
+        "evidence": evidence or first.get("evidence"),
+        "comment": comment or first.get("comment"),
+        "ship_count": len(entries),
+        "ship_summary": _format_ship_summary(entries),
+    }
+
     try:
-        # Prepare email content
-        subject = f"New Starship Submission: {submission_id[:8]}"
+        subject = f"New Starship Submission ({len(entries)} ship{'s' if len(entries) != 1 else ''}): {submission_group_id[:8]}"
+        body_html = _build_submission_email_html(submission_group_id, submission_data)
+        body_text = _build_submission_email_text(submission_group_id, submission_data)
 
-        # Build email body
-        body_html = _build_submission_email_html(
-            submission_id, submission_data, accession
-        )
-        body_text = _build_submission_email_text(
-            submission_id, submission_data, accession
-        )
-
-        # Create message
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = SMTP_FROM_EMAIL
         msg["To"] = ", ".join(CURATOR_EMAILS)
 
-        # Attach both plain text and HTML versions
-        part1 = MIMEText(body_text, "plain")
-        part2 = MIMEText(body_html, "html")
-        msg.attach(part1)
-        msg.attach(part2)
+        msg.attach(MIMEText(body_text, "plain"))
+        msg.attach(MIMEText(body_html, "html"))
 
-        # Send email
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             if SMTP_PORT == 587:
                 server.starttls()
@@ -77,7 +88,9 @@ def send_curator_notification(
                 server.login(SMTP_USER, SMTP_PASSWORD)
             server.sendmail(SMTP_FROM_EMAIL, CURATOR_EMAILS, msg.as_string())
 
-        logger.info(f"Curator notification sent for submission {submission_id}")
+        logger.info(
+            f"Curator notification sent for submission group {submission_group_id}"
+        )
         return True
 
     except Exception as e:
@@ -86,11 +99,11 @@ def send_curator_notification(
 
 
 def _build_submission_email_html(
-    submission_id: str, submission_data: Dict[str, Any], accession: Optional[str]
+    submission_group_id: str, submission_data: Dict[str, Any]
 ) -> str:
     """Build HTML email body."""
-
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ship_summary = submission_data.get("ship_summary", "").replace("\n", "<br>")
 
     html = f"""
     <html>
@@ -103,15 +116,14 @@ def _build_submission_email_html(
           .field {{ margin-bottom: 15px; }}
           .label {{ font-weight: bold; color: #2D3748; }}
           .value {{ color: #4A5568; margin-left: 10px; }}
-          .accession {{ background-color: #48BB78; color: white; padding: 10px; border-radius: 5px; margin: 20px 0; }}
           .footer {{ margin-top: 20px; padding-top: 20px; border-top: 1px solid #E2E8F0; color: #718096; font-size: 12px; }}
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <h2>🚀 New Starship Submission Received</h2>
-            <p>Submission ID: {submission_id}</p>
+            <h2>New Starship Submission Received</h2>
+            <p>Submission ID: {submission_group_id}</p>
           </div>
           
           <div class="content">
@@ -120,7 +132,10 @@ def _build_submission_email_html(
               <span class="value">{timestamp}</span>
             </div>
             
-            {f'<div class="accession"><strong>Accession Assigned:</strong> {accession}</div>' if accession else ""}
+            <div class="field">
+              <span class="label">Ships in batch:</span>
+              <span class="value">{submission_data.get("ship_count", 1)}</span>
+            </div>
             
             <h3>Submission Details</h3>
             
@@ -135,31 +150,9 @@ def _build_submission_email_html(
             </div>
             
             <div class="field">
-              <span class="label">Organism:</span>
-              <span class="value">{submission_data.get("genus", "N/A")} {submission_data.get("species", "N/A")}</span>
+              <span class="label">Ships:</span>
+              <div class="value">{ship_summary}</div>
             </div>
-            
-            <div class="field">
-              <span class="label">Host Contig:</span>
-              <span class="value">{submission_data.get("hostchr", "N/A")}</span>
-            </div>
-            
-            <div class="field">
-              <span class="label">Coordinates:</span>
-              <span class="value">{submission_data.get("shipstart", "N/A")} - {submission_data.get("shipend", "N/A")}</span>
-            </div>
-            
-            <div class="field">
-              <span class="label">Strand:</span>
-              <span class="value">{"+" if submission_data.get("strand_radio") == 1 else "-"}</span>
-            </div>
-            
-            <div class="field">
-              <span class="label">Sequence File:</span>
-              <span class="value">{submission_data.get("seq_filename", "N/A")}</span>
-            </div>
-            
-            {f'<div class="field"><span class="label">Annotation File:</span><span class="value">{submission_data.get("anno_filename", "N/A")}</span></div>' if submission_data.get("anno_filename") else ""}
             
             {f'<div class="field"><span class="label">Comments:</span><span class="value">{submission_data.get("comment", "None")}</span></div>' if submission_data.get("comment") else ""}
           </div>
@@ -176,29 +169,24 @@ def _build_submission_email_html(
 
 
 def _build_submission_email_text(
-    submission_id: str, submission_data: Dict[str, Any], accession: Optional[str]
+    submission_group_id: str, submission_data: Dict[str, Any]
 ) -> str:
     """Build plain text email body."""
-
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     text = f"""
 NEW STARSHIP SUBMISSION RECEIVED
 
-Submission ID: {submission_id}
+Submission ID: {submission_group_id}
 Submitted: {timestamp}
-{f"Accession Assigned: {accession}" if accession else ""}
+Ships in batch: {submission_data.get("ship_count", 1)}
 
 SUBMISSION DETAILS
 ------------------
 Submitter Email: {submission_data.get("uploader", "N/A")}
 Evidence/Method: {submission_data.get("evidence", "N/A")}
-Organism: {submission_data.get("genus", "N/A")} {submission_data.get("species", "N/A")}
-Host Contig: {submission_data.get("hostchr", "N/A")}
-Coordinates: {submission_data.get("shipstart", "N/A")} - {submission_data.get("shipend", "N/A")}
-Strand: {"+" if submission_data.get("strand_radio") == 1 else "-"}
-Sequence File: {submission_data.get("seq_filename", "N/A")}
-{f"Annotation File: {submission_data.get('anno_filename', 'N/A')}" if submission_data.get("anno_filename") else ""}
+Ships:
+{submission_data.get("ship_summary", "")}
 {f"Comments: {submission_data.get('comment', 'None')}" if submission_data.get("comment") else ""}
 
 ---
@@ -209,26 +197,28 @@ Please review this submission in the curator dashboard.
 
 
 def send_submission_confirmation(
-    recipient_email: str, submission_id: str, accession: Optional[str] = None
+    recipient_email: str,
+    submission_group_id: str,
+    ship_count: int = 1,
 ) -> bool:
     """
     Send confirmation email to submitter.
 
     Args:
         recipient_email: Submitter's email address
-        submission_id: Unique submission identifier
-        accession: Assigned accession number (if available)
+        submission_group_id: Shared submission group identifier
+        ship_count: Number of ships in the batch
 
     Returns:
         True if email sent successfully, False otherwise
     """
-    # Skip if no SMTP configuration
     if not SMTP_USER:
         logger.warning("Email notifications not configured - skipping confirmation")
         return False
 
     try:
         subject = "Starship Submission Received"
+        ship_label = f"{ship_count} Starship{'s' if ship_count != 1 else ''}"
 
         body_html = f"""
         <html>
@@ -236,11 +226,11 @@ def send_submission_confirmation(
             <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
               <h2 style="color: #4A5568;">Thank you for your submission!</h2>
               
-              <p>Your Starship sequence has been successfully submitted to the database.</p>
+              <p>Your {ship_label} have been successfully uploaded to the submission portal.</p>
               
               <div style="background-color: #f7fafc; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p><strong>Submission ID:</strong> {submission_id}</p>
-                {f"<p><strong>Accession Number:</strong> {accession}</p>" if accession else ""}
+                <p><strong>Submission ID:</strong> {submission_group_id}</p>
+                <p><strong>Ships uploaded:</strong> {ship_count}</p>
               </div>
               
               <p>Your submission will be reviewed by our curation team. Once approved, it will be included in the next database release.</p>
