@@ -53,8 +53,10 @@ Production target: **frontend** on a SciLifeLab [Serve](https://github.com/Scili
 
 | Component | Runs on | Data |
 |-----------|---------|------|
-| Frontend (Dash) | Serve pod / your laptop | submissions + telemetry SQLite only (`FRONTEND_DATA_DIR`) |
-| Backend (FastAPI) | Institute machine (Docker) | starbase.sqlite + BLAST/HMM databases (`DATA_DIR`) |
+| Frontend (Dash) | Serve pod / your laptop | telemetry SQLite only (`FRONTEND_DATA_DIR`) |
+| Backend (FastAPI) | Institute machine (Docker) | starbase.sqlite (ships, taxonomy, submissions, ...) + BLAST/HMM databases (`DATA_DIR`) |
+
+Submissions live in starbase.sqlite, not a separate file -- `Submission` was always on the same SQLAlchemy `Base` as everything else, so in split mode submission writes go through the backend API like everything else. Only telemetry (request logs, not Alembic-tracked) stays frontend-local.
 
 `sql_manager` dispatches automatically: HTTP when `BACKEND_API_URL` is set, direct SQLAlchemy when unset (local DB debug).
 
@@ -107,7 +109,7 @@ On the **frontend** (Serve test pod or laptop):
 ```bash
 BACKEND_API_URL=http://100.x.y.z:8001    # backend Tailscale IP
 BACKEND_API_KEY=<same secret>
-FRONTEND_DATA_DIR=/path/to/submissions-telemetry   # optional; defaults to src/database/db
+FRONTEND_DATA_DIR=/path/to/telemetry   # optional; defaults to src/database/db
 ```
 
 Deploy the frontend image (`ghcr.io/fungage/starbase:<tag>`) to Serve as a single pod — same pattern as the existing production deployment, but without mounting the full database tree.

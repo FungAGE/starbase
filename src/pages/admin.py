@@ -22,6 +22,8 @@ from sqlalchemy import text
 
 from src.config.logging import get_logger
 from src.config.settings import ADMIN_TOKEN
+from src.database import admin_manager
+from src.database.admin_table_config import EDITABLE_COLS, GRID_IDS
 from src.database.sql_engine import get_starbase_session, get_submissions_session
 from src.database.sql_manager import get_database_version, set_database_version
 
@@ -30,279 +32,48 @@ logger = get_logger(__name__)
 dash.register_page(__name__, path="/admin", title="Admin", name="Admin")
 
 # ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-EDITABLE_COLS = {
-    "joined_ships": {"curated_status", "evidence", "source", "tax_id", "accession_id"},
-    "submissions": {
-        "needs_review",
-        "classification_family",
-        "classification_navis",
-        "classification_haplotype",
-        "classification_confidence",
-        "comment",
-    },
-    "taxonomy": {
-        "name",
-        "taxID",
-        "genus",
-        "species",
-        "strain",
-        "superkingdom",
-        "clade",
-        "kingdom",
-        "subkingdom",
-        "phylum",
-        "subphylum",
-        "class",
-        "subclass",
-        "order",
-        "suborder",
-        "family",
-        "section",
-        "species_group",
-        "subgenus",
-    },
-    "papers": {
-        "Title",
-        "Author",
-        "PublicationYear",
-        "DOI",
-        "Url",
-        "shortCitation",
-        "starshipMentioned",
-        "typePaper",
-    },
-    "family_names": {
-        "familyName",
-        "notes",
-        "type_element_reference",
-        "clade",
-        "longFamilyID",
-        "oldFamilyID",
-        "otherFamilyID",
-    },
-    "navis_names": {"navis_name", "previous_navis_name", "activity"},
-    "haplotype_names": {"haplotype_name", "previous_haplotype_name", "activity"},
-    "accessions": {"version_tag"},
-    "ship_accessions": {"ship_accession_display", "ship_version_tag"},
-    "genomes": {
-        "ome",
-        "version",
-        "genomeSource",
-        "citation",
-        "biosample",
-        "acquisition_date",
-        "assembly_accession",
-        "taxonomy_id",
-    },
-    "ships": {"md5", "rev_comp_md5"},
-    "starship_features": {
-        "contigID",
-        "elementBegin",
-        "elementEnd",
-        "elementLength",
-        "strand",
-    },
-}
-
-TABLE_CONFIG = {
-    "joined_ships": {"sql_table": "joined_ships", "db": "starbase", "pk": "id"},
-    "submissions": {"sql_table": "submissions", "db": "submissions", "pk": "id"},
-    "taxonomy": {"sql_table": "taxonomy", "db": "starbase", "pk": "id"},
-    "papers": {"sql_table": "papers", "db": "starbase", "pk": "id"},
-    "family_names": {"sql_table": "family_names", "db": "starbase", "pk": "id"},
-    "navis_names": {"sql_table": "navis_names", "db": "starbase", "pk": "id"},
-    "haplotype_names": {"sql_table": "haplotype_names", "db": "starbase", "pk": "id"},
-    "accessions": {"sql_table": "accessions", "db": "starbase", "pk": "id"},
-    "ship_accessions": {"sql_table": "ship_accessions", "db": "starbase", "pk": "id"},
-    "genomes": {"sql_table": "genomes", "db": "starbase", "pk": "id"},
-    "ships": {"sql_table": "ships", "db": "starbase", "pk": "id"},
-    "starship_features": {
-        "sql_table": "starship_features",
-        "db": "starbase",
-        "pk": "id",
-    },
-}
-
-# SQLite reserved / quoted column names in UPDATE statements
-SQL_QUOTED_COLS = {"class", "order", "source"}
-
-
-def _sql_col_ref(col_id):
-    if col_id in SQL_QUOTED_COLS:
-        return f"`{col_id}`"
-    return col_id
-
-
-# Columns that should be stored as integers (SQLite booleans)
-BOOLEAN_COLS = {"needs_review"}
-
-# Grid IDs keyed by table_key — used for batch save/discard
-GRID_IDS = {
-    "joined_ships": "admin-joined-ships-grid",
-    "submissions": "admin-submissions-grid",
-    "taxonomy": "admin-taxonomy-grid",
-    "papers": "admin-papers-grid",
-    "family_names": "admin-family-names-grid",
-    "navis_names": "admin-navis-names-grid",
-    "haplotype_names": "admin-haplotype-names-grid",
-    "accessions": "admin-accessions-grid",
-    "ship_accessions": "admin-ship-accessions-grid",
-    "genomes": "admin-genomes-grid",
-}
-
-# ---------------------------------------------------------------------------
 # Data helpers
 # ---------------------------------------------------------------------------
 
 
 def _fetch_joined_ships():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT j.id, j.starshipID, j.curated_status, j.evidence, j.source, j.tax_id,
-                   a.accession_tag,
-                   f.familyName,
-                   n.navis_name,
-                   h.haplotype_name,
-                   t.name AS taxonomy_name, t.genus, t.species
-            FROM joined_ships j
-            LEFT JOIN accessions a ON j.accession_id = a.id
-            LEFT JOIN family_names f ON j.ship_family_id = f.id
-            LEFT JOIN navis_names n ON j.ship_navis_id = n.id
-            LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
-            LEFT JOIN taxonomy t ON j.tax_id = t.id
-            ORDER BY j.id DESC
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("joined_ships")
 
 
 def _fetch_submissions():
-    with get_submissions_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT id, submission_group_id, seq_filename, uploader, seq_date,
-                   genus, species, strain, hostchr, shipstart, shipend, shipstrand,
-                   assembly_accession, evidence,
-                   processing_status, accession_tag,
-                   needs_review, comment,
-                   classification_family, classification_navis,
-                   classification_haplotype, classification_confidence
-            FROM submissions
-            ORDER BY submission_group_id DESC, id ASC
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("submissions")
 
 
 def _fetch_taxonomy():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT id, name, taxID, genus, species, strain, kingdom, phylum
-            FROM taxonomy
-            ORDER BY id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("taxonomy")
 
 
 def _fetch_papers():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT id, Title, Author, PublicationYear, DOI, Url,
-                   shortCitation, starshipMentioned, typePaper
-            FROM papers
-            ORDER BY id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("papers")
 
 
 def _fetch_family_names():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT id, familyName, longFamilyID, oldFamilyID, otherFamilyID,
-                   clade, newFamilyID, type_element_reference, notes
-            FROM family_names
-            ORDER BY id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("family_names")
 
 
 def _fetch_navis_names():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT n.id, n.navis_name, n.previous_navis_name, n.activity,
-                   f.familyName
-            FROM navis_names n
-            LEFT JOIN family_names f ON n.ship_family_id = f.id
-            ORDER BY n.id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("navis_names")
 
 
 def _fetch_haplotype_names():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT h.id, h.haplotype_name, h.previous_haplotype_name, h.activity,
-                   n.navis_name, f.familyName
-            FROM haplotype_names h
-            LEFT JOIN navis_names n ON h.navis_id = n.id
-            LEFT JOIN family_names f ON h.ship_family_id = f.id
-            ORDER BY h.id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("haplotype_names")
 
 
 def _fetch_accessions():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT a.id, a.accession_tag, a.version_tag
-            FROM accessions a
-            ORDER BY a.id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("accessions")
 
 
 def _fetch_ship_accessions():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT sa.id, sa.ship_accession_tag, sa.ship_accession_display,
-                   sa.ship_version_tag, sa.ship_id
-            FROM ship_accessions sa
-            ORDER BY sa.id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("ship_accessions")
 
 
 def _fetch_genomes():
-    with get_starbase_session() as session:
-        return pd.read_sql_query(
-            """
-            SELECT g.id, g.ome, g.version, g.genomeSource, g.citation,
-                   g.biosample, g.acquisition_date, g.assembly_accession, g.taxonomy_id,
-                   t.name AS taxonomy_name
-            FROM genomes g
-            LEFT JOIN taxonomy t ON g.taxonomy_id = t.id
-            ORDER BY g.id
-            """,
-            session.bind,
-        )
+    return admin_manager.fetch_admin_table("genomes")
 
 
 def _refetch_rowdata(table_key):
@@ -344,94 +115,12 @@ def _bump_version(version_str, bump_type):
 
 def _do_insert(table_key, col_values):
     """Run a whitelisted INSERT for a new row. Returns (success, error, new_id)."""
-    allowed = EDITABLE_COLS.get(table_key, set())
-    config = TABLE_CONFIG[table_key]
-
-    cols = [c for c in col_values if c in allowed and col_values[c] not in (None, "")]
-    if not cols:
-        return False, "No editable field was filled in for the new row.", None
-
-    values = {}
-    for c in cols:
-        v = col_values[c]
-        if c in BOOLEAN_COLS:
-            v = 1 if str(v).lower() in ("true", "1", "yes") else 0
-        values[c] = v
-
-    col_refs = ", ".join(_sql_col_ref(c) for c in cols)
-    placeholders = ", ".join(f":{c}" for c in cols)
-    sql = text(
-        f"INSERT INTO {config['sql_table']} ({col_refs}) VALUES ({placeholders})"
-    )
-
-    try:
-        ctx = (
-            get_starbase_session
-            if config["db"] == "starbase"
-            else get_submissions_session
-        )
-        with ctx() as session:
-            result = session.execute(sql, values)
-            session.commit()
-            new_id = result.lastrowid
-        logger.info(
-            "admin INSERT %s: %r (id=%s)", config["sql_table"], values, new_id
-        )
-        return True, None, new_id
-    except Exception as exc:
-        logger.error("admin INSERT error (%s): %s", table_key, exc)
-        return False, str(exc), None
+    return admin_manager.do_insert(table_key, col_values)
 
 
 def _do_update(table_key, row_id, col_id, new_value):
     """Run a whitelisted UPDATE. Returns (success: bool, error: str|None)."""
-    allowed = EDITABLE_COLS.get(table_key, set())
-    if col_id not in allowed:
-        return False, f"Column '{col_id}' is not editable."
-
-    config = TABLE_CONFIG[table_key]
-
-    if col_id in BOOLEAN_COLS:
-        new_value = 1 if str(new_value).lower() in ("true", "1", "yes") else 0
-
-    sql = text(
-        f"UPDATE {config['sql_table']} SET {_sql_col_ref(col_id)} = :val WHERE {config['pk']} = :pk"
-    )
-
-    try:
-        ctx = (
-            get_starbase_session
-            if config["db"] == "starbase"
-            else get_submissions_session
-        )
-        with ctx() as session:
-            result = session.execute(sql, {"val": new_value, "pk": row_id})
-            session.commit()
-            rc = result.rowcount
-        if rc == 0:
-            logger.warning(
-                "admin UPDATE matched 0 rows: %s.%s id=%r (pk type=%s, value=%r)",
-                config["sql_table"],
-                col_id,
-                row_id,
-                type(row_id).__name__,
-                new_value,
-            )
-            return False, f"Row id={row_id!r} not found in {config['sql_table']}."
-        logger.info(
-            "admin UPDATE %s.%s id=%s  %r  (rowcount=%d)",
-            config["sql_table"],
-            col_id,
-            row_id,
-            new_value,
-            rc,
-        )
-        return True, None
-    except Exception as exc:
-        logger.error(
-            "admin UPDATE error (%s.%s id=%s): %s", table_key, col_id, row_id, exc
-        )
-        return False, str(exc)
+    return admin_manager.do_update(table_key, row_id, col_id, new_value)
 
 
 # ---------------------------------------------------------------------------
@@ -2420,11 +2109,7 @@ def save_all_pending(n_clicks, pending):
 
     new_row_markers = [ch for ch in pending if ch.get("col_id") == "__new_row__"]
     new_row_keys = {(m["table"], m["row_id"]) for m in new_row_markers}
-    updates = [
-        ch
-        for ch in pending
-        if (ch["table"], ch["row_id"]) not in new_row_keys
-    ]
+    updates = [ch for ch in pending if (ch["table"], ch["row_id"]) not in new_row_keys]
 
     for table, row_id in new_row_keys:
         col_values = {

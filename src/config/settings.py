@@ -42,9 +42,16 @@ elif DATA_DIR:
         os.makedirs(_dir, exist_ok=True)
 
 # Database paths
+# "submissions" now lives in the same file as "starbase" -- Submission is on
+# the same SQLAlchemy Base as everything else, it was only ever split into a
+# separate physical file via a separate engine/session. One DB, one
+# transaction (the promote workflow used to write two files non-atomically).
+# telemetry stays separate: raw CREATE TABLE, not on Base.metadata, high
+# write volume, no need to join against curator data.
+_starbase_db_path = os.path.join(_compute_data_root, "starbase.sqlite")
 DB_PATHS = {
-    "starbase": os.path.join(_compute_data_root, "starbase.sqlite"),
-    "submissions": os.path.join(_local_db_root, "submissions.sqlite"),
+    "starbase": _starbase_db_path,
+    "submissions": _starbase_db_path,
     "telemetry": os.path.join(_local_db_root, "telemetry.sqlite"),
 }
 

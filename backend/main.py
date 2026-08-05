@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.dependencies import verify_backend_api_key
-from backend.routers import blast, data
+from backend.routers import admin, blast, data
 from src.config.logging import get_logger
 from src.database.migrations import create_database_indexes, run_alembic_migrations
 
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
 
     app.include_router(data.router)
     app.include_router(blast.router)
+    app.include_router(admin.router)
     return app
 
 

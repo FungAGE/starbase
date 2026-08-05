@@ -278,6 +278,34 @@ def set_ship_deleted(joined_ship_id: int, deleted: bool = True) -> bool:
     return result["updated"]
 
 
+# ── Admin grid endpoints ─────────────────────────────────────────────────────
+
+
+def fetch_admin_table(table_key: str) -> list[dict]:
+    return _request("GET", f"/api/admin/table/{table_key}")
+
+
+def admin_insert(table_key: str, col_values: dict) -> dict:
+    return _request(
+        "POST",
+        "/api/admin/insert",
+        json={"table_key": table_key, "col_values": col_values},
+    )
+
+
+def admin_update(table_key: str, row_id, col_id: str, new_value) -> dict:
+    return _request(
+        "POST",
+        "/api/admin/update",
+        json={
+            "table_key": table_key,
+            "row_id": row_id,
+            "col_id": col_id,
+            "new_value": new_value,
+        },
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 
