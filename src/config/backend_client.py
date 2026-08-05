@@ -357,6 +357,27 @@ def fetch_ship_gene_features(joined_ship_id: int) -> dict:
     return _request("GET", f"/api/curation/ships/{joined_ship_id}/gene-features")
 
 
+# ── Starfish pipeline run management ────────────────────────────────────────
+
+
+def list_starfish_runs(status: str = None, limit: int = 50) -> list:
+    return _request(
+        "POST", "/api/starfish/runs/list", json={"status": status, "limit": limit}
+    )
+
+
+def get_starfish_run(run_id: int) -> dict:
+    return _request("GET", f"/api/starfish/runs/{run_id}")
+
+
+def create_starfish_run(run_name: str, genomes: list, **kwargs) -> dict:
+    return _request(
+        "POST",
+        "/api/starfish/runs",
+        json={"run_name": run_name, "genomes": genomes, **kwargs},
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 

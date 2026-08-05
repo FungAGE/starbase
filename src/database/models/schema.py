@@ -468,3 +468,102 @@ class InterproResult(Base):
     run_date = Column(DateTime, nullable=True)
     status = Column(Integer, nullable=False, default=0)
     __table_args__ = (UniqueConstraint("annotation_id", "database"),)
+
+
+class StarfishRun(Base):
+    """One starfish-nextflow pipeline run against a set of genomes.
+
+    Ported from MAS4starships' starship.StarfishRun. created_by is a plain
+    string (matches Annotation.assigned_to / ShipQualityTags.created_by) --
+    no user-auth system exists to FK against.
+    """
+
+    __tablename__ = "starfish_runs"
+    id = Column(Integer, primary_key=True)
+    run_name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    # pending, running, completed, failed, cancelled
+    status = Column(String(20), nullable=False, default="pending")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_by = Column(String(255), nullable=True)
+
+    model = Column(String(50), nullable=False, default="tyr")
+    threads = Column(Integer, nullable=False, default=20)
+    missing = Column(Integer, nullable=False, default=1)
+    maxcopy = Column(Integer, nullable=False, default=5)
+    pid_threshold = Column(Integer, nullable=False, default=90)  # nextflow --pid
+    hsp = Column(Integer, nullable=False, default=1000)
+    flank = Column(Integer, nullable=False, default=6)
+    neighbourhood = Column(Integer, nullable=False, default=10000)
+
+    samplesheet_path = Column(String(500), nullable=True)
+    output_dir = Column(String(500), nullable=True)
+    log_file = Column(String(500), nullable=True)
+    celery_task_id = Column(String(255), nullable=True)
+    process_pid = Column(
+        Integer, nullable=True
+    )  # OS pid of the nextflow subprocess, for real cancel
+    error_message = Column(Text, nullable=True)
+    num_genomes = Column(Integer, nullable=True)
+    num_elements_found = Column(Integer, nullable=True)
+
+    genomes = relationship(
+        "StarfishRunGenome", back_populates="run", cascade="all, delete-orphan"
+    )
+    elements = relationship(
+        "StarfishElement", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class StarfishRunGenome(Base):
+    """One genome (with its input file paths) within a StarfishRun."""
+
+    __tablename__ = "starfish_run_genomes"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("starfish_runs.id"), nullable=False)
+    genome_id = Column(String(255), nullable=False)
+    tax_id = Column(String(50), nullable=True)
+    fna_path = Column(String(500), nullable=False)
+    gff3_path = Column(String(500), nullable=False)
+    emapper_path = Column(String(500), nullable=True)
+    cds_path = Column(String(500), nullable=True)
+    faa_path = Column(String(500), nullable=True)
+    num_elements = Column(Integer, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    error_message = Column(Text, nullable=True)
+
+    run = relationship("StarfishRun", back_populates="genomes")
+    elements = relationship("StarfishElement", back_populates="genome")
+
+    __table_args__ = (UniqueConstraint("run_id", "genome_id"),)
+
+
+class StarfishElement(Base):
+    """One starship element found by a StarfishRun, parsed from its BED output."""
+
+    __tablename__ = "starfish_elements"
+    id = Column(Integer, primary_key=True)
+    element_id = Column(String(255), nullable=False, unique=True)
+    run_id = Column(Integer, ForeignKey("starfish_runs.id"), nullable=False)
+    genome_id = Column(Integer, ForeignKey("starfish_run_genomes.id"), nullable=False)
+    contig_id = Column(String(255), nullable=True)
+    start = Column(Integer, nullable=False)
+    end = Column(Integer, nullable=False)
+    strand = Column(String(1), nullable=True)
+    sequence = Column(Text, nullable=True)
+    family = Column(String(255), nullable=True)
+    navis = Column(String(255), nullable=True)
+    haplotype = Column(String(255), nullable=True)
+    quality_score = Column(Integer, nullable=True)
+    confidence = Column(String(50), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    notes = Column(Text, nullable=True)
+    # imported_submission_id: set once this element has been fed through the
+    # existing submission/promote pathway (see admin_submissions_manager) --
+    # avoids double-importing the same element.
+    imported_submission_id = Column(Integer, nullable=True)
+
+    run = relationship("StarfishRun", back_populates="elements")
+    genome = relationship("StarfishRunGenome", back_populates="elements")

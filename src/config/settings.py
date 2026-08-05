@@ -55,6 +55,10 @@ DB_PATHS = {
     "telemetry": os.path.join(_local_db_root, "telemetry.sqlite"),
 }
 
+# Starfish pipeline run working directories (backend / monolith only) --
+# one subdir per run: {id}_{run_name}/{samplesheet.csv, results/, starfish.log}
+STARFISH_RUNS_DIR = os.path.join(_compute_data_root, "starfish_runs")
+
 # BLAST database paths (backend / monolith only)
 BLAST_DB_PATHS = {
     "ship": {
