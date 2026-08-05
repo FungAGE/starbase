@@ -6,6 +6,7 @@ sql_manager.py / sql_manager_impl.py split.
 """
 
 from src.config.logging import get_logger
+from src.database.curation_constants import FLAG_LABELS
 from src.database.models.schema import (
     Annotation,
     AnnotationHistory,
@@ -18,16 +19,6 @@ from src.database.models.schema import (
 from src.database.sql_engine import get_starbase_session
 
 logger = get_logger(__name__)
-
-FLAG_LABELS = {
-    0: "GREEN",
-    1: "YELLOW",
-    2: "RED",
-    3: "REVIEW_NAME",
-    4: "N_A",
-    5: "ORANGE",
-    7: "UNANNOTATED",
-}
 
 _EDITABLE_FIELDS = {
     "annotation",
