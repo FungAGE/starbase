@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.dependencies import RequireApiKey
+from src.database import admin_jobs_manager_impl as admin_jobs_manager
 from src.database import admin_manager_impl as admin_manager
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[RequireApiKey])
@@ -55,3 +56,11 @@ def admin_update(body: AdminUpdateBody) -> dict[str, Any]:
         body.table_key, body.row_id, body.col_id, body.new_value
     )
     return {"success": success, "error": error}
+
+
+@router.post("/jobs/{job_key}/run")
+def run_admin_job(job_key: str) -> dict[str, Any]:
+    try:
+        return admin_jobs_manager.run_job(job_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

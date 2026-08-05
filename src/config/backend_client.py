@@ -306,6 +306,10 @@ def admin_update(table_key: str, row_id, col_id: str, new_value) -> dict:
     )
 
 
+def run_admin_job(job_key: str) -> dict:
+    return _request("POST", f"/api/admin/jobs/{job_key}/run", timeout=_BLAST_TIMEOUT)
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 
