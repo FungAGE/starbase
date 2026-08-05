@@ -57,3 +57,55 @@ def create_run(run_name: str, genomes: list, **kwargs) -> dict:
         return _get_impl().create_run(run_name, genomes, **kwargs)
 
     return _via_backend(_http, _local)
+
+
+def start_run(run_id: int) -> dict:
+    def _http():
+        return backend_client.start_starfish_run(run_id)
+
+    def _local():
+        return _get_impl().start_run(run_id)
+
+    return _via_backend(_http, _local)
+
+
+def cancel_run(run_id: int) -> dict:
+    def _http():
+        return backend_client.cancel_starfish_run(run_id)
+
+    def _local():
+        return _get_impl().cancel_run(run_id)
+
+    return _via_backend(_http, _local)
+
+
+def rerun_run(run_id: int) -> dict:
+    def _http():
+        return backend_client.rerun_starfish_run(run_id)
+
+    def _local():
+        return _get_impl().rerun_run(run_id)
+
+    return _via_backend(_http, _local)
+
+
+def resume_run(run_id: int) -> dict:
+    def _http():
+        return backend_client.resume_starfish_run(run_id)
+
+    def _local():
+        return _get_impl().resume_run(run_id)
+
+    return _via_backend(_http, _local)
+
+
+def import_element_to_submission(
+    element_id: int, uploader: str = "starfish-pipeline"
+) -> dict:
+    def _http():
+        return backend_client.import_starfish_element(element_id, uploader=uploader)
+
+    def _local():
+        return _get_impl().import_element_to_submission(element_id, uploader=uploader)
+
+    return _via_backend(_http, _local)

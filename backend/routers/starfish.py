@@ -82,3 +82,49 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/runs/{run_id}/start")
+def start_run(run_id: int) -> dict[str, Any]:
+    try:
+        return starfish_manager.start_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: int) -> dict[str, Any]:
+    try:
+        return starfish_manager.cancel_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/runs/{run_id}/rerun")
+def rerun_run(run_id: int) -> dict[str, Any]:
+    try:
+        return starfish_manager.rerun_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/runs/{run_id}/resume")
+def resume_run(run_id: int) -> dict[str, Any]:
+    try:
+        return starfish_manager.resume_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class ImportElementBody(BaseModel):
+    uploader: str = "starfish-pipeline"
+
+
+@router.post("/elements/{element_id}/import")
+def import_element(element_id: int, body: ImportElementBody) -> dict[str, Any]:
+    try:
+        return starfish_manager.import_element_to_submission(
+            element_id, uploader=body.uploader
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

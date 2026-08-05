@@ -378,6 +378,32 @@ def create_starfish_run(run_name: str, genomes: list, **kwargs) -> dict:
     )
 
 
+def start_starfish_run(run_id: int) -> dict:
+    return _request("POST", f"/api/starfish/runs/{run_id}/start")
+
+
+def cancel_starfish_run(run_id: int) -> dict:
+    return _request("POST", f"/api/starfish/runs/{run_id}/cancel")
+
+
+def rerun_starfish_run(run_id: int) -> dict:
+    return _request("POST", f"/api/starfish/runs/{run_id}/rerun")
+
+
+def resume_starfish_run(run_id: int) -> dict:
+    return _request("POST", f"/api/starfish/runs/{run_id}/resume")
+
+
+def import_starfish_element(
+    element_id: int, uploader: str = "starfish-pipeline"
+) -> dict:
+    return _request(
+        "POST",
+        f"/api/starfish/elements/{element_id}/import",
+        json={"uploader": uploader},
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 

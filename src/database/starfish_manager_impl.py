@@ -4,9 +4,10 @@ Runs on backend only (or monolith local-debug). Imported directly by
 backend/routers/starfish.py -- no HTTP hop server-side. Mirrors the
 sql_manager.py / sql_manager_impl.py split.
 
-Phase 4 slice 4a: run definition + listing/detail only. Actually launching
-the nextflow subprocess (start/cancel/rerun/resume) is slice 4b -- those
-endpoints are meaningless without it and are not implemented here yet.
+Slice 4b adds start/cancel/rerun/resume, which dispatch actual execution
+to backend/tasks/starfish.py (Celery task or background thread -- see
+there for why not the same inline-call pattern the short BLAST/HMMER
+tasks use elsewhere in this codebase).
 
 Ported from MAS4starships' starship.tasks/views, fixing a real bug found in
 the source: StarfishRunCreateView and run_starfish_pipeline() there compute
@@ -17,10 +18,16 @@ place paths get computed -- at create time -- and nothing else touches them.
 
 import csv
 import os
+from datetime import datetime
 
 from src.config.logging import get_logger
 from src.config.settings import STARFISH_RUNS_DIR
-from src.database.models.schema import StarfishElement, StarfishRun, StarfishRunGenome
+from src.database.models.schema import (
+    StarfishElement,
+    StarfishRun,
+    StarfishRunGenome,
+    Submission,
+)
 from src.database.sql_engine import get_starbase_session
 
 logger = get_logger(__name__)
@@ -219,3 +226,205 @@ def create_run(
             len(clean_genomes),
         )
         return _run_to_dict(run)
+
+
+def start_run(run_id: int) -> dict:
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        if run.status != "pending":
+            raise ValueError(
+                f"StarfishRun {run_id} is {run.status!r}, must be 'pending' to start"
+            )
+        genome_count = session.query(StarfishRunGenome).filter_by(run_id=run_id).count()
+        if genome_count == 0:
+            raise ValueError(f"StarfishRun {run_id} has no genomes")
+
+    from backend.tasks.starfish import dispatch_pipeline_run
+
+    dispatch_pipeline_run(run_id, resume=False)
+    return get_run(run_id)
+
+
+def cancel_run(run_id: int) -> dict:
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        if run.status != "running":
+            raise ValueError(
+                f"StarfishRun {run_id} is {run.status!r}, can only cancel a 'running' run"
+            )
+        run.status = "cancelled"
+        session.commit()
+
+    from backend.tasks.starfish import cancel_run_process
+
+    cancel_run_process(run_id)
+    return get_run(run_id)
+
+
+def rerun_run(run_id: int) -> dict:
+    """Full restart: reset state, delete previously-found elements, and
+    dispatch a fresh (non-resumed) pipeline run."""
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        if run.status not in ("failed", "completed", "cancelled"):
+            raise ValueError(
+                f"StarfishRun {run_id} is {run.status!r}, cannot rerun "
+                "(must be failed, completed, or cancelled)"
+            )
+        run.status = "pending"
+        run.started_at = None
+        run.completed_at = None
+        run.celery_task_id = None
+        run.process_pid = None
+        run.error_message = None
+        run.num_elements_found = None
+        session.query(StarfishElement).filter_by(run_id=run_id).delete()
+        for g in session.query(StarfishRunGenome).filter_by(run_id=run_id).all():
+            g.status = "pending"
+            g.num_elements = None
+        session.commit()
+
+    from backend.tasks.starfish import dispatch_pipeline_run
+
+    dispatch_pipeline_run(run_id, resume=False)
+    return get_run(run_id)
+
+
+def resume_run(run_id: int) -> dict:
+    """Resume via nextflow's own -resume/work-dir caching -- no MAS-side
+    state diffing, matches the ported behavior exactly."""
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        if run.status not in ("failed", "cancelled"):
+            raise ValueError(
+                f"StarfishRun {run_id} is {run.status!r}, can only resume "
+                "'failed' or 'cancelled'"
+            )
+        run.error_message = None
+        session.commit()
+
+    from backend.tasks.starfish import dispatch_pipeline_run
+
+    dispatch_pipeline_run(run_id, resume=True)
+    return get_run(run_id)
+
+
+def _extract_element_sequence(
+    fna_path: str, contig_id: str, start: int, end: int, strand: str
+) -> str:
+    """Extract a starship element's sequence from its source genome FASTA.
+
+    BED coordinates (what start/end come from, see backend/tasks/starfish.py
+    parse_bed_file) are 0-based half-open -- matching Python/pyfaidx slicing
+    directly, no off-by-one adjustment needed.
+    """
+    from pyfaidx import Fasta
+
+    from src.utils.seq_utils import revcomp
+
+    if not os.path.exists(fna_path):
+        raise ValueError(f"Genome FASTA not found: {fna_path}")
+
+    fasta = Fasta(fna_path)
+    if contig_id not in fasta:
+        raise ValueError(f"Contig {contig_id!r} not found in {fna_path}")
+
+    seq = str(fasta[contig_id][start:end])
+    if strand == "-":
+        seq = revcomp(seq)
+    return seq
+
+
+def import_element_to_submission(
+    element_id: int, uploader: str = "starfish-pipeline"
+) -> dict:
+    """Feed one found StarfishElement into the existing submission queue --
+    it becomes a regular pending submission, reviewed/processed/promoted
+    through the exact same admin workflow as any manually-uploaded ship.
+
+    Fixes MAS4starships' broken import_starfish_elements_to_mas: that wrote
+    directly to JoinedShips with field names that don't exist on the real
+    model (contigID/elementBegin/elementEnd/ship_family/genome -- would
+    TypeError), and never actually populated StarfishElement.sequence in
+    the first place (BED files are coordinates only). Here the sequence is
+    extracted for real from the source genome FASTA at import time, and
+    also backfilled onto the StarfishElement row itself.
+    """
+    with get_starbase_session() as session:
+        element = session.query(StarfishElement).filter_by(id=element_id).first()
+        if not element:
+            raise ValueError(f"StarfishElement {element_id} not found")
+        if element.imported_submission_id:
+            raise ValueError(
+                f"StarfishElement {element_id} was already imported as "
+                f"submission {element.imported_submission_id}"
+            )
+        genome = (
+            session.query(StarfishRunGenome).filter_by(id=element.genome_id).first()
+        )
+        run = session.query(StarfishRun).filter_by(id=element.run_id).first()
+        elem = {
+            "element_id": element.element_id,
+            "contig_id": element.contig_id,
+            "start": element.start,
+            "end": element.end,
+            "strand": element.strand,
+        }
+        fna_path = genome.fna_path
+        run_name = run.run_name
+
+    sequence = _extract_element_sequence(
+        fna_path, elem["contig_id"], elem["start"], elem["end"], elem["strand"]
+    )
+    if not sequence:
+        raise ValueError(
+            f"Extracted empty sequence for element {elem['element_id']} "
+            f"({elem['contig_id']}:{elem['start']}-{elem['end']})"
+        )
+
+    # Not src.pages.submit.insert_submission: that module runs
+    # dash.register_page() at import time, which requires a live Dash app --
+    # fine inside the monolith, but this code also runs on the backend,
+    # a pure FastAPI process with no Dash app at all. Build the row
+    # directly against the same Submission model instead.
+    seq_contents = f">{elem['element_id']}\n{sequence}\n"
+    with get_starbase_session() as session:
+        submission = Submission(
+            seq_contents=seq_contents,
+            seq_filename=f"{elem['element_id']}.fasta",
+            seq_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            uploader=uploader,
+            evidence="computational",
+            hostchr=elem["contig_id"],
+            shipstart=elem["start"],
+            shipend=elem["end"],
+            shipstrand=elem["strand"],
+            comment=f"Found by starfish-nextflow run {run_name!r}, element {elem['element_id']}",
+            processing_status="pending",
+        )
+        session.add(submission)
+        session.commit()
+        session.refresh(submission)
+        submission_id = submission.id
+
+    with get_starbase_session() as session:
+        e = session.query(StarfishElement).filter_by(id=element_id).first()
+        e.imported_submission_id = submission_id
+        e.sequence = sequence
+        session.commit()
+
+    logger.info(
+        "Imported starfish element %s (run %s) as submission %s",
+        elem["element_id"],
+        run_name,
+        submission_id,
+    )
+    return {"submission_id": submission_id, "element_id": elem["element_id"]}

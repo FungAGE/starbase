@@ -59,6 +59,11 @@ DB_PATHS = {
 # one subdir per run: {id}_{run_name}/{samplesheet.csv, results/, starfish.log}
 STARFISH_RUNS_DIR = os.path.join(_compute_data_root, "starfish_runs")
 
+# Path to a checked-out starfish-nextflow pipeline (main.nf lives here) on
+# the backend machine. Not vendored/installed anywhere in this repo --
+# ops-provided, like the Tailscale/BLAST/Nextflow toolchain itself.
+STARFISH_NEXTFLOW_PATH = os.environ.get("STARFISH_NEXTFLOW_PATH", "")
+
 # BLAST database paths (backend / monolith only)
 BLAST_DB_PATHS = {
     "ship": {
