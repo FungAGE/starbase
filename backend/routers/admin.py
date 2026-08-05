@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from backend.dependencies import RequireApiKey
 from src.database import admin_jobs_manager_impl as admin_jobs_manager
 from src.database import admin_manager_impl as admin_manager
+from src.database import admin_submissions_manager_impl as admin_submissions_manager
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[RequireApiKey])
 
@@ -64,3 +65,24 @@ def run_admin_job(job_key: str) -> dict[str, Any]:
         return admin_jobs_manager.run_job(job_key)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+class ProcessSubmissionsBody(BaseModel):
+    sub_ids: list[int]
+
+
+@router.post("/submissions/process")
+def process_submissions(body: ProcessSubmissionsBody) -> list[dict[str, Any]]:
+    return admin_submissions_manager.process_submissions(body.sub_ids)
+
+
+class PromoteSubmissionBody(BaseModel):
+    sub_id: int
+
+
+@router.post("/submissions/promote")
+def promote_submission(body: PromoteSubmissionBody) -> dict[str, Any]:
+    success, accession, error = admin_submissions_manager.promote_submission(
+        body.sub_id
+    )
+    return {"success": success, "accession": accession, "error": error}

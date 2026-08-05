@@ -310,6 +310,24 @@ def run_admin_job(job_key: str) -> dict:
     return _request("POST", f"/api/admin/jobs/{job_key}/run", timeout=_BLAST_TIMEOUT)
 
 
+def process_admin_submissions(sub_ids: list) -> list:
+    return _request(
+        "POST",
+        "/api/admin/submissions/process",
+        json={"sub_ids": sub_ids},
+        timeout=_BLAST_TIMEOUT,
+    )
+
+
+def promote_admin_submission(sub_id: int) -> dict:
+    return _request(
+        "POST",
+        "/api/admin/submissions/promote",
+        json={"sub_id": sub_id},
+        timeout=_BLAST_TIMEOUT,
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 

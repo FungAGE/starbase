@@ -17,13 +17,11 @@ from dash import (
     no_update,
 )
 from dash.exceptions import PreventUpdate
-from sqlalchemy import text
 
 from src.config.logging import get_logger
 from src.config.settings import ADMIN_TOKEN
-from src.database import admin_jobs_manager, admin_manager
+from src.database import admin_jobs_manager, admin_manager, admin_submissions_manager
 from src.database.admin_table_config import EDITABLE_COLS, GRID_IDS
-from src.database.sql_engine import get_submissions_session
 from src.database.sql_manager import get_database_version, set_database_version
 
 logger = get_logger(__name__)
@@ -358,114 +356,11 @@ def _overlay_job_changes_on_rowdata(table_key, changes):
 
 def _promote_submission(sub_id: int):
     """
-    Load a staging submission and insert it into the main starbase DB via
-    perform_database_insertion (SubmissionProcessor).
+    Load a staging submission and insert it into the main starbase DB.
 
     Returns (success: bool, accession: str|None, error: str|None).
     """
-    from src.utils.web_submission_adapter import (
-        perform_database_insertion,
-        parse_submission_fasta,
-    )
-
-    try:
-        with get_submissions_session() as session:
-            row = session.execute(
-                text("SELECT * FROM submissions WHERE id = :id"), {"id": sub_id}
-            ).fetchone()
-
-        if not row:
-            return False, None, f"Submission {sub_id} not found"
-
-        row = dict(row._mapping)
-
-        if row.get("processing_status") != "processed":
-            return (
-                False,
-                None,
-                f"Submission {sub_id} must be processed before promotion "
-                f"(current status: {row.get('processing_status') or 'pending'})",
-            )
-
-        if not row.get("seq_contents"):
-            return False, None, "No sequence data stored in this submission"
-
-        staging_accession = str(row.get("accession_tag") or "").strip()
-        if not staging_accession:
-            return (
-                False,
-                None,
-                f"Submission {sub_id} has no accession_tag; run Process first",
-            )
-
-        seq_id, sequence = parse_submission_fasta(row["seq_contents"])
-
-        strand = row.get("shipstrand") or "+"
-        processed_data = {
-            "sequence": sequence,
-            "starshipID": seq_id,
-            "evidence": row.get("evidence") or "",
-            "source": "web_submission_promoted",
-            "genus": row.get("genus") or "",
-            "species": row.get("species") or "",
-            "strain": row.get("strain") or None,
-            "contig_id": row.get("hostchr") or "",
-            "assembly_accession": row.get("assembly_accession") or None,
-            "element_start": row.get("shipstart"),
-            "element_end": row.get("shipend"),
-            "element_strand": strand,
-            "curator": row.get("uploader") or "",
-            "curated_status": "curated",
-            "notes": row.get("comment") or "",
-            "trust_staging": True,
-            "staging_accession_tag": staging_accession,
-        }
-
-        if row.get("classification_family") or row.get("classification_navis"):
-            processed_data["classification"] = {
-                "family": row.get("classification_family"),
-                "navis": row.get("classification_navis"),
-                "haplotype": row.get("classification_haplotype"),
-                "source": row.get("classification_source"),
-                "closest_match": row.get("closest_match"),
-                "confidence": row.get("classification_confidence"),
-            }
-            if row.get("classification_family"):
-                processed_data["ship_family"] = row["classification_family"]
-            if row.get("classification_navis"):
-                processed_data["ship_navis"] = row["classification_navis"]
-            if row.get("classification_haplotype"):
-                processed_data["ship_haplotype"] = row["classification_haplotype"]
-
-        result = perform_database_insertion(
-            processed_data,
-            anno_contents=row.get("anno_contents"),
-            anno_filename=row.get("anno_filename"),
-            anno_date=None,
-            seq_date=0,
-        )
-
-        with get_submissions_session() as session:
-            session.execute(
-                text(
-                    """
-                    UPDATE submissions
-                    SET needs_review = 0, processing_status = 'promoted'
-                    WHERE id = :id
-                    """
-                ),
-                {"id": sub_id},
-            )
-            session.commit()
-
-        logger.info(
-            "Promoted submission %s → accession %s", sub_id, result["accession"]
-        )
-        return True, result["accession"], None
-
-    except Exception as exc:
-        logger.error("Promotion failed for submission %s: %s", sub_id, exc)
-        return False, None, str(exc)
+    return admin_submissions_manager.promote_submission(sub_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1532,13 +1427,10 @@ def run_process(n_clicks, selected_rows):
     if not n_clicks or not selected_rows:
         raise PreventUpdate
 
-    from src.utils.web_submission_adapter import (
-        process_staging_submissions_ordered,
-        summarize_staging_process_results,
-    )
+    from src.utils.web_submission_adapter import summarize_staging_process_results
 
     sub_ids = sorted({row.get("id") for row in selected_rows if row.get("id")})
-    results = process_staging_submissions_ordered(sub_ids)
+    results = admin_submissions_manager.process_submissions(sub_ids)
     grid_rows = _fetch_submissions().fillna("").to_dict("records")
 
     failures = [r for r in results if not r.get("success")]
