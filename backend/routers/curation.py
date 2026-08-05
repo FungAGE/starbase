@@ -49,3 +49,11 @@ def update_annotation(annotation_id: int, body: UpdateAnnotationBody) -> dict[st
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/ships/{joined_ship_id}/gene-features")
+def fetch_ship_gene_features(joined_ship_id: int) -> dict[str, Any]:
+    try:
+        return curation_manager.fetch_ship_gene_features(joined_ship_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

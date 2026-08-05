@@ -295,6 +295,18 @@ def _build_detail_section():
                 withBorder=True,
                 radius="sm",
             ),
+            dmc.Paper(
+                dmc.Stack(
+                    [
+                        dmc.Text("Gene map", fw=600, size="sm"),
+                        html.Div(id="curation-ship-viz", style={"minHeight": "260px"}),
+                    ],
+                    gap="xs",
+                ),
+                p="sm",
+                withBorder=True,
+                radius="sm",
+            ),
             dmc.Accordion(
                 [
                     dmc.AccordionItem(
@@ -332,6 +344,7 @@ layout = html.Div(
         dcc.Location(id="curation-url", refresh=False),
         dcc.Store(id="curation-selected-id", data=None),
         dcc.Store(id="curation-authed", data=False),
+        dcc.Store(id="curation-ship-viz-data", data=None),
         html.Div(id="curation-content"),
     ]
 )
@@ -407,6 +420,27 @@ clientside_callback(
 )
 
 
+# assets/js/starship_visualization.js defines window.renderStarshipViz.
+# Output is a no-op style re-set on the same container -- clientside
+# callbacks need a real Output; the render itself is the side effect.
+clientside_callback(
+    """
+    function(vizData) {
+        if (!vizData) {
+            return {"minHeight": "260px"};
+        }
+        if (window.renderStarshipViz) {
+            window.renderStarshipViz("curation-ship-viz", vizData);
+        }
+        return {"minHeight": "260px"};
+    }
+    """,
+    Output("curation-ship-viz", "style"),
+    Input("curation-ship-viz-data", "data"),
+    prevent_initial_call=True,
+)
+
+
 @callback(
     Output("curation-selected-id", "data", allow_duplicate=True),
     Input("curation-back-btn", "n_clicks"),
@@ -456,6 +490,7 @@ def toggle_sections(selected_id):
         Output("curation-gene-features", "children"),
         Output("curation-results", "children"),
         Output("curation-history", "children"),
+        Output("curation-ship-viz-data", "data"),
     ],
     Input("curation-selected-id", "data"),
     Input("curation-detail-section", "children"),
@@ -465,6 +500,16 @@ def load_detail(selected_id, _section_children):
     if selected_id is None:
         raise PreventUpdate
     a = curation_manager.fetch_annotation(selected_id)
+
+    viz_data = None
+    if a["gene_features"]:
+        joined_ship_id = a["gene_features"][0]["joined_ship_id"]
+        try:
+            ship_features = curation_manager.fetch_ship_gene_features(joined_ship_id)
+            viz_data = {**ship_features, "current_annotation_id": selected_id}
+        except Exception as exc:
+            logger.error("Failed to load gene map for ship %s: %s", joined_ship_id, exc)
+
     return (
         f"Annotation #{a['id']}",
         _flag_badge(a["flag"]),
@@ -477,6 +522,7 @@ def load_detail(selected_id, _section_children):
         _gene_features_table(a["gene_features"]),
         _results_panel(a["results"]),
         _history_table(a["history"]),
+        viz_data,
     )
 
 

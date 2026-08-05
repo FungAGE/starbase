@@ -14,7 +14,9 @@ from src.database.models.schema import (
     GeneFeature,
     HhsearchResult,
     InterproResult,
+    JoinedShips,
     RpsblastResult,
+    Ships,
 )
 from src.database.sql_engine import get_starbase_session
 
@@ -172,3 +174,52 @@ def update_annotation(annotation_id: int, changes: dict, changed_by: str) -> dic
             "Updated annotation %s (%s) by %s", annotation_id, list(changes), changed_by
         )
         return _annotation_to_dict(a)
+
+
+def fetch_ship_gene_features(joined_ship_id: int) -> dict:
+    """All gene features on one ship, with each feature's linked annotation
+    flag/text -- everything the D3 gene-feature map needs to render.
+
+    starship_length comes from Ships.sequence_length (the actual extracted
+    sequence length), not StarshipFeatures.elementLength (the element's
+    span within its host genome -- a related but different number).
+    """
+    with get_starbase_session() as session:
+        joined_ship = session.query(JoinedShips).filter_by(id=joined_ship_id).first()
+        if not joined_ship:
+            raise ValueError(f"joined_ships row {joined_ship_id} not found")
+
+        starship_length = None
+        if joined_ship.ship_id:
+            ship = session.query(Ships).filter_by(id=joined_ship.ship_id).first()
+            starship_length = ship.sequence_length if ship else None
+
+        rows = (
+            session.query(GeneFeature, Annotation)
+            .outerjoin(Annotation, GeneFeature.annotation_id == Annotation.id)
+            .filter(GeneFeature.joined_ship_id == joined_ship_id)
+            .all()
+        )
+
+        features = []
+        for f, a in rows:
+            features.append(
+                {
+                    "id": f.id,
+                    "start": f.start,
+                    "stop": f.stop,
+                    "strand": f.strand,
+                    "type": f.type,
+                    "annotation_id": f.annotation_id,
+                    "flag": a.flag if a else None,
+                    "flag_label": FLAG_LABELS.get(a.flag) if a else "UNANNOTATED",
+                    "annotation": a.annotation if a else None,
+                    "public_note": a.public_notes if a else None,
+                }
+            )
+
+        return {
+            "joined_ship_id": joined_ship_id,
+            "starship_length": starship_length,
+            "features": features,
+        }

@@ -353,6 +353,10 @@ def update_annotation(annotation_id: int, changes: dict, changed_by: str) -> dic
     )
 
 
+def fetch_ship_gene_features(joined_ship_id: int) -> dict:
+    return _request("GET", f"/api/curation/ships/{joined_ship_id}/gene-features")
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 
