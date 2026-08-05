@@ -1,4 +1,4 @@
-from dash import html, Output, Input, State, callback, no_update, callback_context
+from dash import Output, Input, State, callback, callback_context
 from dash.exceptions import PreventUpdate
 import dash_mantine_components as dmc
 import functools
@@ -49,7 +49,33 @@ def handle_callback_error(callback_func):
     return wrapper
 
 
-def create_modal_callback(table_id, modal_id, content_id, title_id, column_check=None):
+def _extract_accession(raw_value, prefix):
+    """Pull the accession token (e.g. SSB0001) out of a cell value that may be
+    bracket-wrapped or path-like (e.g. '[SSB0001]', 'some/path/SSB0001')."""
+    parts = [p.strip() for p in str(raw_value).strip("[]").split("/") if p.strip()]
+    match = next((p for p in parts if p.upper().startswith(prefix)), None)
+    if match:
+        return match
+    return parts[-1] if parts else None
+
+
+def create_modal_callback(
+    table_id,
+    modal_id,
+    content_id,
+    title_id,
+    ship_cols=("ship_accession_tag", "ship_accession_display"),
+    group_cols=("accession_tag", "accession_display"),
+):
+    """Open a native dmc.Modal populated from the ship/group accession data
+    when a user clicks an accession cell in an AG Grid or Dash DataTable."""
+    from src.components.data import (
+        create_ship_accession_modal_data,
+        create_accession_modal_data,
+        render_ship_accession_modal,
+        render_group_accession_modal,
+    )
+
     @callback(
         Output(modal_id, "opened"),
         Output(content_id, "children"),
@@ -66,59 +92,53 @@ def create_modal_callback(table_id, modal_id, content_id, title_id, column_check
         prevent_initial_call=True,
     )
     def toggle_modal(cell_clicked, active_cell, table_data, page_current, page_size):
+        ctx = callback_context
+        if not ctx.triggered or not (cell_clicked or active_cell):
+            raise PreventUpdate
+
+        triggered_id = ctx.triggered[0]["prop_id"]
+        col_id = None
+        value = None
+
+        if f"{table_id}.cellClicked" in triggered_id and cell_clicked:
+            col_id = cell_clicked.get("colId")
+            value = cell_clicked.get("value")
+        elif f"{table_id}.active_cell" in triggered_id and active_cell:
+            col_id = active_cell.get("column_id")
+            row_idx = (page_current or 0) * (page_size or 0) + active_cell.get("row", 0)
+            if table_data and row_idx < len(table_data):
+                value = table_data[row_idx].get(col_id)
+
+        if col_id is None or not value:
+            raise PreventUpdate
+
+        if col_id in ship_cols:
+            prefix = "SSB"
+            fetch_data, render_content = create_ship_accession_modal_data, render_ship_accession_modal
+        elif col_id in group_cols:
+            prefix = "SSA"
+            fetch_data, render_content = create_accession_modal_data, render_group_accession_modal
+        else:
+            raise PreventUpdate
+
+        accession = _extract_accession(value, prefix)
+        if not accession:
+            raise PreventUpdate
+
         try:
-            ctx = callback_context
-            triggered_id = ctx.triggered[0]["prop_id"]
-
-            if not (cell_clicked or active_cell):
-                return False, no_update, no_update
-
-            accession = None
-            if f"{table_id}.cellClicked" in triggered_id and cell_clicked:
-                # AG Grid format - handle both accession_tag and accession_display
-                if cell_clicked["colId"] in [
-                    "ship_accession_tag",
-                    "ship_accession_display",
-                ]:
-                    accession = str(cell_clicked["value"])
-            elif f"{table_id}.active_cell" in triggered_id and active_cell:
-                # Dash DataTable format - handle both accession_tag and accession_display
-                if active_cell["column_id"] in [
-                    "ship_accession_tag",
-                    "ship_accession_display",
-                ]:
-                    # Calculate the actual row index based on pagination
-                    actual_row_idx = (page_current or 0) * page_size + active_cell[
-                        "row"
-                    ]
-                    if table_data and actual_row_idx < len(table_data):
-                        accession = str(
-                            table_data[actual_row_idx][active_cell["column_id"]]
-                        )
-
-            if accession:
-                # Clean and standardize the accession tag
-                accession = accession.strip("[]").split("/")[-1].strip()
-                logger.debug(f"Looking for accession in cache: {accession}")
-
-                # Instead of opening a Dash modal, trigger the universal modal via JavaScript
-                return (
-                    False,  # Don't open the Dash modal
-                    no_update,
-                    no_update,
-                )
-
-            return False, no_update, no_update
+            data = fetch_data(accession)
+            return True, render_content(data), data.get("title", accession)
         except Exception as e:
-            logger.error(f"Error in toggle_modal: {str(e)}")
+            logger.error(f"Error building accession modal for {accession}: {str(e)}")
             logger.error(traceback.format_exc())
-            error_content = html.Div(
-                [
-                    html.P("Error loading modal content"),
-                    html.P(f"Details: {str(e)}"),
-                ]
+            return (
+                True,
+                dmc.Alert(
+                    f"Error loading details for {accession}.",
+                    color="red",
+                    variant="light",
+                ),
+                "Error",
             )
-            error_title = dmc.Title("Error", order=3)
-            return True, error_content, error_title
 
     return toggle_modal

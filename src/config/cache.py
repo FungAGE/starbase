@@ -28,6 +28,18 @@ cache = Cache(
 )
 
 
+def invalidate_meta_and_ship_cache():
+    """Clear cached query results after a bulk DB write (e.g. cleanup/fill scripts).
+
+    Safe to call outside a Flask app context (standalone maintenance scripts) —
+    cache.clear() failures there are non-fatal, so we log and move on.
+    """
+    try:
+        cache.clear()
+    except Exception as e:
+        logger.warning(f"Cache invalidation skipped: {e}")
+
+
 def cleanup_old_cache(max_age_days=None):
     """Optional cache cleanup for persistent database data.
 
