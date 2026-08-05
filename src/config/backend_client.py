@@ -328,6 +328,31 @@ def promote_admin_submission(sub_id: int) -> dict:
     )
 
 
+# ── Curation / annotation review endpoints ──────────────────────────────────
+
+
+def fetch_annotation_queue(
+    flag: int = None, assigned_to: str = None, limit: int = 50
+) -> list:
+    return _request(
+        "POST",
+        "/api/curation/queue",
+        json={"flag": flag, "assigned_to": assigned_to, "limit": limit},
+    )
+
+
+def fetch_annotation(annotation_id: int) -> dict:
+    return _request("GET", f"/api/curation/annotations/{annotation_id}")
+
+
+def update_annotation(annotation_id: int, changes: dict, changed_by: str) -> dict:
+    return _request(
+        "POST",
+        f"/api/curation/annotations/{annotation_id}/update",
+        json={"changes": changes, "changed_by": changed_by},
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 

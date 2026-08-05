@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     VARCHAR,
     Boolean,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -345,3 +346,125 @@ class Submission(Base):
     classification_haplotype = Column(String(100), nullable=True)
     closest_match = Column(String(50), nullable=True)
     classification_confidence = Column(String(20), nullable=True)
+
+
+class Annotation(Base):
+    """Curated gene/protein annotation, deduplicated by sequence.
+
+    Ported from MAS4starships' starship.Annotation. No FK to a ship directly --
+    reachable only via GeneFeature (one Annotation can be shared by genes on
+    multiple ships, deduped by identical protein sequence).
+    """
+
+    __tablename__ = "annotations"
+    id = Column(Integer, primary_key=True)
+    sequence = Column(Text, nullable=False, unique=True)
+    annotation = Column(String(255), nullable=True, default="No Annotation")
+    public_notes = Column(Text, nullable=True, default="")
+    private_notes = Column(Text, nullable=True, default="")
+    # 0=GREEN, 1=YELLOW, 2=RED, 3=REVIEW_NAME, 4=N_A, 5=ORANGE, 7=UNANNOTATED
+    flag = Column(Integer, nullable=False, default=7)
+    assigned_to = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=True)
+
+    gene_features = relationship("GeneFeature", back_populates="annotation")
+    history = relationship(
+        "AnnotationHistory", back_populates="annotation", cascade="all, delete-orphan"
+    )
+
+
+class GeneFeature(Base):
+    """One gene/CDS/repeat/tRNA call within a ship.
+
+    Not the same thing as StarshipFeatures (the starship element's own
+    begin/end within its host genome) -- this is per-gene, within a ship.
+    Ported from MAS4starships' starship.Feature.
+    """
+
+    __tablename__ = "gene_features"
+    id = Column(Integer, primary_key=True)
+    joined_ship_id = Column(Integer, ForeignKey("joined_ships.id"), nullable=False)
+    annotation_id = Column(Integer, ForeignKey("annotations.id"), nullable=True)
+    start = Column(Integer, nullable=False, default=0)
+    stop = Column(Integer, nullable=False, default=0)
+    type = Column(String(50), nullable=True)  # gene, CDS, Repeat Region, tRNA
+    strand = Column(String(1), nullable=True)
+
+    joined_ship = relationship("JoinedShips")
+    annotation = relationship("Annotation", back_populates="gene_features")
+
+
+class AnnotationHistory(Base):
+    """Flat audit trail for Annotation edits.
+
+    Not a django-simple-history clone -- one row per mutation with before/after
+    values, written by the curation API on every save.
+    """
+
+    __tablename__ = "annotation_history"
+    id = Column(Integer, primary_key=True)
+    annotation_id = Column(Integer, ForeignKey("annotations.id"), nullable=False)
+    changed_by = Column(String(255), nullable=True)
+    changed_at = Column(DateTime, nullable=False, server_default=func.now())
+    old_flag = Column(Integer, nullable=True)
+    new_flag = Column(Integer, nullable=True)
+    old_annotation = Column(Text, nullable=True)
+    new_annotation = Column(Text, nullable=True)
+    old_public_notes = Column(Text, nullable=True)
+    new_public_notes = Column(Text, nullable=True)
+    old_private_notes = Column(Text, nullable=True)
+    new_private_notes = Column(Text, nullable=True)
+
+    annotation = relationship("Annotation", back_populates="history")
+
+
+# The 4 homology-search result tables share one shape: one row per
+# (annotation, database) pair. Result generation is a deferred slice -- these
+# tables exist so the viewer has somewhere to read from. `result` holds raw
+# hit data (not a file path -- the backend owns the DB directly, no separate
+# file store to manage). status: 0=complete, 1=running, 2=error.
+
+
+class BlastpResult(Base):
+    __tablename__ = "blastp_results"
+    id = Column(Integer, primary_key=True)
+    annotation_id = Column(Integer, ForeignKey("annotations.id"), nullable=False)
+    database = Column(String(50), nullable=False)  # swissprot, protein, nr
+    result = Column(Text, nullable=True)
+    run_date = Column(DateTime, nullable=True)
+    status = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("annotation_id", "database"),)
+
+
+class RpsblastResult(Base):
+    __tablename__ = "rpsblast_results"
+    id = Column(Integer, primary_key=True)
+    annotation_id = Column(Integer, ForeignKey("annotations.id"), nullable=False)
+    database = Column(String(50), nullable=False)  # cdd
+    result = Column(Text, nullable=True)
+    run_date = Column(DateTime, nullable=True)
+    status = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("annotation_id", "database"),)
+
+
+class HhsearchResult(Base):
+    __tablename__ = "hhsearch_results"
+    id = Column(Integer, primary_key=True)
+    annotation_id = Column(Integer, ForeignKey("annotations.id"), nullable=False)
+    database = Column(String(50), nullable=False)  # pdb
+    result = Column(Text, nullable=True)
+    run_date = Column(DateTime, nullable=True)
+    status = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("annotation_id", "database"),)
+
+
+class InterproResult(Base):
+    __tablename__ = "interpro_results"
+    id = Column(Integer, primary_key=True)
+    annotation_id = Column(Integer, ForeignKey("annotations.id"), nullable=False)
+    database = Column(String(50), nullable=False)  # interpro
+    result = Column(Text, nullable=True)
+    run_date = Column(DateTime, nullable=True)
+    status = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("annotation_id", "database"),)
