@@ -428,3 +428,19 @@ def import_element_to_submission(
         submission_id,
     )
     return {"submission_id": submission_id, "element_id": elem["element_id"]}
+
+
+def get_run_log(run_id: int) -> str:
+    """Raw log file content for the Logs tab. Empty string if not written yet
+    (pending run, or file not flushed) rather than an error -- matches
+    MAS4starships' "no log file available yet" UI state."""
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        log_file = run.log_file
+
+    if not log_file or not os.path.exists(log_file):
+        return ""
+    with open(log_file) as f:
+        return f.read()

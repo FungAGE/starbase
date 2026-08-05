@@ -404,6 +404,11 @@ def import_starfish_element(
     )
 
 
+def get_starfish_run_log(run_id: int) -> str:
+    result = _request("GET", f"/api/starfish/runs/{run_id}/log")
+    return result["log"]
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 

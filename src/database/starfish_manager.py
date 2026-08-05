@@ -109,3 +109,13 @@ def import_element_to_submission(
         return _get_impl().import_element_to_submission(element_id, uploader=uploader)
 
     return _via_backend(_http, _local)
+
+
+def get_run_log(run_id: int) -> str:
+    def _http():
+        return backend_client.get_starfish_run_log(run_id)
+
+    def _local():
+        return _get_impl().get_run_log(run_id)
+
+    return _via_backend(_http, _local)

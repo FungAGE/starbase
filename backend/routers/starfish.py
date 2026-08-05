@@ -128,3 +128,11 @@ def import_element(element_id: int, body: ImportElementBody) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/runs/{run_id}/log")
+def get_run_log(run_id: int) -> dict[str, str]:
+    try:
+        return {"log": starfish_manager.get_run_log(run_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
