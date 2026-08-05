@@ -125,54 +125,10 @@ def _do_update(table_key, row_id, col_id, new_value):
 # ---------------------------------------------------------------------------
 # Admin jobs — consistency / cleanup utilities
 #
-# 12 of 15 jobs (taxonomy validate/clean/hierarchy-backfill/link-ships,
-# md5_validation, backfill_rev_comp_md5, all 6 accession_* jobs) run behind
-# admin_jobs_manager (dual-mode facade, see src/database/admin_jobs_manager.py)
-# -- their bodies, column constants, and helpers live in
-# admin_jobs_manager_impl.py now. taxonomy_ncbi_backfill (writes immediately,
-# hits NCBI) and the two genome_coordinates jobs (NCBI Datasets + minimap2,
-# slower) stay here, deferred to a later slice.
+# All 15 jobs run behind admin_jobs_manager (dual-mode facade, see
+# src/database/admin_jobs_manager.py) -- bodies, column constants, and
+# helpers live in admin_jobs_manager_impl.py.
 # ---------------------------------------------------------------------------
-
-_TAX_NCBI_COLS = [
-    "genome_id",
-    "assembly_accession",
-    "biosample",
-    "ncbi_taxid",
-    "organism",
-    "taxonomy_id",
-    "joined_ships_updated",
-    "action",
-]
-
-_GENOME_COORD_COLS = [
-    "issue_type",
-    "source",
-    "joined_ship_id",
-    "submission_id",
-    "starshipID",
-    "ship_id",
-    "assembly_accession",
-    "genome_source",
-    "contig_id",
-    "coordinates",
-    "detail",
-]
-
-_GENOME_COORD_FIX_COLS = [
-    "status",
-    "starshipID",
-    "ship_id",
-    "starship_feature_id",
-    "assembly_accession",
-    "contig_id",
-    "old_coordinates",
-    "new_coordinates",
-    "strand",
-    "coverage",
-    "identity",
-    "detail",
-]
 
 
 def _job_taxonomy_validate():
@@ -224,103 +180,15 @@ def _job_accession_cleanup_analyze():
 
 
 def _job_taxonomy_ncbi_backfill():
-    from src.database.cleanup.utils.fill_taxonomy_from_ncbi import (
-        fill_taxonomy_from_ncbi,
-    )
-
-    summary, rows, _counts = fill_taxonomy_from_ncbi(dry_run=False, overwrite=False)
-    return {
-        "job": "taxonomy_ncbi_backfill",
-        "mode": "apply",
-        "columns": _TAX_NCBI_COLS,
-        "rows": rows,
-        "proposed_changes": [],
-        "summary": summary,
-    }
+    return admin_jobs_manager.run_job("taxonomy_ncbi_backfill")
 
 
 def _job_genome_coordinates_validate():
-    """Check contig/chr IDs and coordinates against linked assembly accessions."""
-    from src.database.cleanup.utils.validate_genome_coordinates import (
-        analyze_genome_coordinates,
-    )
-
-    rows, stats = analyze_genome_coordinates(
-        include_submissions=True,
-        validate_ncbi=True,
-        validate_sequences=True,
-    )
-    n = len(rows)
-    by_type: dict[str, int] = {}
-    for r in rows:
-        t = r.get("issue_type") or "unknown"
-        by_type[t] = by_type.get(t, 0) + 1
-    type_bits = ", ".join(f"{k}={v}" for k, v in sorted(by_type.items())[:6])
-    jgi_skip = stats.get("jgi_rows_skipped", 0)
-    seq_ok = stats.get("sequence_matches", 0)
-    summary = (
-        f"{n} issue(s) across {stats.get('rows_checked', 0)} row(s)"
-        + (f": {type_bits}" if type_bits else "")
-        + (
-            f"; NCBI metadata on {stats.get('ncbi_rows_checked', 0)} row(s) "
-            f"({stats.get('ncbi_assemblies', 0)} assemblies)"
-            if stats.get("ncbi_rows_checked")
-            else ""
-        )
-        + (
-            f"; {seq_ok} full sequence match(es), "
-            f"{stats.get('sequence_mismatches', 0)} mismatch(es)"
-            if seq_ok or stats.get("sequence_mismatches")
-            else ""
-        )
-        + (f"; {jgi_skip} JGI row(s) skipped external lookup" if jgi_skip else "")
-        if n or jgi_skip or seq_ok
-        else f"No genome coordinate issues in {stats.get('rows_checked', 0)} row(s)."
-    )
-    return {
-        "job": "genome_coordinates_validate",
-        "mode": "report",
-        "columns": _GENOME_COORD_COLS,
-        "rows": rows,
-        "proposed_changes": [],
-        "summary": summary,
-    }
+    return admin_jobs_manager.run_job("genome_coordinates_validate")
 
 
 def _job_genome_coordinates_fix():
-    """Align ship sequences to NCBI contigs and stage coordinate corrections."""
-    from src.database.cleanup.utils.validate_genome_coordinates import (
-        analyze_genome_coordinate_fixes,
-    )
-
-    proposed, preview, stats = analyze_genome_coordinate_fixes(require_perfect=True)
-    n = len(proposed)
-    field_updates = len({(c["row_id"], c["col_id"]) for c in proposed})
-    staged_ships = stats.get("fixes_staged", 0)
-    summary = (
-        f"{field_updates} field update(s) staged for {staged_ships} ship(s)"
-        + (
-            f"; {stats.get('already_correct', 0)} already match GenBank, "
-            f"{stats.get('partial_match', 0)} partial alignment(s), "
-            f"{stats.get('no_alignment', 0)} not located"
-            if stats.get("rows_checked")
-            else ""
-        )
-        if n
-        else (
-            f"No coordinate fixes to stage ({stats.get('rows_checked', 0)} checked, "
-            f"{stats.get('already_correct', 0)} already correct, "
-            f"{stats.get('no_alignment', 0)} not located)."
-        )
-    )
-    return {
-        "job": "genome_coordinates_fix",
-        "mode": "stage",
-        "columns": _GENOME_COORD_FIX_COLS,
-        "rows": preview,
-        "proposed_changes": proposed,
-        "summary": summary,
-    }
+    return admin_jobs_manager.run_job("genome_coordinates_fix")
 
 
 JOB_REGISTRY = {
