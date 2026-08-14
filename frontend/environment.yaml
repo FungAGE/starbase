@@ -9,7 +9,7 @@ channels:
   - bioconda
   - conda-forge
 dependencies:
-  - python=3.9
+  - python=3.11
 
   # Dash UI
   - dash==2.16.1
@@ -44,6 +44,7 @@ dependencies:
       - flask-caching==2.3.0
       - flask-compress==1.15
       - flask-limiter==3.8.0
+      - limits==4.2
       - werkzeug==3.0.6
       - jinja2==3.1.6
       - markupsafe==3.0.2

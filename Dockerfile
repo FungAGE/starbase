@@ -4,7 +4,7 @@
 # All DB/BLAST/HMMER compute is handled by the backend service.
 # This image serves the Dash UI and proxies data calls via backend_client.
 
-FROM python:3.9
+FROM python:3.11
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="STARBASE frontend (Dash UI, no direct DB or BLAST)"
 

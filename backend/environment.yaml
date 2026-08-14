@@ -12,7 +12,7 @@ channels:
   - conda-forge
 dependencies:
   # ── Python runtime ──────────────────────────────────────────────────────────
-  - python=3.9
+  - python=3.11
 
   # ── Dash dependencies ────────────────────────────────────────────────────────
   - dash==2.16.1
@@ -167,12 +167,11 @@ dependencies:
       - typing-extensions==4.14.1
       - importlib-metadata==8.7.0
       - zipp==3.23.0
-      - backports-zoneinfo==0.2.1
       - rpds-py==0.27.0
       - referencing==0.36.2
       - jsonschema==4.25.0
       - jsonschema-specifications==2025.4.1
-      - urllib3==1.26.9
+      - urllib3==2.6.3
       - charset-normalizer==3.4.3
       - idna==3.10
       - certifi==2025.8.3

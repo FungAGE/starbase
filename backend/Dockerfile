@@ -4,7 +4,7 @@
 # Runtime expects SQLite + BLAST data on disk (see DATA_DIR / src/config/settings.py).
 # Optional: BACKEND_API_KEY, CELERY_*, REDIS_* for workers (see backend/docker-compose when added).
 
-FROM python:3.9
+FROM python:3.11
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="STARBASE compute API (FastAPI: SQL, BLAST, HMMER)"
 
