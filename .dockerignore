@@ -1,7 +1,5 @@
 .git
 tmp/
-alembic/
-alembic.ini
 .cache
 src/database/db.tar.gz
 src/database/db/

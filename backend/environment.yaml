@@ -1,5 +1,4 @@
 # Starbase compute backend conda environment.
-# Stripped from root environment.yaml — no Dash, Flask UI middleware, Node, Selenium, or dev/publish tools.
 #
 # Build: mamba env create -f backend/environment.yaml
 # Update: mamba env update -f backend/environment.yaml --prune
@@ -106,6 +105,11 @@ dependencies:
 
       # In-process query cache (sql_manager_impl)
       - cachetools==4.2.4
+
+      # smart_cache decorator (sql_manager.py facade, seq_utils.py) — filesystem
+      # cache backend, no running Flask app required
+      - flask==2.2.5
+      - flask-caching==2.3.0
 
       # Retry + resilience
       - tenacity==8.2.3

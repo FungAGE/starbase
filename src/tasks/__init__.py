@@ -3,7 +3,6 @@ import os
 import json
 from typing import Dict, Any
 
-from src.config.cache import cache, cleanup_old_cache
 from src.config import backend_client
 from src.utils.seq_utils import write_temp_fasta
 from src.utils.blast_utils import run_blast, run_hmmer
@@ -29,6 +28,7 @@ __all__ = [
 def _refresh_telemetry_impl(ipstack_api_key):
     """Implementation of refresh telemetry task"""
     from src.telemetry.tasks import update_ip_locations_task
+    from src.config.cache import cache
 
     try:
         update_ip_locations_task()
@@ -41,6 +41,8 @@ def _refresh_telemetry_impl(ipstack_api_key):
 
 def _cleanup_cache_impl():
     """Implementation of cleanup cache task"""
+    from src.config.cache import cleanup_old_cache
+
     try:
         cleanup_old_cache()
         return {"status": "success", "message": "Cache cleanup completed"}
