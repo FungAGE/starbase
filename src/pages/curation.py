@@ -1,9 +1,11 @@
+from datetime import datetime
 from urllib.parse import parse_qs
 
 import dash
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
 from dash import (
+    ALL,
     Input,
     Output,
     State,
@@ -15,10 +17,13 @@ from dash import (
 )
 from dash.exceptions import PreventUpdate
 
+from src.components.data import create_ship_accession_modal_data, render_ship_accession_modal
 from src.config.logging import get_logger
 from src.config.settings import ADMIN_TOKEN
 from src.database import curation_manager
 from src.database.curation_constants import FLAG_COLORS, FLAG_LABELS
+from src.database.sql_manager import fetch_ships
+from src.utils.seq_utils import create_ncbi_style_header
 
 logger = get_logger(__name__)
 
@@ -130,6 +135,53 @@ def _gene_features_table(features):
     )
 
 
+def _ship_gene_features_panel(features):
+    """Linked gene features for a ship-detail panel -- each row jumps into the
+    Annotation queue tab if it has a linked Annotation, plain text otherwise."""
+    if not features:
+        return dmc.Text("No gene features called on this ship yet.", size="sm", c="dimmed")
+    rows = []
+    for f in features:
+        if f["annotation_id"] is not None:
+            name_cell = dmc.Anchor(
+                f["annotation"] or f"Annotation #{f['annotation_id']}",
+                id={"type": "curation-jump-to-annotation", "index": f["annotation_id"]},
+                size="sm",
+            )
+        else:
+            name_cell = dmc.Text("—", size="sm", c="dimmed")
+        rows.append(
+            html.Tr(
+                [
+                    html.Td(f["type"] or ""),
+                    html.Td(f"{f['start']}–{f['stop']}"),
+                    html.Td(f["strand"] or ""),
+                    html.Td(_flag_badge(f["flag"]) if f["flag"] is not None else ""),
+                    html.Td(name_cell),
+                ]
+            )
+        )
+    return dmc.Table(
+        [
+            html.Thead(
+                html.Tr(
+                    [
+                        html.Th("Type"),
+                        html.Th("Range"),
+                        html.Th("Strand"),
+                        html.Th("Flag"),
+                        html.Th("Annotation"),
+                    ]
+                )
+            ),
+            html.Tbody(rows),
+        ],
+        striped=True,
+        highlightOnHover=True,
+        fz="sm",
+    )
+
+
 def _results_panel(results):
     panels = []
     for tool_key, tool_label in RESULT_TOOLS:
@@ -164,6 +216,26 @@ def _results_panel(results):
 
 def _build_curation_layout():
     return html.Div(
+        dmc.Tabs(
+            [
+                dmc.TabsList(
+                    [
+                        dmc.TabsTab("Ships overview", value="ships"),
+                        dmc.TabsTab("Annotation queue", value="annotations"),
+                    ]
+                ),
+                dmc.TabsPanel(_build_ships_tab(), value="ships"),
+                dmc.TabsPanel(_build_annotations_tab(), value="annotations"),
+            ],
+            id="curation-tabs",
+            value="ships",
+        ),
+        style={"padding": "1rem 2rem"},
+    )
+
+
+def _build_annotations_tab():
+    return html.Div(
         [
             dmc.Group(
                 [
@@ -177,12 +249,26 @@ def _build_curation_layout():
                     ),
                 ],
                 justify="space-between",
-                mb="md",
+                my="md",
             ),
             html.Div(id="curation-queue-section"),
             html.Div(id="curation-detail-section", style={"display": "none"}),
-        ],
-        style={"padding": "1rem 2rem"},
+        ]
+    )
+
+
+def _build_ships_tab():
+    return html.Div(
+        [
+            dmc.Group(
+                [dmc.Title("Ships Overview", order=3)],
+                justify="space-between",
+                my="md",
+            ),
+            html.Div(id="curation-ships-queue-section"),
+            html.Div(id="curation-ship-detail-section", style={"display": "none"}),
+            dcc.Download(id="curation-ships-dl"),
+        ]
     )
 
 
@@ -339,12 +425,105 @@ def _build_detail_section():
     )
 
 
+def _build_ships_queue_section():
+    return html.Div(
+        [
+            dmc.Group(
+                dmc.Button(
+                    "Download FASTA",
+                    id="curation-ships-download-btn",
+                    variant="outline",
+                    size="sm",
+                ),
+                justify="flex-end",
+                mb="xs",
+            ),
+            dag.AgGrid(
+                id="curation-ships-grid",
+                columnDefs=[
+                    {"field": "id", "headerName": "ID", "width": 90, "pinned": "left"},
+                    {"field": "starshipID", "headerName": "Starship ID", "flex": 1},
+                    {"field": "accession_tag", "headerName": "Accession", "width": 140},
+                    {"field": "familyName", "headerName": "Family", "width": 120},
+                    {"field": "navis_name", "headerName": "Navis", "width": 120},
+                    {"field": "haplotype_name", "headerName": "Haplotype", "width": 120},
+                    {"field": "taxonomy_name", "headerName": "Organism", "flex": 1},
+                    {"field": "curated_status", "headerName": "Curated status", "width": 140},
+                    {"field": "evidence", "headerName": "Evidence", "width": 110},
+                ],
+                rowData=[],
+                dashGridOptions={
+                    "pagination": True,
+                    "paginationPageSize": 25,
+                    "rowSelection": "single",
+                    "rowHeight": 40,
+                },
+                style={"height": "60vh"},
+                className="ag-theme-alpine",
+            ),
+        ]
+    )
+
+
+def _build_ship_detail_section():
+    return dmc.Stack(
+        [
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "← Back to ships",
+                        id="curation-ships-back-btn",
+                        variant="subtle",
+                        size="sm",
+                    ),
+                ],
+                justify="space-between",
+            ),
+            dmc.Paper(
+                html.Div(id="curation-ship-meta"),
+                p="md",
+                withBorder=True,
+                radius="sm",
+            ),
+            dmc.Paper(
+                dmc.Stack(
+                    [
+                        dmc.Text("Gene map", fw=600, size="sm"),
+                        html.Div(
+                            id="curation-ship-detail-viz", style={"minHeight": "260px"}
+                        ),
+                    ],
+                    gap="xs",
+                ),
+                p="sm",
+                withBorder=True,
+                radius="sm",
+            ),
+            dmc.Paper(
+                dmc.Stack(
+                    [
+                        dmc.Text("Linked gene features", fw=600, size="sm"),
+                        html.Div(id="curation-ship-gene-features-list"),
+                    ],
+                    gap="xs",
+                ),
+                p="sm",
+                withBorder=True,
+                radius="sm",
+            ),
+        ],
+        gap="md",
+    )
+
+
 layout = html.Div(
     [
         dcc.Location(id="curation-url", refresh=False),
         dcc.Store(id="curation-selected-id", data=None),
+        dcc.Store(id="curation-selected-ship-id", data=None),
         dcc.Store(id="curation-authed", data=False),
         dcc.Store(id="curation-ship-viz-data", data=None),
+        dcc.Store(id="curation-ship-detail-viz-data", data=None),
         html.Div(id="curation-content"),
     ]
 )
@@ -437,6 +616,24 @@ clientside_callback(
     """,
     Output("curation-ship-viz", "style"),
     Input("curation-ship-viz-data", "data"),
+    prevent_initial_call=True,
+)
+
+
+clientside_callback(
+    """
+    function(vizData) {
+        if (!vizData) {
+            return {"minHeight": "260px"};
+        }
+        if (window.renderStarshipViz) {
+            window.renderStarshipViz("curation-ship-detail-viz", vizData);
+        }
+        return {"minHeight": "260px"};
+    }
+    """,
+    Output("curation-ship-detail-viz", "style"),
+    Input("curation-ship-detail-viz-data", "data"),
     prevent_initial_call=True,
 )
 
@@ -600,3 +797,173 @@ def go_next_unreviewed(n_clicks, selected_id, flag_value):
     else:
         next_idx = 0
     return ids[next_idx]
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — ships overview
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("curation-ships-queue-section", "children"),
+    Input("curation-authed", "data"),
+)
+def init_ships_queue_section(authed):
+    if not authed:
+        raise PreventUpdate
+    return _build_ships_queue_section()
+
+
+@callback(
+    Output("curation-ships-grid", "rowData"),
+    Input("curation-authed", "data"),
+    prevent_initial_call=True,
+)
+def refresh_ships_grid(authed):
+    if not authed:
+        raise PreventUpdate
+    return curation_manager.fetch_ships_overview()
+
+
+clientside_callback(
+    """
+    function(selectedRows) {
+        if (!selectedRows || selectedRows.length === 0) {
+            return window.dash_clientside.no_update;
+        }
+        return selectedRows[0];
+    }
+    """,
+    Output("curation-selected-ship-id", "data"),
+    Input("curation-ships-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+
+
+@callback(
+    Output("curation-selected-ship-id", "data", allow_duplicate=True),
+    Input("curation-ships-back-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def go_back_to_ships(n_clicks):
+    if not n_clicks:
+        raise PreventUpdate
+    return None
+
+
+@callback(
+    [
+        Output("curation-ships-queue-section", "style"),
+        Output("curation-ship-detail-section", "style"),
+        Output("curation-ship-detail-section", "children"),
+    ],
+    Input("curation-selected-ship-id", "data"),
+    prevent_initial_call=True,
+)
+def toggle_ship_sections(selected_ship_id):
+    if selected_ship_id is None:
+        return {"display": "block"}, {"display": "none"}, no_update
+    return {"display": "none"}, {"display": "block"}, _build_ship_detail_section()
+
+
+@callback(
+    [
+        Output("curation-ship-meta", "children"),
+        Output("curation-ship-detail-viz-data", "data"),
+        Output("curation-ship-gene-features-list", "children"),
+    ],
+    Input("curation-selected-ship-id", "data"),
+    Input("curation-ship-detail-section", "children"),
+    prevent_initial_call=True,
+)
+def load_ship_detail(selected_ship, _section_children):
+    if selected_ship is None:
+        raise PreventUpdate
+
+    joined_ship_id = selected_ship["id"]
+    ship_features = curation_manager.fetch_ship_gene_features(joined_ship_id)
+
+    ship_accession_tag = selected_ship.get("ship_accession_tag") or selected_ship.get(
+        "accession_tag"
+    )
+
+    if ship_accession_tag:
+        meta = render_ship_accession_modal(
+            create_ship_accession_modal_data(ship_accession_tag)
+        )
+    else:
+        meta = dmc.Alert(
+            "No accession tag on this ship -- can't load metadata.",
+            title="No metadata",
+            color="yellow",
+        )
+
+    return (
+        meta,
+        ship_features,
+        _ship_gene_features_panel(ship_features["features"]),
+    )
+
+
+def _ship_download_payload(row):
+    """Build a single-sequence FASTA download dict for one ships-overview row,
+    reusing the same primitives as wiki.py's generate_download_helper."""
+    tag = row.get("ship_accession_tag") or row.get("accession_tag")
+    if not tag:
+        raise ValueError("Selected ship has no accession tag to download.")
+
+    dl_df = fetch_ships(accessions=[tag], curated=False, dereplicate=True, with_sequence=True)
+    if dl_df is None or dl_df.empty:
+        raise ValueError(f"No sequence found for {tag}.")
+
+    seq_row = dl_df.iloc[0]
+    header = create_ncbi_style_header(seq_row)
+    if header is None:
+        raise ValueError(f"Could not build a FASTA header for {tag}.")
+
+    fasta_str = f"{header}\n{seq_row['sequence']}"
+    return dict(
+        content=fasta_str,
+        filename=f"{tag}_{datetime.now().strftime('%y%m%d')}.fasta",
+        type="text/plain",
+    )
+
+
+@callback(
+    Output("curation-ships-dl", "data"),
+    Output("notifications-container", "children", allow_duplicate=True),
+    Input("curation-ships-download-btn", "n_clicks"),
+    State("curation-ships-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+def download_selected_ship(n_clicks, selected_rows):
+    if not n_clicks:
+        raise PreventUpdate
+    if not selected_rows:
+        raise PreventUpdate
+    try:
+        return _ship_download_payload(selected_rows[0]), no_update
+    except Exception as exc:
+        logger.error("Ship FASTA download failed: %s", exc)
+        notif = dmc.Notification(
+            id="curation-download-err",
+            title="Download failed",
+            message=str(exc),
+            color="red",
+            action="show",
+            autoClose=8000,
+        )
+        return no_update, notif
+
+
+@callback(
+    Output("curation-selected-id", "data", allow_duplicate=True),
+    Output("curation-tabs", "value", allow_duplicate=True),
+    Input({"type": "curation-jump-to-annotation", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def jump_to_annotation(n_clicks_list):
+    triggered_id = dash.callback_context.triggered_id
+    if not triggered_id or not any(n_clicks_list):
+        raise PreventUpdate
+    return triggered_id["index"], "annotations"
