@@ -17,15 +17,30 @@ DEFAULT_CACHE_TIMEOUT = 3600
 LONG_CACHE_TIMEOUT = 86400
 MAX_CACHE_SIZE = 512 * 1024 * 1024
 
-cache = Cache(
-    config={
-        "CACHE_TYPE": "filesystem",
-        "CACHE_DIR": cache_dir,
-        "CACHE_DEFAULT_TIMEOUT": DEFAULT_CACHE_TIMEOUT,
-        "CACHE_THRESHOLD": 1000,
-        "CACHE_KEY_PREFIX": "starbase",
-    }
-)
+# Redis when available
+_redis_url = os.getenv("REDIS_URL") or os.getenv("CELERY_BROKER_URL")
+_using_redis = bool(_redis_url and "redis" in _redis_url)
+
+if _using_redis:
+    logger.info("Using Redis for query cache")
+    cache = Cache(
+        config={
+            "CACHE_TYPE": "RedisCache",
+            "CACHE_REDIS_URL": _redis_url,
+            "CACHE_DEFAULT_TIMEOUT": DEFAULT_CACHE_TIMEOUT,
+            "CACHE_KEY_PREFIX": "starbase",
+        }
+    )
+else:
+    cache = Cache(
+        config={
+            "CACHE_TYPE": "filesystem",
+            "CACHE_DIR": cache_dir,
+            "CACHE_DEFAULT_TIMEOUT": DEFAULT_CACHE_TIMEOUT,
+            "CACHE_THRESHOLD": 1000,
+            "CACHE_KEY_PREFIX": "starbase",
+        }
+    )
 
 
 def invalidate_meta_and_ship_cache():
@@ -53,6 +68,9 @@ def cleanup_old_cache(max_age_days=None):
         max_age_days: If provided, remove files older than this many days.
                      If None, only enforce size limits.
     """
+    if _using_redis:
+        # Redis expires keys itself via CACHE_DEFAULT_TIMEOUT
+        return
     try:
         from pathlib import Path
         import time
