@@ -5,6 +5,8 @@ backend/routers/curation.py -- no HTTP hop server-side. Mirrors the
 sql_manager.py / sql_manager_impl.py split.
 """
 
+from sqlalchemy import text
+
 from src.config.logging import get_logger
 from src.database.curation_constants import FLAG_LABELS
 from src.database.models.schema import (
@@ -174,6 +176,35 @@ def update_annotation(annotation_id: int, changes: dict, changed_by: str) -> dic
             "Updated annotation %s (%s) by %s", annotation_id, list(changes), changed_by
         )
         return _annotation_to_dict(a)
+
+
+_SHIPS_OVERVIEW_QUERY = """
+    SELECT j.id, j.starshipID, j.curated_status, j.evidence, j.source,
+           j.ship_accession_id,
+           a.accession_tag, sa.ship_accession_tag,
+           f.familyName, n.navis_name, h.haplotype_name,
+           t.name AS taxonomy_name, t.genus, t.species,
+           s.sequence_length
+    FROM joined_ships j
+    LEFT JOIN accessions a ON j.accession_id = a.id
+    LEFT JOIN ship_accessions sa ON j.ship_accession_id = sa.id
+    LEFT JOIN family_names f ON j.ship_family_id = f.id
+    LEFT JOIN navis_names n ON j.ship_navis_id = n.id
+    LEFT JOIN haplotype_names h ON j.ship_haplotype_id = h.id
+    LEFT JOIN taxonomy t ON j.tax_id = t.id
+    LEFT JOIN ships s ON j.ship_id = s.id
+    WHERE j.is_deleted = 0
+    ORDER BY j.id DESC
+"""
+
+
+def fetch_ships_overview() -> list:
+    """Flat one-row-per-ship listing for the curation page's Ships overview
+    grid -- metadata + curated_status, no sequence (fetched lazily on
+    download)."""
+    with get_starbase_session() as session:
+        rows = session.execute(text(_SHIPS_OVERVIEW_QUERY)).mappings().all()
+        return [dict(r) for r in rows]
 
 
 def fetch_ship_gene_features(joined_ship_id: int) -> dict:

@@ -64,6 +64,16 @@ def update_annotation(annotation_id: int, changes: dict, changed_by: str) -> dic
     return _via_backend(_http, _local)
 
 
+def fetch_ships_overview() -> list:
+    def _http():
+        return backend_client.fetch_ships_overview()
+
+    def _local():
+        return _get_impl().fetch_ships_overview()
+
+    return _via_backend(_http, _local)
+
+
 def fetch_ship_gene_features(joined_ship_id: int) -> dict:
     def _http():
         return backend_client.fetch_ship_gene_features(joined_ship_id)

@@ -51,6 +51,11 @@ def update_annotation(annotation_id: int, body: UpdateAnnotationBody) -> dict[st
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+@router.get("/ships/overview")
+def fetch_ships_overview() -> list[dict[str, Any]]:
+    return curation_manager.fetch_ships_overview()
+
+
 @router.get("/ships/{joined_ship_id}/gene-features")
 def fetch_ship_gene_features(joined_ship_id: int) -> dict[str, Any]:
     try:

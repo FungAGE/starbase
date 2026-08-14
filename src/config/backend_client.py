@@ -353,6 +353,10 @@ def update_annotation(annotation_id: int, changes: dict, changed_by: str) -> dic
     )
 
 
+def fetch_ships_overview() -> list:
+    return _request("GET", "/api/curation/ships/overview")
+
+
 def fetch_ship_gene_features(joined_ship_id: int) -> dict:
     return _request("GET", f"/api/curation/ships/{joined_ship_id}/gene-features")
 
