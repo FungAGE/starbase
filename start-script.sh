@@ -12,6 +12,36 @@ if [ -z "$DEV_MODE" ]; then
     DEV_MODE=false
 fi
 
+# Tailscale only when TS_AUTHKEY is provided
+if [ -n "$TS_AUTHKEY" ]; then
+    echo "Starting tailscaled (userspace networking)..."
+    tailscaled \
+        --state="$HOME/.tailscale/tailscaled.state" \
+        --socket="$HOME/.tailscale/tailscaled.sock" \
+        --tun=userspace-networking \
+        --socks5-server=localhost:1055 \
+        --outbound-http-proxy-listen=localhost:1055 \
+        >"$HOME/.tailscale/tailscaled.log" 2>&1 &
+
+    for _ in $(seq 1 30); do
+        [ -S "$HOME/.tailscale/tailscaled.sock" ] && break
+        sleep 1
+    done
+
+    tailscale --socket="$HOME/.tailscale/tailscaled.sock" up \
+        --authkey="$TS_AUTHKEY" \
+        --hostname="${TS_HOSTNAME:-starbase-frontend}" \
+        --accept-dns=false \
+        --timeout=30s
+
+    # Scoped to backend_client.py only -- NOT HTTP_PROXY/HTTPS_PROXY globally,
+    # since the tailnet netstack only routes tailnet addresses (no exit node
+    # configured), so a global proxy would break NCBI/IPStack/SMTP calls to
+    # the public internet.
+    export TAILSCALE_PROXY="http://localhost:1055"
+    echo "Tailscale up. Backend calls will route via tailnet proxy on :1055."
+fi
+
 
 # Parse command line arguments
 while [ $# -gt 0 ]; do

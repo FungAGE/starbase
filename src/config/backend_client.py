@@ -28,6 +28,9 @@ _BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "")
 _DEFAULT_TIMEOUT = float(os.getenv("BACKEND_TIMEOUT", "60"))
 _BLAST_TIMEOUT = float(os.getenv("BACKEND_BLAST_TIMEOUT", "360"))
 
+# Set by start-script.sh when TS_AUTHKEY is present
+_TAILSCALE_PROXY = os.getenv("TAILSCALE_PROXY", "") or None
+
 _MAX_RETRIES = 3
 _RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -46,6 +49,7 @@ def _client(timeout: float = _DEFAULT_TIMEOUT) -> httpx.Client:
         headers=_build_headers(),
         timeout=timeout,
         follow_redirects=True,
+        proxy=_TAILSCALE_PROXY,
     )
 
 

@@ -48,12 +48,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g biojs-vis-blasterjs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Tailscale 
+RUN curl -fsSL https://pkgs.tailscale.com/stable/tailscale_1.80.2_amd64.tgz -o /tmp/tailscale.tgz \
+    && tar xzf /tmp/tailscale.tgz -C /tmp \
+    && mv /tmp/tailscale_1.80.2_amd64/tailscale /tmp/tailscale_1.80.2_amd64/tailscaled /usr/local/bin/ \
+    && rm -rf /tmp/tailscale.tgz /tmp/tailscale_1.80.2_amd64
 USER $USER
 
 RUN mkdir -p $HOME/src/database/logs \
-             $HOME/src/database/cache && \
+             $HOME/src/database/cache \
+             $HOME/.tailscale && \
     chmod -R 755 $HOME/src/database/logs \
-                 $HOME/src/database/cache
+                 $HOME/src/database/cache \
+                 $HOME/.tailscale
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/cache/status || exit 1
