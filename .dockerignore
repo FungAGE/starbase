@@ -1,6 +1,8 @@
 .git
 tmp/
 .cache
+.env
+.env.*
 src/database/db.tar.gz
 src/database/db/
 src/database/logs/
