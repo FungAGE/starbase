@@ -29,6 +29,9 @@ conda envs installs Nextflow/Java. The subprocess/process-group/signal
 mechanics ARE tested (see tests), just not against a real `nextflow run`.
 """
 
+from __future__ import annotations
+
+import csv
 import glob
 import os
 import signal
@@ -38,7 +41,13 @@ from datetime import datetime
 
 from src.config.celery_config import CELERY_AVAILABLE, celery
 from src.config.logging import get_logger
-from src.config.settings import STARFISH_NEXTFLOW_PATH
+from src.config.settings import (
+    STARFISH_AUX_PATH,
+    STARFISH_DB_PATH,
+    STARFISH_ENV_PATH,
+    STARFISH_NEXTFLOW_PATH,
+    STARFISH_NEXTFLOW_PROFILE,
+)
 from src.database.models.schema import StarfishElement, StarfishRun, StarfishRunGenome
 from src.database.sql_engine import get_starbase_session
 
@@ -63,7 +72,7 @@ def build_nextflow_command(run: StarfishRun, resume: bool = False) -> list:
         cmd.append("-resume")
     cmd += [
         "-profile",
-        "local",
+        STARFISH_NEXTFLOW_PROFILE,
         "--samplesheet",
         run.samplesheet_path,
         "--run_name",
@@ -86,13 +95,30 @@ def build_nextflow_command(run: StarfishRun, resume: bool = False) -> list:
         str(run.neighbourhood),
         "-w",
         os.path.join(run.output_dir, "work"),
-        "--outdir",
-        run.output_dir,
+        # NOTE: --outdir is accepted (nextflow.config declares params.outdir)
+        # but no process actually reads it -- every publishDir in
+        # starfish-nextflow is hardcoded to the literal "results/${run_name}"
+        # relative to the launch cwd. We rely on that literal instead: cwd is
+        # set to base_dir below and run.output_dir is itself base_dir/results,
+        # so _results_dir() lines up with the real publish path. Passing
+        # --outdir here would be a no-op, so it's omitted.
     ]
+    if STARFISH_ENV_PATH:
+        cmd += ["--starfish_env", STARFISH_ENV_PATH]
+    if STARFISH_AUX_PATH:
+        cmd += ["--starfish_aux", STARFISH_AUX_PATH]
+    if STARFISH_DB_PATH:
+        cmd += ["--starfish_db", STARFISH_DB_PATH]
     return cmd
 
 
 def _results_dir(run: StarfishRun) -> str:
+    """Matches starfish-nextflow's hardcoded `publishDir "results/${run_name}"`
+    (relative to the launch cwd, which _run_starfish_pipeline_impl sets to
+    dirname(samplesheet_path) == the run's base_dir). run.output_dir is
+    base_dir/results (see starfish_manager_impl.create_run), so this join
+    reproduces the pipeline's real output path -- it is not itself
+    configurable via --outdir (see build_nextflow_command)."""
     return os.path.join(run.output_dir, run.run_name)
 
 
@@ -105,63 +131,130 @@ def verify_starfish_outputs(run: StarfishRun) -> bool:
                 "Missing/empty starfish output %s under %s", pattern, results_dir
             )
             return False
+    # PAIR_VIZ has errorStrategy 'ignore' in starfish-nextflow -- it can fail
+    # (and its output dir end up missing/empty) on a run that otherwise
+    # completed successfully, so this is logged but not treated as failure.
     pair_viz = os.path.join(results_dir, "pairViz")
     if not os.path.isdir(pair_viz) or not os.listdir(pair_viz):
-        logger.warning("pairViz missing/empty under %s", results_dir)
-        return False
+        logger.info(
+            "pairViz missing/empty under %s (PAIR_VIZ is allowed to fail)",
+            results_dir,
+        )
     return True
 
 
-def parse_bed_file(bed_file_path: str, run_id: int, genome_row_id: int) -> int:
-    """Parse a BED6 file into StarfishElement rows. element_id (col 4) is
-    globally unique (see schema) -- duplicate ids are skipped, not errored,
-    since resume/rerun can re-parse the same file. Returns count created."""
-    basename = os.path.basename(bed_file_path)
-    created = 0
-    with get_starbase_session() as session, open(bed_file_path) as f:
-        for line in f:
-            parts = line.rstrip("\n").split("\t")
-            if len(parts) < 6:
-                continue
-            element_id = parts[3]
+def _none_if_placeholder(value: str) -> str | None:
+    """starfish-nextflow writes "." for absent quality/warnings values."""
+    return None if not value or value == "." else value
+
+
+def _find_genome_for_element_id(element_id: str, genome_specs: list) -> tuple | None:
+    """genome_specs: [(genome_row_id, genome_id), ...]. starfish-nextflow
+    prefixes every feature/element/region id it generates with
+    "{genome_id}_" (default --feature_separator, confirmed against real
+    output, e.g. "mp040_s00001") -- match longest genome_id first so one
+    genome_id can't shadow another that happens to be its prefix
+    (e.g. "mp1" vs "mp10")."""
+    for genome_row_id, genome_id in sorted(
+        genome_specs, key=lambda spec: len(spec[1]), reverse=True
+    ):
+        if element_id.startswith(f"{genome_id}_"):
+            return genome_row_id, genome_id
+    return None
+
+
+def parse_named_stats_file(stats_file_path: str, run_id: int, genome_specs: list) -> dict:
+    """Parse a *.elements.named.stats file into StarfishElement rows -- NOT
+    *.elements.bed, which is multiple rows per element: element/boundary/
+    cargo-gene features sharing a starshipID (see starfish's main/summarize
+    Print_element_bed).
+
+    Real header (tab-separated, confirmed against starfish-nextflow's
+    main/summarize Print_named_stats -- note the leading "#" on the first
+    column, an actual artifact of the real file, not a comment marker):
+    #elementID, elementCaptainID, elementContigID, elementBegin, elementEnd,
+    elementLength, elementStrand, emptySiteID, emptyContigID, emptyBegin,
+    emptyEnd, emptyLength, emptyStrand, emptySiteSeq, totalFlankAlignment,
+    quality, warnings
+
+    Also confirmed against real output: this is NOT one row per element --
+    each element gets one row per OTHER genome it was compared against to
+    place its empty (pre-insertion) site, with quality 'ref' for the
+    canonical/best placement and 'dup' for the rest. elementID/contig/
+    start/end/strand are identical across all of one element's rows; only
+    the empty-site/quality/warnings columns vary. Rows are grouped by
+    elementID and the 'ref' row is preferred as the representative (falls
+    back to the first row if no 'ref' row exists for that element).
+
+    element_id is globally unique (see schema) -- duplicate ids are
+    skipped, not errored, since resume/rerun can re-parse the same file.
+    Returns {genome_row_id: count_created}.
+    """
+    counts = {genome_row_id: 0 for genome_row_id, _ in genome_specs}
+    with open(stats_file_path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        reader.fieldnames = [(fn or "").lstrip("#") for fn in reader.fieldnames]
+        by_element: dict[str, dict] = {}
+        for row in reader:
+            element_id = row["elementID"]
+            existing = by_element.get(element_id)
+            if existing is None or row.get("quality") == "ref":
+                by_element[element_id] = row
+
+    with get_starbase_session() as session:
+        for element_id, row in by_element.items():
             if session.query(StarfishElement).filter_by(element_id=element_id).first():
                 continue
+            match = _find_genome_for_element_id(element_id, genome_specs)
+            if not match:
+                logger.warning(
+                    "Could not attribute element %s to any genome in run %s",
+                    element_id,
+                    run_id,
+                )
+                continue
+            genome_row_id, _ = match
             session.add(
                 StarfishElement(
                     element_id=element_id,
                     run_id=run_id,
                     genome_id=genome_row_id,
-                    contig_id=parts[0],
-                    start=int(parts[1]),
-                    end=int(parts[2]),
-                    strand=parts[5],
-                    notes=f"Parsed from {basename}",
+                    contig_id=row["elementContigID"],
+                    start=int(row["elementBegin"]),
+                    end=int(row["elementEnd"]),
+                    strand=row["elementStrand"],
+                    confidence=_none_if_placeholder(row.get("quality")),
+                    notes=_none_if_placeholder(row.get("warnings")),
                 )
             )
-            created += 1
+            counts[genome_row_id] += 1
         session.commit()
-    return created
+    return counts
 
 
 def parse_starfish_results(run_id: int) -> None:
-    """For each genome in the run, find its *.elements.bed under
-    regionFinder/ and parse it into StarfishElement rows."""
+    """Parse the run's single *.elements.named.stats file (one per run, all
+    genomes merged) into StarfishElement rows, attributing each to a genome
+    via its elementID prefix. Outputs sit flat under _results_dir() --
+    starfish-nextflow does not write a per-genome subdir."""
     with get_starbase_session() as session:
         run = session.query(StarfishRun).filter_by(id=run_id).first()
         genomes = session.query(StarfishRunGenome).filter_by(run_id=run_id).all()
-        region_dir = os.path.join(_results_dir(run), "regionFinder")
+        results_dir = _results_dir(run)
         genome_specs = [(g.id, g.genome_id) for g in genomes]
 
+    matches = glob.glob(os.path.join(results_dir, "*.elements.named.stats"))
+    counts = {genome_row_id: 0 for genome_row_id, _ in genome_specs}
+    if matches:
+        for stats_file in matches:
+            file_counts = parse_named_stats_file(stats_file, run_id, genome_specs)
+            for genome_row_id, n in file_counts.items():
+                counts[genome_row_id] += n
+    else:
+        logger.warning("No *.elements.named.stats found under %s", results_dir)
+
     total_elements = 0
-    for genome_row_id, genome_id in genome_specs:
-        matches = [
-            p
-            for p in glob.glob(os.path.join(region_dir, "*.elements.bed"))
-            if genome_id in os.path.basename(p)
-        ]
-        genome_elements = sum(
-            parse_bed_file(bed_file, run_id, genome_row_id) for bed_file in matches
-        )
+    for genome_row_id, genome_elements in counts.items():
         total_elements += genome_elements
         with get_starbase_session() as session:
             g = session.query(StarfishRunGenome).filter_by(id=genome_row_id).first()
@@ -224,7 +317,13 @@ def _run_starfish_pipeline_impl(
                 logger.info("StarfishRun %s exited after being cancelled", run_id)
                 return
             r.process_pid = None
-            outputs_ok = returncode == 0 and verify_starfish_outputs(run)
+            # NOTE: use r (fetched in this still-open session), not the
+            # stale `run` captured back before the subprocess launched --
+            # its session is long closed by this point, and touching its
+            # attributes here raises a DetachedInstanceError. Confirmed via
+            # a real end-to-end pipeline run: this is the first time this
+            # code path (a real successful completion) has ever executed.
+            outputs_ok = returncode == 0 and verify_starfish_outputs(r)
             if outputs_ok:
                 r.status = "completed"
                 r.completed_at = datetime.utcnow()

@@ -181,7 +181,12 @@ def create_run(
         session.add(run)
         session.flush()  # need run.id for the directory name
 
-        base_dir = os.path.join(STARFISH_RUNS_DIR, f"{run.id}_{run_name}")
+        # abspath, not just join: STARFISH_RUNS_DIR inherits DATA_DIR's
+        # relativity, and the pipeline subprocess's cwd is set to this same
+        # base_dir (see backend/tasks/starfish.py) -- a relative
+        # samplesheet_path would then get resolved against that cwd too,
+        # silently doubling the path (base_dir/base_dir/samplesheet.csv).
+        base_dir = os.path.abspath(os.path.join(STARFISH_RUNS_DIR, f"{run.id}_{run_name}"))
         run.samplesheet_path = os.path.join(base_dir, "samplesheet.csv")
         run.output_dir = os.path.join(base_dir, "results")
         run.log_file = os.path.join(base_dir, "starfish.log")

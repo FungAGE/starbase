@@ -64,6 +64,41 @@ STARFISH_RUNS_DIR = os.path.join(_compute_data_root, "starfish_runs")
 # ops-provided, like the Tailscale/BLAST/Nextflow toolchain itself.
 STARFISH_NEXTFLOW_PATH = os.environ.get("STARFISH_NEXTFLOW_PATH", "")
 
+# -profile value(s) for `nextflow run`. Must match a profile actually
+# defined in starfish-nextflow's nextflow.config: conda, local, test,
+# standard, hpc (comma-joinable, e.g. "local,standard").
+#
+# Default is "local,standard": "local" just prepends a pre-built conda env's
+# bin/ onto each process's PATH (via beforeScript) -- point it at
+# STARFISH_ENV_PATH below. "conda" instead has Nextflow create+cache a fresh
+# per-process env from environment.yml via mamba on every run; this was
+# tried first but silently failed to activate (CHECK_STARFISH errored
+# "starfish not found in PATH", no conda/mamba activity in .nextflow.log at
+# all) when launched from a subprocess whose shell hadn't been through
+# `conda activate` -- exactly how backend/tasks/starfish.py's Popen call
+# runs. "local" sidesteps that: it's a plain PATH edit, no env creation step
+# to fail, and it reuses an env we already know works instead of rebuilding
+# one from environment.yml on every run.
+STARFISH_NEXTFLOW_PROFILE = os.environ.get("STARFISH_NEXTFLOW_PROFILE", "local,standard")
+
+# Absolute path to a pre-built conda env with `starfish` (and its aux/db
+# files) installed -- passed as --starfish_env under the "local" profile.
+STARFISH_ENV_PATH = os.environ.get("STARFISH_ENV_PATH", "")
+
+# starfish-nextflow's own --starfish_aux/--starfish_db (and, under "local",
+# --starfish_env) default to paths hardcoded in its nextflow.config for the
+# original author's machine (/mnt/sda/johannesson_lab/...) -- not present
+# here or on any other host. Nextflow bakes params' string-interpolated
+# defaults (e.g. starfish_aux = "${starfish_env}/aux") in at config-parse
+# time, BEFORE CLI --overrides are applied, so overriding --starfish_env
+# alone does not cascade into starfish_aux/starfish_db -- both need
+# overriding explicitly too. Point these at the aux/db dirs bundled with a
+# real `starfish` conda install (normally STARFISH_ENV_PATH/{aux,db}). Left
+# empty by default so a correctly-configured host's own pipeline defaults
+# apply; set both when they don't resolve (as on this dev machine).
+STARFISH_AUX_PATH = os.environ.get("STARFISH_AUX_PATH", "")
+STARFISH_DB_PATH = os.environ.get("STARFISH_DB_PATH", "")
+
 # BLAST database paths (backend / monolith only)
 BLAST_DB_PATHS = {
     "ship": {
