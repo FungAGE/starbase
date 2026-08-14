@@ -22,7 +22,6 @@ from src.config.celery_config import run_task, celery
 from src.config import backend_client
 from src.config.sentry import init_sentry
 from src.database.migrations import create_database_indexes, run_alembic_migrations
-from src.database.blastdb import create_dbs
 
 
 logger = get_logger(__name__)
@@ -136,6 +135,8 @@ def initialize_app():
             if not IS_DEV:
                 update_ip_locations_task()
                 try:
+                    from src.database.blastdb import create_dbs
+
                     logger.info("Rebuilding BLAST databases on startup...")
                     create_dbs()
                     logger.info("BLAST databases rebuilt successfully on startup")

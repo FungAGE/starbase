@@ -6,11 +6,6 @@ import os
 import glob
 import signal
 import shutil
-import screed
-from sourmash import (
-    SourmashSignature,
-    MinHash,
-)
 
 from src.config.logging import get_logger
 
@@ -1344,6 +1339,9 @@ def sourmash_sketch(fasta_file, seq_type="nucl"):
         list: List of (sequence_id, signature) tuples
     """
     try:
+        import screed
+        from sourmash import SourmashSignature, MinHash
+
         # Set parameters based on sequence type
         if seq_type == "nucl":
             k = 21
