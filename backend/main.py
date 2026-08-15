@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Repo root must be on path (same layout as Flask app)
@@ -18,28 +17,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.dependencies import verify_backend_api_key
 from backend.routers import admin, blast, curation, data, starfish
 from src.config.logging import get_logger
-from src.database.migrations import create_database_indexes, run_alembic_migrations
 
 logger = get_logger(__name__)
-
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    """Run DB migrations and create indexes on startup."""
-    try:
-        run_alembic_migrations()
-        create_database_indexes()
-    except Exception as exc:
-        logger.error("Backend startup DB init failed: %s", exc)
-        raise
-    yield
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="starbase backend",
         description="SQL + BLAST/HMMER compute API for starbase",
-        lifespan=lifespan,
     )
     origins = os.getenv("BACKEND_CORS_ORIGINS", "").strip()
     if origins:

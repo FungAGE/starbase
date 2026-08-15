@@ -30,6 +30,13 @@ done
 
 PORT="${BACKEND_PORT:-8001}"
 
+# Run once, before uvicorn spawns (possibly multiple) workers
+python -c "
+from src.database.migrations import run_alembic_migrations, create_database_indexes
+run_alembic_migrations()
+create_database_indexes()
+"
+
 if [[ "$DEV_MODE" == "true" ]]; then
 	export ENVIRONMENT="${ENVIRONMENT:-development}"
 	exec uvicorn backend.main:app \
