@@ -46,7 +46,44 @@ jobs:
             # SciLifeLab Serve requires unique tags; latest disabled intentionally
             # type=raw,value=latest
 
-      - name: Build and push frontend image
+      - name: Build frontend image (local, for smoke test)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: smoke-frontend:test
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Smoke test frontend image
+        run: |
+          docker run -d --name smoke-frontend -p 8000:8000 \
+            -e SECRET_KEY=ci-smoke-test \
+            -e BACKEND_API_URL=http://127.0.0.1:1 \
+            -e BACKEND_API_KEY=ci-smoke-test \
+            smoke-frontend:test --dev
+
+          ok=false
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/cache/status > /dev/null; then
+              echo "frontend healthy"
+              ok=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ok" != "true" ]; then
+            echo "::error::frontend image failed to become healthy"
+            docker logs smoke-frontend
+            docker rm -f smoke-frontend
+            exit 1
+          fi
+          docker rm -f smoke-frontend
+
+      - name: Push frontend image
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -56,11 +93,11 @@ jobs:
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
-          build-args: |
-            SECRET_KEY=${{ secrets.SECRET_KEY }}
-            IPSTACK_API_KEY=${{ secrets.IPSTACK_API_KEY }}
 
       # ── Backend ─────────────────────────────────────────────────────────────
+      #
+      # Same rule: no secret build-args. MAINTENANCE_TOKEN / IPSTACK_API_KEY /
+      # BACKEND_API_KEY are runtime-only.
 
       - name: Extract metadata for backend image
         id: meta-backend
@@ -70,7 +107,45 @@ jobs:
           tags: |
             type=raw,value={{date 'YYYYMMDD-HHmmss' tz='Europe/Stockholm'}}
 
-      - name: Build and push backend image
+      - name: Build backend image (local, for smoke test)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: false
+          load: true
+          tags: smoke-backend:test
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Smoke test backend image
+        run: |
+          mkdir -p /tmp/smoke-db
+          chmod 777 /tmp/smoke-db
+          docker run -d --name smoke-backend -p 8001:8001 \
+            -e BACKEND_API_KEY=ci-smoke-test \
+            -v /tmp/smoke-db:/home/starbase/src/database/db \
+            smoke-backend:test
+
+          ok=false
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8001/health > /dev/null; then
+              echo "backend healthy"
+              ok=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ok" != "true" ]; then
+            echo "::error::backend image failed to become healthy"
+            docker logs smoke-backend
+            docker rm -f smoke-backend
+            exit 1
+          fi
+          docker rm -f smoke-backend
+
+      - name: Push backend image
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -80,9 +155,6 @@ jobs:
           labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
-          build-args: |
-            MAINTENANCE_TOKEN=${{ secrets.MAINTENANCE_TOKEN }}
-            IPSTACK_API_KEY=${{ secrets.IPSTACK_API_KEY }}
 
       # ── Cleanup (keep last 5 versions of each) ──────────────────────────────
 

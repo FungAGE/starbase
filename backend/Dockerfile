@@ -3,18 +3,15 @@
 #
 # Runtime expects SQLite + BLAST data on disk (see DATA_DIR / src/config/settings.py).
 # Optional: BACKEND_API_KEY, CELERY_*, REDIS_* for workers (see backend/docker-compose when added).
+#
+# IPSTACK_API_KEY / MAINTENANCE_TOKEN / BACKEND_API_KEY etc are runtime-only
 
 FROM python:3.11
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="STARBASE compute API (FastAPI: SQL, BLAST, HMMER)"
 
-ARG IPSTACK_API_KEY
-ARG MAINTENANCE_TOKEN
-
 ENV USER=starbase
 ENV HOME=/home/$USER
-ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
-ENV MAINTENANCE_TOKEN=$MAINTENANCE_TOKEN
 ENV BACKEND_PORT=8001
 
 RUN useradd -m -u 1000 $USER

@@ -3,18 +3,15 @@
 #
 # All DB/BLAST/HMMER compute is handled by the backend service.
 # This image serves the Dash UI and proxies data calls via backend_client.
+#
+# SECRET_KEY / IPSTACK_API_KEY etc are runtime-only
 
 FROM python:3.11
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
 LABEL org.opencontainers.image.description="STARBASE frontend (Dash UI, no direct DB or BLAST)"
 
-ARG IPSTACK_API_KEY
-ARG SECRET_KEY
-
 ENV USER=starbase
 ENV HOME=/home/$USER
-ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
-ENV SECRET_KEY=$SECRET_KEY
 
 RUN useradd -m -u 1000 $USER
 
