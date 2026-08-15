@@ -880,9 +880,5 @@ def downgrade() -> None:
         type_=sa.TEXT(),
         existing_nullable=True,
     )
-    op.create_table(
-        "sqlite_sequence",
-        sa.Column("name", sa.NullType(), nullable=True),
-        sa.Column("seq", sa.NullType(), nullable=True),
-    )
+    # sqlite_sequence intentionally not recreated here -- see upgrade().
     # ### end Alembic commands ###
