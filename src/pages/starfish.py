@@ -314,7 +314,7 @@ def _create_run_modal():
     )
 
 
-def _build_list_section():
+def _build_list_section(rows=None):
     return dag.AgGrid(
         id="starfish-runs-grid",
         columnDefs=[
@@ -326,7 +326,7 @@ def _build_list_section():
             {"field": "created_at", "headerName": "Created", "width": 170},
             {"field": "duration_display", "headerName": "Duration", "width": 100},
         ],
-        rowData=[],
+        rowData=rows if rows is not None else [],
         dashGridOptions={
             "pagination": True,
             "paginationPageSize": 25,
@@ -552,18 +552,15 @@ def render_starfish_content(search):
 def init_list_section(authed):
     if not authed:
         raise PreventUpdate
-    return _build_list_section()
+    return _build_list_section(_list_rows())
 
 
 @callback(
     Output("starfish-runs-grid", "rowData"),
-    Input("starfish-authed", "data"),
     Input("starfish-list-refresh", "data"),
     prevent_initial_call=True,
 )
-def refresh_runs_list(authed, _refresh):
-    if not authed:
-        raise PreventUpdate
+def refresh_runs_list(_refresh):
     return _list_rows()
 
 
