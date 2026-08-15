@@ -563,7 +563,7 @@ layout = dmc.Container(
     fluid=True,
     children=[
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="meta-data", data=load_initial_data()),
+        dcc.Store(id="meta-data"),
         dcc.Store(id="filtered-meta-data"),
         dcc.Store(id="paper-data"),
         dmc.Grid(
@@ -624,8 +624,8 @@ def load_meta_data(url):
     try:
         meta_data = fetch_meta_data()
 
-        if meta_data is None:
-            logger.error("Failed to fetch metadata")
+        if meta_data is None or meta_data.empty:
+            logger.error("Failed to fetch metadata (empty result)")
             return []
 
         if "contigID" in meta_data.columns:
@@ -667,8 +667,19 @@ def create_accordion(cached_meta, cached_papers):
         logger.error("One or more inputs are None: meta-data or paper-data.")
         raise PreventUpdate
 
+    if not cached_meta or not cached_papers:
+        logger.warning("Meta or paper data not loaded yet.")
+        raise PreventUpdate
+
     df = pd.DataFrame(cached_meta)
     papers = pd.DataFrame(cached_papers)
+
+    if df.empty or "familyName" not in df.columns:
+        logger.warning(
+            "Meta data empty or missing familyName column (columns: %s)",
+            list(df.columns),
+        )
+        raise PreventUpdate
 
     assert isinstance(df, pd.DataFrame), (
         f"Expected df to be a DataFrame, but got {type(df)}."
@@ -877,8 +888,7 @@ def populate_search_components(meta_data):
         if "accession_tag" in df.columns:
             group_accession_values = df["accession_tag"].dropna().astype(str).unique()
             group_accession_search_data = [
-                {"value": val, "label": val}
-                for val in sorted(group_accession_values)
+                {"value": val, "label": val} for val in sorted(group_accession_values)
             ]
 
         # Get ship accession (SSB) search data
@@ -888,8 +898,7 @@ def populate_search_components(meta_data):
                 df["ship_accession_tag"].dropna().astype(str).unique()
             )
             ship_accession_search_data = [
-                {"value": val, "label": val}
-                for val in sorted(ship_accession_values)
+                {"value": val, "label": val} for val in sorted(ship_accession_values)
             ]
 
         return (

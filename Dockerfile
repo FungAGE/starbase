@@ -1,71 +1,72 @@
-# Select base image
-FROM python:3.9
+# STARBASE frontend (Dash + thin Flask). Build from repo root:
+#   docker build -t starbase-frontend:latest .
+#
+# All DB/BLAST/HMMER compute is handled by the backend service.
+# This image serves the Dash UI and proxies data calls via backend_client.
+#
+# SECRET_KEY / IPSTACK_API_KEY etc are runtime-only
+
+FROM python:3.11
 LABEL org.opencontainers.image.authors="adrian.e.forsythe@gmail.com"
-LABEL org.opencontainers.image.description="STARBASE is a database and toolkit for exploring large transposable elements in Fungi"
+LABEL org.opencontainers.image.description="STARBASE frontend (Dash UI, no direct DB or BLAST)"
 
-ARG IPSTACK_API_KEY
-ARG SECRET_KEY
-
-# Create variables for user name, home directory, and secrets
 ENV USER=starbase
 ENV HOME=/home/$USER
-ENV IPSTACK_API_KEY=$IPSTACK_API_KEY
-ENV SECRET_KEY=$SECRET_KEY
 
-# Add user to system
 RUN useradd -m -u 1000 $USER
 
-# Set working directory
 WORKDIR $HOME/
 
-# System dependencies (as root)
+# curl/wget: miniforge + healthcheck; build-essential: some conda C-ext builds
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl iptables wget redis-server build-essential && \
+    apt-get install -y --no-install-recommends curl wget build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js, npm, and blasterjs (as root)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install -g biojs-vis-blasterjs
-
-# Switch to user for conda/mamba installation
 USER $USER
 
-# Install Mambaforge as the user (so files are owned by user from the start)
 RUN wget https://github.com/conda-forge/miniforge/releases/download/25.3.0-3/Miniforge3-25.3.0-3-Linux-x86_64.sh -O miniforge.sh && \
     bash miniforge.sh -b -p $HOME/miniconda && \
     rm miniforge.sh && \
     echo ". $HOME/miniconda/etc/profile.d/conda.sh" >> $HOME/.bashrc && \
-    echo "conda activate starbase" >> $HOME/.bashrc
+    echo "conda activate starbase-frontend" >> $HOME/.bashrc
 
 ENV PATH=$HOME/miniconda/bin:$PATH
 
-# Copy environment file and create conda environment using mamba
-COPY --chown=$USER:$USER environment.yaml .
-RUN mamba env create -y -f environment.yaml && \
+COPY --chown=$USER:$USER frontend/environment.yaml frontend/environment.yaml
+RUN mamba env create -y -f frontend/environment.yaml && \
     mamba clean -afy
 
-# Set conda environment to activate by default
-ENV PATH=$HOME/miniconda/envs/starbase/bin:$HOME/miniconda/bin:$PATH
-ENV CONDA_DEFAULT_ENV=starbase
+ENV PATH=$HOME/miniconda/envs/starbase-frontend/bin:$HOME/miniconda/bin:$PATH
+ENV CONDA_DEFAULT_ENV=starbase-frontend
 
-# Create required directories (as user, before copying app code)
-RUN mkdir -p $HOME/src/database/db \
-             $HOME/src/database/logs \
-             $HOME/src/database/cache && \
+# Node.js + blasterjs (frontend BLAST visualisation component)
+USER root
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g biojs-vis-blasterjs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Tailscale 
+RUN curl -fsSL https://pkgs.tailscale.com/stable/tailscale_1.80.2_amd64.tgz -o /tmp/tailscale.tgz \
+    && tar xzf /tmp/tailscale.tgz -C /tmp \
+    && mv /tmp/tailscale_1.80.2_amd64/tailscale /tmp/tailscale_1.80.2_amd64/tailscaled /usr/local/bin/ \
+    && rm -rf /tmp/tailscale.tgz /tmp/tailscale_1.80.2_amd64
+USER $USER
+
+RUN mkdir -p $HOME/src/database/logs \
+             $HOME/src/database/cache \
+             $HOME/.tailscale && \
     chmod -R 755 $HOME/src/database/logs \
-                 $HOME/src/database/cache && \
-    chmod -R 777 $HOME/src/database/db
+                 $HOME/src/database/cache \
+                 $HOME/.tailscale
 
-# Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/cache/status || exit 1
 
-# Copy application code (changes most frequently, so do this last)
 COPY --chown=$USER:$USER ./ ./
-RUN chmod +x start-script.sh && \
-    chmod +x start_celery.py && \
-    chmod +x manage_celery.py
+RUN chmod +x start-script.sh
+
+USER $USER
 
 EXPOSE 8000
 

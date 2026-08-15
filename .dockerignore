@@ -1,8 +1,8 @@
 .git
 tmp/
-alembic/
-alembic.ini
 .cache
+.env
+.env.*
 src/database/db.tar.gz
 src/database/db/
 src/database/logs/

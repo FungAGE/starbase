@@ -16,6 +16,47 @@ def ensure_type_ship_column():
             logger.info("Added type_ship column to ships table")
 
 
+def _is_fresh_database(db_path: str) -> bool:
+    """True if db_path doesn't exist yet or has no tables at all."""
+    import os
+    import sqlite3
+
+    if not os.path.exists(db_path):
+        return True
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute("SELECT count(*) FROM sqlite_master WHERE type='table'")
+        return cursor.fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def run_alembic_migrations():
+    """Apply pending Alembic migrations to starbase.sqlite."""
+    import os
+    from alembic.config import Config
+    from alembic import command
+    from src.config.settings import DB_PATHS, PROJECT_ROOT
+
+    db_path = DB_PATHS["starbase"]
+    cfg = Config(os.path.join(PROJECT_ROOT, "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+
+    if _is_fresh_database(db_path):
+        from src.database.models.schema import Base
+        from src.config.database import starbase_engine
+
+        logger.info("Fresh database at %s -- creating schema directly", db_path)
+        Base.metadata.create_all(starbase_engine)
+        command.stamp(cfg, "head")
+        logger.info("Fresh database schema created and stamped at head")
+        return
+
+    logger.info("Running Alembic migrations on %s", db_path)
+    command.upgrade(cfg, "head")
+    logger.info("Alembic migrations complete")
+
+
 def create_database_indexes():
     """Create indexes to optimize database queries"""
 

@@ -47,7 +47,84 @@ Versions of the database are stored in a [Zenodo repository](https://doi.org/10.
 
 ## Local Development
 
-### Mimicking [Serve](https://github.com/ScilifelabDataCentre/serve?tab=readme-ov-file#deploy-serve-for-local-development-with-docker-compose) Production Environment (Recommended)
+### Split architecture (frontend + backend on different machines)
+
+Production target: **frontend** on a SciLifeLab [Serve](https://github.com/ScilifelabDataCentre/serve) Kubernetes pod, **backend** on a fixed institute machine (SQLite + BLAST data), connected over [Tailscale](https://tailscale.com/).
+
+| Component | Runs on | Data |
+|-----------|---------|------|
+| Frontend (Dash) | Serve pod / your laptop | telemetry SQLite only (`FRONTEND_DATA_DIR`) |
+| Backend (FastAPI) | Institute machine (Docker) | starbase.sqlite (ships, taxonomy, submissions, ...) + BLAST/HMM databases (`DATA_DIR`) |
+
+Submissions live in starbase.sqlite, not a separate file -- `Submission` was always on the same SQLAlchemy `Base` as everything else, so in split mode submission writes go through the backend API like everything else. Only telemetry (request logs, not Alembic-tracked) stays frontend-local.
+
+`sql_manager` dispatches automatically: HTTP when `BACKEND_API_URL` is set, direct SQLAlchemy when unset (local DB debug).
+
+**Volume mounts:** only the **backend** mounts `DATA_DIR` from the host into the container (`/home/starbase/src/database/db`). The frontend never mounts the starbase database tree — it reaches starbase data only via the backend API.
+
+The last commits on branch `backend-split-tailscale` wire this up: `sql_manager` and BLAST tasks call the backend over HTTP when `BACKEND_API_URL` is set.
+
+#### Phase 1 — local smoke test (frontend on host, backend in Docker)
+
+```bash
+# Terminal 1: compute backend (port 8001)
+./dev/scripts/setup-split-dev.sh backend
+
+# Terminal 2: Dash frontend (port 8000)
+./dev/scripts/setup-split-dev.sh frontend
+```
+
+Or manually:
+
+```bash
+cp dev/config/env.template .env
+# Set BACKEND_API_KEY and DATA_DIR=/absolute/path/to/src/database/db
+
+docker compose -f backend/docker-compose.dev.yaml up -d --build
+
+export BACKEND_API_URL=http://localhost:8001
+export BACKEND_API_KEY=<same as .env>
+./start-script.sh --dev
+```
+
+Verify: `curl http://localhost:8001/health` then open http://localhost:8000.
+
+#### Phase 2 — institute backend + Tailscale
+
+On the **backend machine** (always the same host):
+
+```bash
+export BACKEND_IMAGE=ghcr.io/fungage/starbase-backend:<tag>   # from CI
+export DATA_DIR=/path/to/starbase-data                        # starbase.sqlite + BLAST dirs
+export BACKEND_API_KEY=<strong secret>
+
+docker compose -f backend/docker-compose.yaml pull
+docker compose -f backend/docker-compose.yaml up -d
+```
+
+Ensure port `8001` is reachable on the machine's Tailscale IP (`tailscale ip -4`).
+
+On the **frontend** (Serve test pod or laptop):
+
+```bash
+BACKEND_API_URL=http://100.x.y.z:8001    # backend Tailscale IP
+BACKEND_API_KEY=<same secret>
+FRONTEND_DATA_DIR=/path/to/telemetry   # optional; defaults to src/database/db
+```
+
+Deploy the frontend image (`ghcr.io/fungage/starbase:<tag>`) to Serve as a single pod — same pattern as the existing production deployment, but without mounting the full database tree.
+
+#### Full stack in Docker (both services, for integration tests)
+
+```bash
+docker compose up backend redis-backend celery-worker celery-beat app --build
+```
+
+The `app` service sets `BACKEND_API_URL=http://backend:8001` automatically.
+
+---
+
+### Mimicking Serve production environment (monolith, legacy)
 The SciLifeLab Serve platform uses a single-pod kubernetes environment for each app.
 
 ### Quick Start

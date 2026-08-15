@@ -8,16 +8,21 @@ import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc, _dash_renderer
 
-from src.config.settings import IS_DEV
+from src.config.settings import IS_DEV, BACKEND_API_URL
 from src.components import navmenu
 from src.components.ui import create_footer
-from src.config.cache import cache, cleanup_old_cache, cache_dir
+from src.config.cache import cache, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
 from src.telemetry.utils import get_client_ip
 from src.telemetry.tasks import log_request_task, update_ip_locations_task
-from src.config.celery_config import run_task
+from src.config.celery_config import run_task, celery
+
+from src.config import backend_client
+from src.config.sentry import init_sentry
+from src.database.migrations import create_database_indexes, run_alembic_migrations
+
 
 logger = get_logger(__name__)
 
@@ -25,22 +30,29 @@ server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
 
-# Use filesystem cache in production (shared across workers); SimpleCache for dev
+# Use Redis for response cache in production; SimpleCache when REDIS_URL unset in dev
+_redis_url = os.getenv("REDIS_URL", "")
 cache_config = {
     "MAX_CONTENT_LENGTH": 50
     * 1024
     * 1024,  # 50MB limit (BLAST accepts large FASTA uploads)
-    "CACHE_TYPE": "SimpleCache" if IS_DEV else "filesystem",
+    "CACHE_TYPE": "RedisCache"
+    if _redis_url
+    else ("SimpleCache" if IS_DEV else "RedisCache"),
     "CACHE_DEFAULT_TIMEOUT": 300,
     "SEND_FILE_MAX_AGE_DEFAULT": 0,
     "COMPRESS_MIMETYPES": ["text/html", "text/css", "application/javascript"],
     "COMPRESS_LEVEL": 6,
     "COMPRESS_ALGORITHM": ["gzip", "br"],
 }
+if _redis_url:
+    cache_config["CACHE_REDIS_URL"] = _redis_url
+elif not IS_DEV:
+    cache_config["CACHE_REDIS_URL"] = os.getenv(
+        "CACHE_REDIS_URL", "redis://redis-frontend:6379/1"
+    )
+
 if not IS_DEV:
-    cache_config["CACHE_DIR"] = cache_dir
-    cache_config["CACHE_THRESHOLD"] = 1000
-    cache_config["CACHE_KEY_PREFIX"] = "starbase"
     secret_key = os.getenv("SECRET_KEY")
     if secret_key:
         server.config["SECRET_KEY"] = secret_key
@@ -112,23 +124,29 @@ if IS_DEV:
 def initialize_app():
     """Initialize app components and perform setup tasks."""
     with server.app_context():
-        from src.database.blastdb import create_dbs
-        from src.database.migrations import create_database_indexes
-        from src.config.celery_config import celery
-        from src.config.sentry import init_sentry
-
         init_sentry()
-        create_database_indexes()
         cleanup_old_cache()
         update_ip_locations_task()
 
-        if not IS_DEV:
-            try:
-                logger.info("Rebuilding BLAST databases on startup...")
-                create_dbs()
-                logger.info("BLAST databases rebuilt successfully on startup")
-            except Exception as e:
-                logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        if not backend_client.is_configured():
+            run_alembic_migrations()
+            create_database_indexes()
+
+            if not IS_DEV:
+                update_ip_locations_task()
+                try:
+                    from src.database.blastdb import create_dbs
+
+                    logger.info("Rebuilding BLAST databases on startup...")
+                    create_dbs()
+                    logger.info("BLAST databases rebuilt successfully on startup")
+                except Exception as e:
+                    logger.error(f"Failed to rebuild BLAST databases on startup: {e}")
+        else:
+            logger.info(
+                "Backend split active (%s); skipping local starbase/BLAST init",
+                BACKEND_API_URL,
+            )
 
         # Initialize Celery with Flask app context (when available)
         if celery is not None:

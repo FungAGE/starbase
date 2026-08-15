@@ -4,85 +4,151 @@ from dotenv import load_dotenv
 
 # Get the project root directory (where the app runs from)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+_DEFAULT_DB_DIR = os.path.join(PROJECT_ROOT, "src", "database", "db")
 
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 # Development mode
 IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
 
-# Try potential database directories in order of preference
-potential_db_dirs = [
-    os.path.join(PROJECT_ROOT, "src", "database", "db"),
-    os.path.join(PROJECT_ROOT, "database", "db"),
-    os.path.join(PROJECT_ROOT, "db"),
-]
+# Backend API (compute split) — read early; drives path layout below.
+# BACKEND_API_URL: e.g. http://100.x.y.z:8001 (Tailscale) or http://backend:8001 (compose).
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "")
+BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY", "")
 
-# Use the first valid directory path, or default to the last option
-DATA_DIR = next(
-    (path for path in potential_db_dirs if path is not None), potential_db_dirs[-1]
-)
+# DATA_DIR: SQLite + BLAST data on the compute backend (institute machine).
+# FRONTEND_DATA_DIR: lightweight local DBs (submissions, telemetry) on the Serve pod / dev host.
+DATA_DIR = os.environ.get("DATA_DIR", "")
+FRONTEND_DATA_DIR = os.environ.get("FRONTEND_DATA_DIR") or _DEFAULT_DB_DIR
+_local_db_root = FRONTEND_DATA_DIR if BACKEND_API_URL else (DATA_DIR or _DEFAULT_DB_DIR)
+_compute_data_root = DATA_DIR or _DEFAULT_DB_DIR
 
-# Create required directories
-REQUIRED_DIRS = [
-    os.path.join(DATA_DIR),
-    os.path.join(PROJECT_ROOT, "src", "database", "cache"),
-    os.path.join(DATA_DIR, "ships", "fna", "blastdb"),
-    os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb"),
-    os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),
-    os.path.join(DATA_DIR, "captain", "tyr", "fna", "hmm"),
-    os.path.join(DATA_DIR, "captain", "tyr", "faa", "hmm"),
-    os.path.join(DATA_DIR, "ships", "gbks"),
-]
-
-for directory in REQUIRED_DIRS:
-    os.makedirs(directory, exist_ok=True)
+# Create directories: full tree on backend/monolith; only local DB dir on split frontend.
+if BACKEND_API_URL:
+    os.makedirs(_local_db_root, exist_ok=True)
+    os.makedirs(os.path.join(PROJECT_ROOT, "src", "database", "cache"), exist_ok=True)
+elif DATA_DIR:
+    REQUIRED_DIRS = [
+        DATA_DIR,
+        os.path.join(PROJECT_ROOT, "src", "database", "cache"),
+        os.path.join(DATA_DIR, "ships", "fna", "blastdb"),
+        os.path.join(DATA_DIR, "captain", "tyr", "fna", "blastdb"),
+        os.path.join(DATA_DIR, "captain", "tyr", "faa", "blastdb"),
+        os.path.join(DATA_DIR, "captain", "tyr", "fna", "hmm"),
+        os.path.join(DATA_DIR, "captain", "tyr", "faa", "hmm"),
+        os.path.join(DATA_DIR, "ships", "gbks"),
+    ]
+    for _dir in REQUIRED_DIRS:
+        os.makedirs(_dir, exist_ok=True)
 
 # Database paths
+# "submissions" now lives in the same file as "starbase" -- Submission is on
+# the same SQLAlchemy Base as everything else, it was only ever split into a
+# separate physical file via a separate engine/session. One DB, one
+# transaction (the promote workflow used to write two files non-atomically).
+# telemetry stays separate: raw CREATE TABLE, not on Base.metadata, high
+# write volume, no need to join against curator data.
+_starbase_db_path = os.path.join(_compute_data_root, "starbase.sqlite")
 DB_PATHS = {
-    "starbase": os.path.join(DATA_DIR, "starbase.sqlite"),
-    "submissions": os.path.join(DATA_DIR, "submissions.sqlite"),
-    "telemetry": os.path.join(DATA_DIR, "telemetry.sqlite"),
+    "starbase": _starbase_db_path,
+    "submissions": _starbase_db_path,
+    "telemetry": os.path.join(_local_db_root, "telemetry.sqlite"),
 }
 
-# BLAST database paths
+# Starfish pipeline run working directories (backend / monolith only) --
+# one subdir per run: {id}_{run_name}/{samplesheet.csv, results/, starfish.log}
+STARFISH_RUNS_DIR = os.path.join(_compute_data_root, "starfish_runs")
+
+# Path to a checked-out starfish-nextflow pipeline (main.nf lives here) on
+# the backend machine. Not vendored/installed anywhere in this repo --
+# ops-provided, like the Tailscale/BLAST/Nextflow toolchain itself.
+STARFISH_NEXTFLOW_PATH = os.environ.get("STARFISH_NEXTFLOW_PATH", "")
+
+# -profile value(s) for `nextflow run`. Must match a profile actually
+# defined in starfish-nextflow's nextflow.config: conda, local, test,
+# standard, hpc (comma-joinable, e.g. "local,standard").
+#
+# Default is "local,standard": "local" just prepends a pre-built conda env's
+# bin/ onto each process's PATH (via beforeScript) -- point it at
+# STARFISH_ENV_PATH below. "conda" instead has Nextflow create+cache a fresh
+# per-process env from environment.yml via mamba on every run; this was
+# tried first but silently failed to activate (CHECK_STARFISH errored
+# "starfish not found in PATH", no conda/mamba activity in .nextflow.log at
+# all) when launched from a subprocess whose shell hadn't been through
+# `conda activate` -- exactly how backend/tasks/starfish.py's Popen call
+# runs. "local" sidesteps that: it's a plain PATH edit, no env creation step
+# to fail, and it reuses an env we already know works instead of rebuilding
+# one from environment.yml on every run.
+STARFISH_NEXTFLOW_PROFILE = os.environ.get("STARFISH_NEXTFLOW_PROFILE", "local,standard")
+
+# Absolute path to a pre-built conda env with `starfish` (and its aux/db
+# files) installed -- passed as --starfish_env under the "local" profile.
+STARFISH_ENV_PATH = os.environ.get("STARFISH_ENV_PATH", "")
+
+# starfish-nextflow's own --starfish_aux/--starfish_db (and, under "local",
+# --starfish_env) default to paths hardcoded in its nextflow.config for the
+# original author's machine (/mnt/sda/johannesson_lab/...) -- not present
+# here or on any other host. Nextflow bakes params' string-interpolated
+# defaults (e.g. starfish_aux = "${starfish_env}/aux") in at config-parse
+# time, BEFORE CLI --overrides are applied, so overriding --starfish_env
+# alone does not cascade into starfish_aux/starfish_db -- both need
+# overriding explicitly too. Point these at the aux/db dirs bundled with a
+# real `starfish` conda install (normally STARFISH_ENV_PATH/{aux,db}). Left
+# empty by default so a correctly-configured host's own pipeline defaults
+# apply; set both when they don't resolve (as on this dev machine).
+STARFISH_AUX_PATH = os.environ.get("STARFISH_AUX_PATH", "")
+STARFISH_DB_PATH = os.environ.get("STARFISH_DB_PATH", "")
+
+# BLAST database paths (backend / monolith only)
 BLAST_DB_PATHS = {
     "ship": {
         "all": {
-            "nucl": os.path.join(DATA_DIR, "ships", "fna", "blastdb", "ships_all.fa")
+            "nucl": os.path.join(
+                _compute_data_root, "ships", "fna", "blastdb", "ships_all.fa"
+            )
         },
         "curated": {
             "nucl": os.path.join(
-                DATA_DIR, "ships", "fna", "blastdb", "ships_curated.fa"
+                _compute_data_root, "ships", "fna", "blastdb", "ships_curated.fa"
             )
         },
     },
     "gene": {
         "tyr": {
             "nucl": os.path.join(
-                DATA_DIR, "captain", "tyr", "fna", "blastdb", "captains.fna"
+                _compute_data_root, "captain", "tyr", "fna", "blastdb", "captains.fna"
             ),
             "prot": os.path.join(
-                DATA_DIR, "captain", "tyr", "faa", "blastdb", "captains.faa"
+                _compute_data_root, "captain", "tyr", "faa", "blastdb", "captains.faa"
             ),
             "hmm": {
                 "nucl": os.path.join(
-                    DATA_DIR, "captain", "tyr", "fna", "hmm", "combined.hmm"
+                    _compute_data_root,
+                    "captain",
+                    "tyr",
+                    "fna",
+                    "hmm",
+                    "combined.hmm",
                 ),
                 "prot": os.path.join(
-                    DATA_DIR, "captain", "tyr", "faa", "hmm", "combined.hmm"
+                    _compute_data_root,
+                    "captain",
+                    "tyr",
+                    "faa",
+                    "hmm",
+                    "combined.hmm",
                 ),
             },
         },
     },
 }
 
-# GBK paths
-GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
+GBK_PATH = os.path.join(_compute_data_root, "ships", "gbks")
 
 # Phylogeny paths
 PHYLOGENY_PATHS = {
     "tree": os.path.join(
-        DATA_DIR,
+        _compute_data_root,
         "captain",
         "tyr",
         "faa",
@@ -90,7 +156,7 @@ PHYLOGENY_PATHS = {
         "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit.treefile",
     ),
     "msa": os.path.join(
-        DATA_DIR,
+        _compute_data_root,
         "captain",
         "tyr",
         "faa",
@@ -98,7 +164,12 @@ PHYLOGENY_PATHS = {
         "funTyr50_cap25_crp3_p1-512_activeFilt.clipkit",
     ),
     "clades": os.path.join(
-        DATA_DIR, "captain", "tyr", "faa", "tree", "superfam-clades.tsv"
+        _compute_data_root,
+        "captain",
+        "tyr",
+        "faa",
+        "tree",
+        "superfam-clades.tsv",
     ),
 }
 
@@ -131,9 +202,6 @@ PAGE_MAPPING = ",".join(PAGES)
 IPSTACK_API_KEY = os.environ.get("IPSTACK_API_KEY")
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
 SECRET_KEY = os.environ.get("SECRET_KEY")
-
-# GenBank files path
-GBK_PATH = os.path.join(DATA_DIR, "ships", "gbks")
 
 # Cache settings
 CACHE_TIMEOUT = (

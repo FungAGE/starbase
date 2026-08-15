@@ -1,9 +1,9 @@
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: starbase_redis
-    ports:
-      - "6379:6379"
+
+  # ── Redis: frontend response cache ─────────────────────────────────────────
+  redis-frontend:
+    image: redis:7.4-alpine
+    container_name: starbase_redis_frontend
     restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -11,89 +11,169 @@ services:
       timeout: 10s
       retries: 3
 
-  app:
+  # ── Redis: Celery broker/backend (backend side) ─────────────────────────────
+  redis-backend:
+    image: redis:7.4-alpine
+    container_name: starbase_redis_backend
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Compute backend (FastAPI + SQLite + BLAST) ──────────────────────────────
+  backend:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: starbase:latest
-    container_name: starbase_app
+      dockerfile: backend/Dockerfile
+      args:
+        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    image: starbase-backend:latest
+    pull_policy: never
+    container_name: starbase_backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
     environment:
-      - PYTHONPATH=/home/starbase:/home/starbase/src
-      - PYTHONNOUSERSITE=1  # Prevent loading packages from user site
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/home/starbase
+      - PYTHONNOUSERSITE=1
+      - PYTHONUNBUFFERED=1
+      - SQLALCHEMY_WARN_20=1
+      - SQLALCHEMY_SILENCE_UBER_WARNING=1
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - BACKEND_DEV_MODE=${BACKEND_DEV_MODE:-false}
+      - BACKEND_PORT=${BACKEND_PORT:-8001}
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_BROKER_URL=redis://redis-backend:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-backend:6379/0
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+      - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
     volumes:
-      # Mount only specific directories to avoid overwriting conda installation
-      - ./src:/home/starbase/src:rw
-      - ./environment.yaml:/home/starbase/environment.yaml:ro
-      - ./start-script.sh:/home/starbase/start-script.sh:ro
-      - ./app.py:/home/starbase/app.py:ro
-      - ./src/database/db:/home/starbase/src/database/db:rw
+      # DATA_DIR: host path with SQLite + BLAST data mounted into container.
+      # In local dev this is the existing db dir; on institute machine set DATA_DIR in .env.
+      - ${DATA_DIR:-./src/database/db}:/home/starbase/src/database/db:rw
     depends_on:
-      redis:
+      redis-backend:
         condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${BACKEND_PORT:-8001}/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
 
+  # ── Celery worker (backend image) ───────────────────────────────────────────
   celery-worker:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: starbase:latest
+      dockerfile: backend/Dockerfile
+    image: starbase-backend:latest
+    pull_policy: never
     container_name: starbase_celery_worker
     environment:
-      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis-backend:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-backend:6379/0
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - DATA_DIR=/home/starbase/src/database/db
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
     volumes:
-      - ./src:/home/starbase/src:rw
-      - ./src/database/db:/home/starbase/src/database/db:rw
-      - ./manage_celery.py:/home/starbase/manage_celery.py:ro
+      - ${DATA_DIR:-./src/database/db}:/home/starbase/src/database/db:rw
     depends_on:
-      redis:
+      redis-backend:
         condition: service_healthy
     entrypoint: ["python"]
     command: ["manage_celery.py", "worker"]
     restart: always
 
+  # ── Celery beat (backend image) ─────────────────────────────────────────────
   celery-beat:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: starbase:latest
+      dockerfile: backend/Dockerfile
+    image: starbase-backend:latest
+    pull_policy: never
     container_name: starbase_celery_beat
     environment:
-      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis-backend:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-backend:6379/0
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - DATA_DIR=/home/starbase/src/database/db
     volumes:
-      - ./src:/home/starbase/src:rw
-      - ./src/database/db:/home/starbase/src/database/db:rw
-      - ./manage_celery.py:/home/starbase/manage_celery.py:ro
+      - ${DATA_DIR:-./src/database/db}:/home/starbase/src/database/db:rw
     depends_on:
-      redis:
+      redis-backend:
         condition: service_healthy
     entrypoint: ["python"]
     command: ["manage_celery.py", "beat"]
     restart: always
-  
+
+  # ── Dash frontend (Flask + Dash, no DB/BLAST) ───────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+    image: starbase-frontend:latest
+    pull_policy: never
+    container_name: starbase_app
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/home/starbase:/home/starbase/src
+      - PYTHONNOUSERSITE=1
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEV_MODE=${DEV_MODE:-false}
+      - BACKEND_API_URL=http://backend:${BACKEND_PORT:-8001}
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - REDIS_URL=redis://redis-frontend:6379/1
+      - CELERY_BROKER_URL=redis://redis-frontend:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-frontend:6379/0
+      - CACHE_TIMEOUT=${CACHE_TIMEOUT:-300}
+      - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
+      - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+      - HOME_URL=${HOME_URL:-/}
+      - WIKI_URL=${WIKI_URL:-/wiki}
+      - BLAST_URL=${BLAST_URL:-/blast}
+      - ABOUT_URL=${ABOUT_URL:-/about}
+      - SYNTENY_URL=${SYNTENY_URL:-/synteny}
+      - SUBMIT_URL=${SUBMIT_URL:-/submit}
+      - METRICS_URL=${METRICS_URL:-/metrics}
+    volumes:
+      - ./src:/home/starbase/src:rw
+      - ./environment.yaml:/home/starbase/environment.yaml:ro
+      - ./start-script.sh:/home/starbase/start-script.sh:ro
+      - ./app.py:/home/starbase/app.py:ro
+      # No db volume mount — all data goes through the backend service
+    depends_on:
+      redis-frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: always
+
+  # ── Tests (frontend image, profile: testing) ────────────────────────────────
   unit-tests:
-    image: starbase:latest
+    image: starbase-frontend:latest
+    pull_policy: never
     container_name: starbase_tests
     depends_on:
       - app
     environment:
       - PYTHONPATH=/home/starbase:/home/starbase/src
+      - BACKEND_API_URL=http://backend:${BACKEND_PORT:-8001}
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
     volumes:
-      # Mount only specific directories to avoid overwriting conda installation
       - ./src:/home/starbase/src:rw
-      - ./environment.yaml:/home/starbase/environment.yaml:ro
-      - ./start-script.sh:/home/starbase/start-script.sh:ro
       - ./app.py:/home/starbase/app.py:ro
-      - ./src/database/db:/home/starbase/src/database/db:rw
     entrypoint: ["pytest"]
     command: ["-v"]
     profiles:

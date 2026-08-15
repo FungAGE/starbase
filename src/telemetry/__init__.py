@@ -9,12 +9,8 @@ from src.telemetry.utils import (
     get_client_ip,
     is_development_ip,
 )
-from src.telemetry.routes import (
-    blast_limit_decorator,
-)
 
 __all__ = [
     "get_client_ip",
     "is_development_ip",
-    "blast_limit_decorator",
 ]
