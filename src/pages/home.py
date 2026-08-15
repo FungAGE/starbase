@@ -19,6 +19,25 @@ logger = get_logger(__name__)
 
 dash.register_page(__name__, title="starbase Home", name="Home", path="/")
 
+
+def _safe_call(fn, fallback, label):
+    """Call fn() with a fallback"""
+    try:
+        return fn()
+    except Exception as e:
+        logger.warning(f"Failed to load {label} for home page: {e}")
+        return fallback
+
+
+_DEFAULT_STATS = {
+    "total_starships": 0,
+    "unique_sequences": 0,
+    "curated_starships": 0,
+    "uncurated_starships": 0,
+    "species_count": 0,
+    "family_count": 0,
+}
+
 title = dmc.Paper(
     [
         dmc.Group(
@@ -307,6 +326,9 @@ accession_card = dmc.Paper(
 )
 
 # Database version card for the hero section
+_schema_version = _safe_call(
+    get_alembic_schema_version, "unknown", "alembic schema version"
+)
 db_version_card = dmc.Paper(
     [
         dmc.Title("Database Version", order=2, mb="md"),
@@ -329,7 +351,7 @@ db_version_card = dmc.Paper(
                     align="center",
                 ),
                 dmc.Title(
-                    get_database_version(),
+                    _safe_call(get_database_version, "unknown", "database version"),
                     order=3,
                     style={
                         "fontSize": "1.5rem",
@@ -354,9 +376,11 @@ db_version_card = dmc.Paper(
                     align="center",
                 ),
                 dmc.Text(
-                    get_alembic_schema_version()[:8] + "..."
-                    if len(get_alembic_schema_version()) > 8
-                    else get_alembic_schema_version(),
+                    (
+                        _schema_version[:8] + "..."
+                        if len(_schema_version) > 8
+                        else _schema_version
+                    ),
                     size="sm",
                     c="dimmed",
                     style={"fontFamily": "monospace"},
@@ -437,7 +461,18 @@ def create_publications_section():
                         mb="md",
                         c="indigo",
                     ),
-                    html.Div(make_paper_table(), style={"width": "100%"}),
+                    html.Div(
+                        _safe_call(
+                            make_paper_table,
+                            dmc.Alert(
+                                "Publications table unavailable.",
+                                color="gray",
+                                variant="light",
+                            ),
+                            "publications table",
+                        ),
+                        style={"width": "100%"},
+                    ),
                 ],
                 py="xl",
                 flex=True,
@@ -449,7 +484,7 @@ def create_publications_section():
     )
 
 
-stats = get_database_stats()
+stats = _safe_call(get_database_stats, _DEFAULT_STATS, "database stats")
 
 total_starships_info = dmc.Stack(
     [
