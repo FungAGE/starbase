@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -o pipefail
+
 # Load .env so uvicorn workers inherit ADMIN_TOKEN, DEV_MODE, etc.
 if [ -f .env ]; then
     set -a
@@ -16,7 +18,7 @@ fi
 if [ -n "$TS_AUTHKEY" ]; then
     echo "Starting tailscaled (userspace networking)..."
     tailscaled \
-        --state="$HOME/.tailscale/tailscaled.state" \
+        --state=mem: \
         --socket="$HOME/.tailscale/tailscaled.sock" \
         --tun=userspace-networking \
         --socks5-server=localhost:1055 \
@@ -28,11 +30,21 @@ if [ -n "$TS_AUTHKEY" ]; then
         sleep 1
     done
 
-    tailscale --socket="$HOME/.tailscale/tailscaled.sock" up \
-        --authkey="$TS_AUTHKEY" \
+    if [ ! -S "$HOME/.tailscale/tailscaled.sock" ]; then
+        echo "ERROR: tailscaled did not create its control socket." >&2
+        tail -100 "$HOME/.tailscale/tailscaled.log" >&2
+        exit 1
+    fi
+
+    if ! tailscale --socket="$HOME/.tailscale/tailscaled.sock" up \
+        --auth-key="$TS_AUTHKEY" \
         --hostname="${TS_HOSTNAME:-starbase-frontend}" \
         --accept-dns=false \
-        --timeout=30s
+        --timeout=30s; then
+        echo "ERROR: Tailscale authentication failed." >&2
+        tail -100 "$HOME/.tailscale/tailscaled.log" >&2
+        exit 1
+    fi
 
     # Scoped to backend_client.py only -- NOT HTTP_PROXY/HTTPS_PROXY globally,
     # since the tailnet netstack only routes tailnet addresses (no exit node

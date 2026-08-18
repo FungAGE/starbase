@@ -58,6 +58,11 @@ def is_configured() -> bool:
     return bool(_BACKEND_API_URL)
 
 
+def health_check() -> dict[str, str]:
+    """Verify reachability and API-key authentication against the backend."""
+    return _request("GET", "/api/health")
+
+
 def _request(
     method: str,
     path: str,

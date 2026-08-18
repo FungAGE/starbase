@@ -46,11 +46,19 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && npm install -g biojs-vis-blasterjs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Tailscale 
-RUN curl -fsSL https://pkgs.tailscale.com/stable/tailscale_1.80.2_amd64.tgz -o /tmp/tailscale.tgz \
-    && tar xzf /tmp/tailscale.tgz -C /tmp \
-    && mv /tmp/tailscale_1.80.2_amd64/tailscale /tmp/tailscale_1.80.2_amd64/tailscaled /usr/local/bin/ \
-    && rm -rf /tmp/tailscale.tgz /tmp/tailscale_1.80.2_amd64
+# Tailscale userspace proxy for managed-container deployments.
+ARG TAILSCALE_VERSION=1.102.2
+RUN cd /tmp \
+    && curl -fsSLO "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" \
+    && curl -fsSLO "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz.sha256" \
+    && sed "s|$|  tailscale_${TAILSCALE_VERSION}_amd64.tgz|" \
+        "tailscale_${TAILSCALE_VERSION}_amd64.tgz.sha256" | sha256sum -c - \
+    && tar xzf "tailscale_${TAILSCALE_VERSION}_amd64.tgz" \
+    && mv "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled" /usr/local/bin/ \
+    && rm -rf "tailscale_${TAILSCALE_VERSION}_amd64.tgz" \
+                  "tailscale_${TAILSCALE_VERSION}_amd64.tgz.sha256" \
+                  "tailscale_${TAILSCALE_VERSION}_amd64"
 USER $USER
 
 RUN mkdir -p $HOME/src/database/logs \

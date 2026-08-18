@@ -38,8 +38,10 @@ services:
   backend:
     image: ${BACKEND_IMAGE}
     container_name: starbase_backend
+    # Bind to BACKEND_BIND_IP when set (e.g. the host's Tailscale IP) so the
+    # port is NOT exposed on the LAN. Unset (default 0.0.0.0) for same-machine dev.
     ports:
-      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
+      - "${BACKEND_BIND_IP:-0.0.0.0}:${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
     environment:
       - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1

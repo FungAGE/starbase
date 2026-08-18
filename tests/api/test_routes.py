@@ -2,6 +2,55 @@ import pytest
 from unittest.mock import patch
 
 
+def test_backend_status_success(test_client):
+    """The probe exercises configured URL, proxy, and API-key authentication."""
+    with (
+        patch("src.api.routes.backend_client.is_configured", return_value=True),
+        patch(
+            "src.api.routes.backend_client.health_check",
+            return_value={"status": "ok"},
+        ),
+    ):
+        response = test_client.get("/api/backend/status")
+
+    assert response.status_code == 200
+    assert response.json["status"] == "ok"
+    assert response.json["configured"] is True
+    assert response.json["reachable"] is True
+    assert response.json["authenticated"] is True
+    assert isinstance(response.json["latency_ms"], int)
+
+
+def test_backend_status_not_configured(test_client):
+    with patch("src.api.routes.backend_client.is_configured", return_value=False):
+        response = test_client.get("/api/backend/status")
+
+    assert response.status_code == 503
+    assert response.json == {
+        "status": "error",
+        "configured": False,
+        "reachable": False,
+    }
+
+
+def test_backend_status_connection_failure(test_client):
+    with (
+        patch("src.api.routes.backend_client.is_configured", return_value=True),
+        patch(
+            "src.api.routes.backend_client.health_check",
+            side_effect=RuntimeError("connection failed"),
+        ),
+    ):
+        response = test_client.get("/api/backend/status")
+
+    assert response.status_code == 503
+    assert response.json == {
+        "status": "error",
+        "configured": True,
+        "reachable": False,
+    }
+
+
 def test_get_ship_accession_details(test_client):
     """Test the /api/accession/ship_accession_details/<ssb_id> route."""
     ship_accession_id = "SSB000339"

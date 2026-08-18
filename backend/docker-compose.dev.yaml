@@ -23,19 +23,24 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build:
       context: ..
       dockerfile: backend/Dockerfile
-      args:
-        - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
-        - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
     image: starbase-backend:local
     pull_policy: never
     container_name: starbase_backend
+    # Bind to BACKEND_BIND_IP when set (e.g. the host's Tailscale IP on the
+    # production backend machine) so the port is NOT exposed on the LAN.
+    # Unset (default 0.0.0.0) keeps same-machine dev working.
     ports:
-      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
+      - "${BACKEND_BIND_IP:-0.0.0.0}:${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
     environment:
       - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1
@@ -51,6 +56,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
       - MAINTENANCE_TOKEN=${MAINTENANCE_TOKEN:-}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-}
     volumes:
       - ${DATA_DIR:-../src/database/db}:/home/starbase/src/database/db:rw
     depends_on:
@@ -63,6 +69,11 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   celery-worker:
     image: starbase-backend:local
@@ -84,6 +95,11 @@ services:
     entrypoint: ["python"]
     command: ["manage_celery.py", "worker"]
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   celery-beat:
     image: starbase-backend:local
@@ -104,6 +120,11 @@ services:
     entrypoint: ["python"]
     command: ["manage_celery.py", "beat"]
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   default:
