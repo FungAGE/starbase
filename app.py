@@ -11,7 +11,7 @@ from dash import Dash, html, dcc, _dash_renderer
 from src.config.settings import IS_DEV, BACKEND_API_URL
 from src.components import navmenu
 from src.components.ui import create_footer
-from src.config.cache import cache, cleanup_old_cache
+from src.config.cache import cache, cache_dir, cleanup_old_cache
 from src.api import register_routes
 from src.config.limiter import limiter
 from src.config.logging import get_logger
@@ -30,15 +30,16 @@ server = Flask(__name__)
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 Compress(server)
 
-# Use Redis for response cache in production; SimpleCache when REDIS_URL unset in dev
+# Prefer Redis when an external service is configured. SciLifeLab Serve runs a
+# single container, so fall back to its shared pod filesystem rather than a
+# nonexistent redis-frontend hostname.
 _redis_url = os.getenv("REDIS_URL", "")
 cache_config = {
     "MAX_CONTENT_LENGTH": 50
     * 1024
     * 1024,  # 50MB limit (BLAST accepts large FASTA uploads)
-    "CACHE_TYPE": "RedisCache"
-    if _redis_url
-    else ("SimpleCache" if IS_DEV else "RedisCache"),
+    "CACHE_TYPE": "RedisCache" if _redis_url else "FileSystemCache",
+    "CACHE_DIR": cache_dir,
     "CACHE_DEFAULT_TIMEOUT": 300,
     "SEND_FILE_MAX_AGE_DEFAULT": 0,
     "COMPRESS_MIMETYPES": ["text/html", "text/css", "application/javascript"],
@@ -47,10 +48,6 @@ cache_config = {
 }
 if _redis_url:
     cache_config["CACHE_REDIS_URL"] = _redis_url
-elif not IS_DEV:
-    cache_config["CACHE_REDIS_URL"] = os.getenv(
-        "CACHE_REDIS_URL", "redis://redis-frontend:6379/1"
-    )
 
 if not IS_DEV:
     secret_key = os.getenv("SECRET_KEY")
