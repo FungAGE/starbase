@@ -1,5 +1,8 @@
+import time
+
 from flask import Blueprint, jsonify, request
 from src.config.limiter import limiter
+from src.config import backend_client
 from src.components.data import (
     create_ship_accession_modal_data,
     create_accession_modal_data,
@@ -13,6 +16,45 @@ logger = get_logger(__name__)
 blast_routes = Blueprint("blast", __name__, url_prefix="/api/blast")
 accession_routes = Blueprint("accession", __name__, url_prefix="/api/accession")
 error_handlers = Blueprint("errors", __name__)
+backend_routes = Blueprint("backend", __name__, url_prefix="/api/backend")
+
+
+@backend_routes.route("/status", methods=["GET"])
+@limiter.limit("10 per minute")
+def backend_status():
+    """Probe the configured backend through the frontend's real HTTP path."""
+    if not backend_client.is_configured():
+        return jsonify(
+            {
+                "status": "error",
+                "configured": False,
+                "reachable": False,
+            }
+        ), 503
+
+    started = time.monotonic()
+    try:
+        response = backend_client.health_check()
+        latency_ms = round((time.monotonic() - started) * 1000)
+        healthy = response.get("status") == "ok"
+        return jsonify(
+            {
+                "status": "ok" if healthy else "error",
+                "configured": True,
+                "reachable": True,
+                "authenticated": True,
+                "latency_ms": latency_ms,
+            }
+        ), 200 if healthy else 503
+    except Exception:
+        logger.exception("Backend connection probe failed")
+        return jsonify(
+            {
+                "status": "error",
+                "configured": True,
+                "reachable": False,
+            }
+        ), 503
 
 
 @blast_routes.route("/blast-submit", methods=["POST"])
