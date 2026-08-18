@@ -2,16 +2,23 @@
 
 set -o pipefail
 
-# Load .env so uvicorn workers inherit ADMIN_TOKEN, DEV_MODE, etc.
-if [ -f .env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
+# Load runtime configuration before starting Tailscale or the application.
+if [ -n "${ENV_FILE:-}" ]; then
+    _env_file="$ENV_FILE"
+elif [ -f "$HOME/src/database/db/.env" ]; then
+    _env_file="$HOME/src/database/db/.env"
+elif [ -f .env ]; then
+    _env_file=.env
+else
+    _env_file=""
 fi
 
-if [ -z "$DEV_MODE" ]; then
-    DEV_MODE=false
+if [ -n "$_env_file" ]; then
+    echo "Loading runtime configuration from $_env_file"
+    set -a
+    # shellcheck disable=SC1090
+    source "$_env_file"
+    set +a
 fi
 
 # Tailscale only when TS_AUTHKEY is provided
