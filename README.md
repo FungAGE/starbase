@@ -112,6 +112,30 @@ BACKEND_API_KEY=<same secret>
 FRONTEND_DATA_DIR=/path/to/telemetry   # optional; defaults to src/database/db
 ```
 
+For the SciLifeLab Serve production pod, also mount these at runtime:
+
+```bash
+TS_AUTHKEY=<tagged reusable ephemeral Tailscale auth key>
+TS_HOSTNAME=starbase-frontend-prod
+```
+
+The frontend image runs Tailscale in userspace mode and proxies only backend
+HTTP calls through it. The auth key must be reusable because a replacement pod
+registers as a new node, and ephemeral so stopped pods are removed from the
+tailnet automatically. Restrict the key to a frontend tag and grant that tag
+access only to TCP port 8001 on the backend machine.
+
+After deployment, verify the complete path (pod identity, tailnet routing, and
+backend API-key authentication) through the frontend's public URL:
+
+```bash
+curl -fsS https://<frontend-origin>/api/backend/status
+# {"authenticated":true,"configured":true,"latency_ms":...,"reachable":true,"status":"ok"}
+```
+
+This connection is server-to-server, so `BACKEND_CORS_ORIGINS` is not required
+for it. CORS is only needed if browser JavaScript calls the backend directly.
+
 Deploy the frontend image (`ghcr.io/fungage/starbase:<tag>`) to Serve as a single pod — same pattern as the existing production deployment, but without mounting the full database tree.
 
 #### Full stack in Docker (both services, for integration tests)
