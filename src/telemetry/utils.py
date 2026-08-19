@@ -46,6 +46,26 @@ class LocationInfo:
         return cls(ip=ip, lat=0.0, lon=0.0)
 
 
+def initialize_request_logs_table():
+    """Create the request_logs table"""
+
+    REQUEST_LOGS_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS request_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        endpoint TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        ip_address TEXT NOT NULL
+    )
+    """
+    with get_telemetry_session() as session:
+        try:
+            session.execute(text(REQUEST_LOGS_TABLE_SQL))
+            session.commit()
+        except Exception as e:
+            logger.error(f"Error creating request_logs table: {str(e)}")
+            session.rollback()
+
+
 def initialize_ip_locations_table():
     """Create the ip_locations table if it doesn't exist."""
 
