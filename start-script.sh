@@ -66,9 +66,19 @@ if [ -n "$TS_AUTHKEY" ]; then
             echo "Backend reachable at ${BACKEND_API_URL}: ${_health}"
         else
             echo "WARNING: backend NOT reachable at ${BACKEND_API_URL}/health via tailnet." >&2
-            echo "         App will start and keep retrying, but check the backend machine:" >&2
-            echo "           sudo tailscale status   # is its tailscaled online?" >&2
-            echo "           docker compose -f backend/docker-compose.dev.yaml ps" >&2
+            _ts_sock="$HOME/.tailscale/tailscaled.sock"
+            _backend_host="${BACKEND_API_URL#*://}"; _backend_host="${_backend_host%%/*}"
+            _backend_peer="${_backend_host%%:*}"
+            echo "         Pod tailnet status (look for the backend peer + online/offline):" >&2
+            tailscale --socket="$_ts_sock" status 2>&1 | sed 's/^/           /' >&2
+            echo "         Pinging ${_backend_peer} (2 tries; 'direct'/'relay' = path works):" >&2
+            tailscale --socket="$_ts_sock" ping --c 2 "$_backend_peer" 2>&1 | sed 's/^/           /' >&2
+            echo "         netcheck (DERP relay reachability from this pod):" >&2
+            timeout 45 tailscale --socket="$_ts_sock" netcheck 2>&1 | tail -25 | sed 's/^/           /' >&2
+            echo "         tailscaled.log (last 20 lines):" >&2
+            tail -20 "$HOME/.tailscale/tailscaled.log" 2>&1 | sed 's/^/           /' >&2
+            echo "         Peer offline/stale -> check backend machine: sudo tailscale status" >&2
+            echo "         Peer online + ping OK -> port 8001 closed: docker compose ps on backend" >&2
         fi
     fi
 fi
