@@ -52,6 +52,18 @@ if [ -n "$TS_AUTHKEY" ]; then
     # the public internet.
     export TAILSCALE_PROXY="http://localhost:1055"
     echo "Tailscale up. Backend calls will route via tailnet proxy on :1055."
+
+    # Early backend reachability probe
+    if [ -n "${BACKEND_API_URL:-}" ]; then
+        if _health=$(curl -sf --max-time 15 -x "http://localhost:1055" "${BACKEND_API_URL}/health" 2>&1); then
+            echo "Backend reachable at ${BACKEND_API_URL}: ${_health}"
+        else
+            echo "WARNING: backend NOT reachable at ${BACKEND_API_URL}/health via tailnet." >&2
+            echo "         App will start and keep retrying, but check the backend machine:" >&2
+            echo "           sudo tailscale status   # is its tailscaled online?" >&2
+            echo "           docker compose -f backend/docker-compose.dev.yaml ps" >&2
+        fi
+    fi
 fi
 
 
