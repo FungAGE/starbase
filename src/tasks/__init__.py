@@ -297,6 +297,11 @@ def _run_classification_workflow_internal(
     """
     Internal implementation of the classification workflow.
     """
+    if backend_client.is_configured():
+        return backend_client.classification_workflow(
+            workflow_state, blast_data, classification_data, meta_dict
+        )
+
     from src.utils.classification_utils import run_classification_workflow
 
     try:

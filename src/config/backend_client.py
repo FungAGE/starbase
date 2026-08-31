@@ -27,6 +27,7 @@ _BACKEND_API_URL = os.getenv("BACKEND_API_URL", "").rstrip("/")
 _BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "")
 _DEFAULT_TIMEOUT = float(os.getenv("BACKEND_TIMEOUT", "60"))
 _BLAST_TIMEOUT = float(os.getenv("BACKEND_BLAST_TIMEOUT", "360"))
+_CLASSIFICATION_TIMEOUT = float(os.getenv("BACKEND_CLASSIFICATION_TIMEOUT", "1800"))
 
 # Set by start-script.sh when TS_AUTHKEY is present
 _TAILSCALE_PROXY = os.getenv("TAILSCALE_PROXY", "") or None
@@ -470,4 +471,98 @@ def hmmer_search(
     if not result.get("ok"):
         logger.warning("Backend HMMER search failed: %s", result.get("error"))
         return None
+    return result.get("result")
+
+
+# ── Classification workflow endpoints ───────────────────────────────────────
+
+
+def _json_safe(value: Any) -> Any:
+    """Recursively convert values to strict-JSON-safe equivalents.
+
+    NaN/Inf → None; pandas DataFrames → list of record dicts (the workflow
+    accepts both forms).
+    """
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return None
+        return value
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return _json_safe(to_dict("records"))
+        except Exception:
+            return str(value)
+    return value
+
+
+def _inline_fasta(data: Any) -> Any:
+    """Inline the local temp-file path in `fasta_file` as sequence content.
+
+    The backend machine cannot see frontend /tmp paths, so the sequence must
+    travel in the payload. The workflow accepts {"content": ...} dicts in
+    fasta_file and materializes them locally.
+    """
+    if not isinstance(data, dict):
+        return data
+    fasta_file = data.get("fasta_file")
+    if isinstance(fasta_file, str):
+        if os.path.exists(fasta_file):
+            with open(fasta_file, "r") as f:
+                data["fasta_file"] = {"content": f.read()}
+        elif data.get("sequence"):
+            data["fasta_file"] = {"content": f">query\n{data['sequence']}\n"}
+    return data
+
+
+def _workflow_error_result(message: str) -> dict:
+    return {
+        "complete": True,
+        "error": message,
+        "status": "failed",
+        "found_match": False,
+        "match_stage": None,
+        "match_result": None,
+        "workflow_started": True,
+        "current_stage": None,
+        "current_stage_idx": 0,
+        "start_time": 0.0,
+        "stages": {},
+        "class_dict": {},
+        "task_id": "",
+    }
+
+
+def classification_workflow(
+    workflow_state: dict,
+    blast_data: dict | None = None,
+    classification_data: dict | None = None,
+    meta_dict: list | None = None,
+) -> dict:
+    """Run the classification workflow on the compute backend."""
+    payload = _json_safe(
+        {
+            "workflow_state": workflow_state,
+            "blast_data": _inline_fasta(blast_data) if blast_data else None,
+            "classification_data": _inline_fasta(classification_data)
+            if classification_data
+            else None,
+            "meta_dict": meta_dict,
+        }
+    )
+    result = _request(
+        "POST",
+        "/api/classification/workflow",
+        json=payload,
+        timeout=_CLASSIFICATION_TIMEOUT,
+    )
+    if not result.get("ok"):
+        logger.warning(
+            "Backend classification workflow failed: %s", result.get("error")
+        )
+        return _workflow_error_result(str(result.get("error")))
     return result.get("result")
