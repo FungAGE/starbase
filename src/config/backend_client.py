@@ -520,21 +520,9 @@ def _inline_fasta(data: Any) -> Any:
 
 
 def _workflow_error_result(message: str) -> dict:
-    return {
-        "complete": True,
-        "error": message,
-        "status": "failed",
-        "found_match": False,
-        "match_stage": None,
-        "match_result": None,
-        "workflow_started": True,
-        "current_stage": None,
-        "current_stage_idx": 0,
-        "start_time": 0.0,
-        "stages": {},
-        "class_dict": {},
-        "task_id": "",
-    }
+    from src.utils.blast_data import WorkflowState
+
+    return WorkflowState.error_result(message)
 
 
 def classification_workflow(

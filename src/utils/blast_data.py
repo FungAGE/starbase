@@ -625,6 +625,11 @@ class WorkflowState:
             classification_data.to_dict() if classification_data else None
         )
 
+    @classmethod
+    def error_result(cls, message: str) -> Dict[str, Any]:
+        """Build the canonical failed-workflow result dict."""
+        return cls(complete=True, error=message, status="failed").to_dict()
+
 
 # =============================================================================
 # STATE MANAGEMENT
