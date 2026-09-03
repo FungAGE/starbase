@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import glob
+import os
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -86,3 +88,41 @@ def promote_submission(body: PromoteSubmissionBody) -> dict[str, Any]:
         body.sub_id
     )
     return {"success": success, "accession": accession, "error": error}
+
+
+def _blastdb_status() -> dict[str, Any]:
+    from src.config.settings import BLAST_DB_PATHS
+    from src.database.blastdb import blast_db_exists, sourmash_sig_exists
+
+    paths = {
+        "ships_all": BLAST_DB_PATHS["ship"]["all"]["nucl"],
+        "ships_curated": BLAST_DB_PATHS["ship"]["curated"]["nucl"],
+        "captains": BLAST_DB_PATHS["gene"]["tyr"]["prot"],
+    }
+    status = {}
+    for name, path in paths.items():
+        prefix, _ = os.path.splitext(path)
+        index_files = sorted(glob.glob(prefix + ".*"))
+        newest = max((os.path.getmtime(p) for p in index_files), default=None)
+        status[name] = {
+            "path": path,
+            "built": blast_db_exists(path),
+            "signatures": sourmash_sig_exists(path),
+            "updated_at": newest,
+            "file_count": len(index_files),
+        }
+    return status
+
+
+@router.get("/blastdb/status")
+def blastdb_status() -> dict[str, Any]:
+    """Build state of the managed BLAST databases (ships all/curated, captains)."""
+    return _blastdb_status()
+
+
+@router.post("/blastdb/rebuild")
+def blastdb_rebuild() -> dict[str, Any]:
+    """Dispatch a full BLAST DB rebuild to the worker (runs in the background)."""
+    from backend.tasks.blastdb import dispatch_blastdb_rebuild
+
+    return dispatch_blastdb_rebuild()
