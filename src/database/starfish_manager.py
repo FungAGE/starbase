@@ -119,3 +119,64 @@ def get_run_log(run_id: int) -> str:
         return _get_impl().get_run_log(run_id)
 
     return _via_backend(_http, _local)
+
+
+def list_visualizations(run_id: int) -> dict:
+    def _http():
+        return backend_client.list_starfish_visualizations(run_id)
+
+    def _local():
+        return _get_impl().list_visualizations(run_id)
+
+    return _via_backend(_http, _local)
+
+
+def get_visualization_file(run_id: int, section: str, filename: str) -> tuple:
+    def _http():
+        return backend_client.get_starfish_visualization_file(run_id, section, filename)
+
+    def _local():
+        return _get_impl().get_visualization_file(run_id, section, filename)
+
+    return _via_backend(_http, _local)
+
+
+def delete_element(element_id: int) -> dict:
+    def _http():
+        return backend_client.delete_starfish_element(element_id)
+
+    def _local():
+        return _get_impl().delete_element(element_id)
+
+    return _via_backend(_http, _local)
+
+
+def update_element(
+    element_id: int,
+    family: str = None,
+    navis: str = None,
+    haplotype: str = None,
+    confidence: str = None,
+    notes: str = None,
+) -> dict:
+    def _http():
+        return backend_client.update_starfish_element(
+            element_id,
+            family=family,
+            navis=navis,
+            haplotype=haplotype,
+            confidence=confidence,
+            notes=notes,
+        )
+
+    def _local():
+        return _get_impl().update_element(
+            element_id,
+            family=family,
+            navis=navis,
+            haplotype=haplotype,
+            confidence=confidence,
+            notes=notes,
+        )
+
+    return _via_backend(_http, _local)

@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs
+import base64
 import csv
 import io
 import time
@@ -130,49 +131,117 @@ def _genomes_table(genomes):
     )
 
 
-def _elements_table(elements):
-    if not elements:
-        return dmc.Text(
-            "No elements found yet -- run the pipeline to detect starship elements.",
-            size="sm",
-            c="dimmed",
-        )
+def _elements_grid(elements):
     rows = [
-        html.Tr(
-            [
-                html.Td(e["element_id"]),
-                html.Td(e["contig_id"] or ""),
-                html.Td(f"{e['start']}-{e['end']}"),
-                html.Td(e["length"]),
-                html.Td(e.get("family") or ""),
-                html.Td(
-                    dmc.Badge("imported", color="green", variant="light")
-                    if e.get("imported_submission_id")
-                    else dmc.Badge("not imported", color="gray", variant="light")
-                ),
-            ]
-        )
+        {
+            **e,
+            "position_display": f"{e['start']}-{e['end']}",
+            "import_display": "imported"
+            if e.get("imported_submission_id")
+            else "not imported",
+        }
         for e in elements
     ]
-    return dmc.Table(
-        [
-            html.Thead(
-                html.Tr(
-                    [
-                        html.Th("Element ID"),
-                        html.Th("Contig"),
-                        html.Th("Position"),
-                        html.Th("Length"),
-                        html.Th("Family"),
-                        html.Th("Import status"),
-                    ]
-                )
-            ),
-            html.Tbody(rows),
+    return dag.AgGrid(
+        id="starfish-elements-grid",
+        columnDefs=[
+            {"field": "element_id", "headerName": "Element ID", "flex": 1},
+            {"field": "genome_id", "headerName": "Genome", "width": 110},
+            {"field": "contig_id", "headerName": "Contig", "width": 110},
+            {"field": "position_display", "headerName": "Position", "width": 130},
+            {"field": "length", "headerName": "Length", "width": 80},
+            {"field": "family", "headerName": "Family", "width": 110},
+            {"field": "navis", "headerName": "Navis", "width": 110},
+            {"field": "haplotype", "headerName": "Haplotype", "width": 110},
+            {"field": "confidence", "headerName": "Confidence", "width": 100},
+            {"field": "import_display", "headerName": "Import", "width": 100},
         ],
-        striped=True,
-        highlightOnHover=True,
-        fz="sm",
+        rowData=rows,
+        dashGridOptions={
+            "pagination": True,
+            "paginationPageSize": 25,
+            "rowSelection": "single",
+            "rowHeight": 40,
+        },
+        style={"height": "40vh"},
+        className="ag-theme-alpine",
+    )
+
+
+def _element_actions(has_elements):
+    if not has_elements:
+        return html.Div()
+    return dmc.Group(
+        [
+            dmc.Button(
+                "Import selected",
+                id="starfish-element-import-btn",
+                color="blue",
+                size="sm",
+            ),
+            dmc.Button(
+                "Edit selected",
+                id="starfish-element-edit-btn",
+                variant="light",
+                size="sm",
+            ),
+            dmc.Button(
+                "Delete selected",
+                id="starfish-element-delete-btn",
+                variant="light",
+                color="red",
+                size="sm",
+            ),
+        ],
+        gap="xs",
+    )
+
+
+def _viz_file_panel(title, section, file_list):
+    if not file_list:
+        return dmc.Paper(
+            dmc.Text(
+                f"No {title.lower()} outputs yet -- they appear once the pipeline "
+                "reaches the viz steps.",
+                size="sm",
+                c="dimmed",
+            ),
+            p="sm",
+            withBorder=True,
+        )
+    buttons = [
+        dmc.Button(
+            f,
+            id={"type": "starfish-viz-open", "section": section, "index": i},
+            variant="subtle",
+            size="xs",
+        )
+        for i, f in enumerate(file_list)
+    ]
+    return dmc.Paper(
+        dmc.Stack(
+            [
+                dmc.Text(title, fw=700, size="sm"),
+                dmc.Group(buttons, wrap=True, gap="xs"),
+            ],
+            gap="xs",
+        ),
+        p="sm",
+        withBorder=True,
+    )
+
+
+def _viz_section(files):
+    return dmc.SimpleGrid(
+        [
+            _viz_file_panel(
+                "Locus visualizations", "locusViz", files.get("locusViz_files") or []
+            ),
+            _viz_file_panel(
+                "Pair visualizations", "pairViz", files.get("pairViz_files") or []
+            ),
+        ],
+        cols=2,
     )
 
 
@@ -195,6 +264,9 @@ def _build_starfish_layout():
             html.Div(id="starfish-list-section"),
             html.Div(id="starfish-detail-section", style={"display": "none"}),
             _create_run_modal(),
+            _viz_modal(),
+            _edit_element_modal(),
+            _delete_element_modal(),
         ],
         style={"padding": "1rem 2rem"},
     )
@@ -303,6 +375,116 @@ def _create_run_modal():
                             ),
                             dmc.Button(
                                 "Create", id="starfish-create-submit-btn", color="blue"
+                            ),
+                        ],
+                        justify="flex-end",
+                    ),
+                ],
+                gap="sm",
+            ),
+        ],
+    )
+
+
+def _viz_modal():
+    return dmc.Modal(
+        id="starfish-viz-modal",
+        title="Visualization",
+        size="lg",
+        withCloseButton=True,
+        children=[
+            dmc.Stack(
+                [
+                    dmc.Text(id="starfish-viz-name", fw=700, size="sm"),
+                    dmc.Image(
+                        id="starfish-viz-image",
+                        style={"maxHeight": "70vh", "display": "none"},
+                    ),
+                    dmc.Group(
+                        [
+                            dmc.Button(
+                                "Download",
+                                id="starfish-viz-download-btn",
+                                size="sm",
+                            ),
+                        ],
+                        justify="flex-end",
+                    ),
+                ],
+                gap="sm",
+            ),
+        ],
+    )
+
+
+def _edit_element_modal():
+    return dmc.Modal(
+        id="starfish-edit-modal",
+        title="Edit element",
+        size="md",
+        withCloseButton=True,
+        children=[
+            dmc.Stack(
+                [
+                    dmc.Text(id="starfish-edit-element-label", size="sm", c="dimmed"),
+                    dmc.TextInput(id="starfish-edit-family", label="Family"),
+                    dmc.TextInput(id="starfish-edit-navis", label="Navis"),
+                    dmc.TextInput(id="starfish-edit-haplotype", label="Haplotype"),
+                    dmc.TextInput(id="starfish-edit-confidence", label="Confidence"),
+                    dmc.Textarea(
+                        id="starfish-edit-notes",
+                        label="Notes",
+                        autosize=True,
+                        minRows=2,
+                        maxRows=6,
+                    ),
+                    dmc.Group(
+                        [
+                            dmc.Button(
+                                "Cancel",
+                                id="starfish-edit-cancel-btn",
+                                variant="subtle",
+                            ),
+                            dmc.Button(
+                                "Save", id="starfish-edit-save-btn", color="blue"
+                            ),
+                        ],
+                        justify="flex-end",
+                    ),
+                ],
+                gap="sm",
+            ),
+        ],
+    )
+
+
+def _delete_element_modal():
+    return dmc.Modal(
+        id="starfish-delete-modal",
+        title="Delete element?",
+        size="sm",
+        withCloseButton=True,
+        children=[
+            dmc.Stack(
+                [
+                    dmc.Text(id="starfish-delete-element-label", size="sm"),
+                    dmc.Text(
+                        "Removes the element row from this run. Imported elements "
+                        "cannot be deleted.",
+                        size="sm",
+                        c="dimmed",
+                    ),
+                    dmc.Group(
+                        [
+                            dmc.Button(
+                                "Cancel",
+                                id="starfish-delete-cancel-btn",
+                                variant="subtle",
+                            ),
+                            dmc.Button(
+                                "Delete",
+                                id="starfish-delete-confirm-btn",
+                                color="red",
                             ),
                         ],
                         justify="flex-end",
@@ -468,9 +650,25 @@ def _build_detail_section():
                     dmc.AccordionItem(
                         [
                             dmc.AccordionControl("Elements"),
-                            dmc.AccordionPanel(html.Div(id="starfish-detail-elements")),
+                            dmc.AccordionPanel(
+                                dmc.Stack(
+                                    [
+                                        html.Div(id="starfish-detail-elements-hint"),
+                                        html.Div(id="starfish-detail-elements-actions"),
+                                        html.Div(id="starfish-detail-elements"),
+                                    ],
+                                    gap="xs",
+                                )
+                            ),
                         ],
                         value="elements",
+                    ),
+                    dmc.AccordionItem(
+                        [
+                            dmc.AccordionControl("Visualizations"),
+                            dmc.AccordionPanel(html.Div(id="starfish-detail-viz")),
+                        ],
+                        value="viz",
                     ),
                     dmc.AccordionItem(
                         [
@@ -492,6 +690,7 @@ def _build_detail_section():
                         value="logs",
                     ),
                 ],
+                id="starfish-detail-accordion",
                 multiple=True,
                 value=["genomes"],
             ),
@@ -507,6 +706,14 @@ layout = html.Div(
         dcc.Store(id="starfish-selected-run-id", data=None),
         dcc.Store(id="starfish-authed", data=False),
         dcc.Store(id="starfish-list-refresh", data=0),
+        dcc.Store(id="starfish-detail-refresh", data=0),
+        dcc.Store(
+            id="starfish-viz-files", data={"locusViz_files": [], "pairViz_files": []}
+        ),
+        dcc.Store(id="starfish-viz-payload", data=None),
+        dcc.Store(id="starfish-edit-element-id", data=None),
+        dcc.Store(id="starfish-delete-element-id", data=None),
+        dcc.Download(id="starfish-viz-download"),
         html.Div(id="starfish-content"),
     ]
 )
@@ -710,6 +917,8 @@ def submit_create_run(
         Output("starfish-stat-elements", "children"),
         Output("starfish-detail-config", "children"),
         Output("starfish-detail-genomes", "children"),
+        Output("starfish-detail-elements-hint", "children"),
+        Output("starfish-detail-elements-actions", "children"),
         Output("starfish-detail-elements", "children"),
         Output("starfish-detail-logs", "children"),
         Output("starfish-refresh-interval", "disabled"),
@@ -717,9 +926,10 @@ def submit_create_run(
     Input("starfish-selected-run-id", "data"),
     Input("starfish-detail-section", "children"),
     Input("starfish-refresh-interval", "n_intervals"),
+    Input("starfish-detail-refresh", "data"),
     prevent_initial_call=True,
 )
-def load_detail(selected_id, _section_children, _n_intervals):
+def load_detail(selected_id, _section_children, _n_intervals, _detail_refresh):
     if selected_id is None:
         raise PreventUpdate
     run = starfish_manager.get_run(selected_id)
@@ -751,6 +961,7 @@ def load_detail(selected_id, _section_children, _n_intervals):
     except Exception as exc:
         log_content = f"Error loading log: {exc}"
 
+    elements = run["elements"]
     return (
         run["run_name"],
         _status_badge(run["status"]),
@@ -762,7 +973,15 @@ def load_detail(selected_id, _section_children, _n_intervals):
         str(run.get("num_elements_found") or 0),
         config,
         _genomes_table(run["genomes"]),
-        _elements_table(run["elements"]),
+        dmc.Text(
+            "No elements found yet -- run the pipeline to detect starship elements.",
+            size="sm",
+            c="dimmed",
+        )
+        if not elements
+        else "",
+        _element_actions(bool(elements)),
+        _elements_grid(elements),
         log_content,
         run["status"] != "running",
     )
@@ -883,3 +1102,276 @@ def import_all_elements(n_clicks, run_id):
         autoClose=6000,
     )
     return notif, run_id
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — per-element actions (import / edit / delete)
+# ---------------------------------------------------------------------------
+
+
+def _notif(title, message, color):
+    return dmc.Notification(
+        id=f"starfish-element-{color}-{time.time()}",
+        title=title,
+        message=message,
+        color=color,
+        action="show",
+        autoClose=6000,
+    )
+
+
+@callback(
+    [
+        Output("notifications-container", "children", allow_duplicate=True),
+        Output("starfish-detail-refresh", "data", allow_duplicate=True),
+    ],
+    Input("starfish-element-import-btn", "n_clicks"),
+    State("starfish-elements-grid", "selectedRows"),
+    State("starfish-detail-refresh", "data"),
+    prevent_initial_call=True,
+)
+def import_selected_element(n_clicks, selected_rows, refresh_count):
+    if not n_clicks:
+        raise PreventUpdate
+    if not selected_rows:
+        raise PreventUpdate
+    row = selected_rows[0]
+    try:
+        result = starfish_manager.import_element_to_submission(row["id"])
+        notif = _notif(
+            "Element imported",
+            f"{result['element_id']} added to the submissions queue as "
+            f"submission {result['submission_id']}",
+            "green",
+        )
+    except ValueError as exc:
+        notif = _notif("Import failed", str(exc), "red")
+    return notif, (refresh_count or 0) + 1
+
+
+@callback(
+    [
+        Output("starfish-edit-modal", "opened"),
+        Output("starfish-edit-element-id", "data"),
+        Output("starfish-edit-element-label", "children"),
+        Output("starfish-edit-family", "value"),
+        Output("starfish-edit-navis", "value"),
+        Output("starfish-edit-haplotype", "value"),
+        Output("starfish-edit-confidence", "value"),
+        Output("starfish-edit-notes", "value"),
+    ],
+    Input("starfish-element-edit-btn", "n_clicks"),
+    Input("starfish-edit-cancel-btn", "n_clicks"),
+    State("starfish-elements-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+def open_edit_modal(edit_clicks, cancel_clicks, selected_rows):
+    if dash.ctx.triggered_id == "starfish-edit-cancel-btn":
+        return (
+            False,
+            no_update,
+            no_update,
+            no_update,
+            no_update,
+            no_update,
+            no_update,
+            no_update,
+        )
+    if not edit_clicks:
+        raise PreventUpdate
+    if not selected_rows:
+        raise PreventUpdate
+    row = selected_rows[0]
+    return (
+        True,
+        row["id"],
+        f"{row['element_id']}  ({row.get('contig_id') or '?'}:{row['start']}-{row['end']})",
+        row.get("family") or "",
+        row.get("navis") or "",
+        row.get("haplotype") or "",
+        row.get("confidence") or "",
+        row.get("notes") or "",
+    )
+
+
+@callback(
+    [
+        Output("starfish-edit-modal", "opened", allow_duplicate=True),
+        Output("notifications-container", "children", allow_duplicate=True),
+        Output("starfish-detail-refresh", "data", allow_duplicate=True),
+    ],
+    Input("starfish-edit-save-btn", "n_clicks"),
+    State("starfish-edit-element-id", "data"),
+    State("starfish-edit-family", "value"),
+    State("starfish-edit-navis", "value"),
+    State("starfish-edit-haplotype", "value"),
+    State("starfish-edit-confidence", "value"),
+    State("starfish-edit-notes", "value"),
+    State("starfish-detail-refresh", "data"),
+    prevent_initial_call=True,
+)
+def save_edit(
+    n_clicks,
+    element_id,
+    family,
+    navis,
+    haplotype,
+    confidence,
+    notes,
+    refresh_count,
+):
+    if not n_clicks:
+        raise PreventUpdate
+    if element_id is None:
+        raise PreventUpdate
+    try:
+        updated = starfish_manager.update_element(
+            element_id,
+            family=family,
+            navis=navis,
+            haplotype=haplotype,
+            confidence=confidence,
+            notes=notes,
+        )
+        notif = _notif(
+            "Element updated",
+            f"{updated['element_id']} saved",
+            "green",
+        )
+    except ValueError as exc:
+        notif = _notif("Could not save element", str(exc), "red")
+    return False, notif, (refresh_count or 0) + 1
+
+
+@callback(
+    [
+        Output("starfish-delete-modal", "opened"),
+        Output("starfish-delete-element-id", "data"),
+        Output("starfish-delete-element-label", "children"),
+    ],
+    Input("starfish-element-delete-btn", "n_clicks"),
+    Input("starfish-delete-cancel-btn", "n_clicks"),
+    State("starfish-elements-grid", "selectedRows"),
+    prevent_initial_call=True,
+)
+def open_delete_modal(delete_clicks, cancel_clicks, selected_rows):
+    if dash.ctx.triggered_id == "starfish-delete-cancel-btn":
+        return False, no_update, no_update
+    if not delete_clicks:
+        raise PreventUpdate
+    if not selected_rows:
+        raise PreventUpdate
+    row = selected_rows[0]
+    return (
+        True,
+        row["id"],
+        f"{row['element_id']}  ({row.get('contig_id') or '?'}:{row['start']}-{row['end']})",
+    )
+
+
+@callback(
+    [
+        Output("starfish-delete-modal", "opened", allow_duplicate=True),
+        Output("notifications-container", "children", allow_duplicate=True),
+        Output("starfish-detail-refresh", "data", allow_duplicate=True),
+    ],
+    Input("starfish-delete-confirm-btn", "n_clicks"),
+    State("starfish-delete-element-id", "data"),
+    State("starfish-detail-refresh", "data"),
+    prevent_initial_call=True,
+)
+def confirm_delete(n_clicks, element_id, refresh_count):
+    if not n_clicks:
+        raise PreventUpdate
+    if element_id is None:
+        raise PreventUpdate
+    try:
+        result = starfish_manager.delete_element(element_id)
+        notif = _notif(
+            "Element deleted",
+            f"{result['deleted']} removed from this run",
+            "green",
+        )
+    except ValueError as exc:
+        notif = _notif("Could not delete element", str(exc), "red")
+    return False, notif, (refresh_count or 0) + 1
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — visualizations
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    [
+        Output("starfish-detail-viz", "children"),
+        Output("starfish-viz-files", "data"),
+    ],
+    Input("starfish-selected-run-id", "data"),
+    Input("starfish-detail-accordion", "value"),
+    Input("starfish-detail-refresh", "data"),
+    prevent_initial_call=True,
+)
+def load_visualizations(selected_id, accordion_value, _detail_refresh):
+    if selected_id is None or "viz" not in (accordion_value or []):
+        raise PreventUpdate
+    try:
+        files = starfish_manager.list_visualizations(selected_id)
+    except ValueError:
+        return no_update, no_update
+    return _viz_section(files), files
+
+
+@callback(
+    [
+        Output("starfish-viz-modal", "opened"),
+        Output("starfish-viz-name", "children"),
+        Output("starfish-viz-image", "src"),
+        Output("starfish-viz-image", "style"),
+        Output("starfish-viz-payload", "data"),
+    ],
+    Input({"type": "starfish-viz-open"}, "n_clicks"),
+    State({"type": "starfish-viz-open"}, "id"),
+    State("starfish-viz-files", "data"),
+    State("starfish-selected-run-id", "data"),
+    prevent_initial_call=True,
+)
+def open_viz_modal(_n_clicks, button_id, files, run_id):
+    if not isinstance(button_id, dict) or "index" not in button_id:
+        raise PreventUpdate
+    if not run_id:
+        raise PreventUpdate
+    section = button_id["section"]
+    index = button_id["index"]
+    file_list = (files or {}).get(f"{section}_files") or []
+    if index >= len(file_list):
+        raise PreventUpdate
+    filename = file_list[index]
+    try:
+        data, media_type = starfish_manager.get_visualization_file(
+            run_id, section, filename
+        )
+    except ValueError as exc:
+        logger.warning("Could not load viz file %s: %s", filename, exc)
+        raise PreventUpdate
+    b64 = base64.b64encode(data).decode()
+    is_image = media_type.startswith("image/")
+    return (
+        True,
+        filename,
+        f"data:{media_type};base64,{b64}" if is_image else None,
+        None if is_image else {"display": "none"},
+        {"content": b64, "filename": filename, "type": "base64"},
+    )
+
+
+@callback(
+    Output("starfish-viz-download", "data"),
+    Input("starfish-viz-download-btn", "n_clicks"),
+    State("starfish-viz-payload", "data"),
+    prevent_initial_call=True,
+)
+def trigger_viz_download(n_clicks, payload):
+    if not n_clicks or not payload:
+        raise PreventUpdate
+    return payload

@@ -423,6 +423,51 @@ def get_starfish_run_log(run_id: int) -> str:
     return result["log"]
 
 
+def list_starfish_visualizations(run_id: int) -> dict:
+    return _request("GET", f"/api/starfish/runs/{run_id}/visualizations")
+
+
+def get_starfish_visualization_file(run_id: int, section: str, filename: str) -> tuple:
+    """(bytes, media_type) for one pipeline viz file. Raw GET, not _request,
+    because the payload is binary, not JSON."""
+    if not is_configured():
+        raise RuntimeError(
+            "BACKEND_API_URL is not set; use sql_manager local impl or set BACKEND_API_URL"
+        )
+    with _client() as client:
+        response = client.get(
+            f"/api/starfish/runs/{run_id}/viz-files/{section}/{filename}"
+        )
+        response.raise_for_status()
+    media_type = response.headers.get("Content-Type", "application/octet-stream")
+    return response.content, media_type.split(";")[0].strip()
+
+
+def delete_starfish_element(element_id: int) -> dict:
+    return _request("DELETE", f"/api/starfish/elements/{element_id}")
+
+
+def update_starfish_element(
+    element_id: int,
+    family: str = None,
+    navis: str = None,
+    haplotype: str = None,
+    confidence: str = None,
+    notes: str = None,
+) -> dict:
+    return _request(
+        "PATCH",
+        f"/api/starfish/elements/{element_id}",
+        json={
+            "family": family,
+            "navis": navis,
+            "haplotype": haplotype,
+            "confidence": confidence,
+            "notes": notes,
+        },
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 
