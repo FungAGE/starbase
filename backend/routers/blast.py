@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from backend.dependencies import RequireApiKey
+from backend.task_runner import DEFAULT_TIMEOUT, run_task_sync
 from src.config.logging import get_logger
 from src.tasks import run_blast_search_task, run_hmmer_search_task
 
@@ -22,18 +23,11 @@ def _run_blast_search(
     eval_threshold: float,
     curated: Optional[bool],
 ):
-    fn = run_blast_search_task
-    if hasattr(fn, "apply"):
-        return fn.apply(
-            args=(query_header, query_seq, query_type),
-            kwargs={"eval_threshold": eval_threshold, "curated": curated},
-        ).get(timeout=360)
-    return fn(
-        query_header,
-        query_seq,
-        query_type,
-        eval_threshold=eval_threshold,
-        curated=curated,
+    return run_task_sync(
+        run_blast_search_task,
+        args=(query_header, query_seq, query_type),
+        kwargs={"eval_threshold": eval_threshold, "curated": curated},
+        timeout=DEFAULT_TIMEOUT,
     )
 
 
@@ -44,13 +38,12 @@ def _run_hmmer_search(
     *,
     eval_threshold: float,
 ):
-    fn = run_hmmer_search_task
-    if hasattr(fn, "apply"):
-        return fn.apply(
-            args=(query_header, query_seq, query_type),
-            kwargs={"eval_threshold": eval_threshold},
-        ).get(timeout=360)
-    return fn(query_header, query_seq, query_type, eval_threshold=eval_threshold)
+    return run_task_sync(
+        run_hmmer_search_task,
+        args=(query_header, query_seq, query_type),
+        kwargs={"eval_threshold": eval_threshold},
+        timeout=DEFAULT_TIMEOUT,
+    )
 
 
 router = APIRouter(

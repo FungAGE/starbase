@@ -14,6 +14,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.dependencies import RequireApiKey
+from backend.task_runner import run_task_sync
 from src.config.logging import get_logger
 from src.tasks import run_classification_workflow_task
 
@@ -40,24 +41,17 @@ router = APIRouter(
 
 @router.post("/workflow")
 def classification_workflow(body: ClassificationWorkflowBody) -> dict[str, Any]:
-    fn = run_classification_workflow_task
     try:
-        if hasattr(fn, "apply"):
-            result = fn.apply(
-                args=(body.workflow_state,),
-                kwargs={
-                    "blast_data": body.blast_data,
-                    "classification_data": body.classification_data,
-                    "meta_dict": body.meta_dict,
-                },
-            ).get(timeout=WORKFLOW_TIMEOUT)
-        else:
-            result = fn(
-                body.workflow_state,
-                blast_data=body.blast_data,
-                classification_data=body.classification_data,
-                meta_dict=body.meta_dict,
-            )
+        result = run_task_sync(
+            run_classification_workflow_task,
+            args=(body.workflow_state,),
+            kwargs={
+                "blast_data": body.blast_data,
+                "classification_data": body.classification_data,
+                "meta_dict": body.meta_dict,
+            },
+            timeout=WORKFLOW_TIMEOUT,
+        )
     except Exception as exc:
         logger.error(f"Classification workflow failed: {exc}")
         logger.exception("Full traceback:")
