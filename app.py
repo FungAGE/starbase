@@ -123,6 +123,13 @@ def initialize_app():
     with server.app_context():
         init_sentry()
         cleanup_old_cache()
+        from src.telemetry.utils import (
+            initialize_ip_locations_table,
+            initialize_request_logs_table,
+        )
+
+        initialize_request_logs_table()
+        initialize_ip_locations_table()
         update_ip_locations_task()
 
         if not backend_client.is_configured():

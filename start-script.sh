@@ -2,16 +2,23 @@
 
 set -o pipefail
 
-# Load .env so uvicorn workers inherit ADMIN_TOKEN, DEV_MODE, etc.
-if [ -f .env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
+# Load runtime configuration before starting Tailscale or the application.
+if [ -n "${ENV_FILE:-}" ]; then
+    _env_file="$ENV_FILE"
+elif [ -f "$HOME/src/database/db/.env" ]; then
+    _env_file="$HOME/src/database/db/.env"
+elif [ -f .env ]; then
+    _env_file=.env
+else
+    _env_file=""
 fi
 
-if [ -z "$DEV_MODE" ]; then
-    DEV_MODE=false
+if [ -n "$_env_file" ]; then
+    echo "Loading runtime configuration from $_env_file"
+    set -a
+    # shellcheck disable=SC1090
+    source "$_env_file"
+    set +a
 fi
 
 # Tailscale only when TS_AUTHKEY is provided
@@ -52,6 +59,28 @@ if [ -n "$TS_AUTHKEY" ]; then
     # the public internet.
     export TAILSCALE_PROXY="http://localhost:1055"
     echo "Tailscale up. Backend calls will route via tailnet proxy on :1055."
+
+    # Early backend reachability probe
+    if [ -n "${BACKEND_API_URL:-}" ]; then
+        if _health=$(curl -sf --max-time 15 -x "http://localhost:1055" "${BACKEND_API_URL}/health" 2>&1); then
+            echo "Backend reachable at ${BACKEND_API_URL}: ${_health}"
+        else
+            echo "WARNING: backend NOT reachable at ${BACKEND_API_URL}/health via tailnet." >&2
+            _ts_sock="$HOME/.tailscale/tailscaled.sock"
+            _backend_host="${BACKEND_API_URL#*://}"; _backend_host="${_backend_host%%/*}"
+            _backend_peer="${_backend_host%%:*}"
+            echo "         Pod tailnet status (look for the backend peer + online/offline):" >&2
+            tailscale --socket="$_ts_sock" status 2>&1 | sed 's/^/           /' >&2
+            echo "         Pinging ${_backend_peer} (2 tries; 'direct'/'relay' = path works):" >&2
+            tailscale --socket="$_ts_sock" ping --c 2 "$_backend_peer" 2>&1 | sed 's/^/           /' >&2
+            echo "         netcheck (DERP relay reachability from this pod):" >&2
+            timeout 45 tailscale --socket="$_ts_sock" netcheck 2>&1 | tail -25 | sed 's/^/           /' >&2
+            echo "         tailscaled.log (last 20 lines):" >&2
+            tail -20 "$HOME/.tailscale/tailscaled.log" 2>&1 | sed 's/^/           /' >&2
+            echo "         Peer offline/stale -> check backend machine: sudo tailscale status" >&2
+            echo "         Peer online + ping OK -> port 8001 closed: docker compose ps on backend" >&2
+        fi
+    fi
 fi
 
 
