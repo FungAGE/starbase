@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.dependencies import verify_backend_api_key
-from backend.routers import admin, blast, curation, data, starfish
+from backend.routers import admin, blast, classification, curation, data, starfish
 from src.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
 
     app.include_router(data.router)
     app.include_router(blast.router)
+    app.include_router(classification.router)
     app.include_router(admin.router)
     app.include_router(curation.router)
     app.include_router(starfish.router)

@@ -65,6 +65,8 @@ if CELERY_AVAILABLE and celery:
         imports=[
             "src.tasks",
             "src.telemetry.tasks",
+            "backend.tasks.blastdb",
+            "backend.tasks.starfish",
         ],
         worker_prefetch_multiplier=1,  # Disable prefetching for more predictable behavior
         task_time_limit=300,  # 5 minute timeout
@@ -105,6 +107,13 @@ if CELERY_AVAILABLE and celery:
         "update-ip-locations-daily": {
             "task": "src.telemetry.tasks.update_ip_locations_task",
             "schedule": crontab(hour=0),  # Every day at midnight
+        },
+        # Rebuild ships/captain BLAST DBs from the ship DB. Only the backend
+        # worker can act on it (needs makeblastdb + the data volume); the
+        # task itself no-ops in dev mode and without makeblastdb on PATH.
+        "rebuild-blast-db-daily": {
+            "task": "rebuild_blast_dbs",
+            "schedule": crontab(hour=4),  # 04:00 UTC, off-peak
         },
     }
 

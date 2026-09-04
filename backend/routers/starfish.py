@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from backend.dependencies import RequireApiKey
@@ -136,3 +136,52 @@ def get_run_log(run_id: int) -> dict[str, str]:
         return {"log": starfish_manager.get_run_log(run_id)}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/runs/{run_id}/visualizations")
+def list_visualizations(run_id: int) -> dict[str, Any]:
+    try:
+        return starfish_manager.list_visualizations(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/runs/{run_id}/viz-files/{section}/{filename}")
+def get_viz_file(run_id: int, section: str, filename: str) -> Response:
+    # filename is a plain path segment (no '/'), so traversal via the URL is
+    # already impossible; impl re-checks basename as defense in depth.
+    try:
+        data, media_type = starfish_manager.get_visualization_file(
+            run_id, section, filename
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+class UpdateElementBody(BaseModel):
+    family: Optional[str] = None
+    navis: Optional[str] = None
+    haplotype: Optional[str] = None
+    confidence: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.delete("/elements/{element_id}")
+def delete_element(element_id: int) -> dict[str, Any]:
+    try:
+        return starfish_manager.delete_element(element_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.patch("/elements/{element_id}")
+def update_element(element_id: int, body: UpdateElementBody) -> dict[str, Any]:
+    try:
+        return starfish_manager.update_element(element_id, **body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

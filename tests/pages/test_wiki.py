@@ -143,26 +143,28 @@ class TestWikiCoreFunctions:
             },
         ]
 
-        taxa_data, family_data = populate_search_components(meta_data)
+        taxa_data, family_data, group_accession_data, ship_accession_data = (
+            populate_search_components(meta_data)
+        )
 
         assert len(taxa_data) > 0
         assert len(family_data) > 0
         assert any(item["value"] == "Species1" for item in taxa_data)
         assert any(item["value"] == "StarshipFamily1" for item in family_data)
+        assert group_accession_data == []
+        assert ship_accession_data == []
 
     def test_populate_search_components_no_data(self):
         """Test populating search components with no data"""
-        taxa_data, family_data = populate_search_components(None)
+        result = populate_search_components(None)
 
-        assert taxa_data == []
-        assert family_data == []
+        assert result == ([], [], [], [])
 
     def test_populate_search_components_empty_data(self):
         """Test populating search components with empty data"""
-        taxa_data, family_data = populate_search_components([])
+        result = populate_search_components([])
 
-        assert taxa_data == []
-        assert family_data == []
+        assert result == ([], [], [], [])
 
 
 class TestWikiDataProcessing:
@@ -321,17 +323,24 @@ class TestWikiSearchComponents:
             },
         ]
 
-        taxa_data, family_data = populate_search_components(meta_data)
+        taxa_data, family_data, group_accession_data, ship_accession_data = (
+            populate_search_components(meta_data)
+        )
+
+        assert group_accession_data == []
+        assert ship_accession_data == []
 
         # Check that all taxonomy levels are included
         all_values = [item["value"] for item in taxa_data]
         assert "Species1" in all_values
-        assert "Subkingdom1" in all_values
-        assert "Phylum1" in all_values
         assert "Class1" in all_values
         assert "Order1" in all_values
         assert "Family1" in all_values
         assert "Genus1" in all_values
+
+        # subkingdom/phylum are not searchable taxonomy columns
+        assert "Subkingdom1" not in all_values
+        assert "Phylum1" not in all_values
 
         # Check family data
         family_values = [item["value"] for item in family_data]
@@ -348,11 +357,15 @@ class TestWikiSearchComponents:
             {"family": "Family2", "genus": "Genus2"},  # Missing name and familyName
         ]
 
-        taxa_data, family_data = populate_search_components(meta_data)
+        taxa_data, family_data, group_accession_data, ship_accession_data = (
+            populate_search_components(meta_data)
+        )
 
         # Should still work with missing columns
         assert len(taxa_data) > 0
         assert len(family_data) > 0
+        assert group_accession_data == []
+        assert ship_accession_data == []
         assert any(item["value"] == "Species1" for item in taxa_data)
         assert any(item["value"] == "StarshipFamily1" for item in family_data)
 
@@ -362,11 +375,15 @@ class TestWikiSearchComponents:
             {"name": "Species1", "familyName": "StarshipFamily1"},
         ]
 
-        taxa_data, family_data = populate_search_components(meta_data)
+        taxa_data, family_data, group_accession_data, ship_accession_data = (
+            populate_search_components(meta_data)
+        )
 
         # Check format
         assert isinstance(taxa_data, list)
         assert isinstance(family_data, list)
+        assert isinstance(group_accession_data, list)
+        assert isinstance(ship_accession_data, list)
 
         if taxa_data:
             assert "value" in taxa_data[0]

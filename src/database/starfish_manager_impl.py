@@ -186,7 +186,9 @@ def create_run(
         # base_dir (see backend/tasks/starfish.py) -- a relative
         # samplesheet_path would then get resolved against that cwd too,
         # silently doubling the path (base_dir/base_dir/samplesheet.csv).
-        base_dir = os.path.abspath(os.path.join(STARFISH_RUNS_DIR, f"{run.id}_{run_name}"))
+        base_dir = os.path.abspath(
+            os.path.join(STARFISH_RUNS_DIR, f"{run.id}_{run_name}")
+        )
         run.samplesheet_path = os.path.join(base_dir, "samplesheet.csv")
         run.output_dir = os.path.join(base_dir, "results")
         run.log_file = os.path.join(base_dir, "starfish.log")
@@ -433,6 +435,137 @@ def import_element_to_submission(
         submission_id,
     )
     return {"submission_id": submission_id, "element_id": elem["element_id"]}
+
+
+_VIZ_SECTIONS = ("locusViz", "pairViz")
+_VIZ_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".pdf": "application/pdf",
+}
+
+
+def list_visualizations(run_id: int) -> dict:
+    """Filenames produced by the pipeline's LOCUS_VIZ / PAIR_VIZ steps.
+
+    nextflow publishes to results/{run_name}/locusViz and results/{run_name}/
+    pairViz (see starfish-nextflow modules/local/{locus,pair}_viz.nf), so the
+    full path is {run.output_dir}/{run_name}/{section}/. Empty lists (not an
+    error) when the run hasn't reached the viz steps yet.
+    """
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        output_dir = run.output_dir
+        run_name = run.run_name
+
+    result = {}
+    for section in _VIZ_SECTIONS:
+        viz_dir = os.path.join(output_dir, run_name, section) if output_dir else None
+        files = []
+        if viz_dir and os.path.isdir(viz_dir):
+            files = sorted(
+                f
+                for f in os.listdir(viz_dir)
+                if os.path.isfile(os.path.join(viz_dir, f))
+            )
+        result[f"{section}_files"] = files
+    return result
+
+
+def get_visualization_file(run_id: int, section: str, filename: str) -> tuple:
+    """(bytes, media_type) for one viz file. Raises ValueError on unknown
+    run/section/file or any path-traversal attempt."""
+    if section not in _VIZ_SECTIONS:
+        raise ValueError(f"Unknown visualization section {section!r}")
+    if not filename or filename != os.path.basename(filename):
+        raise ValueError(f"Invalid visualization filename {filename!r}")
+
+    with get_starbase_session() as session:
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError(f"StarfishRun {run_id} not found")
+        output_dir = run.output_dir
+        run_name = run.run_name
+
+    viz_dir = os.path.realpath(os.path.join(output_dir, run_name, section))
+    path = os.path.realpath(os.path.join(viz_dir, filename))
+    if not path.startswith(viz_dir + os.sep):
+        raise ValueError(f"Invalid visualization filename {filename!r}")
+    if not os.path.isfile(path):
+        raise ValueError(f"Visualization file not found: {filename}")
+
+    with open(path, "rb") as f:
+        data = f.read()
+    ext = os.path.splitext(filename)[1].lower()
+    return data, _VIZ_MIME.get(ext, "application/octet-stream")
+
+
+def delete_element(element_id: int) -> dict:
+    """Remove one detected element from a run (e.g. a false positive).
+
+    Blocked while the element is imported -- the submission is the canonical
+    record and is managed through the submission workflow. Decrementing the
+    run/genome counters keeps the UI's found-counts honest.
+    """
+    with get_starbase_session() as session:
+        element = session.query(StarfishElement).filter_by(id=element_id).first()
+        if not element:
+            raise ValueError(f"StarfishElement {element_id} not found")
+        if element.imported_submission_id:
+            raise ValueError(
+                f"StarfishElement {element.element_id} was already imported as "
+                f"submission {element.imported_submission_id}; delete that "
+                "submission first"
+            )
+        genome_id = element.genome_id
+        run_id = element.run_id
+        element_label = element.element_id
+        session.delete(element)
+
+        run = session.query(StarfishRun).filter_by(id=run_id).first()
+        if run and run.num_elements_found:
+            run.num_elements_found = max(0, run.num_elements_found - 1)
+        genome = (
+            session.query(StarfishRunGenome).filter_by(id=genome_id).first()
+            if genome_id
+            else None
+        )
+        if genome and genome.num_elements:
+            genome.num_elements = max(0, genome.num_elements - 1)
+        session.commit()
+
+    logger.info("Deleted starfish element %s (id %s)", element_label, element_id)
+    return {"deleted": element_label}
+
+
+def update_element(
+    element_id: int,
+    family: str = None,
+    navis: str = None,
+    haplotype: str = None,
+    confidence: str = None,
+    notes: str = None,
+) -> dict:
+    """Curator edits for the classification labels + notes. Coordinates are
+    pipeline output (BED) and intentionally not editable here. All five
+    fields are always written -- None clears the column, so callers must
+    send the full set (the edit form does)."""
+    with get_starbase_session() as session:
+        element = session.query(StarfishElement).filter_by(id=element_id).first()
+        if not element:
+            raise ValueError(f"StarfishElement {element_id} not found")
+        element.family = family
+        element.navis = navis
+        element.haplotype = haplotype
+        element.confidence = confidence
+        element.notes = notes
+        session.commit()
+        return _element_to_dict(element)
 
 
 def get_run_log(run_id: int) -> str:

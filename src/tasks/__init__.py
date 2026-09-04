@@ -297,12 +297,16 @@ def _run_classification_workflow_internal(
     """
     Internal implementation of the classification workflow.
     """
+    if backend_client.is_configured():
+        return backend_client.classification_workflow(
+            workflow_state, blast_data, classification_data, meta_dict
+        )
+
+    from src.utils.blast_data import WorkflowState, BlastData, ClassificationData
     from src.utils.classification_utils import run_classification_workflow
 
     try:
         # Convert dictionaries to objects for the workflow function
-        from src.utils.blast_data import WorkflowState, BlastData, ClassificationData
-
         workflow_state_obj = (
             WorkflowState.from_dict(workflow_state)
             if isinstance(workflow_state, dict)
@@ -327,21 +331,9 @@ def _run_classification_workflow_internal(
         # If result is None or empty, return a default error state
         if result is None:
             logger.warning("Workflow returned None - returning failed state")
-            return {
-                "complete": True,
-                "error": "Classification workflow returned no results",
-                "status": "failed",
-                "found_match": False,
-                "match_stage": None,
-                "match_result": None,
-                "workflow_started": True,
-                "current_stage": None,
-                "current_stage_idx": 0,
-                "start_time": 0.0,
-                "stages": {},
-                "class_dict": {},
-                "task_id": "",
-            }
+            return WorkflowState.error_result(
+                "Classification workflow returned no results"
+            )
 
         # Ensure result is a dictionary
         if not isinstance(result, dict):
@@ -351,21 +343,9 @@ def _run_classification_workflow_internal(
                 logger.debug("Converted WorkflowState object to dictionary")
             else:
                 logger.error(f"Workflow result is not a dictionary: {type(result)}")
-                return {
-                    "complete": True,
-                    "error": f"Invalid workflow result type: {type(result)}",
-                    "status": "failed",
-                    "found_match": False,
-                    "match_stage": None,
-                    "match_result": None,
-                    "workflow_started": True,
-                    "current_stage": None,
-                    "current_stage_idx": 0,
-                    "start_time": 0.0,
-                    "stages": {},
-                    "class_dict": {},
-                    "task_id": "",
-                }
+                return WorkflowState.error_result(
+                    f"Invalid workflow result type: {type(result)}"
+                )
 
         # Test JSON serialization before returning
         try:
@@ -375,41 +355,15 @@ def _run_classification_workflow_internal(
         except TypeError as json_error:
             logger.error(f"Result is not JSON serializable: {json_error}")
             # Return a safe version with error information
-            return {
-                "complete": True,
-                "error": f"Classification result is not JSON serializable: {str(json_error)}",
-                "status": "failed",
-                "found_match": False,
-                "match_stage": None,
-                "match_result": None,
-                "workflow_started": True,
-                "current_stage": None,
-                "current_stage_idx": 0,
-                "start_time": 0.0,
-                "stages": {},
-                "class_dict": {},
-                "task_id": "",
-            }
+            return WorkflowState.error_result(
+                f"Classification result is not JSON serializable: {str(json_error)}"
+            )
 
         return result
     except Exception as e:
         logger.error(f"Classification workflow task failed: {str(e)}")
         logger.exception("Full traceback:")
-        return {
-            "complete": True,
-            "error": f"Classification workflow failed: {str(e)}",
-            "status": "failed",
-            "found_match": False,
-            "match_stage": None,
-            "match_result": None,
-            "workflow_started": True,
-            "current_stage": None,
-            "current_stage_idx": 0,
-            "start_time": 0.0,
-            "stages": {},
-            "class_dict": {},
-            "task_id": "",
-        }
+        return WorkflowState.error_result(f"Classification workflow failed: {str(e)}")
 
 
 def _process_submission_impl(

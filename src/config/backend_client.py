@@ -27,6 +27,7 @@ _BACKEND_API_URL = os.getenv("BACKEND_API_URL", "").rstrip("/")
 _BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "")
 _DEFAULT_TIMEOUT = float(os.getenv("BACKEND_TIMEOUT", "60"))
 _BLAST_TIMEOUT = float(os.getenv("BACKEND_BLAST_TIMEOUT", "360"))
+_CLASSIFICATION_TIMEOUT = float(os.getenv("BACKEND_CLASSIFICATION_TIMEOUT", "1800"))
 
 # Set by start-script.sh when TS_AUTHKEY is present
 _TAILSCALE_PROXY = os.getenv("TAILSCALE_PROXY", "") or None
@@ -422,6 +423,51 @@ def get_starfish_run_log(run_id: int) -> str:
     return result["log"]
 
 
+def list_starfish_visualizations(run_id: int) -> dict:
+    return _request("GET", f"/api/starfish/runs/{run_id}/visualizations")
+
+
+def get_starfish_visualization_file(run_id: int, section: str, filename: str) -> tuple:
+    """(bytes, media_type) for one pipeline viz file. Raw GET, not _request,
+    because the payload is binary, not JSON."""
+    if not is_configured():
+        raise RuntimeError(
+            "BACKEND_API_URL is not set; use sql_manager local impl or set BACKEND_API_URL"
+        )
+    with _client() as client:
+        response = client.get(
+            f"/api/starfish/runs/{run_id}/viz-files/{section}/{filename}"
+        )
+        response.raise_for_status()
+    media_type = response.headers.get("Content-Type", "application/octet-stream")
+    return response.content, media_type.split(";")[0].strip()
+
+
+def delete_starfish_element(element_id: int) -> dict:
+    return _request("DELETE", f"/api/starfish/elements/{element_id}")
+
+
+def update_starfish_element(
+    element_id: int,
+    family: str = None,
+    navis: str = None,
+    haplotype: str = None,
+    confidence: str = None,
+    notes: str = None,
+) -> dict:
+    return _request(
+        "PATCH",
+        f"/api/starfish/elements/{element_id}",
+        json={
+            "family": family,
+            "navis": navis,
+            "haplotype": haplotype,
+            "confidence": confidence,
+            "notes": notes,
+        },
+    )
+
+
 # ── BLAST / HMMER endpoints ─────────────────────────────────────────────────
 
 
@@ -470,4 +516,86 @@ def hmmer_search(
     if not result.get("ok"):
         logger.warning("Backend HMMER search failed: %s", result.get("error"))
         return None
+    return result.get("result")
+
+
+# ── Classification workflow endpoints ───────────────────────────────────────
+
+
+def _json_safe(value: Any) -> Any:
+    """Recursively convert values to strict-JSON-safe equivalents.
+
+    NaN/Inf → None; pandas DataFrames → list of record dicts (the workflow
+    accepts both forms).
+    """
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return None
+        return value
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return _json_safe(to_dict("records"))
+        except Exception:
+            return str(value)
+    return value
+
+
+def _inline_fasta(data: Any) -> Any:
+    """Inline the local temp-file path in `fasta_file` as sequence content.
+
+    The backend machine cannot see frontend /tmp paths, so the sequence must
+    travel in the payload. The workflow accepts {"content": ...} dicts in
+    fasta_file and materializes them locally.
+    """
+    if not isinstance(data, dict):
+        return data
+    fasta_file = data.get("fasta_file")
+    if isinstance(fasta_file, str):
+        if os.path.exists(fasta_file):
+            with open(fasta_file, "r") as f:
+                data["fasta_file"] = {"content": f.read()}
+        elif data.get("sequence"):
+            data["fasta_file"] = {"content": f">query\n{data['sequence']}\n"}
+    return data
+
+
+def _workflow_error_result(message: str) -> dict:
+    from src.utils.blast_data import WorkflowState
+
+    return WorkflowState.error_result(message)
+
+
+def classification_workflow(
+    workflow_state: dict,
+    blast_data: dict | None = None,
+    classification_data: dict | None = None,
+    meta_dict: list | None = None,
+) -> dict:
+    """Run the classification workflow on the compute backend."""
+    payload = _json_safe(
+        {
+            "workflow_state": workflow_state,
+            "blast_data": _inline_fasta(blast_data) if blast_data else None,
+            "classification_data": _inline_fasta(classification_data)
+            if classification_data
+            else None,
+            "meta_dict": meta_dict,
+        }
+    )
+    result = _request(
+        "POST",
+        "/api/classification/workflow",
+        json=payload,
+        timeout=_CLASSIFICATION_TIMEOUT,
+    )
+    if not result.get("ok"):
+        logger.warning(
+            "Backend classification workflow failed: %s", result.get("error")
+        )
+        return _workflow_error_result(str(result.get("error")))
     return result.get("result")
