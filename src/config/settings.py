@@ -7,6 +7,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _DEFAULT_DB_DIR = os.path.join(PROJECT_ROOT, "src", "database", "db")
 
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+load_dotenv(os.path.join(_DEFAULT_DB_DIR, ".env"))
 
 # Development mode
 IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
