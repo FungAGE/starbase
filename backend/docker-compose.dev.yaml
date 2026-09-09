@@ -52,6 +52,7 @@ services:
       - BACKEND_PORT=${BACKEND_PORT:-8001}
       - BACKEND_API_KEY=${BACKEND_API_KEY:-}
       - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_ROLE=backend
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - IPSTACK_API_KEY=${IPSTACK_API_KEY:-}
@@ -83,6 +84,7 @@ services:
       - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1
       - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_ROLE=backend
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - BACKEND_API_KEY=${BACKEND_API_KEY:-}
@@ -94,6 +96,15 @@ services:
         condition: service_healthy
     entrypoint: ["python"]
     command: ["manage_celery.py", "worker"]
+    # Override the image's HEALTHCHECK: it curls the FastAPI /health endpoint,
+    # which does not exist in this container (no HTTP server here). Ask Celery
+    # itself whether the worker is responding instead.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.config.celery_config inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 60s
+      timeout: 15s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -109,6 +120,7 @@ services:
       - PYTHONPATH=/home/starbase
       - PYTHONNOUSERSITE=1
       - DATA_DIR=/home/starbase/src/database/db
+      - CELERY_ROLE=backend
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - BACKEND_API_KEY=${BACKEND_API_KEY:-}
@@ -119,6 +131,11 @@ services:
         condition: service_healthy
     entrypoint: ["python"]
     command: ["manage_celery.py", "beat"]
+    # Beat has no queryable liveness interface, and the image's HEALTHCHECK
+    # (curl of FastAPI /health) does not apply here. Disable rather than
+    # report a permanently-unhealthy container.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     logging:
       driver: "json-file"
