@@ -6,7 +6,7 @@ Contains tasks related to telemetry (formerly Celery tasks).
 import requests
 from datetime import datetime
 from src.config.logging import get_logger
-from src.config.celery_config import run_task
+from src.config.celery_config import run_task, celery, CELERY_AVAILABLE
 
 logger = get_logger(__name__)
 
@@ -176,9 +176,24 @@ def _check_cache_status_impl():
         return {"status": "error", "error": str(e)}
 
 
-def log_request_task(ip_address, endpoint):
-    return run_task(_log_request_impl, ip_address, endpoint)
+# Register as real Celery tasks when Celery is available, mirroring
+# src/tasks/__init__.py. Previously these were plain functions, so a
+# beat_schedule entry naming them raised "Received unregistered task of type"
+# in the worker -- the schedule could never fire.
+if CELERY_AVAILABLE and celery:
 
+    @celery.task(name="src.telemetry.tasks.log_request_task")
+    def log_request_task(ip_address, endpoint):
+        return _log_request_impl(ip_address, endpoint)
 
-def update_ip_locations_task():
-    return run_task(_update_ip_locations_impl)
+    @celery.task(name="src.telemetry.tasks.update_ip_locations_task")
+    def update_ip_locations_task():
+        return _update_ip_locations_impl()
+
+else:
+
+    def log_request_task(ip_address, endpoint):
+        return run_task(_log_request_impl, ip_address, endpoint)
+
+    def update_ip_locations_task():
+        return run_task(_update_ip_locations_impl)
