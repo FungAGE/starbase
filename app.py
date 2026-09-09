@@ -21,7 +21,7 @@ from src.config.celery_config import run_task, celery
 
 from src.config import backend_client
 from src.config.sentry import init_sentry
-from src.database.migrations import create_database_indexes, run_alembic_migrations
+from src.database.migrations import create_database_indexes
 
 
 logger = get_logger(__name__)
@@ -133,9 +133,10 @@ def initialize_app():
         update_ip_locations_task()
 
         if not backend_client.is_configured():
+            from src.database.migrations import run_alembic_migrations
             run_alembic_migrations()
             create_database_indexes()
-
+            
             if not IS_DEV:
                 update_ip_locations_task()
                 try:
