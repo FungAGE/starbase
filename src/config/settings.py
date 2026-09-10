@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _DEFAULT_DB_DIR = os.path.join(PROJECT_ROOT, "src", "database", "db")
 
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
-load_dotenv(os.path.join(_DEFAULT_DB_DIR, ".env"))
+_root_env_path = os.path.join(PROJECT_ROOT, ".env")
+_mount_env_path = os.path.join(_DEFAULT_DB_DIR, ".env")
+load_dotenv(_root_env_path)
+load_dotenv(_mount_env_path)
 
 # Development mode
 IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
@@ -16,6 +18,14 @@ IS_DEV = os.getenv("DEV_MODE", "false").lower() == "true"
 # BACKEND_API_URL: e.g. http://100.x.y.z:8001 (Tailscale) or http://backend:8001 (compose).
 BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "")
 BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY", "")
+
+# Unconditional stderr print
+print(
+    f"[settings] root .env exists={os.path.exists(_root_env_path)} ({_root_env_path}) | "
+    f"mount .env exists={os.path.exists(_mount_env_path)} ({_mount_env_path}) | "
+    f"BACKEND_API_URL set={bool(BACKEND_API_URL)}",
+    flush=True,
+)
 
 # DATA_DIR: SQLite + BLAST data on the compute backend (institute machine).
 # FRONTEND_DATA_DIR: lightweight local DBs (submissions, telemetry) on the Serve pod / dev host.
