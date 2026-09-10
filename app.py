@@ -133,10 +133,18 @@ def initialize_app():
         update_ip_locations_task()
 
         if not backend_client.is_configured():
-            from src.database.migrations import run_alembic_migrations
-            run_alembic_migrations()
-            create_database_indexes()
-            
+            try:
+                from src.database.migrations import run_alembic_migrations
+
+                run_alembic_migrations()
+                create_database_indexes()
+            except Exception as e:
+                # Local sqlite is a leftover from the pre-split monolith on
+                # this pod -- BACKEND_API_URL is what actually serves data
+                # once the split is active. Don't let a broken local
+                # migration take down the whole pod boot over it.
+                logger.error(f"Local DB migration/index setup failed (non-fatal): {e}")
+
             if not IS_DEV:
                 update_ip_locations_task()
                 try:
