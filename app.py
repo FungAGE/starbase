@@ -237,6 +237,40 @@ def log_request_hook():
 
 app.layout = serve_app_layout
 
+
+def _warm_dash_component_registry():
+    """Populate app.registered_paths at import, in every uvicorn worker.
+
+    Dash fills registered_paths only in _generate_scripts_html() and
+    _generate_css_dist_html(), which run inside _setup_server() -- a
+    before_request hook. _setup_server() sets its _got_first_request flag
+    before doing that work and returns early ever after, so if the layout
+    render it performs first raises, the worker is left with an empty
+    registry and serves 500 for every /_dash-component-suites/* request
+    until some later index render happens to repopulate it. The browser
+    gets no JS in that window and the page is dead.
+
+    serve_app_layout() is a callable layout, so Dash defers it to that
+    first request rather than invoking it at assignment, which is what
+    exposes us to this. Warm the registry here instead: once populated at
+    import, asset requests are served correctly no matter what any single
+    layout render does. Uses Dash internals, so recheck on a dash upgrade
+    (pinned to 2.16.1 in frontend/environment.yaml).
+    """
+    with server.test_request_context("/"):
+        try:
+            app._setup_server()
+        except Exception as e:
+            # Keep assets serving even if the layout itself is broken: these
+            # two calls are what register the paths, and _setup_server() does
+            # them after the layout render that just failed.
+            logger.error(f"Dash setup failed during registry warm-up: {e}")
+            app._generate_scripts_html()
+            app._generate_css_dist_html()
+
+
+_warm_dash_component_registry()
+
 with server.app_context():
     initialize_app()
 
