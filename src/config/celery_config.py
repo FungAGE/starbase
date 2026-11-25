@@ -6,6 +6,15 @@ from src.config.settings import IS_DEV
 # Check if Celery should be enabled (default to False for single-pod deployments)
 CELERY_ENABLED = os.getenv("CELERY_ENABLED", "false").lower() == "true"
 
+# Which half of the split architecture this process belongs to. Periodic jobs
+# are not interchangeable between them: telemetry (request_logs, ip_locations)
+# only exists frontend-side, where real client IPs are observed and
+# telemetry.sqlite lives, while the compute backend has neither. Default "all"
+# keeps single-pod / dev deployments scheduling everything, as before.
+CELERY_ROLE = os.getenv("CELERY_ROLE", "all").lower()
+_RUNS_FRONTEND_JOBS = CELERY_ROLE in ("all", "frontend")
+_RUNS_BACKEND_JOBS = CELERY_ROLE in ("all", "backend")
+
 # Try to import Celery - if not available, disable it
 CELERY_AVAILABLE = False
 celery = None
@@ -42,6 +51,25 @@ if CELERY_AVAILABLE:
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.WARNING)
 
+    # Modules the worker must import so that @celery.task registrations exist.
+    #
+    # backend.tasks.blastdb / backend.tasks.starfish dispatch their tasks via
+    # .delay(), and without importing them here the worker received that
+    # message as an unregistered task and discarded it -- pipeline/rebuild
+    # runs were enqueued and then silently dropped. Each is probed with
+    # find_spec so a frontend-only deployment without the backend package
+    # still starts. Both backend/__init__.py and backend/tasks/__init__.py
+    # are inert, so this cannot import-cycle back into this module.
+    _TASK_IMPORTS = ["src.tasks", "src.telemetry.tasks"]
+    try:
+        from importlib.util import find_spec
+
+        for _backend_task_module in ("backend.tasks.blastdb", "backend.tasks.starfish"):
+            if find_spec(_backend_task_module) is not None:
+                _TASK_IMPORTS.append(_backend_task_module)
+    except (ImportError, ValueError, ModuleNotFoundError):
+        pass
+
     # Initialize Celery
     celery = Celery("starships")
 else:
@@ -62,12 +90,7 @@ if CELERY_AVAILABLE and celery:
         task_serializer="json",
         result_serializer="json",
         accept_content=["json"],
-        imports=[
-            "src.tasks",
-            "src.telemetry.tasks",
-            "backend.tasks.blastdb",
-            "backend.tasks.starfish",
-        ],
+        imports=_TASK_IMPORTS,
         worker_prefetch_multiplier=1,  # Disable prefetching for more predictable behavior
         task_time_limit=300,  # 5 minute timeout
         task_soft_time_limit=90,  # Soft timeout of 1.5 minutes
@@ -98,24 +121,27 @@ if CELERY_AVAILABLE and celery:
             "%(asctime)s: %(levelname)s - %(name)s - %(message)s"
         )
 
-    # Configure periodic tasks
-    celery.conf.beat_schedule = {
-        "health-check-every-5min": {
-            "task": "src.telemetry.routes.health",
-            "schedule": crontab(hour=0),  # Every 1 hour at midnight
-        },
-        "update-ip-locations-daily": {
+    # Configure periodic tasks.
+    #
+    # Dropped a former "health-check-every-5min" entry that pointed at
+    # "src.telemetry.routes.health" -- that is a plain FastAPI/Dash view, not a
+    # registered Celery task, so beat only ever produced KeyError in the worker.
+    celery.conf.beat_schedule = {}
+
+    if _RUNS_FRONTEND_JOBS:
+        celery.conf.beat_schedule["update-ip-locations-daily"] = {
             "task": "src.telemetry.tasks.update_ip_locations_task",
-            "schedule": crontab(hour=0),  # Every day at midnight
-        },
+            "schedule": crontab(hour=0, minute=0),  # Every day at midnight UTC
+        }
+
+    if _RUNS_BACKEND_JOBS:
         # Rebuild ships/captain BLAST DBs from the ship DB. Only the backend
         # worker can act on it (needs makeblastdb + the data volume); the
         # task itself no-ops in dev mode and without makeblastdb on PATH.
-        "rebuild-blast-db-daily": {
+        celery.conf.beat_schedule["rebuild-blast-db-daily"] = {
             "task": "rebuild_blast_dbs",
             "schedule": crontab(hour=4),  # 04:00 UTC, off-peak
-        },
-    }
+        }
 
     # This ensures tasks are properly registered
     celery.autodiscover_tasks(["src.tasks", "src.telemetry"])

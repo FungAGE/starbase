@@ -1,4 +1,8 @@
 # Starbase compute backend conda environment.
+# Stripped from root environment.yaml — no Node, Selenium, or dev/publish tools.
+# Dash + flask-caching are still required transitively (sql_manager.py facade,
+# seq_utils.py, and other shared modules import them at top level even though
+# the backend never runs a Dash/Flask server).
 #
 # Build: mamba env create -f backend/environment.yaml
 # Update: mamba env update -f backend/environment.yaml --prune

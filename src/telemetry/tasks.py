@@ -6,9 +6,16 @@ Contains tasks related to telemetry (formerly Celery tasks).
 import requests
 from datetime import datetime
 from src.config.logging import get_logger
-from src.config.celery_config import run_task
+from src.config.celery_config import run_task, celery, CELERY_AVAILABLE
 
 logger = get_logger(__name__)
+
+# Max unresolved IPs geolocated per task run. Each IP costs a 1.5s rate-limit
+# sleep plus up to three 5s provider timeouts, so an unbounded run can last
+# an hour. Every IP this run touches gets an ip_locations row -- real
+# coordinates, or a lookup_attempted marker -- so it leaves the unresolved
+# set either way and a larger backlog drains over successive runs.
+IP_LOOKUP_BATCH_LIMIT = 250
 
 
 def _log_request_impl(ip_address, endpoint):
@@ -69,8 +76,13 @@ def _log_request_impl(ip_address, endpoint):
         raise
 
 
-def _update_ip_locations_impl(api_key=None):
-    """Update IP geolocation data"""
+def _update_ip_locations_impl(api_key=None, limit=IP_LOOKUP_BATCH_LIMIT):
+    """Update IP geolocation data.
+
+    Processes at most `limit` unresolved IPs per run. Each IP costs one
+    IPStack round trip, so an unbounded backlog would otherwise stall the
+    caller for as long as the backlog is long.
+    """
 
     from sqlalchemy import text
     from src.config.settings import IPSTACK_API_KEY
@@ -84,11 +96,34 @@ def _update_ip_locations_impl(api_key=None):
 
     # Find IPs that need lookup
     query = """
-    SELECT DISTINCT r.ip_address 
+    SELECT r.ip_address
     FROM request_logs r 
     LEFT JOIN ip_locations i ON r.ip_address = i.ip_address 
     WHERE i.ip_address IS NULL 
+    GROUP BY r.ip_address
+    ORDER BY MIN(r.timestamp)
+    LIMIT :limit
     """
+    # Mark an IP as attempted without coordinates. get_ip_locations() filters
+    # on "lookup_attempted = TRUE AND latitude != 0 AND longitude != 0", so a
+    # 0/0 row is read as "attempted, not mappable" and stays off the map.
+    # Writing it is what keeps unresolvable IPs out of later batches: the
+    # unresolved query is a LEFT JOIN ... WHERE i.ip_address IS NULL, so an IP
+    # with no row at all comes back every run and, under LIMIT, would refill
+    # the batch forever and starve newer IPs.
+    mark_attempted_query = """
+    INSERT INTO ip_locations (
+        ip_address, latitude, longitude, city, country,
+        last_updated, lookup_attempted
+    ) VALUES (
+        :ip, 0, 0, NULL, NULL,
+        :timestamp, TRUE
+    )
+    ON CONFLICT(ip_address) DO UPDATE SET
+        last_updated = :timestamp,
+        lookup_attempted = TRUE
+    """
+
     # Insert or update the location data
     upsert_query = """
     INSERT INTO ip_locations (
@@ -111,14 +146,27 @@ def _update_ip_locations_impl(api_key=None):
         ip = None
         new_ips = []
         try:
-            new_ips = session.execute(text(query)).fetchall()
+            new_ips = session.execute(text(query), {"limit": limit}).fetchall()
 
             for (ip,) in new_ips:
+                # is_private_ip() also returns True for unparseable addresses,
+                # so this covers private, loopback and junk X-Forwarded-For
+                # values alike. None of them are ever resolvable.
                 if geolocator.is_private_ip(ip):
+                    session.execute(
+                        text(mark_attempted_query),
+                        {"ip": ip, "timestamp": datetime.now()},
+                    )
+                    session.commit()
                     continue
 
                 location = geolocator.get_location(ip, api_key)
                 if location.lat == 0 and location.lon == 0:
+                    session.execute(
+                        text(mark_attempted_query),
+                        {"ip": ip, "timestamp": datetime.now()},
+                    )
+                    session.commit()
                     continue
 
                 session.execute(
@@ -176,9 +224,24 @@ def _check_cache_status_impl():
         return {"status": "error", "error": str(e)}
 
 
-def log_request_task(ip_address, endpoint):
-    return run_task(_log_request_impl, ip_address, endpoint)
+# Register as real Celery tasks when Celery is available, mirroring
+# src/tasks/__init__.py. Previously these were plain functions, so a
+# beat_schedule entry naming them raised "Received unregistered task of type"
+# in the worker -- the schedule could never fire.
+if CELERY_AVAILABLE and celery:
 
+    @celery.task(name="src.telemetry.tasks.log_request_task")
+    def log_request_task(ip_address, endpoint):
+        return _log_request_impl(ip_address, endpoint)
 
-def update_ip_locations_task():
-    return run_task(_update_ip_locations_impl)
+    @celery.task(name="src.telemetry.tasks.update_ip_locations_task")
+    def update_ip_locations_task():
+        return _update_ip_locations_impl()
+
+else:
+
+    def log_request_task(ip_address, endpoint):
+        return run_task(_log_request_impl, ip_address, endpoint)
+
+    def update_ip_locations_task():
+        return run_task(_update_ip_locations_impl)
