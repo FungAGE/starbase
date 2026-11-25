@@ -1,4 +1,5 @@
 import os
+import threading
 
 from flask import Flask, request
 from flask_compress import Compress
@@ -118,6 +119,19 @@ if IS_DEV:
     )
 
 
+def _boot_update_ip_locations():
+    """Run the IP geolocation update off the boot path.
+
+    Errors are logged and dropped: stale telemetry coordinates are not worth
+    a dead pod, and the daily beat schedule retries.
+    """
+    with server.app_context():
+        try:
+            run_task(update_ip_locations_task)
+        except Exception as e:
+            logger.error(f"Boot IP location update failed (non-fatal): {e}")
+
+
 def initialize_app():
     """Initialize app components and perform setup tasks."""
     with server.app_context():
@@ -130,7 +144,22 @@ def initialize_app():
 
         initialize_request_logs_table()
         initialize_ip_locations_table()
-        update_ip_locations_task()
+
+        # Telemetry lives on this pod whether or not the backend split is
+        # active, so geolocation has to run here either way. It must not run
+        # on the boot path: run_task() only hands work to Celery when
+        # CELERY_ENABLED is true, and otherwise calls the task inline, where
+        # each lookup costs a 1.5s rate-limit sleep plus up to three 5s
+        # provider timeouts. uvicorn binds :8000 only after this import
+        # finishes, so an inline run makes the pod unreachable (502 at the
+        # ingress) for the length of the backlog. A daemon thread keeps the
+        # work off that path under every CELERY_ENABLED setting.
+        if not IS_DEV:
+            threading.Thread(
+                target=_boot_update_ip_locations,
+                name="boot-update-ip-locations",
+                daemon=True,
+            ).start()
 
         if not backend_client.is_configured():
             try:
@@ -146,7 +175,6 @@ def initialize_app():
                 logger.error(f"Local DB migration/index setup failed (non-fatal): {e}")
 
             if not IS_DEV:
-                update_ip_locations_task()
                 try:
                     from src.database.blastdb import create_dbs
 
