@@ -162,17 +162,15 @@ def initialize_app():
             ).start()
 
         if not backend_client.is_configured():
-            try:
-                from src.database.migrations import run_alembic_migrations
+            # Reached only when BACKEND_API_URL is unset, i.e. this pod serves
+            # data from its own sqlite. A migration failure here means the
+            # schema does not match the code, so let it propagate and fail the
+            # boot: a pod that starts on a half-migrated schema serves wrong
+            # data or runtime SQL errors instead of being rolled back.
+            from src.database.migrations import run_alembic_migrations
 
-                run_alembic_migrations()
-                create_database_indexes()
-            except Exception as e:
-                # Local sqlite is a leftover from the pre-split monolith on
-                # this pod -- BACKEND_API_URL is what actually serves data
-                # once the split is active. Don't let a broken local
-                # migration take down the whole pod boot over it.
-                logger.error(f"Local DB migration/index setup failed (non-fatal): {e}")
+            run_alembic_migrations()
+            create_database_indexes()
 
             if not IS_DEV:
                 try:
